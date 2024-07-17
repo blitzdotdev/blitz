@@ -1,0 +1,35 @@
+.interactionControlsButtonContainer{
+  position: absolute;
+  left: 50%;
+  //right: 0;
+  bottom: calc($pt-grid-size / 2);
+  transform: translateX(-50%);
+  height: auto;
+  display: flex;
+  width: max-content;
+  background-color: var(--light-gray4);
+  transition: var(--background-color-transition);
+  border-radius: calc(2 * var(--pt-border-radius));
+  padding: 2px;
+
+  .bp5-dark & {
+    background-color: var(--dark-gray1);
+  }
+
+  .bp5-button{
+    border-radius: calc(2 * var(--pt-border-radius));
+    transition: background-color 0.25s ease-in-out;
+  }
+}
+//
+//.bpButtonIconScale-[x] {
+//  .bp5-icon {
+//    transform: scale([x]);
+//  }
+//}
+
+.bpButtonIconLarge{
+    .bp5-icon {
+        transform: scale(1.5);
+    }
+}

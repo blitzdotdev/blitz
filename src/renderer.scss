@@ -1,0 +1,73 @@
+@import 'uiconfig-blueprint/src/renderer';
+@import "./components/WelcomeScreen";
+@import "components/EditorModesButtonGroup";
+@import "components/InteractionControlsButtonGroup";
+
+body{
+  overflow: hidden;
+}
+
+#blueprintEditorContainer2{ // dummy
+  display: none;
+}
+
+.editorSplitContainer {
+  display: flex;
+  height: calc(100% - var(--pt-navbar-height));
+
+  .gutter {
+    background: var(--light-gray4);
+    transition: var(--background-color-transition);
+    flex-shrink: 0;
+  }
+
+  .gutter:hover {
+    background: var(--light-gray1);
+  }
+
+  .gutter-horizontal {
+    cursor: ew-resize;
+  }
+
+  .gutter-vertical {
+    cursor: ns-resize;
+  }
+
+  .bp5-card{
+    transition: var(--background-color-transition);
+    background: var(--light-gray4);
+  }
+
+  .bp5-dark & {
+    .gutter {
+      background: var(--dark-gray1);
+    }
+    .gutter:hover {
+      background: var(--dark-gray4);
+    }
+    .bp5-card{
+      background: var(--dark-gray1);
+    }
+  }
+}
+
+.bp5-navbar {
+  border: none;
+  box-shadow: none !important;
+  background: var(--light-gray4);
+  transition: var(--background-color-transition);
+
+  .bp5-dark & {
+    background: var(--dark-gray1);
+  }
+}
+
+
+
+.editorCanvasContainer{
+  width: 100%;
+  height: 100%;
+
+  .bp5-dark & {
+  }
+}
