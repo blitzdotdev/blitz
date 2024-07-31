@@ -66,14 +66,13 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
     const {project} = useProject()
 
     return !uiConfigRenderer || !viewer ? null : (
-        // @ts-expect-error because we are not using the renderer from uiconfig-blueprint but from uiconfig.js directly. todo: fix type somehow
         <UiConfigRendererContext.Provider value={uiConfigRenderer}>
             <div
                  // style={{backgroundColor: Colors.DARK_GRAY2, height: "100vh"}}>
                  style={{height: "100vh"}}>
                 <Navbar>
                     <Navbar.Group align={Alignment.LEFT}>
-                        <Navbar.Heading>Threepipe Editor</Navbar.Heading>
+                        <Navbar.Heading>3D Editor</Navbar.Heading>
                         <Navbar.Divider/>
                         <H6 style={{margin: "0"}}>{project}</H6>
                         {/*<Button minimal small icon="home" text="Home"/>*/}

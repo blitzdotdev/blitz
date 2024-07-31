@@ -1,7 +1,7 @@
 {
   "name": "threepipe-blueprint-editor",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,18 +11,21 @@
     "deploy": "node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/"
   },
   "dependencies": {
-    "@threepipe/plugin-geometry-generator": "^0.2.0",
+    "@threepipe/plugin-geometry-generator": "^0.3.0",
+    "@threepipe/plugin-gltf-transform": "^0.1.0",
+    "@threepipe/plugins-extra-importers": "^0.2.0",
+    "@threepipe/plugin-configurator": "^0.1.1",
+    "@threepipe/plugin-network": "^0.1.0",
     "blueprint-styler": "^5.0.2",
     "idb": "^8.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "threepipe": "^0.0.20",
+    "threepipe": "^0.0.32",
     "uiconfig-blueprint": "file:./../uiconfig-blueprint",
-    "uiconfig.js": "^0.0.11",
     "stats.js": "^0.17.0"
   },
   "devDependencies": {
-    "@blueprintjs/core": "^5.7.2",
+    "@blueprintjs/core": "^5.11.0",
     "@types/react": "^18.2.43",
     "@vitejs/plugin-basic-ssl": "^1.0.2",
     "@types/react-dom": "^18.2.17",
@@ -35,9 +38,12 @@
     "react-split": "^2.0.14",
     "sass": "^1.69.5",
     "typescript": "^5.2.2",
-    "vite": "^5.0.10",
+    "vite": "^5.3.4",
     "web-vitals": "^3.5.0",
     "rclone.js": "^0.6.6",
     "dotenv": "^16.4.5"
+  },
+  "overrides": {
+    "threepipe": "^0.0.32"
   }
 }

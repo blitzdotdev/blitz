@@ -2,7 +2,7 @@ import {SavedSceneFileMeta, useManager, useProject, ViewerInstanceManager} from 
 import {useCallback} from 'react'
 import {uploadFile} from 'threepipe'
 
-async function resolveNameConflict(newName: string, manager: ViewerInstanceManager) {
+export async function resolveNameConflict(newName: string, manager: ViewerInstanceManager) {
     let conflict = true
     while (conflict) {
         const parts = newName.split('-')

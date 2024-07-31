@@ -1,31 +1,43 @@
 import {
+    AssetExporterPlugin,
     CameraViewPlugin,
+    CanvasSnapshotPlugin,
     ChromaticAberrationPlugin,
     ClearcoatTintPlugin,
+    ContactShadowGroundPlugin,
     CustomBumpMapPlugin,
     DepthBufferPlugin,
+    DeviceOrientationControlsPlugin,
     EditorViewWidgetPlugin,
     FilmicGrainPlugin,
     FragmentClippingExtensionPlugin,
     FrameFadePlugin,
     FullScreenPlugin,
+    GBufferPlugin,
     GLTFAnimationPlugin,
+    GLTFKHRMaterialVariantsPlugin,
+    GLTFMeshOptDecodePlugin,
     HalfFloatType,
     HDRiGroundPlugin,
     KTX2LoadPlugin,
-    KTXLoadPlugin,
+    KTXLoadPlugin, LoadingScreenPlugin,
+    MeshOptSimplifyModifierPlugin,
     NoiseBumpMaterialPlugin,
     NormalBufferPlugin,
     Object3DGeneratorPlugin,
     Object3DWidgetsPlugin,
+    ParallaxMappingPlugin,
     PickingPlugin,
     PLYLoadPlugin,
+    PointerLockControlsPlugin,
     ProgressivePlugin,
     RenderTargetPreviewPlugin,
-    Rhino3dmLoadPlugin,
-    STLLoadPlugin,
+    Rhino3dmLoadPlugin, SSAAPlugin,
+    SSAOPlugin,
+    STLLoadPlugin, ThreeFirstPersonControlsPlugin,
     ThreeViewer,
     TransformControlsPlugin,
+    UnsignedByteType,
     USDZLoadPlugin,
     ViewerUiConfigPlugin,
     VignettePlugin,
@@ -37,8 +49,11 @@ import {createContext, createElement, useContext, useState} from 'react'
 import {useSafeContext} from './useSafeContext.ts'
 import {browserFileStore} from './BrowserFileStore.ts'
 import {EditorFeatures} from './EditorFeatures.ts'
+import {extraImportPlugins} from '@threepipe/plugins-extra-importers'
+import {GLTFDracoExportPlugin} from '@threepipe/plugin-gltf-transform'
+import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
 
-export interface ViewerProps{
+export interface ViewerProps {
     msaa: boolean,
     rgbm: boolean,
     zPrepass: boolean
@@ -47,19 +62,20 @@ export interface ViewerProps{
     tonemap: boolean
 }
 
-export class ViewerInstanceManager{
+export class ViewerInstanceManager {
     private _viewers = new Map<string, ThreeViewer>()
     features = new EditorFeatures(this)
 
-    get(props?: Partial<ViewerProps>, id = 'default', container?: HTMLElement){
+    get(props?: Partial<ViewerProps>, id = 'default', container?: HTMLElement) {
         const viewer = this._viewers.get(id) ?? this._create(props, id)
-        if(container && viewer && viewer.container.parentElement !== container) {
+        if (container && viewer && viewer.container.parentElement !== container) {
             viewer.container.remove()
             container.appendChild(viewer.container)
         }
         return viewer
     }
-    protected _create(props?: Partial<ViewerProps>, id = 'default'){
+
+    protected _create(props?: Partial<ViewerProps>, id = 'default') {
         const container = document.createElement('div')
         container.style.width = '100%'
         container.style.height = '100%'
@@ -84,11 +100,14 @@ export class ViewerInstanceManager{
         viewer.addPluginSync(BlueprintJsUiPlugin2)
 
         viewer.addPluginsSync([
+            LoadingScreenPlugin,
+            AssetExporterPlugin,
+            GLTFDracoExportPlugin,
             new ProgressivePlugin(),
+            new SSAAPlugin(),
             FullScreenPlugin,
             GLTFAnimationPlugin,
             PickingPlugin,
-            Object3DWidgetsPlugin,
             TransformControlsPlugin,
             EditorViewWidgetPlugin,
             CameraViewPlugin,
@@ -97,9 +116,12 @@ export class ViewerInstanceManager{
             FragmentClippingExtensionPlugin,
             NoiseBumpMaterialPlugin,
             CustomBumpMapPlugin,
+            new ParallaxMappingPlugin(false),
+            GLTFKHRMaterialVariantsPlugin,
             VirtualCamerasPlugin,
             // new SceneUiConfigPlugin(), // this is already in ViewerUiPlugin
-            new DepthBufferPlugin(HalfFloatType, true, true),
+            new GBufferPlugin(HalfFloatType, true, true, true),
+            new DepthBufferPlugin(HalfFloatType, false, false),
             new NormalBufferPlugin(HalfFloatType, false),
             new RenderTargetPreviewPlugin(false),
             new FrameFadePlugin(),
@@ -107,45 +129,73 @@ export class ViewerInstanceManager{
             new VignettePlugin(false),
             new ChromaticAberrationPlugin(false),
             new FilmicGrainPlugin(false),
+            new SSAOPlugin(UnsignedByteType, 1),
             KTX2LoadPlugin,
             KTXLoadPlugin,
             PLYLoadPlugin,
             Rhino3dmLoadPlugin,
             STLLoadPlugin,
             USDZLoadPlugin,
-            // BlendLoadPlugin,
-            Object3DGeneratorPlugin,
+            // BlendLoadPlugin, // todo
             GeometryGeneratorPlugin,
-            // ...extraImportPlugins,
+            Object3DWidgetsPlugin,
+            Object3DGeneratorPlugin,
+            // GaussianSplattingPlugin, // todo
+            ContactShadowGroundPlugin,
+            CanvasSnapshotPlugin,
+            DeviceOrientationControlsPlugin,
+            PointerLockControlsPlugin,
+            ThreeFirstPersonControlsPlugin,
+            // InteractionPromptPlugin, // todo disable when not in Viewer tab, like in webgi
+            new MeshOptSimplifyModifierPlugin(false, document.head), // will auto-initialize on first use.
+            new GLTFMeshOptDecodePlugin(true, document.head),
+            // new BasicSVGRendererPlugin(false, true),
+            ...extraImportPlugins,
+            MaterialConfiguratorPlugin,
+            SwitchNodePlugin,
+            // AWSClientPlugin, // todo
+            // TransfrSharePlugin, // todo
         ])
         const rt = viewer.getOrAddPluginSync(RenderTargetPreviewPlugin)
         rt.addTarget(viewer.getPlugin(DepthBufferPlugin)?.target, 'depth', false, false, false)
         rt.addTarget(viewer.getPlugin(NormalBufferPlugin)?.target, 'normal', false, true, false)
 
+        viewer.getPlugin(LoadingScreenPlugin)?.hide()
+
         this._viewers.set(id, viewer)
+        ;(viewer as any)._props = {...props}
         return viewer
     }
-    remove(id = 'default'){
+
+    remove(id = 'default') {
         const viewer = this._viewers.get(id)
-        if(viewer) {
+        if (viewer) {
             this._disposeViewer(viewer)
             this._viewers.delete(id)
         }
     }
 
-    private _disposeViewer(viewer: ThreeViewer){
+    private _disposeViewer(viewer: ThreeViewer) {
         viewer.dispose()
         viewer.container.remove()
     }
 
-    reset(props?: Partial<ViewerProps>, id = 'default'){
+    reset(props?: Partial<ViewerProps>, id = 'default') {
+        const v = this._viewers.get(id)
+        if(!v) return this.get(props, id)
+        if(JSON.stringify((v as any)._props ?? {}) === JSON.stringify(props ?? {})) {
+            v.scene.disposeSceneModels()
+            return v
+        }
+
+        // todo set property instead of recreating the viewer
         this.remove(id)
         return this.get(props, id)
     }
 
     readonly browserStore = browserFileStore
 
-    dispose(){
+    dispose() {
         this._viewers.forEach(this._disposeViewer)
         this._viewers.clear()
         this.browserStore.dispose()
@@ -159,10 +209,10 @@ export class ViewerInstanceManager{
     // used for testing
     static readonly ENABLE_FS_WRITE_API = true
 
-    async saveFile(scene: SavedSceneFile, changeName: (n: string, e: string)=>Promise<string|null>, props?: {
+    async saveFile(scene: SavedSceneFile, changeName: (n: string, e: string) => Promise<string | null>, props?: {
         isNewName?: boolean
         saveTempOnly?: boolean
-    }): Promise<string|{error?:string, warn?: string}>{
+    }): Promise<string | { error?: string, warn?: string }> {
         const meta = await this.getMeta(scene.path)
         let isNewHandle = false
         let handle = meta?.handle
@@ -170,11 +220,11 @@ export class ViewerInstanceManager{
         let file = scene.file
         let preview = scene.preview
 
-        props = {...props??{}}
+        props = {...props ?? {}}
 
-        if(!props.saveTempOnly && ViewerInstanceManager.ENABLE_FS_WRITE_API){
+        if (!props.saveTempOnly && ViewerInstanceManager.ENABLE_FS_WRITE_API) {
 
-            if((!meta?.handle || props.isNewName) && 'showDirectoryPicker' in window){
+            if ((!meta?.handle || props.isNewName) && 'showDirectoryPicker' in window) {
                 const handle1 = await showDirectoryPicker({
                     id: ViewerInstanceManager.SAVE_DIR_PICKER_ID,
                     mode: "readwrite",
@@ -184,18 +234,18 @@ export class ViewerInstanceManager{
                     console.warn(e)
                     return undefined
                 })
-                if(handle1) {
+                if (handle1) {
                     handle = handle1
                     isNewHandle = true
                 }
             }
 
-            if(handle){
+            if (handle) {
                 let perm = await handle.queryPermission({mode: 'readwrite'})
-                if(perm !== 'granted'){
+                if (perm !== 'granted') {
                     perm = await handle.requestPermission({mode: 'readwrite'})
                 }
-                if(perm !== 'granted'){
+                if (perm !== 'granted') {
                     return {
                         error: 'no permission to write to the file system, cannot save file'
                     }
@@ -208,11 +258,11 @@ export class ViewerInstanceManager{
 
                 // check for overwrite if new handle
                 // complicated loop prompting the user
-                if(isNewHandle || props.isNewName){
-                    const fileExists = async (f: string)=>!!(await handle!.getFileHandle(f).catch(() => false))
+                if (isNewHandle || props.isNewName) {
+                    const fileExists = async (f: string) => !!(await handle!.getFileHandle(f).catch(() => false))
 
-                    let name1: string|null = name
-                    const checkPreview = async ()=>{
+                    let name1: string | null = name
+                    const checkPreview = async () => {
                         if (!previewFile) return true
                         if (!await fileExists(name + '.' + previewExt)) {
                             return true
@@ -220,7 +270,7 @@ export class ViewerInstanceManager{
                         name1 = await changeName(name, previewExt!) // ask for overwrite(returns the same name if yes), or asks for a new name(returns that), or returns null if cancelled on new name stage
                         return name1 === name;
                     }
-                    while(true){
+                    while (true) {
                         if (!name1) {
                             return {
                                 warn: 'saving file cancelled'
@@ -228,7 +278,7 @@ export class ViewerInstanceManager{
                         }
                         name = name1
                         if (!await fileExists(name + '.' + fileExt)) {
-                            if(await checkPreview()) break
+                            if (await checkPreview()) break
                             continue
                         }
                         name1 = await changeName(name, fileExt) // ask for overwrite(returns the same name if yes), or asks for a new name(returns that), or returns null if cancelled on new name stage
@@ -242,7 +292,7 @@ export class ViewerInstanceManager{
                 const writer = await fileHandle.createWritable()
                 await writer.write(fileFile)
                 await writer.close()
-                if(previewHandle){
+                if (previewHandle) {
                     const writer = await previewHandle.createWritable()
                     await writer.write(previewFile)
                     await writer.close()
@@ -262,43 +312,43 @@ export class ViewerInstanceManager{
             lastModified: scene.lastModified,
             file: (typeof file === 'string' && file.length < 500) ?
                 file :
-                (ViewerInstanceManager.STORE_NAME+':./'+fileKey),
+                (ViewerInstanceManager.STORE_NAME + ':./' + fileKey),
             preview: (typeof preview === 'string' && preview.length < 500) ?
                 preview :
-                (ViewerInstanceManager.STORE_NAME+':./'+previewKey),
+                (ViewerInstanceManager.STORE_NAME + ':./' + previewKey),
             handle,
         }
-        if(!meta1.path.endsWith('/')) meta1.path += '/'
+        if (!meta1.path.endsWith('/')) meta1.path += '/'
         await this.browserStore.put(meta1, meta1.path + metaKey)
-        if(file !== meta1.file) await this.browserStore.put(file, meta1.path + fileKey)
-        if(preview !== meta1.preview) await this.browserStore.put(preview, meta1.path + previewKey)
+        if (file !== meta1.file) await this.browserStore.put(file, meta1.path + fileKey)
+        if (preview !== meta1.preview) await this.browserStore.put(preview, meta1.path + previewKey)
 
         return name
     }
 
-    async isTempFile(path: string){
+    async isTempFile(path: string) {
         const meta = await this.getMeta(path)
         if (!meta) return false
-        return !meta.handle || typeof meta.file === 'string' && meta.file.startsWith(ViewerInstanceManager.STORE_NAME+':')
+        return !meta.handle || typeof meta.file === 'string' && meta.file.startsWith(ViewerInstanceManager.STORE_NAME + ':')
     }
 
-    async resolveFile(value: string | File, path = '', meta?: SavedSceneFileMetaStored | SavedSceneFileMeta){
-        if(!path.endsWith('/')) path += '/'
+    async resolveFile(value: string | File, path = '', meta?: SavedSceneFileMetaStored | SavedSceneFileMeta) {
+        if (!path.endsWith('/')) path += '/'
 
         let res: any = value
-        if(typeof value === 'string' && value.startsWith(ViewerInstanceManager.STORE_NAME+':')){
-            const previewPath = value.slice(ViewerInstanceManager.STORE_NAME.length+1).replace(/^\.\//, path)
+        if (typeof value === 'string' && value.startsWith(ViewerInstanceManager.STORE_NAME + ':')) {
+            const previewPath = value.slice(ViewerInstanceManager.STORE_NAME.length + 1).replace(/^\.\//, path)
             res = await this.browserStore.get(previewPath)
         }
-        if(res === value && typeof value === 'string' && meta?.handle){
+        if (res === value && typeof value === 'string' && meta?.handle) {
             let permission = await meta.handle.queryPermission({mode: 'readwrite'})
-            if(permission !== 'granted'){
+            if (permission !== 'granted') {
                 permission = await meta.handle.requestPermission({mode: 'readwrite'})
             }
             if (permission !== 'granted') {
                 console.error('no permission to access the file')
                 alert('no permission to access the file' + value + path)
-            }else {
+            } else {
                 const fileHandle = await meta.handle.getFileHandle(value).catch(() => undefined)
                 const file = await fileHandle?.getFile()
                 if (file) res = file
@@ -307,48 +357,48 @@ export class ViewerInstanceManager{
         return res
     }
 
-    async getMeta(path: string): Promise<SavedSceneFileMetaStored | undefined>{
+    async getMeta(path: string): Promise<SavedSceneFileMetaStored | undefined> {
         const metaKey = ViewerInstanceManager.FILE_META_KEY
         return await this.resolveFile(ViewerInstanceManager.STORE_NAME + ':./' + metaKey, path)
     }
 
-    async getMetaWithPreview(path: string): Promise<SavedSceneFileMeta | undefined>{
+    async getMetaWithPreview(path: string): Promise<SavedSceneFileMeta | undefined> {
         const meta = await this.getMeta(path)
-        if(!meta) return
-        if(meta.preview) meta.preview = await this.resolveFile(meta.preview, path, meta)
+        if (!meta) return
+        if (meta.preview) meta.preview = await this.resolveFile(meta.preview, path, meta)
         return meta
     }
 
-    async getFile(path: string): Promise<SavedSceneFile | undefined>{
+    async getFile(path: string): Promise<SavedSceneFile | undefined> {
         const meta = await this.getMetaWithPreview(path)
-        if(!meta) return
-        if(meta.file) meta.file = await this.resolveFile(meta.file, path, meta as any)
+        if (!meta) return
+        if (meta.file) meta.file = await this.resolveFile(meta.file, path, meta as any)
         return meta
     }
 
-    async getFileFromMeta(meta: SavedSceneFileMetaStored | SavedSceneFileMeta): Promise<SavedSceneFile | undefined>{
-        if(!meta) return
-        if(meta.file) meta.file = await this.resolveFile(meta.file, meta.path, meta)
-        if(meta.preview) meta.preview = await this.resolveFile(meta.preview, meta.path, meta)
+    async getFileFromMeta(meta: SavedSceneFileMetaStored | SavedSceneFileMeta): Promise<SavedSceneFile | undefined> {
+        if (!meta) return
+        if (meta.file) meta.file = await this.resolveFile(meta.file, meta.path, meta)
+        if (meta.preview) meta.preview = await this.resolveFile(meta.preview, meta.path, meta)
         return meta
     }
 
-    async listFiles(prefix = ''){
+    async listFiles(prefix = '') {
         const keys = await this.browserStore.getKeys()
         return keys
-            .filter(k=>k.startsWith(prefix) && k.endsWith('/'+ViewerInstanceManager.FILE_META_KEY))
-            .map(k => k.slice(0, -ViewerInstanceManager.FILE_META_KEY.length-1))
+            .filter(k => k.startsWith(prefix) && k.endsWith('/' + ViewerInstanceManager.FILE_META_KEY))
+            .map(k => k.slice(0, -ViewerInstanceManager.FILE_META_KEY.length - 1))
     }
 
-    async listFilesMeta(prefix = '', preview = false): Promise<SavedSceneFileMeta[]>{
+    async listFilesMeta(prefix = '', preview = false): Promise<SavedSceneFileMeta[]> {
         const keys = await this.listFiles(prefix)
         const meta = await Promise.all(keys.map(k => preview ? this.getMetaWithPreview(k) : this.getMeta(k)))
         return meta.filter(m => m) as SavedSceneFileMeta[]
     }
 
-    async saveScene(name: string, changeName: (n: string, e: string)=>Promise<string|null>, props: Parameters<ViewerInstanceManager['saveFile']>[2]){
+    async saveScene(name: string, changeName: (n: string, e: string) => Promise<string | null>, props: Parameters<ViewerInstanceManager['saveFile']>[2]) {
         const viewer = this.get()
-        if(!viewer){
+        if (!viewer) {
             return {
                 error: 'no viewer'
             }
@@ -356,7 +406,7 @@ export class ViewerInstanceManager{
         const blob = await viewer?.exportScene({
             binary: true,
         })
-        if(!blob) {
+        if (!blob) {
             return {
                 error: 'failed to export scene'
             }
@@ -377,12 +427,14 @@ export class ViewerInstanceManager{
 }
 
 const ProjectContext = createContext({
-    project: '', setProject: (_: string)=>{},
-    file: null as null | File, setFile: (_: null | File)=>{}, // note this file is only for glb files saved with this editor, not any 3d file.
+    project: '', setProject: (_: string) => {
+    },
+    file: null as null | File, setFile: (_: null | File) => {
+    }, // note this file is only for glb files saved with this editor, not any 3d file.
 })
 export const useProject = () => useContext(ProjectContext)
 
-function useSetupProject(){
+function useSetupProject() {
     const [project, setProject] = useState('')
     const [file, setFile] = useState<null | File>(null)
     return {
@@ -391,20 +443,20 @@ function useSetupProject(){
     }
 }
 
-export function ProjectProvider({children}: {children: any}){
+export function ProjectProvider({children}: { children: any }) {
     const value = useSetupProject()
     return createElement(ProjectContext.Provider, {value}, children)
 }
 
-export const ManagerContext = createContext<ViewerInstanceManager|undefined>(undefined)
+export const ManagerContext = createContext<ViewerInstanceManager | undefined>(undefined)
 export const useManager = () => useSafeContext(ManagerContext)
 
-export function ManagerProvider({children}: {children: any}){
+export function ManagerProvider({children}: { children: any }) {
     const [value] = useState(new ViewerInstanceManager())
     return createElement(ManagerContext.Provider, {value}, children)
 }
 
-export interface SavedSceneFile{
+export interface SavedSceneFile {
     path: string,
     file: File | string
     lastModified: number
@@ -413,7 +465,7 @@ export interface SavedSceneFile{
     // viewerConfig?: File | string | any // todo
 }
 
-export interface SavedSceneFileMetaStored{
+export interface SavedSceneFileMetaStored {
     path: string,
     file: string
     lastModified: number
@@ -422,7 +474,7 @@ export interface SavedSceneFileMetaStored{
     // viewerConfig?: File | string | any // todo
 }
 
-export interface SavedSceneFileMeta{
+export interface SavedSceneFileMeta {
     path: string,
     file: string
     lastModified: number
@@ -442,6 +494,7 @@ const mimeToExt: any = {
     'model/gltf+json': 'gltf',
     'model/gltf': 'gltf',
 }
+
 async function fileFromDataUrl(dataUrl: string, name: string = 'file') {
     const type = dataUrl.slice(5, dataUrl.indexOf(';'))
     const ext = mimeToExt[type] ?? type.split('/')[1]

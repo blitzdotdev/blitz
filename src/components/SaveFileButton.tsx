@@ -45,7 +45,7 @@ export function useSaveFile() {
         },
     }), [prompt, manager])
     const saveFile = useCallback(async ({name, isNewName, saveTempOnly, closeProject}: {name?: string, isNewName?: boolean, saveTempOnly?: boolean, closeProject?: boolean}) => {
-        if (name !== undefined && !name?.length || !project?.length) {
+        if (!name?.length && !project?.length) {
             name = await fileNamePrompt() || undefined
             isNewName = true
         }

@@ -1,8 +1,8 @@
 import {
     ChromaticAberrationPlugin,
     FilmicGrainPlugin,
-    FrameFadePlugin,
-    Object3DWidgetsPlugin, PickingPlugin,
+    FrameFadePlugin, GLTFKHRMaterialVariantsPlugin, InteractionPromptPlugin,
+    Object3DWidgetsPlugin, PickingPlugin, SSAAPlugin, SSAOPlugin,
     ThreeViewer,
     TonemapPlugin,
     TransformControlsPlugin,
@@ -10,6 +10,7 @@ import {
 } from 'threepipe'
 import {ViewerInstanceManager} from './ViewerInstanceManager.ts'
 import {EditorModes, editorModesList} from '../components/EditorModes.tsx'
+import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
 
 export const editorFeatures = {
     'transform-controls': {
@@ -36,6 +37,26 @@ export const editorFeatures = {
             viewer.getPlugin(PickingPlugin)?.disable(key ?? this)
         },
     },
+    'configurators': {
+        enable: (viewer: ThreeViewer, key?: any) => {
+            viewer.getPlugin(MaterialConfiguratorPlugin)?.enable(key ?? this)
+            viewer.getPlugin(SwitchNodePlugin)?.enable(key ?? this)
+            viewer.getPlugin(GLTFKHRMaterialVariantsPlugin)?.enable(key ?? this)
+        },
+        disable: (viewer: ThreeViewer, key?: any) => {
+            viewer.getPlugin(MaterialConfiguratorPlugin)?.disable(key ?? this)
+            viewer.getPlugin(SwitchNodePlugin)?.disable(key ?? this)
+            viewer.getPlugin(GLTFKHRMaterialVariantsPlugin)?.disable(key ?? this)
+        },
+    },
+    'prompts': {
+        enable: (viewer: ThreeViewer, key?: any) => {
+            viewer.getPlugin(InteractionPromptPlugin)?.enable(key ?? this)
+        },
+        disable: (viewer: ThreeViewer, key?: any) => {
+            viewer.getPlugin(InteractionPromptPlugin)?.disable(key ?? this)
+        },
+    },
     'post-processing': {
         enable: (viewer: ThreeViewer, key?: any) => {
             viewer.getPlugin(VignettePlugin)?.enable(key ?? this)
@@ -43,6 +64,8 @@ export const editorFeatures = {
             viewer.getPlugin(FilmicGrainPlugin)?.enable(key ?? this)
             viewer.getPlugin(TonemapPlugin)?.enable(key ?? this)
             viewer.getPlugin(FrameFadePlugin)?.enable(key ?? this)
+            viewer.getPlugin(SSAOPlugin)?.enable(key ?? this)
+            viewer.getPlugin(SSAAPlugin)?.enable(key ?? this)
         },
         disable: (viewer: ThreeViewer, key?: any) => {
             viewer.getPlugin(VignettePlugin)?.disable(key ?? this)
@@ -50,6 +73,8 @@ export const editorFeatures = {
             viewer.getPlugin(FilmicGrainPlugin)?.disable(key ?? this)
             viewer.getPlugin(TonemapPlugin)?.disable(key ?? this)
             viewer.getPlugin(FrameFadePlugin)?.disable(key ?? this)
+            viewer.getPlugin(SSAOPlugin)?.disable(key ?? this)
+            viewer.getPlugin(SSAAPlugin)?.disable(key ?? this)
         },
     }
 }

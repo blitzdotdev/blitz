@@ -1,5 +1,6 @@
 import {
-    CameraViewPlugin,
+    AssetExporterPlugin,
+    CameraViewPlugin, CanvasSnapshotPlugin,
     ChromaticAberrationPlugin,
     Class,
     ClearcoatTintPlugin,
@@ -9,16 +10,16 @@ import {
     FilmicGrainPlugin,
     FragmentClippingExtensionPlugin,
     FrameFadePlugin,
-    FullScreenPlugin, getOrCall,
-    GLTFAnimationPlugin,
-    HDRiGroundPlugin,
-    IViewerPlugin,
+    FullScreenPlugin, GBufferPlugin, getOrCall,
+    GLTFAnimationPlugin, GLTFKHRMaterialVariantsPlugin,
+    HDRiGroundPlugin, InteractionPromptPlugin,
+    IViewerPlugin, LoadingScreenPlugin, MeshOptSimplifyModifierPlugin,
     NoiseBumpMaterialPlugin,
-    NormalBufferPlugin,
+    NormalBufferPlugin, ParallaxMappingPlugin,
     PickingPlugin,
     ProgressivePlugin,
     RenderTargetPreviewPlugin,
-    Rhino3dmLoadPlugin,
+    Rhino3dmLoadPlugin, SSAAPlugin, SSAOPlugin,
     ThreeViewer,
     TonemapPlugin,
     UiObjectConfig, ValOrArr,
@@ -28,8 +29,9 @@ import {
 import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {FC} from 'react'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
+import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
 
-export type EditorModes = 'interaction' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras'
+export type EditorModes = 'interaction' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'export' | 'configurators'
 const pui = (v: ThreeViewer | null, c: Class<IViewerPlugin>) => {
     return () => v?.getPlugin(c)?.uiConfig || {}
 }
@@ -52,18 +54,21 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
             c.type = 'panel' // todo not needed in latest threepipe
             return c
         },
-        features: ['post-processing']
+        features: ['post-processing', 'configurators']
     },
     interaction: {
         label: 'Interaction',
         icon: 'hand',
         plugins: PickingPlugin,
-        features: ['widgets', 'post-processing', 'transform-controls', 'picking']
+        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators']
     },
     postProcess: {
         label: 'Post processing',
         icon: 'style',
-        plugins: [TonemapPlugin, ProgressivePlugin, FrameFadePlugin, VignettePlugin, ChromaticAberrationPlugin, FilmicGrainPlugin],
+        plugins: [TonemapPlugin, ProgressivePlugin,
+            SSAAPlugin, SSAOPlugin, VignettePlugin,
+            ChromaticAberrationPlugin, FilmicGrainPlugin,
+            FrameFadePlugin],
         features: ['post-processing']
     },
     animation: {
@@ -75,14 +80,31 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
     buffers: {
         label: 'Buffers',
         icon: 'grid-view',
-        plugins: [DepthBufferPlugin, NormalBufferPlugin],
+        plugins: [GBufferPlugin, DepthBufferPlugin, NormalBufferPlugin],
         features: ['post-processing']
+    },
+    configurators: {
+        label: 'Configurator',
+        icon: 'select',
+        plugins: [MaterialConfiguratorPlugin, SwitchNodePlugin, GLTFKHRMaterialVariantsPlugin],
+        features: ['post-processing', 'configurators', 'picking']
+    },
+    export: {
+        label: 'Export',
+        icon: 'export',
+        plugins: [AssetExporterPlugin, LoadingScreenPlugin, CanvasSnapshotPlugin],
+        features: ['post-processing', 'configurators']
     },
     extras: {
         label: 'Extras',
         icon: 'more',
-        plugins: [VirtualCamerasPlugin, HDRiGroundPlugin, ClearcoatTintPlugin, FragmentClippingExtensionPlugin, NoiseBumpMaterialPlugin, CustomBumpMapPlugin, RenderTargetPreviewPlugin, DropzonePlugin, Rhino3dmLoadPlugin, FullScreenPlugin],
-        features: ['widgets', 'post-processing', 'transform-controls', 'picking']
+        plugins: [
+            VirtualCamerasPlugin, HDRiGroundPlugin, ClearcoatTintPlugin,
+            ParallaxMappingPlugin, FragmentClippingExtensionPlugin, NoiseBumpMaterialPlugin,
+            CustomBumpMapPlugin, RenderTargetPreviewPlugin, DropzonePlugin,
+            Rhino3dmLoadPlugin, FullScreenPlugin, MeshOptSimplifyModifierPlugin, InteractionPromptPlugin
+        ],
+        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'prompts']
     },
 }
 
