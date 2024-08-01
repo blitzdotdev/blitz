@@ -82,6 +82,8 @@ export class ViewerInstanceManager {
         container.style.maxWidth = '100%'
         container.style.maxHeight = '100%'
         container.style.display = 'block'
+        container.style.position = 'relative'
+        container.style.zIndex = '0'
         // document.body.appendChild(container)
         const viewer = new ThreeViewer({
             container,
@@ -137,9 +139,9 @@ export class ViewerInstanceManager {
             STLLoadPlugin,
             USDZLoadPlugin,
             // BlendLoadPlugin, // todo
-            GeometryGeneratorPlugin,
             Object3DWidgetsPlugin,
             Object3DGeneratorPlugin,
+            GeometryGeneratorPlugin,
             // GaussianSplattingPlugin, // todo
             ContactShadowGroundPlugin,
             CanvasSnapshotPlugin,
@@ -160,7 +162,11 @@ export class ViewerInstanceManager {
         rt.addTarget(viewer.getPlugin(DepthBufferPlugin)?.target, 'depth', false, false, false)
         rt.addTarget(viewer.getPlugin(NormalBufferPlugin)?.target, 'normal', false, true, false)
 
-        viewer.getPlugin(LoadingScreenPlugin)?.hide()
+        const loadingPlugin = viewer.getPlugin(LoadingScreenPlugin)
+        if(loadingPlugin) {
+            loadingPlugin.showOnSceneEmpty = false
+            loadingPlugin.hide()
+        }
 
         this._viewers.set(id, viewer)
         ;(viewer as any)._props = {...props}

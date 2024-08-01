@@ -17,7 +17,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
     }
 
     protected _updateNodeInfo(node: TreeNodeInfo<T>, obj: T) {
-        node.label = obj.name || obj.type ? `(${obj.type})` : 'unnamed';
+        node.label = obj.name ? obj.name : obj.type ? `(${obj.type})` : 'unnamed';
         node.childNodes = ((obj.children as T[]) || []).reduce<any[]>((...args) => this.buildData(...args), [])
         return node;
     }

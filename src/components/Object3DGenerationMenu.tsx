@@ -1,58 +1,63 @@
-import {bpUiConfigIcons} from '../../../uiconfig-blueprint/lib/esm/components/iconMapping'
+import {bpUiConfigIcons} from 'uiconfig-blueprint/lib/esm/lib'
 import {useManager} from '../utils/ViewerInstanceManager.ts'
 import {Object3DGeneratorPlugin} from 'threepipe'
-import {useCallback, useContext, useMemo} from 'react'
-import {UiConfigRendererContext} from '../../../uiconfig-blueprint/lib/esm/bpComponents/BPComponent'
+import React, {useCallback, useContext, useMemo} from 'react'
+import {UiConfigRendererContext} from 'uiconfig-blueprint/lib/esm/lib'
 import {IconName, MenuItem} from '@blueprintjs/core'
 
-const extraUiData: any = {
+const extraUiData: {
+    [key: string]: {
+        label: string,
+        icon?: IconName | React.JSX.Element
+    }
+} = {
     'camera': {
         label: 'Camera',
-        icon: 'mobile-video' as IconName,
+        icon: 'mobile-video',
     },
     'light': {
         label: 'Light',
-        icon: 'lightbulb' as IconName,
+        icon: 'lightbulb',
     },
     'geometry': {
         label: 'Primitives',
-        icon: 'shapes' as IconName,
+        icon: 'shapes',
     },
     'camera-perspective': {
         label: 'Perspective',
-        icon: 'mobile-video' as IconName,
+        icon: 'mobile-video',
     },
     'camera-orthographic': {
         label: 'Orthographic',
-        icon: 'mobile-video' as IconName,
+        icon: 'mobile-video',
     },
     'light-point': {
         label: 'Point',
-        icon: 'flash' as IconName,
+        icon: 'flash',
     },
     'light-ambient': {
         label: 'Ambient',
-        icon: 'lightbulb' as IconName,
+        icon: 'lightbulb',
     },
     'light-directional': {
         label: 'Directional',
-        icon: 'flash' as IconName,
+        icon: 'flash',
     },
     'light-spot': {
         label: 'Spot',
-        icon: 'lightbulb' as IconName,
+        icon: 'lightbulb',
     },
     'light-hemisphere': {
         label: 'Hemisphere',
-        icon: 'lightbulb' as IconName,
+        icon: 'lightbulb',
     },
     'light-rect-area': {
         label: 'Rect Area',
-        icon: 'rectangle' as IconName,
+        icon: 'rectangle',
     },
     'geometry-plane': {
         label: 'Plane',
-        icon: 'square' as IconName,
+        icon: 'square',
     },
     'geometry-sphere': {
         label: 'Sphere',
@@ -64,7 +69,7 @@ const extraUiData: any = {
     },
     'geometry-circle': {
         label: 'Circle',
-        icon: 'full-circle' as IconName,
+        icon: 'full-circle',
     },
     'geometry-torus': {
         label: 'Torus',

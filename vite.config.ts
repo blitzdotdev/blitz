@@ -5,7 +5,12 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 // https://vitejs.dev/config/
 export default defineConfig({
   optimizeDeps: {
-    exclude: ['uiconfig-blueprint', 'ts-browser-helpers'],
+    exclude: ['uiconfig-blueprint', 'ts-browser-helpers'/*, 'threepipe'*/],
+  },
+  build: {
+    commonjsOptions: {
+      exclude: [/uiconfig-blueprint/, /ts-browser-helpers//*, /threepipe/*/],
+    },
   },
   css: {
     postcss: {
