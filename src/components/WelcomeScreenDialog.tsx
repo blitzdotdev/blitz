@@ -1,4 +1,4 @@
-import {Alignment, Button, Card, Classes, Colors, H4, Icon, Overlay} from '@blueprintjs/core'
+import {Alignment, Button, Card, Classes, Colors, H4, Icon, Overlay2} from '@blueprintjs/core'
 import React from 'react'
 import {IconName} from '@blueprintjs/icons'
 import {MaybeElement} from '@blueprintjs/core/src/common/props'
@@ -81,8 +81,26 @@ export function WelcomeScreenDialog(props: { isOpen: boolean, onClose: () => voi
     const [currentTab, setCurrentTab] = React.useState<keyof typeof tabs>('projects')
     const {file, project} = useProject()
 
-    return (file || project) ? null : <Overlay isOpen={props.isOpen} className={Classes.OVERLAY_SCROLL_CONTAINER} onClose={props.onClose}>
-        <Card id="welcome-dialog" elevation={4}>
+    return (file || project) ? null : <Overlay2
+        isOpen={props.isOpen}
+        className={Classes.OVERLAY_SCROLL_CONTAINER}
+        backdropProps={{
+            onDragEnter: (_e) => {
+                if(props.isOpen) props.onClose()
+                // const files = e.dataTransfer.files // always empty
+                // console.log(files.length, e.nativeEvent)
+                // e.preventDefault()
+            },
+        }}
+        onClose={props.onClose}>
+        <Card id="welcome-dialog"
+              onDragEnter={(_e) => {
+                  if(props.isOpen) props.onClose()
+                  // const files = e.dataTransfer.files // always empty
+                  // console.log(files.length, e.nativeEvent)
+                  // e.preventDefault()
+              }}
+              elevation={4} >
             <div id="welcome-sidebar">
                 <div id="welcome-sidebar-logo">
                     {/*<img src="logo192.png" width={35} height={35} alt="ShaderFlow"/>*/}
@@ -114,5 +132,5 @@ export function WelcomeScreenDialog(props: { isOpen: boolean, onClose: () => voi
                 {tabs[currentTab].render()}
             </div>
         </Card>
-    </Overlay>
+    </Overlay2>
 }

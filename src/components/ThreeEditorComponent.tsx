@@ -14,11 +14,13 @@ import Split from 'react-split'
 import {BPHierarchyComponent} from './BPHierarchyComponent.tsx'
 import {SaveFileButton} from './SaveFileButton.tsx'
 import {InteractionControlsButtonGroup} from './InteractionControlsButtonGroup.tsx'
+import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
 
 // const [splitMinSizes, setMinSplitSizes] = useState([0, 350, 250])
 const splitMinSizes = [0, 350, 250]
 
 ConfigObjectGenerators.hierarchy = BPHierarchyComponent
+ConfigObjectGenerators.image = BPTextureFileComponent
 
 export function ThreeEditorComponent(props: Partial<ViewerProps>) {
     const [viewer, setViewer] = useState<ThreeViewer | null>(null)
@@ -96,7 +98,7 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
                     minSize={splitMinSizes}
                     sizes={splitSizes}
                     onDrag={(s) => {
-                        console.log(s)
+                        // console.log(s)
                         setSplitSizes(s)
                     }}
                     direction="horizontal"

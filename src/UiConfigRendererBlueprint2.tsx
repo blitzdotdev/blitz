@@ -1,17 +1,20 @@
 import {Root} from 'react-dom/client'
+import type {THREE} from 'uiconfig-blueprint/lib/esm/lib';
 import {BPComponent} from 'uiconfig-blueprint/lib/esm/lib'
 // import rendererCss from './renderer.scss?inline'
 import {FocusStyleManager} from '@blueprintjs/core'
-import type {THREE} from "uiconfig-blueprint/lib/esm/lib";
 import {
-    createDiv,
-    UiConfigRendererBase, UiObjectConfig,
     Class,
-    Color, getOrCall, IEvent,
+    Color,
+    createDiv,
+    getOrCall,
+    IEvent,
     IViewerPlugin,
     IViewerPluginSync,
     Texture,
     ThreeViewer,
+    UiConfigRendererBase,
+    UiObjectConfig,
     Vector2,
     Vector3,
     Vector4

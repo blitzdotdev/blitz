@@ -1,7 +1,7 @@
 import {
-    ChromaticAberrationPlugin,
+    ChromaticAberrationPlugin, DepthBufferPlugin,
     FilmicGrainPlugin,
-    FrameFadePlugin, GLTFKHRMaterialVariantsPlugin, InteractionPromptPlugin,
+    FrameFadePlugin, GBufferPlugin, GLTFKHRMaterialVariantsPlugin, InteractionPromptPlugin, NormalBufferPlugin,
     Object3DWidgetsPlugin, PickingPlugin, SSAAPlugin, SSAOPlugin,
     ThreeViewer,
     TonemapPlugin,
@@ -11,6 +11,13 @@ import {
 import {ViewerInstanceManager} from './ViewerInstanceManager.ts'
 import {EditorModes, editorModesList} from '../components/EditorModes.tsx'
 import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
+import {
+    BloomPlugin,
+    DepthOfFieldPlugin,
+    SSContactShadowsPlugin,
+    SSReflectionPlugin,
+    TemporalAAPlugin, VelocityBufferPlugin
+} from '@threepipe/webgi-plugins'
 
 export const editorFeatures = {
     'transform-controls': {
@@ -66,6 +73,15 @@ export const editorFeatures = {
             viewer.getPlugin(FrameFadePlugin)?.enable(key ?? this)
             viewer.getPlugin(SSAOPlugin)?.enable(key ?? this)
             viewer.getPlugin(SSAAPlugin)?.enable(key ?? this)
+            viewer.getPlugin(SSReflectionPlugin)?.enable(key ?? this)
+            viewer.getPlugin(DepthOfFieldPlugin)?.enable(key ?? this)
+            viewer.getPlugin(GBufferPlugin)?.enable(key ?? this)
+            viewer.getPlugin(DepthBufferPlugin)?.enable(key ?? this)
+            viewer.getPlugin(NormalBufferPlugin)?.enable(key ?? this)
+            viewer.getPlugin(BloomPlugin)?.enable(key ?? this)
+            viewer.getPlugin(SSContactShadowsPlugin)?.enable(key ?? this)
+            viewer.getPlugin(TemporalAAPlugin)?.enable(key ?? this)
+            viewer.getPlugin(VelocityBufferPlugin)?.enable(key ?? this)
         },
         disable: (viewer: ThreeViewer, key?: any) => {
             viewer.getPlugin(VignettePlugin)?.disable(key ?? this)
@@ -75,6 +91,15 @@ export const editorFeatures = {
             viewer.getPlugin(FrameFadePlugin)?.disable(key ?? this)
             viewer.getPlugin(SSAOPlugin)?.disable(key ?? this)
             viewer.getPlugin(SSAAPlugin)?.disable(key ?? this)
+            viewer.getPlugin(GBufferPlugin)?.disable(key ?? this)
+            viewer.getPlugin(DepthBufferPlugin)?.disable(key ?? this)
+            viewer.getPlugin(NormalBufferPlugin)?.disable(key ?? this)
+            viewer.getPlugin(SSReflectionPlugin)?.disable(key ?? this)
+            viewer.getPlugin(DepthOfFieldPlugin)?.disable(key ?? this)
+            viewer.getPlugin(BloomPlugin)?.disable(key ?? this)
+            viewer.getPlugin(SSContactShadowsPlugin)?.disable(key ?? this)
+            viewer.getPlugin(TemporalAAPlugin)?.disable(key ?? this)
+            viewer.getPlugin(VelocityBufferPlugin)?.disable(key ?? this)
         },
     }
 }

@@ -3,7 +3,7 @@ import {
     CameraViewPlugin, CanvasSnapshotPlugin,
     ChromaticAberrationPlugin,
     Class,
-    ClearcoatTintPlugin,
+    ClearcoatTintPlugin, ContactShadowGroundPlugin,
     CustomBumpMapPlugin,
     DepthBufferPlugin,
     DropzonePlugin,
@@ -30,6 +30,13 @@ import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@bluepri
 import {FC} from 'react'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
 import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
+import {
+    BloomPlugin,
+    DepthOfFieldPlugin,
+    SSContactShadowsPlugin,
+    SSReflectionPlugin, TemporalAAPlugin,
+    VelocityBufferPlugin
+} from '@threepipe/webgi-plugins'
 
 export type EditorModes = 'interaction' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'export' | 'configurators'
 const pui = (v: ThreeViewer | null, c: Class<IViewerPlugin>) => {
@@ -48,12 +55,7 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
     viewer: {
         label: 'Viewer',
         icon: 'eye-open',
-        uiConfig: (viewer?: ThreeViewer)=>{
-            if(!viewer) return undefined
-            const c = viewer.uiConfig
-            c.type = 'panel' // todo not needed in latest threepipe
-            return c
-        },
+        uiConfig: (viewer?: ThreeViewer)=>viewer?.uiConfig,
         features: ['post-processing', 'configurators']
     },
     interaction: {
@@ -66,8 +68,12 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
         label: 'Post processing',
         icon: 'style',
         plugins: [TonemapPlugin, ProgressivePlugin,
-            SSAAPlugin, SSAOPlugin, VignettePlugin,
+            SSAAPlugin, TemporalAAPlugin, SSAOPlugin, SSReflectionPlugin,
+            DepthOfFieldPlugin,
+            BloomPlugin,
+            VignettePlugin,
             ChromaticAberrationPlugin, FilmicGrainPlugin,
+            SSContactShadowsPlugin,
             FrameFadePlugin],
         features: ['post-processing']
     },
@@ -80,7 +86,7 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
     buffers: {
         label: 'Buffers',
         icon: 'grid-view',
-        plugins: [GBufferPlugin, DepthBufferPlugin, NormalBufferPlugin],
+        plugins: [GBufferPlugin, DepthBufferPlugin, NormalBufferPlugin, VelocityBufferPlugin],
         features: ['post-processing']
     },
     configurators: {
@@ -99,6 +105,7 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
         label: 'Extras',
         icon: 'more',
         plugins: [
+            ContactShadowGroundPlugin,
             VirtualCamerasPlugin, HDRiGroundPlugin, ClearcoatTintPlugin,
             ParallaxMappingPlugin, FragmentClippingExtensionPlugin, NoiseBumpMaterialPlugin,
             CustomBumpMapPlugin, RenderTargetPreviewPlugin, DropzonePlugin,

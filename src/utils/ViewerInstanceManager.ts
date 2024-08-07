@@ -29,13 +29,13 @@ import {
     ParallaxMappingPlugin,
     PickingPlugin,
     PLYLoadPlugin,
-    PointerLockControlsPlugin,
+    PointerLockControlsPlugin, PopmotionPlugin,
     ProgressivePlugin,
     RenderTargetPreviewPlugin,
     Rhino3dmLoadPlugin, SSAAPlugin,
     SSAOPlugin,
     STLLoadPlugin, ThreeFirstPersonControlsPlugin,
-    ThreeViewer,
+    ThreeViewer, TransformAnimationPlugin,
     TransformControlsPlugin,
     UnsignedByteType,
     USDZLoadPlugin,
@@ -52,6 +52,13 @@ import {EditorFeatures} from './EditorFeatures.ts'
 import {extraImportPlugins} from '@threepipe/plugins-extra-importers'
 import {GLTFDracoExportPlugin} from '@threepipe/plugin-gltf-transform'
 import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
+import {
+    DepthOfFieldPlugin,
+    SSContactShadowsPlugin,
+    SSReflectionPlugin,
+    BloomPlugin,
+    TemporalAAPlugin, VelocityBufferPlugin
+} from '@threepipe/webgi-plugins'
 
 export interface ViewerProps {
     msaa: boolean,
@@ -107,6 +114,8 @@ export class ViewerInstanceManager {
             GLTFDracoExportPlugin,
             new ProgressivePlugin(),
             new SSAAPlugin(),
+            PopmotionPlugin,
+            TransformAnimationPlugin,
             FullScreenPlugin,
             GLTFAnimationPlugin,
             PickingPlugin,
@@ -132,6 +141,12 @@ export class ViewerInstanceManager {
             new ChromaticAberrationPlugin(false),
             new FilmicGrainPlugin(false),
             new SSAOPlugin(UnsignedByteType, 1),
+            SSReflectionPlugin,
+            SSContactShadowsPlugin,
+            new DepthOfFieldPlugin(false),
+            BloomPlugin,
+            TemporalAAPlugin,
+            new VelocityBufferPlugin(UnsignedByteType, false),
             KTX2LoadPlugin,
             KTXLoadPlugin,
             PLYLoadPlugin,
@@ -167,6 +182,10 @@ export class ViewerInstanceManager {
             loadingPlugin.showOnSceneEmpty = false
             loadingPlugin.hide()
         }
+
+        // todo remove later
+        viewer.setEnvironmentMap('https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr')
+        console.log(viewer)
 
         this._viewers.set(id, viewer)
         ;(viewer as any)._props = {...props}

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+import replace from '@rollup/plugin-replace';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -9,7 +10,8 @@ export default defineConfig({
   },
   build: {
     commonjsOptions: {
-      exclude: [/uiconfig-blueprint/, /ts-browser-helpers//*, /threepipe/*/],
+      exclude: process.env.NODE_ENV === 'development' ? // for the error  "default" is not exported by ... "classnames" in blueprint/icons
+          [/uiconfig-blueprint/, /ts-browser-helpers//*, /threepipe/*/] : [],
     },
   },
   css: {
@@ -28,6 +30,17 @@ export default defineConfig({
       ],
     }
   },
-  server: { https: true }, // Not needed for Vite 5+
-  plugins: [react(), basicSsl()],
+  server: {
+    // @ts-ignore
+    https: true,
+  }, // Not needed for Vite 5+
+  plugins: [
+      react(),
+      replace({
+        'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+        preventAssignment: true
+      }),
+
+      basicSsl()
+  ],
 })
