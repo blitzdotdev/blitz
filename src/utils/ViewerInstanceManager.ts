@@ -452,19 +452,20 @@ export class ViewerInstanceManager {
 }
 
 const ProjectContext = createContext({
-    project: '', setProject: (_: string) => {
-    },
-    file: null as null | File, setFile: (_: null | File) => {
-    }, // note this file is only for glb files saved with this editor, not any 3d file.
+    project: '', setProject: (_: string) => {},
+    file: null as null | File, setFile: (_: null | File) => {}, // note this file is only for glb files saved with this editor, not any 3d file.
+    path: null as null | string, setPath: (_: string|null) => {}
 })
 export const useProject = () => useContext(ProjectContext)
 
 function useSetupProject() {
     const [project, setProject] = useState('')
     const [file, setFile] = useState<null | File>(null)
+    const [path, setPath] = useState<null | string>(null)
     return {
         project, setProject,
         file, setFile,
+        path, setPath
     }
 }
 

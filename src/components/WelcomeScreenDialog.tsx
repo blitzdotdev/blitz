@@ -103,7 +103,7 @@ export function WelcomeScreenDialog(props: { isOpen: boolean, onClose: () => voi
               elevation={4} >
             <div id="welcome-sidebar">
                 <div id="welcome-sidebar-logo">
-                    {/*<img src="logo192.png" width={35} height={35} alt="ShaderFlow"/>*/}
+                    <img src="/logo.svg" width={35} height={35} alt="Threepipe"/>
                     <div style={{display: 'flex', flexDirection: 'column'}}>
                         <h4 style={{margin: "0"}}>Threepipe Editor</h4>
                         <div>Alpha</div>

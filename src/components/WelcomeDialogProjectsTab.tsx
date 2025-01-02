@@ -22,7 +22,7 @@ export function WelcomeDialogProjectsTab() {
     return projects.length > 0 ? (
             <div className="welcome-main-container">
                 <H4>
-                    Files
+                    Drop 3D files anywhere to open them
                 </H4>
                 <ButtonGroup className="welcome-main-create-actions">
                     <WelcomeDialogCreateProjectActions alignText={Alignment.CENTER} minimal={false} outlined={true}/>

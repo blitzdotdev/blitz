@@ -3,13 +3,16 @@ import {WelcomeDialogCreateProjectActions} from './WelcomeDialogCreateProjectAct
 
 export function WelcomeDialogEmptyProjectState() {
     return <NonIdealState
-        icon={'projects'}
+        // icon={'projects'}
+        icon={<img src={'/logo.svg'} height={100}/>}
         title={'Threepipe Editor'}
         description={(
             <p style={{textAlign: 'justify'}}>
-                ThreePipe is a 3D framework built on top of three.js with a focus on rendering quality, modularity, and extensibility.
                 <br/>
-                Threepipe Editor is a visual editor for creating and editing 3D scenes in glb format.
+                View, Edit, Render, Export and Embed 3D files.
+                <br/>
+                <br/>
+                Drag and Drop any 3D file and start editing.
             </p>)}
         // action={<Button icon={"add"} text={"New Project"} outlined />}
         children={(
