@@ -23,7 +23,8 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
     }
 
     protected _getRootNodes(): T[] {
-        const v = this.context.methods.getValue(this.props.config)
+        // @ts-expect-error config type?
+        const v = this.context.methods.getRawValue<T>(this.props.config)
         return v?.children as any || [] // todo as any
         // return getValue(this.props.config)
         // return (this.props.config.children || []).map(c => getOrCall(c) || {}).flat(2)
@@ -47,8 +48,17 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         })
     }
 
+    // todo remove after updating uiconfig-blueprint
+    protected _getNodePath(id: string, nodes?: TreeNodeInfo<T>[]): (string|number)[] {
+        let path1: (string|number)[]|null = null
+        this._forEachNode(nodes ?? this.state.nodes, (node, path) => {
+            if (node.id === id) path1 = path
+        })
+        return path1 ?? []
+    }
+
     private selectedObjectChanged = (e: any) => {
-        this.setSelected(e.object?.uuid)
+        this.setSelected(e.object?.uuid, true)
     }
     private sceneUpdate = (e: any) => {
         if (e.hierarchyChanged) {

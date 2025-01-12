@@ -7,7 +7,7 @@
     "skipLibCheck": true,
 
     /* Bundler mode */
-    "moduleResolution": "node",
+    "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": false,
@@ -23,9 +23,8 @@
 
     "esModuleInterop": true,
     "experimentalDecorators": true,
-
-
-//    "allowSyntheticDefaultImports": true,
+    "types": ["@types/wicg-file-system-access"]
+    //    "allowSyntheticDefaultImports": true,
 //    "forceConsistentCasingInFileNames": true,
 //    "isolatedModules": true,
 

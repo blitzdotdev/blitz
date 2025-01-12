@@ -48,7 +48,8 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
         const v = manager.reset(props)
         v.load(file, {}) // file should only be files saved from this editor with scene settings.
         setViewer(v)
-        setUiConfigRenderer(v.getPlugin(BlueprintJsUiPlugin2)!)
+        const p = v.getPlugin(BlueprintJsUiPlugin2)!
+        setUiConfigRenderer(p)
         setInsConfig(editorModesInspectorConfig[editorMode](v))
         manager.features.refresh(editorMode)
     }, [manager, ...Object.values(props), file])

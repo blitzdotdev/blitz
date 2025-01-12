@@ -142,7 +142,7 @@ export class ViewerInstanceManager {
             new FilmicGrainPlugin(false),
             new SSAOPlugin(UnsignedByteType, 1),
             SSReflectionPlugin,
-            SSContactShadowsPlugin,
+            new SSContactShadowsPlugin(false),
             new DepthOfFieldPlugin(false),
             BloomPlugin,
             TemporalAAPlugin,
@@ -243,14 +243,14 @@ export class ViewerInstanceManager {
         let handle = meta?.handle
         let name = scene.path.split('/').pop() || 'scene'
         let file = scene.file
-        let preview = scene.preview
+        const preview = scene.preview
 
         props = {...props ?? {}}
 
         if (!props.saveTempOnly && ViewerInstanceManager.ENABLE_FS_WRITE_API) {
 
             if ((!meta?.handle || props.isNewName) && 'showDirectoryPicker' in window) {
-                const handle1 = await showDirectoryPicker({
+                const handle1 = await window.showDirectoryPicker({
                     id: ViewerInstanceManager.SAVE_DIR_PICKER_ID,
                     mode: "readwrite",
                     // startIn: 'documents',

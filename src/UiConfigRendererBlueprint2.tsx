@@ -10,23 +10,25 @@ import {
     getOrCall,
     IEvent,
     IViewerPlugin,
-    IViewerPluginSync,
+    IViewerPluginSync, JSUndoManager,
     Texture,
     ThreeViewer,
-    UiConfigRendererBase,
-    UiObjectConfig,
+    UiObjectConfig, UndoManagerPlugin,
     Vector2,
     Vector3,
     Vector4
 } from 'threepipe'
+import {UiConfigRenderer} from 'uiconfig.js'
 
-export class UiConfigRendererBlueprint2 extends UiConfigRendererBase<Root> {
+export class UiConfigRendererBlueprint2 extends UiConfigRenderer {
 
-    constructor(container: HTMLElement = document.body, {autoPostFrame = true} = {}) {
-        super(container, autoPostFrame);
+    constructor(container: HTMLElement = document.body, {autoPostFrame = true} = {}, undoManager?: JSUndoManager|false) {
+        super(container, autoPostFrame, undefined, undoManager);
         // this._root.expanded = expanded
 
     }
+
+    protected _root?: Root
 
     protected _createUiContainer(): HTMLDivElement {
         FocusStyleManager.onlyShowFocusOnTabs();
@@ -61,25 +63,28 @@ export class UiConfigRendererBlueprint2 extends UiConfigRendererBase<Root> {
     // eslint-disable-next-line @typescript-eslint/naming-convention
     THREE: THREE|undefined = (window as any).THREE
 
-    dispose() {
-        // todo
+    unmount() {
+        this._root?.unmount()
     }
-
 }
 
 export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements IViewerPluginSync {
     declare ['constructor']: typeof BlueprintJsUiPlugin2
     static readonly PluginType = 'BlueprintJsUi'
     enabled = true
+    static CONTAINER_SLOT = 'uiconfigMainPanelSlot'
 
-    constructor(container: HTMLElement = document.body) {
-        super(container, {
+    constructor(container?: HTMLElement) {
+        super(container ?? document.getElementById(BlueprintJsUiPlugin2.CONTAINER_SLOT) ?? document.body, {
             autoPostFrame: false,
         })
         this.THREE = {Color, Vector4, Vector3, Vector2, Texture} as any
     }
 
     protected _viewer?: ThreeViewer
+
+    private _lastManager?: BlueprintJsUiPlugin2['undoManager']
+
     onAdded(viewer: ThreeViewer): void {
         this._viewer = viewer
         this.__viewer = viewer
@@ -87,6 +92,14 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
         viewer.addEventListener('postRender', this._postRender)
         viewer.addEventListener('preFrame', this._preFrame)
         viewer.addEventListener('postFrame', this._postFrame)
+        const undo = viewer.getOrAddPluginSync(UndoManagerPlugin) // yes, manual dependency
+        const manager = undo?.undoManager
+        if (manager) {
+            this._lastManager?.dispose()
+            this._lastManager = this.undoManager
+            this.undoManager = manager
+            if (this._lastManager) Object.assign(manager.presets, this._lastManager.presets)
+        }
     }
     onRemove(viewer: ThreeViewer): void {
         this._viewer = undefined
@@ -94,7 +107,14 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
         viewer.removeEventListener('postRender', this._postRender)
         viewer.removeEventListener('preFrame', this._preFrame)
         viewer.removeEventListener('postFrame', this._postFrame)
+        this.undoManager = this._lastManager
+        this._lastManager = undefined
         this.dispose()
+    }
+
+    dispose() {
+        this.undoManager?.dispose()
+        this.unmount()
     }
 
     private _plugins: IViewerPlugin[] = []
@@ -102,6 +122,7 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
     setupPlugins(...plugins: Class<IViewerPlugin>[]): void {
         plugins.forEach(plugin => this.setupPluginUi(plugin))
     }
+
     setupPluginUi<T extends IViewerPlugin>(plugin: T|Class<T>): UiObjectConfig | undefined {
         const p = (plugin as Class<IViewerPlugin>).prototype ? this._viewer?.getPlugin<T>(plugin as Class<T>) : plugin as T
         if (!p) {
