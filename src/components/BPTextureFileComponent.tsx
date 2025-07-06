@@ -59,6 +59,7 @@ export class BPTextureFileComponent<T extends TextureType = TextureType> extends
 
     renderPreviewSlot() {
         const ret = this.state.preview
+        // todo download button, refresh button etc.
         return ret === 'placeholder' ? <></> : ret === '...' ? <div
             onClick={()=>this.refreshPreview()}
             style={{ width: "60%", height: "80px", display: "flex", alignItems: "center", justifyContent: "center" }}

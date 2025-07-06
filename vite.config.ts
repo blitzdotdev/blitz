@@ -6,7 +6,7 @@ import replace from '@rollup/plugin-replace';
 // https://vitejs.dev/config/
 export default defineConfig({
   optimizeDeps: {
-    exclude: ['ts-browser-helpers'/*, 'threepipe'*/],
+    exclude: ['ts-browser-helpers', 'uiconfig-blueprint', /*, 'threepipe'*/],
   },
   build: {
     commonjsOptions: {

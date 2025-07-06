@@ -62,12 +62,34 @@ body{
   }
 }
 
-
-
 .editorCanvasContainer{
   width: 100%;
   height: 100%;
 
   .bp5-dark & {
+  }
+}
+
+.hierarchy-stack .folderContent{
+  flex: 1 1 auto;
+  max-width: 100%;
+  height: 100%;
+  margin-left: 0 !important;
+}
+
+//.bp5-tree-drop-spacer {
+//  div{
+//    background: red;
+//  }
+//}
+
+.editor-left-tabs{
+  .bp5-tab-panel {
+    margin: 0;
+  }
+
+  .bp5-tab-list{
+    padding-left: 10px;
+    margin-bottom: 10px;
   }
 }

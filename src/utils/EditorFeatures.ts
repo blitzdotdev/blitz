@@ -1,8 +1,16 @@
 import {
-    ChromaticAberrationPlugin, DepthBufferPlugin,
+    ChromaticAberrationPlugin,
+    DepthBufferPlugin,
     FilmicGrainPlugin,
-    FrameFadePlugin, GBufferPlugin, GLTFKHRMaterialVariantsPlugin, InteractionPromptPlugin, NormalBufferPlugin,
-    Object3DWidgetsPlugin, PickingPlugin, SSAAPlugin, SSAOPlugin,
+    FrameFadePlugin,
+    GBufferPlugin,
+    GLTFKHRMaterialVariantsPlugin,
+    InteractionPromptPlugin,
+    NormalBufferPlugin,
+    Object3DWidgetsPlugin,
+    PickingPlugin,
+    SSAAPlugin,
+    SSAOPlugin,
     ThreeViewer,
     TonemapPlugin,
     TransformControlsPlugin,
@@ -14,10 +22,13 @@ import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-co
 import {
     BloomPlugin,
     DepthOfFieldPlugin,
-    SSContactShadowsPlugin,
+    OutlinePlugin,
+    SSContactShadowsPlugin, SSGIPlugin,
     SSReflectionPlugin,
-    TemporalAAPlugin, VelocityBufferPlugin
+    TemporalAAPlugin,
+    VelocityBufferPlugin
 } from '@threepipe/webgi-plugins'
+import {ThreeGpuPathTracerPlugin} from "@threepipe/plugin-path-tracing";
 
 export const editorFeatures = {
     'transform-controls': {
@@ -82,6 +93,8 @@ export const editorFeatures = {
             viewer.getPlugin(SSContactShadowsPlugin)?.enable(key ?? this)
             viewer.getPlugin(TemporalAAPlugin)?.enable(key ?? this)
             viewer.getPlugin(VelocityBufferPlugin)?.enable(key ?? this)
+            viewer.getPlugin(OutlinePlugin)?.enable(key ?? this)
+            viewer.getPlugin(SSGIPlugin)?.enable(key ?? this)
         },
         disable: (viewer: ThreeViewer, key?: any) => {
             viewer.getPlugin(VignettePlugin)?.disable(key ?? this)
@@ -100,8 +113,32 @@ export const editorFeatures = {
             viewer.getPlugin(SSContactShadowsPlugin)?.disable(key ?? this)
             viewer.getPlugin(TemporalAAPlugin)?.disable(key ?? this)
             viewer.getPlugin(VelocityBufferPlugin)?.disable(key ?? this)
+            viewer.getPlugin(OutlinePlugin)?.disable(key ?? this)
+            viewer.getPlugin(SSGIPlugin)?.disable(key ?? this)
         },
-    }
+    },
+    'path-tracing': {
+        enable: (viewer: ThreeViewer, key?: any) => {
+            viewer.getPlugin(ThreeGpuPathTracerPlugin)?.enable(key ?? this)
+        },
+        disable: (viewer: ThreeViewer, key?: any) => {
+            viewer.getPlugin(ThreeGpuPathTracerPlugin)?.disable(key ?? this)
+        },
+    },
+    'damping': {
+        enable: (_viewer: ThreeViewer, _key?: any) => {
+            // todo support key based enable/disable damping in orbit controls etc
+            // const controls = viewer.scene.mainCamera.controls as OrbitControls3
+            // if(controls.enableDamping === undefined) return
+            // controls.enableDamping = true
+        },
+        disable: (_viewer: ThreeViewer, _key?: any) => {
+            // const controls = viewer.scene.mainCamera.controls as OrbitControls3
+            // if(controls.enableDamping === undefined) return
+            // controls.stopDamping()
+            // controls.enableDamping = false
+        },
+    },
 }
 
 export class EditorFeatures {

@@ -1,7 +1,8 @@
-import {IObject3D, PickingPlugin, ThreeViewer} from "threepipe";
+import {IObject3D, JSUndoManagerCommand1, PickingPlugin, ThreeViewer, UndoManagerPlugin} from "threepipe";
 import {TreeNodeInfo} from "@blueprintjs/core";
-import {BPTreeComponent, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
-import { VisibilityIcon } from "./VisibilityIcon";
+import {BPTreeComponent, BPTreeComponentState, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
+import {VisibilityIcon} from "./VisibilityIcon";
+import React from "react";
 
 export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTreeComponent<T, IObject3D> {
     declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
@@ -9,6 +10,8 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
     protected _createNodeInfo(id: string, obj: T) {
         return Object.assign(super._createNodeInfo(id, obj), {
             secondaryLabel: (<VisibilityIcon obj={obj}/>),
+            draggable: true,
+            droppable: true,
         })
     }
 
@@ -18,7 +21,9 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
 
     protected _updateNodeInfo(node: TreeNodeInfo<T>, obj: T) {
         node.label = obj.name ? obj.name : obj.type ? `(${obj.type})` : 'unnamed';
-        node.childNodes = ((obj.children as T[]) || []).reduce<any[]>((...args) => this.buildData(...args), [])
+        if(!obj.isMesh && !obj.isLine && !obj.isPoints && !obj.isScene && !obj.isCamera && !obj.isLight)
+            node.childNodes = ((obj.children as T[]) || []).reduce<any[]>((...args) => this.buildData(...args), [])
+        node.isSelected = this._selectedId === node.id
         return node;
     }
 
@@ -34,7 +39,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         const node = this._infoMap.get(_id)
         if(!node) return
         const value = node.isSelected ? null : node.nodeData! // unselect if already selected
-        node.nodeData!.dispatchEvent({type: 'select', value, ui: true})
+        node.nodeData!.dispatchEvent({type: 'select', value: value ?? undefined, object: node.nodeData!, ui: true})
     }
 
     protected async _onNodeDoubleClick(_id: string) {
@@ -43,26 +48,112 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         node.nodeData!.dispatchEvent({
             type: 'select',
             value: node.nodeData!,
+            object: node.nodeData!,
             ui: true,
             focusCamera: true
         })
     }
 
-    // todo remove after updating uiconfig-blueprint
-    protected _getNodePath(id: string, nodes?: TreeNodeInfo<T>[]): (string|number)[] {
-        let path1: (string|number)[]|null = null
-        this._forEachNode(nodes ?? this.state.nodes, (node, path) => {
-            if (node.id === id) path1 = path
-        })
-        return path1 ?? []
+    protected _canDropNode(sourceNode: TreeNodeInfo<T>, _sourcePath: number[], targetNode: TreeNodeInfo<T>, _targetPath: number[], index?: number) {
+        const source = sourceNode.nodeData
+        const target = targetNode.nodeData
+        if (!target || !source) return false
+        if (sourceNode.id === targetNode.id) return false
+
+        const noTypes = [ 'Mesh', 'Line', 'Points' ]
+        if (noTypes.includes(target.type)) return false
+        let compatible = true
+        target.traverseAncestors(c=>c.id === source!.id && (compatible = false))
+        if(!compatible) return false // source is an ancestor of target
+
+        // target ancestor of source
+        // source.traverseAncestors(c=>c.id === target!.id && (compatible = false))
+        if(source.parent === target){
+            if(index !== undefined && target.children.indexOf(source) !== index) return true
+            else return false
+        }else if(index === undefined) {
+            // if no index is given, we can drop it anywhere
+            return true
+        }
+        return true
     }
 
+    protected _onDropNode(sourceNode: TreeNodeInfo<T>, _sourcePath: number[], targetNode: TreeNodeInfo<T>, _targetPath: number[], _e?: React.DragEvent, index?: number) {
+        if(!targetNode.nodeData || !sourceNode.nodeData) return
+        const source = sourceNode.nodeData
+        const target = targetNode.nodeData
+        if(source === target || source.id === target.id) return // same object
+        const viewer = this.context.viewer
+        if(!viewer) {
+            console.error('BPHierarchyComponent: viewer not found in context', this.context)
+            return
+        }
+        const lastParent = source.parent
+        const lastIndex = lastParent?.children.indexOf(source) ?? -1
+        let newIndex = index ?? -1
+        const undoManager = viewer.getPlugin(UndoManagerPlugin)?.undoManager
+
+        function addAtIndex(target: IObject3D, newIndex: number = -1) {
+            // todo check if target is parent of source, in case only reordering (but that wont fire events like setDirty?)
+            target.add(source)
+            const newIndex2 = target.children.indexOf(source)
+            if (newIndex >= 0 && newIndex2 >= 0 && newIndex !== newIndex2) {
+                target.children.splice(newIndex2, 1)
+                target.children.splice(newIndex, 0, source) // add at new index
+                return newIndex
+            }
+            return newIndex2;
+        }
+
+        const cmd = {
+            redo: () => {
+                // todo use attach if e?.shiftKey
+                newIndex = addAtIndex(target, newIndex);
+            },
+            undo: () => {
+                if (lastParent) {
+                    addAtIndex(lastParent, lastIndex);
+                    // source!.dispatchEvent({type: 'select', value: source, object: source, ui: true})
+                }
+            },
+        } as JSUndoManagerCommand1
+        undoManager?.record(cmd)
+        cmd.redo() // apply the command immediately
+        return
+    }
+
+    // refreshSelected(){
+    //     if(!this.context.viewer) this.setSelected(undefined)
+    //     this.context.viewer?.doOnce('postFrame', () => {
+    //         const selected = this.context.viewer?.getPlugin(PickingPlugin)?.getSelectedObject()
+    //         // source?.dispatchEvent({type: 'select', value: source, object: source, ui: true})
+    //         this.setSelected(selected?.uuid, true)
+    //     })
+    // }
+
+    getUpdatedState(_state: BPTreeComponentState<T>): BPTreeComponentState<T> {
+        console.log('update', _state)
+        return super.getUpdatedState(_state);
+    }
+
+    private _selectedId: string|undefined = undefined
     private selectedObjectChanged = (e: any) => {
-        this.setSelected(e.object?.uuid, true)
+        this._selectedId = e.object?.uuid
+        this.setSelected(this._selectedId, true)
+        // this.props.config.uiRefresh?.(true, 'postFrame')
+        // this.refreshSelected()
     }
     private sceneUpdate = (e: any) => {
         if (e.hierarchyChanged) {
-            this.props.config.uiRefresh?.()
+            this.props.config.uiRefresh?.(true, 'postFrame')
+            // @ts-ignore
+            // hierarchyConfig.children![0]!.uiRefresh?.()
+        }
+    }
+    // private objectUpdate = (e: Event2<'objectUpdate', ISceneEventMap, IObject3D>) => {
+    private objectUpdate = (e: any) => {
+        if (e.refreshUi !== false && (e.change === 'name' || e.key === 'name')) {
+            this.props.config.uiRefresh?.(true, 'postFrame')
             // @ts-ignore
             // hierarchyConfig.children![0]!.uiRefresh?.()
         }
@@ -77,6 +168,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         }
         viewer.getPlugin(PickingPlugin)?.addEventListener('selectedObjectChanged', this.selectedObjectChanged)
         viewer.scene.addEventListener('sceneUpdate', this.sceneUpdate) // todo: subscribe only to the object in the config instead of the whole scene
+        viewer.scene.addEventListener('objectUpdate', this.objectUpdate) // todo: subscribe only to the object in the config instead of the whole scene
     }
 
     componentWillUnmount() {
@@ -87,6 +179,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         }
         viewer.getPlugin(PickingPlugin)?.removeEventListener('selectedObjectChanged', this.selectedObjectChanged)
         viewer.scene.removeEventListener('sceneUpdate', this.sceneUpdate)
+        viewer.scene.removeEventListener('objectUpdate', this.objectUpdate)
         super.componentWillUnmount();
     }
 

@@ -11,6 +11,10 @@ const extraUiData: {
         icon?: IconName | React.JSX.Element
     }
 } = {
+    'object': {
+        label: 'Object',
+        icon: 'new-object',
+    },
     'camera': {
         label: 'Camera',
         icon: 'mobile-video',
@@ -22,6 +26,10 @@ const extraUiData: {
     'geometry': {
         label: 'Primitives',
         icon: 'shapes',
+    },
+    'object-empty': {
+        label: 'Empty Object',
+        icon: 'new-object',
     },
     'camera-perspective': {
         label: 'Perspective',
@@ -87,6 +95,7 @@ export function Object3DGenerationMenu() {
     const uiConfigRenderer = useContext(UiConfigRendererContext)
     const items = useMemo(() => {
         const groups = {} as any
+        console.log(generator.generators)
         Object.keys(generator.generators).forEach(k => {
             const parts = k.split('-')
             const group = parts[0]

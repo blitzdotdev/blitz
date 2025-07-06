@@ -9,6 +9,7 @@ import {
     DepthBufferPlugin,
     DeviceOrientationControlsPlugin,
     EditorViewWidgetPlugin,
+    Euler,
     FilmicGrainPlugin,
     FragmentClippingExtensionPlugin,
     FrameFadePlugin,
@@ -19,8 +20,10 @@ import {
     GLTFMeshOptDecodePlugin,
     HalfFloatType,
     HDRiGroundPlugin,
+    htmlDialogWrapper,
     KTX2LoadPlugin,
-    KTXLoadPlugin, LoadingScreenPlugin,
+    KTXLoadPlugin,
+    LoadingScreenPlugin,
     MeshOptSimplifyModifierPlugin,
     NoiseBumpMaterialPlugin,
     NormalBufferPlugin,
@@ -29,13 +32,18 @@ import {
     ParallaxMappingPlugin,
     PickingPlugin,
     PLYLoadPlugin,
-    PointerLockControlsPlugin, PopmotionPlugin,
+    PointerLockControlsPlugin,
+    PopmotionPlugin,
     ProgressivePlugin,
     RenderTargetPreviewPlugin,
-    Rhino3dmLoadPlugin, SSAAPlugin,
+    Rhino3dmLoadPlugin,
+    Scene,
+    SSAAPlugin,
     SSAOPlugin,
-    STLLoadPlugin, ThreeFirstPersonControlsPlugin,
-    ThreeViewer, TransformAnimationPlugin,
+    STLLoadPlugin,
+    ThreeFirstPersonControlsPlugin,
+    ThreeViewer,
+    TransformAnimationPlugin,
     TransformControlsPlugin,
     UnsignedByteType,
     USDZLoadPlugin,
@@ -50,15 +58,31 @@ import {useSafeContext} from './useSafeContext.ts'
 import {browserFileStore} from './BrowserFileStore.ts'
 import {EditorFeatures} from './EditorFeatures.ts'
 import {extraImportPlugins} from '@threepipe/plugins-extra-importers'
-import {GLTFDracoExportPlugin} from '@threepipe/plugin-gltf-transform'
+import {GLTFDracoExportPlugin, GLTFSpecGlossinessConverterPlugin} from '@threepipe/plugin-gltf-transform'
 import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
 import {
-    DepthOfFieldPlugin,
-    SSContactShadowsPlugin,
-    SSReflectionPlugin,
+    AnisotropyPlugin,
     BloomPlugin,
-    TemporalAAPlugin, VelocityBufferPlugin
+    DepthOfFieldPlugin,
+    OutlinePlugin,
+    SSContactShadowsPlugin,
+    SSGIPlugin,
+    SSReflectionPlugin,
+    TemporalAAPlugin,
+    VelocityBufferPlugin,
 } from '@threepipe/webgi-plugins'
+import {
+    B3DMLoadPlugin,
+    CMPTLoadPlugin,
+    DeepZoomImageLoadPlugin,
+    EnvironmentControlsPlugin,
+    GlobeControlsPlugin,
+    I3DMLoadPlugin,
+    PNTSLoadPlugin,
+    TilesRendererPlugin,
+} from '@threepipe/plugin-3d-tiles-renderer'
+import {AssimpJsPlugin} from '@threepipe/plugin-assimpjs'
+import {ThreeGpuPathTracerPlugin} from '@threepipe/plugin-path-tracing'
 
 export interface ViewerProps {
     msaa: boolean,
@@ -68,6 +92,10 @@ export interface ViewerProps {
     debug: boolean
     tonemap: boolean
 }
+// @ts-expect-error polyfill for new threejs
+Scene.prototype.backgroundRotation = new Euler(0, 0, 0, 'XYZ')
+// @ts-expect-error polyfill
+Scene.prototype.environmentRotation = new Euler(0, 0, 0, 'XYZ')
 
 export class ViewerInstanceManager {
     private _viewers = new Map<string, ThreeViewer>()
@@ -95,6 +123,9 @@ export class ViewerInstanceManager {
         const viewer = new ThreeViewer({
             container,
             ...props,
+            rgbm: true,
+            msaa: true,
+            zPrepass: false,
             assetManager: {
                 //todo
             },
@@ -112,16 +143,21 @@ export class ViewerInstanceManager {
             LoadingScreenPlugin,
             AssetExporterPlugin,
             GLTFDracoExportPlugin,
+            GLTFSpecGlossinessConverterPlugin,
+            PopmotionPlugin,
             new ProgressivePlugin(),
             new SSAAPlugin(),
-            PopmotionPlugin,
-            TransformAnimationPlugin,
-            FullScreenPlugin,
             GLTFAnimationPlugin,
+            TransformAnimationPlugin,
+            new GBufferPlugin(HalfFloatType, true, true, true),
+            new DepthBufferPlugin(HalfFloatType, false, false),
+            new NormalBufferPlugin(HalfFloatType, false),
+            CameraViewPlugin,
+            FullScreenPlugin,
             PickingPlugin,
             TransformControlsPlugin,
+            OutlinePlugin,
             EditorViewWidgetPlugin,
-            CameraViewPlugin,
             ViewerUiConfigPlugin,
             ClearcoatTintPlugin,
             FragmentClippingExtensionPlugin,
@@ -131,9 +167,6 @@ export class ViewerInstanceManager {
             GLTFKHRMaterialVariantsPlugin,
             VirtualCamerasPlugin,
             // new SceneUiConfigPlugin(), // this is already in ViewerUiPlugin
-            new GBufferPlugin(HalfFloatType, true, true, true),
-            new DepthBufferPlugin(HalfFloatType, false, false),
-            new NormalBufferPlugin(HalfFloatType, false),
             new RenderTargetPreviewPlugin(false),
             new FrameFadePlugin(),
             new HDRiGroundPlugin(false, true),
@@ -145,20 +178,17 @@ export class ViewerInstanceManager {
             new SSContactShadowsPlugin(false),
             new DepthOfFieldPlugin(false),
             BloomPlugin,
-            TemporalAAPlugin,
-            new VelocityBufferPlugin(UnsignedByteType, false),
-            KTX2LoadPlugin,
-            KTXLoadPlugin,
-            PLYLoadPlugin,
-            Rhino3dmLoadPlugin,
-            STLLoadPlugin,
-            USDZLoadPlugin,
+            AnisotropyPlugin,
+            TemporalAAPlugin, new VelocityBufferPlugin(UnsignedByteType, false),
+            new SSGIPlugin(undefined, 1, false),
+            KTX2LoadPlugin, KTXLoadPlugin, PLYLoadPlugin, Rhino3dmLoadPlugin, STLLoadPlugin, USDZLoadPlugin,
             // BlendLoadPlugin, // todo
-            Object3DWidgetsPlugin,
             Object3DGeneratorPlugin,
             GeometryGeneratorPlugin,
+            Object3DWidgetsPlugin,
             // GaussianSplattingPlugin, // todo
             ContactShadowGroundPlugin,
+            // AdvancedGroundPlugin,
             CanvasSnapshotPlugin,
             DeviceOrientationControlsPlugin,
             PointerLockControlsPlugin,
@@ -172,16 +202,43 @@ export class ViewerInstanceManager {
             SwitchNodePlugin,
             // AWSClientPlugin, // todo
             // TransfrSharePlugin, // todo
+
+            EnvironmentControlsPlugin, GlobeControlsPlugin,
+            B3DMLoadPlugin, I3DMLoadPlugin, PNTSLoadPlugin, CMPTLoadPlugin,
+            TilesRendererPlugin, DeepZoomImageLoadPlugin, /* SlippyMapTilesLoadPlugin,*/
+            new AssimpJsPlugin(false),
+            new ThreeGpuPathTracerPlugin(false),
         ])
+
+        ThreeViewer.Dialog = htmlDialogWrapper
+
+        KTX2LoadPlugin.SAVE_SOURCE_BLOBS = true // so that ktx files can be exported.
+
+        // to show more details in the UI and allow to edit changes in title etc.
+        const mat = viewer.getPlugin(MaterialConfiguratorPlugin)
+        mat && (mat.enableEditContextMenus = true)
+        const swi = viewer.getPlugin(SwitchNodePlugin)
+        swi && (swi.enableEditContextMenus = true)
+
+        // disable fading on update
+        const fade = viewer.getPlugin(FrameFadePlugin)
+        fade && (fade.isEditor = true)
+
+        const taa = viewer.getPlugin(TemporalAAPlugin)
+        taa && (taa.stableNoise = true)
+
         const rt = viewer.getOrAddPluginSync(RenderTargetPreviewPlugin)
         rt.addTarget(viewer.getPlugin(DepthBufferPlugin)?.target, 'depth', false, false, false)
         rt.addTarget(viewer.getPlugin(NormalBufferPlugin)?.target, 'normal', false, true, false)
 
         const loadingPlugin = viewer.getPlugin(LoadingScreenPlugin)
-        if(loadingPlugin) {
-            loadingPlugin.showOnSceneEmpty = false
+        if (loadingPlugin) {
+            loadingPlugin.isEditor = true
             loadingPlugin.hide()
         }
+
+        // const hemiLight = viewer.scene.addObject(new HemisphereLight(0xffffff, 0x444444, 5), {addToRoot: true})
+        // hemiLight.name = 'Hemisphere Light'
 
         // todo remove later
         viewer.setEnvironmentMap('https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr')
@@ -207,8 +264,8 @@ export class ViewerInstanceManager {
 
     reset(props?: Partial<ViewerProps>, id = 'default') {
         const v = this._viewers.get(id)
-        if(!v) return this.get(props, id)
-        if(JSON.stringify((v as any)._props ?? {}) === JSON.stringify(props ?? {})) {
+        if (!v) return this.get(props, id)
+        if (JSON.stringify((v as any)._props ?? {}) === JSON.stringify(props ?? {})) {
             v.scene.disposeSceneModels()
             return v
         }
@@ -452,9 +509,12 @@ export class ViewerInstanceManager {
 }
 
 const ProjectContext = createContext({
-    project: '', setProject: (_: string) => {},
-    file: null as null | File, setFile: (_: null | File) => {}, // note this file is only for glb files saved with this editor, not any 3d file.
-    path: null as null | string, setPath: (_: string|null) => {}
+    project: '', setProject: (_: string) => {
+    },
+    file: null as null | File, setFile: (_: null | File) => {
+    }, // note this file is only for glb files saved with this editor, not any 3d file.
+    path: null as null | string, setPath: (_: string | null) => {
+    }
 })
 export const useProject = () => useContext(ProjectContext)
 

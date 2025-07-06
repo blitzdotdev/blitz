@@ -21,7 +21,7 @@ import {
     RenderTargetPreviewPlugin,
     Rhino3dmLoadPlugin, SSAAPlugin, SSAOPlugin,
     ThreeViewer,
-    TonemapPlugin,
+    TonemapPlugin, TransformControlsPlugin,
     UiObjectConfig, ValOrArr,
     VignettePlugin,
     VirtualCamerasPlugin
@@ -31,14 +31,28 @@ import {FC} from 'react'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
 import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
 import {
+    AdvancedGroundPlugin,
+    AnisotropyPlugin,
     BloomPlugin,
-    DepthOfFieldPlugin,
+    DepthOfFieldPlugin, OutlinePlugin,
     SSContactShadowsPlugin,
     SSReflectionPlugin, TemporalAAPlugin,
-    VelocityBufferPlugin
+    VelocityBufferPlugin, SSGIPlugin,
 } from '@threepipe/webgi-plugins'
+import {
+    B3DMLoadPlugin,
+    CMPTLoadPlugin,
+    DeepZoomImageLoadPlugin,
+    I3DMLoadPlugin,
+    PNTSLoadPlugin,
+    TilesRendererPlugin,
+    EnvironmentControlsPlugin,
+    GlobeControlsPlugin,
+} from '@threepipe/plugin-3d-tiles-renderer'
+import {AssimpJsPlugin} from '@threepipe/plugin-assimpjs'
+import {ThreeGpuPathTracerPlugin} from '@threepipe/plugin-path-tracing'
 
-export type EditorModes = 'interaction' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'export' | 'configurators'
+export type EditorModes = 'interaction' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'import' | 'export' | 'configurators'
 const pui = (v: ThreeViewer | null, c: Class<IViewerPlugin>) => {
     return () => v?.getPlugin(c)?.uiConfig || {}
 }
@@ -56,7 +70,7 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
         label: 'Viewer',
         icon: 'eye-open',
         uiConfig: (viewer?: ThreeViewer)=>viewer?.uiConfig,
-        features: ['post-processing', 'configurators']
+        features: ['post-processing', 'configurators', 'damping', 'path-tracing']
     },
     interaction: {
         label: 'Interaction',
@@ -72,46 +86,55 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
             DepthOfFieldPlugin,
             BloomPlugin,
             VignettePlugin,
-            ChromaticAberrationPlugin, FilmicGrainPlugin,
-            SSContactShadowsPlugin,
+            ChromaticAberrationPlugin, FilmicGrainPlugin, SSGIPlugin,
+            SSContactShadowsPlugin, OutlinePlugin,
             FrameFadePlugin],
-        features: ['post-processing']
+        features: ['post-processing', 'damping']
     },
     animation: {
         label: 'Animation',
         icon: 'play',
         plugins: [GLTFAnimationPlugin, CameraViewPlugin],
-        features: ['post-processing']
-    },
-    buffers: {
-        label: 'Buffers',
-        icon: 'grid-view',
-        plugins: [GBufferPlugin, DepthBufferPlugin, NormalBufferPlugin, VelocityBufferPlugin],
-        features: ['post-processing']
+        features: ['post-processing', 'damping']
     },
     configurators: {
         label: 'Configurator',
         icon: 'select',
         plugins: [MaterialConfiguratorPlugin, SwitchNodePlugin, GLTFKHRMaterialVariantsPlugin],
-        features: ['post-processing', 'configurators', 'picking']
+        features: ['post-processing', 'configurators', 'picking', 'damping']
     },
     export: {
         label: 'Export',
         icon: 'export',
-        plugins: [AssetExporterPlugin, LoadingScreenPlugin, CanvasSnapshotPlugin],
-        features: ['post-processing', 'configurators']
+        plugins: [AssetExporterPlugin, CanvasSnapshotPlugin, AssimpJsPlugin, LoadingScreenPlugin, ThreeGpuPathTracerPlugin],
+        features: ['post-processing', 'configurators', 'damping', 'path-tracing']
+    },
+    import: {
+        label: 'Import',
+        icon: 'import',
+        plugins: [DropzonePlugin, Rhino3dmLoadPlugin, TilesRendererPlugin, B3DMLoadPlugin, CMPTLoadPlugin, DeepZoomImageLoadPlugin, I3DMLoadPlugin, PNTSLoadPlugin, ],
+        features: ['post-processing', 'configurators', 'damping']
     },
     extras: {
         label: 'Extras',
-        icon: 'more',
+        icon: 'settings',
         plugins: [
-            ContactShadowGroundPlugin,
-            VirtualCamerasPlugin, HDRiGroundPlugin, ClearcoatTintPlugin,
+            ContactShadowGroundPlugin, AdvancedGroundPlugin, InteractionPromptPlugin,
+            FullScreenPlugin,
+            VirtualCamerasPlugin, HDRiGroundPlugin, ClearcoatTintPlugin, AnisotropyPlugin,
             ParallaxMappingPlugin, FragmentClippingExtensionPlugin, NoiseBumpMaterialPlugin,
-            CustomBumpMapPlugin, RenderTargetPreviewPlugin, DropzonePlugin,
-            Rhino3dmLoadPlugin, FullScreenPlugin, MeshOptSimplifyModifierPlugin, InteractionPromptPlugin
+            CustomBumpMapPlugin, RenderTargetPreviewPlugin,
+            MeshOptSimplifyModifierPlugin,
+            TransformControlsPlugin,
+            EnvironmentControlsPlugin, GlobeControlsPlugin,
         ],
-        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'prompts']
+        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'prompts', 'damping']
+    },
+    buffers: {
+        label: 'Buffers',
+        icon: 'grid-view',
+        plugins: [GBufferPlugin, DepthBufferPlugin, NormalBufferPlugin, VelocityBufferPlugin],
+        features: ['post-processing', 'damping']
     },
 }
 

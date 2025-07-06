@@ -9,7 +9,7 @@ import {
 } from 'uiconfig-blueprint/lib/esm/lib'
 import {ThreeViewer, UiObjectConfig} from 'threepipe';
 import {EditorModes, EditorModesButtonGroup, editorModesInspectorConfig} from './EditorModes.tsx'
-import {Alignment, Button, Card, H6, Navbar, Popover} from '@blueprintjs/core'
+import {Alignment, Button, Card, H6, Navbar, Popover, Tab, Tabs} from '@blueprintjs/core'
 import Split from 'react-split'
 import {BPHierarchyComponent} from './BPHierarchyComponent.tsx'
 import {SaveFileButton} from './SaveFileButton.tsx'
@@ -17,7 +17,7 @@ import {InteractionControlsButtonGroup} from './InteractionControlsButtonGroup.t
 import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
 
 // const [splitMinSizes, setMinSplitSizes] = useState([0, 350, 250])
-const splitMinSizes = [0, 350, 250]
+const splitMinSizes = [0, 350, 300]
 
 ConfigObjectGenerators.hierarchy = BPHierarchyComponent
 ConfigObjectGenerators.image = BPTextureFileComponent
@@ -32,6 +32,7 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
     const [splitSizes, setSplitSizes] = useState([0, 100, 0])
 
     const [insConfig, setInsConfig] = useState<UiObjectConfig<any, 'panel'>>(editorModesInspectorConfig['viewer'](viewer))
+    const [hierarchyConfig, setHierarchyConfig] = useState<UiObjectConfig<any, 'hierarchy'>>({type: 'hierarchy'})
     const [editorMode, setEditorMode] = useReducer((currentMode: EditorModes, mode: EditorModes): EditorModes=>{
         const conf = editorModesInspectorConfig[mode](viewer)
         setInsConfig(conf)
@@ -51,6 +52,10 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
         const p = v.getPlugin(BlueprintJsUiPlugin2)!
         setUiConfigRenderer(p)
         setInsConfig(editorModesInspectorConfig[editorMode](v))
+        console.log('here')
+        setHierarchyConfig({type: 'hierarchy',
+            uuid: Math.random().toString(36).substring(2, 15),
+            value: v.scene.modelRoot})
         manager.features.refresh(editorMode)
     }, [manager, ...Object.values(props), file])
 
@@ -106,14 +111,33 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
                     className="editorSplitContainer"
                     style={{width: "100%"}}>
 
-                    <InspectorStackComponent config={{
-                        type: 'panel',
-                        label: 'Hierarchy',
-                        children: [{
-                            type: 'hierarchy',
-                            value: viewer.scene.modelRoot,
-                        }]
-                    }}/>
+                    <Card style={{
+                        height: "100%",
+                        padding: "0",
+                        borderRadius: "0",
+                    }}>
+                        <Tabs
+                            vertical={false}
+                            animate={true}
+                            renderActiveTabPanelOnly={false}
+                            large={false}
+                            className={"editor-left-tabs"}
+                            selectedTabId={"objects"}
+                        >
+                            <Tab id="objects" panel={
+                                <BPHierarchyComponent key={hierarchyConfig.uuid??'hierarchy'} config={hierarchyConfig} className={''}/>
+                            }
+                                 panelClassName="hierarchy-stack"
+                                 title="Objects" />
+                            {/*<Tab id="materials" panel={*/}
+                            {/*    <></>*/}
+                            {/*} panelClassName="hierarchy-stack" title="Materials" />*/}
+                        </Tabs>
+
+                    </Card>
+                    {/*<InspectorStackComponent*/}
+                    {/*    className={'hierarchy-stack'}*/}
+                    {/*    config={hierarchyConfig}/>*/}
 
                     <Card style={{
                         height: "100%",
@@ -128,7 +152,9 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
                     </Card>
 
                     <div style={{display: "flex", flexDirection: "row"}}>
-                        <InspectorStackComponent config={insConfig}/>
+                        <InspectorStackComponent
+                            className={'inspector-stack'}
+                            config={insConfig}/>
                     </div>
 
                 </Split>
