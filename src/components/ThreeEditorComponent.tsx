@@ -15,11 +15,15 @@ import {BPHierarchyComponent} from './BPHierarchyComponent.tsx'
 import {SaveFileButton} from './SaveFileButton.tsx'
 import {InteractionControlsButtonGroup} from './InteractionControlsButtonGroup.tsx'
 import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
+import {BPMaterialsTreeComponent} from "./BPMaterialsTreeComponent.tsx";
+import {BPTexturesTreeComponent} from "./BPTexturesTreeComponent.tsx";
 
 // const [splitMinSizes, setMinSplitSizes] = useState([0, 350, 250])
 const splitMinSizes = [0, 350, 300]
 
 ConfigObjectGenerators.hierarchy = BPHierarchyComponent
+ConfigObjectGenerators.materials = BPMaterialsTreeComponent
+ConfigObjectGenerators.textures = BPTexturesTreeComponent
 ConfigObjectGenerators.image = BPTextureFileComponent
 
 export function ThreeEditorComponent(props: Partial<ViewerProps>) {
@@ -33,6 +37,8 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
 
     const [insConfig, setInsConfig] = useState<UiObjectConfig<any, 'panel'>>(editorModesInspectorConfig['viewer'](viewer))
     const [hierarchyConfig, setHierarchyConfig] = useState<UiObjectConfig<any, 'hierarchy'>>({type: 'hierarchy'})
+    const [materialsLib, setMaterialsLib] = useState<UiObjectConfig<any, 'materials'>>({type: 'materials'})
+    const [texturesLib, setTexturesLib] = useState<UiObjectConfig<any, 'textures'>>({type: 'textures'})
     const [editorMode, setEditorMode] = useReducer((currentMode: EditorModes, mode: EditorModes): EditorModes=>{
         const conf = editorModesInspectorConfig[mode](viewer)
         setInsConfig(conf)
@@ -52,10 +58,18 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
         const p = v.getPlugin(BlueprintJsUiPlugin2)!
         setUiConfigRenderer(p)
         setInsConfig(editorModesInspectorConfig[editorMode](v))
-        console.log('here')
         setHierarchyConfig({type: 'hierarchy',
             uuid: Math.random().toString(36).substring(2, 15),
-            value: v.scene.modelRoot})
+            value: v.scene.modelRoot
+        })
+        setMaterialsLib({type: 'materials',
+            uuid: Math.random().toString(36).substring(2, 15),
+            value: v.scene.modelRoot
+        })
+        setTexturesLib({type: 'textures',
+            uuid: Math.random().toString(36).substring(2, 15),
+            value: v.scene.modelRoot
+        })
         manager.features.refresh(editorMode)
     }, [manager, ...Object.values(props), file])
 
@@ -74,19 +88,20 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
     const {project} = useProject()
 
     return !uiConfigRenderer || !viewer ? null : (
+        // @ts-expect-error minor type issue, remove later
         <UiConfigRendererContext.Provider value={uiConfigRenderer}>
             <div
                  // style={{backgroundColor: Colors.DARK_GRAY2, height: "100vh"}}>
                  style={{height: "100vh"}}>
                 <Navbar>
-                    <Navbar.Group align={Alignment.LEFT}>
+                    <Navbar.Group align={Alignment.START}>
                         <Navbar.Heading>3D Editor</Navbar.Heading>
                         <Navbar.Divider/>
                         <H6 style={{margin: "0"}}>{project}</H6>
                         {/*<Button minimal small icon="home" text="Home"/>*/}
                         {/*<Button minimal small icon="document" text="Files"/>*/}
                     </Navbar.Group>
-                    <Navbar.Group align={Alignment.RIGHT}>
+                    <Navbar.Group align={Alignment.END}>
                         <SaveFileButton />
                         <Navbar.Divider/>
                         <Popover targetProps={{style: {}}}
@@ -95,7 +110,7 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
                                  content={
                                      <ThemeSettingsMenuComponent/>
                                  } placement="bottom">
-                            <Button icon="cog" small minimal text=""/>
+                            <Button icon="cog" small minimal size={"small"} variant={"minimal"} text=""/>
                         </Popover>
                     </Navbar.Group>
                 </Navbar>
@@ -122,16 +137,16 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
                             renderActiveTabPanelOnly={false}
                             large={false}
                             className={"editor-left-tabs"}
-                            selectedTabId={"objects"}
                         >
                             <Tab id="objects" panel={
                                 <BPHierarchyComponent key={hierarchyConfig.uuid??'hierarchy'} config={hierarchyConfig} className={''}/>
-                            }
-                                 panelClassName="hierarchy-stack"
-                                 title="Objects" />
-                            {/*<Tab id="materials" panel={*/}
-                            {/*    <></>*/}
-                            {/*} panelClassName="hierarchy-stack" title="Materials" />*/}
+                            } panelClassName="hierarchy-stack" title="Objects" />
+                            <Tab id="materials" panel={
+                                <BPMaterialsTreeComponent key={materialsLib.uuid??'materials'} config={materialsLib} className={''}/>
+                            } panelClassName="hierarchy-stack" title="Materials" />
+                            <Tab id="textures" panel={
+                                <BPTexturesTreeComponent key={texturesLib.uuid??'textures'} config={texturesLib} className={''}/>
+                            } panelClassName="hierarchy-stack" title="Textures" />
                         </Tabs>
 
                     </Card>

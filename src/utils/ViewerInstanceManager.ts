@@ -53,7 +53,7 @@ import {
 } from 'threepipe'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {GeometryGeneratorPlugin} from '@threepipe/plugin-geometry-generator'
-import {createContext, createElement, useContext, useState} from 'react'
+import {createContext, createElement, useCallback, useContext, useState} from 'react'
 import {useSafeContext} from './useSafeContext.ts'
 import {browserFileStore} from './BrowserFileStore.ts'
 import {EditorFeatures} from './EditorFeatures.ts'
@@ -83,6 +83,8 @@ import {
 } from '@threepipe/plugin-3d-tiles-renderer'
 import {AssimpJsPlugin} from '@threepipe/plugin-assimpjs'
 import {ThreeGpuPathTracerPlugin} from '@threepipe/plugin-path-tracing'
+import {BlendLoadPlugin} from "@threepipe/plugin-blend-importer";
+import { TransfrSharePlugin } from '@threepipe/plugin-network'
 
 export interface ViewerProps {
     msaa: boolean,
@@ -122,10 +124,11 @@ export class ViewerInstanceManager {
         // document.body.appendChild(container)
         const viewer = new ThreeViewer({
             container,
-            ...props,
+            debug: true,
             rgbm: true,
             msaa: true,
             zPrepass: false,
+            ...props,
             assetManager: {
                 //todo
             },
@@ -182,7 +185,7 @@ export class ViewerInstanceManager {
             TemporalAAPlugin, new VelocityBufferPlugin(UnsignedByteType, false),
             new SSGIPlugin(undefined, 1, false),
             KTX2LoadPlugin, KTXLoadPlugin, PLYLoadPlugin, Rhino3dmLoadPlugin, STLLoadPlugin, USDZLoadPlugin,
-            // BlendLoadPlugin, // todo
+            BlendLoadPlugin,
             Object3DGeneratorPlugin,
             GeometryGeneratorPlugin,
             Object3DWidgetsPlugin,
@@ -201,7 +204,7 @@ export class ViewerInstanceManager {
             MaterialConfiguratorPlugin,
             SwitchNodePlugin,
             // AWSClientPlugin, // todo
-            // TransfrSharePlugin, // todo
+            TransfrSharePlugin, // todo
 
             EnvironmentControlsPlugin, GlobeControlsPlugin,
             B3DMLoadPlugin, I3DMLoadPlugin, PNTSLoadPlugin, CMPTLoadPlugin,
@@ -240,8 +243,7 @@ export class ViewerInstanceManager {
         // const hemiLight = viewer.scene.addObject(new HemisphereLight(0xffffff, 0x444444, 5), {addToRoot: true})
         // hemiLight.name = 'Hemisphere Light'
 
-        // todo remove later
-        viewer.setEnvironmentMap('https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr')
+        // viewer.setEnvironmentMap('https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr')
         console.log(viewer)
 
         this._viewers.set(id, viewer)
@@ -514,18 +516,50 @@ const ProjectContext = createContext({
     file: null as null | File, setFile: (_: null | File) => {
     }, // note this file is only for glb files saved with this editor, not any 3d file.
     path: null as null | string, setPath: (_: string | null) => {
+    }, welcomeOpen: true, setWelcomeOpen: (_: boolean) => {
     }
 })
 export const useProject = () => useContext(ProjectContext)
 
 function useSetupProject() {
-    const [project, setProject] = useState('')
+    const [project, _setProject] = useState('')
     const [file, setFile] = useState<null | File>(null)
     const [path, setPath] = useState<null | string>(null)
+    const [welcomeOpen, setWelcomeOpen] = useState(true)
+
+    // Custom setProject that also updates URL immediately
+    const setProject = useCallback((newProject: string) => {
+        // if (newProject) {
+        //     console.log('Project changed:', newProject)
+        // }
+        // const params = new URLSearchParams(location.search)
+        // const current = params.get('project') || params.get('p') || ''
+        // if(current !== newProject) {
+        //     if (params.has('project')) params.delete('project')
+        //     if (params.has('p')) params.delete('p')
+        //     params.set('p', newProject)
+        //     window.history.replaceState({}, '', '?' + params.toString())
+        // }
+        _setProject(newProject)
+    }, [_setProject])
+
+    // log file whenever it changes
+    // useEffect(() => {
+    //     if (file) {
+    //         console.log('File changed:', file.name)
+    //     }
+    // }, [file])
+    // // log path whenever it changes
+    // useEffect(() => {
+    //     if (path) {
+    //         console.log('Path changed:', path)
+    //     }
+    // }, [path])
     return {
         project, setProject,
         file, setFile,
-        path, setPath
+        path, setPath,
+        welcomeOpen, setWelcomeOpen,
     }
 }
 
@@ -587,4 +621,3 @@ async function fileFromDataUrl(dataUrl: string, name: string = 'file') {
     const blob = await (await fetch(dataUrl)).blob()
     return new File([blob], name + '.' + ext, {type: blob.type})
 }
-

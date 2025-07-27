@@ -33,31 +33,33 @@ const extraUiData: {
     },
     'camera-perspective': {
         label: 'Perspective',
-        icon: 'mobile-video',
+        // icon: 'mobile-video',
+        icon: bpUiConfigIcons['shape-trapezium-filled-mono-2']({style: {color: 'transparent'}}),
     },
     'camera-orthographic': {
         label: 'Orthographic',
-        icon: 'mobile-video',
+        icon: bpUiConfigIcons['shape-cuboid-filled-mono-1']({style: {color: 'transparent'}}),
     },
     'light-point': {
         label: 'Point',
         icon: 'flash',
+        // icon: bpUiConfigIcons['shape-diamond-filled-3']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'}),
     },
     'light-ambient': {
         label: 'Ambient',
-        icon: 'lightbulb',
+        icon: bpUiConfigIcons['shape-diamond-filled-mono-3']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'}),
     },
     'light-directional': {
         label: 'Directional',
-        icon: 'flash',
+        icon: 'torch',
     },
     'light-spot': {
         label: 'Spot',
-        icon: 'lightbulb',
+        icon: bpUiConfigIcons['shape-cone-filled-mono-2']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'}),//'torch',
     },
     'light-hemisphere': {
         label: 'Hemisphere',
-        icon: 'lightbulb',
+        icon: bpUiConfigIcons['shape-sphere-cut-filled-mono-1']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'}),
     },
     'light-rect-area': {
         label: 'Rect Area',
@@ -95,7 +97,7 @@ export function Object3DGenerationMenu() {
     const uiConfigRenderer = useContext(UiConfigRendererContext)
     const items = useMemo(() => {
         const groups = {} as any
-        console.log(generator.generators)
+        // console.log(generator.generators)
         Object.keys(generator.generators).forEach(k => {
             const parts = k.split('-')
             const group = parts[0]
@@ -124,12 +126,21 @@ export function Object3DGenerationMenu() {
             key={v.uuid}
             text={v.label || '(unknown)'}
             icon={v.icon || undefined}
+            popoverProps={{
+                hoverOpenDelay: 150,
+                hoverCloseDelay: 300,
+            }}
             >
             {v.children.map((v) => <MenuItem
                 key={v.uuid}
                 text={v.label || '(unknown)'}
                 icon={v.icon || undefined}
-                onClick={() => onItemClick(v.uuid)} />)}
+                onClick={() => onItemClick(v.uuid)}
+                popoverProps={{
+                    hoverOpenDelay: 150,
+                    hoverCloseDelay: 0,
+                }}
+            />)}
         </MenuItem>)}
     </>
 }

@@ -1,9 +1,12 @@
 import {Alignment, Button, Card, Classes, Colors, H4, Icon, Overlay2} from '@blueprintjs/core'
-import React from 'react'
+import React, {useEffect} from 'react'
 import {IconName} from '@blueprintjs/icons'
 import {MaybeElement} from '@blueprintjs/core/src/common/props'
 import {WelcomeDialogProjectsTab} from './WelcomeDialogProjectsTab'
-import {useProject} from '../utils/ViewerInstanceManager.ts'
+import {useManager, useProject} from '../utils/ViewerInstanceManager.ts'
+import {DropzonePlugin, getUrlQueryParam, ThreeViewer} from 'threepipe';
+import {TransfrSharePlugin} from '@threepipe/plugin-network';
+import {useProjectActions} from "../utils/projectActions.tsx";
 
 const tabs = {
     'projects': {
@@ -46,6 +49,18 @@ const tabs = {
     },
 }
 
+const loadModel = async (model: string|null, viewer: ThreeViewer)=>{
+    let env = getUrlQueryParam('env')
+    if(!env || !['false', 'f', 'no', 'n', 'null'].includes(env.trim().toLowerCase()||'')){
+        await viewer.setEnvironmentMap(env ?? 'https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr')
+    }
+    if(!model) return false
+    const ext = getUrlQueryParam('ext') || getUrlQueryParam('model-extension') || undefined
+    const loader = viewer.getPlugin(DropzonePlugin) ?? viewer
+    const res =await loader.load(model, {fileExtension: ext})
+    return !!res
+}
+
 export function WelcomeDialogAccountTab() {
 
     return (
@@ -76,26 +91,64 @@ export function WelcomeSidebarListButton(props: {
     />
 }
 
-export function WelcomeScreenDialog(props: { isOpen: boolean, onClose: () => void }) {
-
+export function WelcomeScreenDialog() {
     const [currentTab, setCurrentTab] = React.useState<keyof typeof tabs>('projects')
-    const {file, project} = useProject()
+    const {file, project, welcomeOpen, setWelcomeOpen} = useProject()
+    const {loadProject} = useProjectActions()
+    const manager = useManager()
 
-    return (file || project) ? null : <Overlay2
-        isOpen={props.isOpen}
+    useEffect(()=>{
+        const viewer = manager.get()
+        if(!viewer) return
+        // @ts-ignore
+        if(viewer.__initLoaded) return
+        // @ts-ignore
+        viewer.__initLoaded = true
+
+        const transfr = viewer.getPlugin(TransfrSharePlugin)
+        transfr && (transfr.queryParam = 'm')
+
+        let model = getUrlQueryParam('m') || getUrlQueryParam('model')
+        const project = getUrlQueryParam('project') || getUrlQueryParam('p')
+        if(project){
+            if (welcomeOpen) setWelcomeOpen(false)
+            manager.getMeta(project).then(meta=>{
+                if(!meta){
+                    viewer.dialog.alert(`Unable to load project: Project not found: ${project}`)
+                    setWelcomeOpen(true)
+                    loadModel(model, viewer)
+                    if(model && welcomeOpen) setWelcomeOpen(false)
+                }else {
+                    if(model){
+                        console.error("Both 'model' and 'project' query parameters are set. Using 'project' parameter to load the project and ignoring 'model'.")
+                        model = null
+                    }
+                    loadProject(meta)
+                    if (welcomeOpen) setWelcomeOpen(false)
+                }
+            })
+        }else {
+            if(model && welcomeOpen) setWelcomeOpen(false)
+            loadModel(model, viewer)
+        }
+    }, [manager, welcomeOpen, setWelcomeOpen])
+
+    return (file || project || !welcomeOpen) ? null : <Overlay2
+        isOpen={true}
         className={Classes.OVERLAY_SCROLL_CONTAINER}
         backdropProps={{
             onDragEnter: (_e) => {
-                if(props.isOpen) props.onClose()
+                if(welcomeOpen) setWelcomeOpen(false)
                 // const files = e.dataTransfer.files // always empty
                 // console.log(files.length, e.nativeEvent)
                 // e.preventDefault()
             },
         }}
-        onClose={props.onClose}>
+        usePortal={false}
+        onClose={()=>setWelcomeOpen(false)}>
         <Card id="welcome-dialog"
               onDragEnter={(_e) => {
-                  if(props.isOpen) props.onClose()
+                  if(welcomeOpen) setWelcomeOpen(false)
                   // const files = e.dataTransfer.files // always empty
                   // console.log(files.length, e.nativeEvent)
                   // e.preventDefault()
@@ -130,6 +183,7 @@ export function WelcomeScreenDialog(props: { isOpen: boolean, onClose: () => voi
             </div>
             <div id="welcome-content">
                 {tabs[currentTab].render()}
+                {/*<MenuAim/>*/}
             </div>
         </Card>
     </Overlay2>

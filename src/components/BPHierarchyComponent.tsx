@@ -1,6 +1,14 @@
-import {IObject3D, JSUndoManagerCommand1, PickingPlugin, ThreeViewer, UndoManagerPlugin} from "threepipe";
+import {
+    Event2,
+    IObject3D,
+    ISceneEventMap,
+    JSUndoManagerCommand1,
+    PickingPlugin,
+    ThreeViewer,
+    UndoManagerPlugin
+} from "threepipe";
 import {TreeNodeInfo} from "@blueprintjs/core";
-import {BPTreeComponent, BPTreeComponentState, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
+import {BPTreeComponent, bpUiConfigIcons, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {VisibilityIcon} from "./VisibilityIcon";
 import React from "react";
 
@@ -19,11 +27,45 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         return obj.uuid;
     }
 
+    // @ts-expect-error remove in update
     protected _updateNodeInfo(node: TreeNodeInfo<T>, obj: T) {
         node.label = obj.name ? obj.name : obj.type ? `(${obj.type})` : 'unnamed';
         if(!obj.isMesh && !obj.isLine && !obj.isPoints && !obj.isScene && !obj.isCamera && !obj.isLight)
             node.childNodes = ((obj.children as T[]) || []).reduce<any[]>((...args) => this.buildData(...args), [])
         node.isSelected = this._selectedId === node.id
+        node.hasCaret = (node.childNodes?.length||0) > 0
+        if(obj.isLight){
+            if((obj as any).isAmbientLight) {
+                node.icon = bpUiConfigIcons['shape-diamond-filled-mono-3']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
+                // node.icon = 'flash';
+            }else if((obj as any).isPointLight) {
+                // node.icon = bpUiConfigIcons['shape-diamond-filled-3']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
+                // node.icon = bpUiConfigIcons['shape-diamond-filled-3']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
+                node.icon = 'flash';
+            }else if((obj as any).isDirectionalLight) {
+                node.icon = 'torch';
+            }else if((obj as any).isSpotLight) {
+                node.icon = bpUiConfigIcons['shape-cone-filled-2']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
+            }else if((obj as any).isRectAreaLight) {
+                node.icon = 'rectangle';
+            }else if((obj as any).isHemisphereLight){
+                node.icon = bpUiConfigIcons['shape-sphere-cut-filled-1']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
+            }
+        }
+        if(obj.isMesh){
+            node.icon = bpUiConfigIcons['shape-cube-transparent-filled-mono']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
+        }
+        if(obj.isCamera){
+            node.icon = (obj as any).isPerspectiveCamera ?
+                bpUiConfigIcons['shape-trapezium-filled-mono-2']({style: {color: 'transparent'}}) :
+                (obj as any).isOrthographicCamera ?
+                    bpUiConfigIcons['shape-cuboid-filled-mono-1']({style: {color: 'transparent'}}) :
+                'camera'
+        }
+        if(obj.isLine){
+            node.icon = 'flows'
+        }
+        // node.icon = 'layer-outline'
         return node;
     }
 
@@ -39,7 +81,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         const node = this._infoMap.get(_id)
         if(!node) return
         const value = node.isSelected ? null : node.nodeData! // unselect if already selected
-        node.nodeData!.dispatchEvent({type: 'select', value: value ?? undefined, object: node.nodeData!, ui: true})
+        node.nodeData!.dispatchEvent({type: 'select', value: value ?? null, object: node.nodeData!, ui: true})
     }
 
     protected async _onNodeDoubleClick(_id: string) {
@@ -131,10 +173,10 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
     //     })
     // }
 
-    getUpdatedState(_state: BPTreeComponentState<T>): BPTreeComponentState<T> {
-        console.log('update', _state)
-        return super.getUpdatedState(_state);
-    }
+    // getUpdatedState(_state: BPTreeComponentState<T>): BPTreeComponentState<T> {
+    //     console.log('update', _state)
+    //     return super.getUpdatedState(_state);
+    // }
 
     private _selectedId: string|undefined = undefined
     private selectedObjectChanged = (e: any) => {
@@ -150,8 +192,8 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
             // hierarchyConfig.children![0]!.uiRefresh?.()
         }
     }
-    // private objectUpdate = (e: Event2<'objectUpdate', ISceneEventMap, IObject3D>) => {
-    private objectUpdate = (e: any) => {
+    private objectUpdate = (e: Event2<'objectUpdate', ISceneEventMap, IObject3D>) => {
+        // private objectUpdate = (e: any) => {
         if (e.refreshUi !== false && (e.change === 'name' || e.key === 'name')) {
             this.props.config.uiRefresh?.(true, 'postFrame')
             // @ts-ignore

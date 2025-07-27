@@ -34,6 +34,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                 >
                     <Button
                         className="bpIconButton bpButtonIconLarge" large minimal
+                        variant={"minimal"} size={"large"}
                         intent={!states['transform-controls'][0] ? Intent.DANGER : Intent.SUCCESS}
                         icon={bpUiConfigIcons['axes-cube']} active={states['transform-controls'][0]}
                         onClick={() => states['transform-controls'][1](!states['transform-controls'][0])}/>
@@ -45,6 +46,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                 >
                     <Button
                         className="bpIconButton" large minimal
+                        variant={"minimal"} size={"large"}
                         intent={!states['post-processing'][0] ? Intent.DANGER : Intent.SUCCESS}
                         icon={'clean'} active={states['post-processing'][0]}
                         onClick={() => states['post-processing'][1](!states['post-processing'][0])}/>
@@ -55,6 +57,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                 >
                     <Button
                         className="bpIconButton" large minimal
+                        variant={"minimal"} size={"large"}
                         intent={!states['widgets'][0] ? Intent.DANGER : Intent.SUCCESS}
                         icon={'widget'} active={states['widgets'][0]} onClick={() => states['widgets'][1](!states['widgets'][0])}/>
                 </Tooltip>
@@ -68,6 +71,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                     } >
                     <Button
                         className="bpIconButton" large minimal
+                        variant={"minimal"} size={"large"}
                         // intent={!true ? Intent.DANGER : Intent.SUCCESS}
                         icon={'add'} active={false}/>
                 </Popover>

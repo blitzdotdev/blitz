@@ -84,12 +84,73 @@ body{
 //}
 
 .editor-left-tabs{
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0px;
+  padding-bottom: 0px;
+
   .bp5-tab-panel {
     margin: 0;
+    height: 100%;
+    overflow: auto;
   }
 
   .bp5-tab-list{
     padding-left: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 0;
   }
+}
+
+
+// todo move
+
+//.bp5-vars, :root {
+//  --slider-progress-color: hsla(var(--gray1-hsl), 0.2);
+//}
+//
+//.bp5-dark {
+//  --slider-progress-color: hsla(var(--white-hsl),0.5) !important;
+//}
+
+
+#stats-js{
+    position: absolute !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: unset !important;
+    top: unset !important;
+}
+
+
+// three viewer built in dialog, !important because this is added first.
+.dialog-container{
+  background-color: var(--pt-app-background-color) !important;
+  border: 1px solid var(--pt-divider-black) !important;
+  color: var(--pt-text-color) !important;
+}
+
+.dialog-message {
+  color: var(--pt-text-color-muted) !important;
+}
+.dialog-button {
+  background-color: var(--button-background-color) !important;
+  box-shadow: var(--button-box-shadow) !important;
+  color: var(--pt-text-color) !important;
+}
+.dialog-button:hover {
+  background-color: var(--button-background-color-hover) !important;
+}
+.dialog-ok {
+  background-color: var(--pt-intent-primary) !important;
+  color: var(--white) !important;
+}
+.dialog-ok:hover {
+  background-color: var(--pt-intent-primary-hover) !important;
+}
+.dialog-ok:active {
+  background-color: var(--pt-intent-primary-active) !important;
+}
+.dialog-title {
+  color: var(--pt-text-color) !important;
 }

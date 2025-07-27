@@ -25,7 +25,7 @@ export function WelcomeDialogProjectsTab() {
                     Drop 3D files anywhere to open them
                 </H4>
                 <ButtonGroup className="welcome-main-create-actions">
-                    <WelcomeDialogCreateProjectActions alignText={Alignment.CENTER} minimal={false} outlined={true}/>
+                    <WelcomeDialogCreateProjectActions alignText={Alignment.CENTER} minimal={false} outlined={false}/>
                 </ButtonGroup>
                 <ButtonGroup className="welcome-project-list">
                     {projects.map((project) => (

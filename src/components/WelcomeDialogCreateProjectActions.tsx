@@ -1,16 +1,15 @@
 import {Alignment, Button, Colors, Icon} from '@blueprintjs/core'
 import {useDialogPrompt, useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
-import {useSaveFile} from './SaveFileButton.tsx'
 import {resolveNameConflict, useProjectActions} from '../utils/projectActions.tsx'
 import {useManager, useProject} from '../utils/ViewerInstanceManager.ts'
 import {useCallback} from 'react'
+import {useSaveFile} from "./UseSaveFile.tsx";
 
 export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment, minimal?: boolean, outlined?: boolean}) {
     const {loadingState, updateLoading} = useLoadingState()
     const {saveFile} = useSaveFile()
-    const {openProject} = useProjectActions()
-    // @ts-ignore
-    const {setProject} = useProject()
+    const {openProject, loadProject} = useProjectActions()
+    const {setWelcomeOpen} = useProject()
     const {prompt} = useDialogPrompt()
 
     const manager = useManager()
@@ -43,7 +42,9 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
             // conflict
             newName = await resolveNameConflict(newName, manager)
         }
-        await saveFile({name: newName, isNewName: true, saveTempOnly: false, closeProject: false})
+        // await saveFile({name: newName, isNewName: true, saveTempOnly: false, closeProject: false})
+        await loadProject(newName, false)
+        // setWelcomeOpen(false)
     }, [saveFile, manager, fileUrlPrompt])
 
     return <>
@@ -53,7 +54,7 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
                 text={'Create New File'}
                 minimal={props.minimal} outlined={props.outlined} alignText={props.alignText}
                 loading={loadingState['create-new']}
-                onClick={() => updateLoading('create-new', saveFile({}))}
+                onClick={() => updateLoading('create-new', setWelcomeOpen(false ))}
                 // onClick={() => setProject('Untitled')} // todo choose between this and saveFile
         />
         <Button icon={<Icon color={Colors.GOLD3} icon={'folder-open'}/>}

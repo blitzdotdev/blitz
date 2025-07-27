@@ -51,6 +51,8 @@ import {
 } from '@threepipe/plugin-3d-tiles-renderer'
 import {AssimpJsPlugin} from '@threepipe/plugin-assimpjs'
 import {ThreeGpuPathTracerPlugin} from '@threepipe/plugin-path-tracing'
+import {BlendLoadPlugin} from "@threepipe/plugin-blend-importer";
+import {TransfrSharePlugin} from "@threepipe/plugin-network";
 
 export type EditorModes = 'interaction' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'import' | 'export' | 'configurators'
 const pui = (v: ThreeViewer | null, c: Class<IViewerPlugin>) => {
@@ -80,7 +82,7 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
     },
     postProcess: {
         label: 'Post processing',
-        icon: 'style',
+        icon: 'clean',
         plugins: [TonemapPlugin, ProgressivePlugin,
             SSAAPlugin, TemporalAAPlugin, SSAOPlugin, SSReflectionPlugin,
             DepthOfFieldPlugin,
@@ -103,17 +105,17 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
         plugins: [MaterialConfiguratorPlugin, SwitchNodePlugin, GLTFKHRMaterialVariantsPlugin],
         features: ['post-processing', 'configurators', 'picking', 'damping']
     },
-    export: {
-        label: 'Export',
-        icon: 'export',
-        plugins: [AssetExporterPlugin, CanvasSnapshotPlugin, AssimpJsPlugin, LoadingScreenPlugin, ThreeGpuPathTracerPlugin],
-        features: ['post-processing', 'configurators', 'damping', 'path-tracing']
-    },
     import: {
         label: 'Import',
-        icon: 'import',
-        plugins: [DropzonePlugin, Rhino3dmLoadPlugin, TilesRendererPlugin, B3DMLoadPlugin, CMPTLoadPlugin, DeepZoomImageLoadPlugin, I3DMLoadPlugin, PNTSLoadPlugin, ],
+        icon: 'export',
+        plugins: [DropzonePlugin, Rhino3dmLoadPlugin, TilesRendererPlugin, BlendLoadPlugin, B3DMLoadPlugin, CMPTLoadPlugin, DeepZoomImageLoadPlugin, I3DMLoadPlugin, PNTSLoadPlugin, ],
         features: ['post-processing', 'configurators', 'damping']
+    },
+    export: {
+        label: 'Export',
+        icon: 'import',
+        plugins: [AssetExporterPlugin, CanvasSnapshotPlugin, AssimpJsPlugin, LoadingScreenPlugin, ThreeGpuPathTracerPlugin, TransfrSharePlugin],
+        features: ['post-processing', 'configurators', 'damping', 'path-tracing']
     },
     extras: {
         label: 'Extras',

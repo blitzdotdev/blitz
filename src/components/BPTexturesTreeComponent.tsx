@@ -1,0 +1,147 @@
+import {Event2, IMaterial, IObject3D, ISceneEventMap, ITexture, ThreeViewer} from "threepipe";
+import {BPTreeComponent, TreeNodeInfo, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
+
+export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTreeComponent<T, IObject3D> {
+    declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
+
+    protected _createNodeInfo(id: string, obj: T) {
+        return Object.assign(super._createNodeInfo(id, obj), {
+            // secondaryLabel: (<VisibilityIcon obj={obj}/>),
+            draggable: false,
+            droppable: false,
+            hasCaret: false,
+        } as Partial<TreeNodeInfo<T>>);
+    }
+
+    protected _getNodeId(obj: T) {
+        return obj.uuid;
+    }
+
+    protected _updateNodeInfo(node: TreeNodeInfo<T>, obj: T) {
+        node.label = obj.name ? obj.name : obj.type ? `(${obj.type})` : 'unnamed';
+        // if(!obj.isMesh && !obj.isLine && !obj.isPoints && !obj.isScene && !obj.isCamera && !obj.isLight)
+        //     node.childNodes = ((obj.children as T[]) || []).reduce<any[]>((...args) => this.buildData(...args), [])
+        node.isSelected = this._selectedIds?.includes(node.id as string) ?? false
+        // if(obj.isPhysicalTexture){
+        //     node.icon = bpUiConfigIcons['shape-sphere-filled-1']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
+        // }
+        // if(obj.isUnlitTexture){
+        //     node.icon = 'full-circle'
+        // }
+        return node;
+    }
+
+    // todo use from material manager in next version
+    static GetMapsForMaterial(material: IMaterial) {
+        const maps = new Set<ITexture>()
+        // todo use MaterialProperties or similar to find the maps in the material. This is a bit hacky
+        for (const val of Object.values(material)) {
+            if (val && val.isTexture) {
+                maps.add(val)
+            }
+        }
+        for (const val of Object.values(material.userData ?? {})) {
+            if (val && (val as any).isTexture) {
+                maps.add(val as ITexture)
+            }
+        }
+        return maps
+    }
+
+    protected _getRootNodes(): T[] {
+        // const v = this.context.methods.getRawValue(this.props.config)
+        // return v?.children as any || [] // todo as any
+        const mats = this.context.viewer.materialManager.getAllMaterials() as any || [] // todo as any
+        const textures = new Set<ITexture>()
+        mats.forEach((m: IMaterial) => {
+            const maps = BPTexturesTreeComponent.GetMapsForMaterial(m)
+            maps.forEach((t: ITexture) => {
+                if (t && t.isTexture) {
+                    textures.add(t)
+                }
+            })
+        })
+        return Array.from(textures) as T[]
+        // return getValue(this.props.config)
+        // return (this.props.config.children || []).map(c => getOrCall(c) || {}).flat(2)
+    }
+
+    protected async _onNodeClick(_id: string) {
+        const node = this._infoMap.get(_id)
+        if(!node) return
+        // const value = node.isSelected ? null : node.nodeData! // unselect if already selected
+        // node.nodeData!.dispatchEvent({type: 'select', value: value ?? null, material: node.nodeData!, ui: true, bubbleToObject: true, bubbleToParent: true})
+    }
+
+    protected async _onNodeDoubleClick(_id: string) {
+        const node = this._infoMap.get(_id)
+        if(!node) return
+        // node.nodeData!.dispatchEvent({
+        //     type: 'select',
+        //     value: node.nodeData!,
+        //     material: node.nodeData!,
+        //     ui: true,
+        //     focusCamera: true
+        // })
+    }
+
+    // refreshSelected(){
+    //     if(!this.context.viewer) this.setSelected(undefined)
+    //     this.context.viewer?.doOnce('postFrame', () => {
+    //         const selected = this.context.viewer?.getPlugin(PickingPlugin)?.getSelectedObject()
+    //         // source?.dispatchEvent({type: 'select', value: source, object: source, ui: true})
+    //         this.setSelected(selected?.uuid, true)
+    //     })
+    // }
+
+    private _selectedIds: string[] = []
+    // private selectedObjectChanged = (e: any) => {
+    //     const mats = e.material ? Array.isArray(e.material) ? e.material : [e.material] : /*e.object?.textures ||*/ []
+    //     this._selectedIds = mats?.map((m: ITexture) => m.uuid)
+    //     this.setSelected(this._selectedIds, false)
+    //     // this.props.config.uiRefresh?.(true, 'postFrame')
+    //     // this.refreshSelected()
+    // }
+    private sceneUpdate = (e: any) => {
+        if (e.hierarchyChanged) {
+            this.props.config.uiRefresh?.(true, 'postFrame', 1)
+            // @ts-ignore
+            // hierarchyConfig.children![0]!.uiRefresh?.()
+        }
+    }
+    private textureUpdate = (e: Event2<'textureUpdate', ISceneEventMap, IObject3D>) => {
+        // private textureUpdate = (e: any) => {
+        // if (e.refreshUi !== false && (e.change === 'name' || e.key === 'name')) {
+        //     this.props.config.uiRefresh?.(true, 'postFrame')
+        //     // @ts-ignore
+        //     // hierarchyConfig.children![0]!.uiRefresh?.()
+        // }
+        this.props.config.uiRefresh?.(true, 'postFrame', 1)
+        console.log('texture updated', e)
+    }
+
+    componentDidMount() {
+        super.componentDidMount();
+        const viewer = this.context.viewer
+        if(!viewer) {
+            console.error('BPTexturesTreeComponent: viewer not found in context', this.context)
+            return
+        }
+        // viewer.getPlugin(PickingPlugin)?.addEventListener('selectedObjectChanged', this.selectedObjectChanged)
+        viewer.scene.addEventListener('sceneUpdate', this.sceneUpdate) // todo: subscribe only to the texture in the config instead of the whole scene
+        viewer.scene.addEventListener('textureUpdate', this.textureUpdate) // todo: subscribe only to the texture in the config instead of the whole scene
+    }
+
+    componentWillUnmount() {
+        const viewer = this.context.viewer
+        if(!viewer) {
+            console.error('BPTexturesTreeComponent Unmount: viewer not found in context', this.context)
+            return
+        }
+        // viewer.getPlugin(PickingPlugin)?.removeEventListener('selectedObjectChanged', this.selectedObjectChanged)
+        viewer.scene.removeEventListener('sceneUpdate', this.sceneUpdate)
+        viewer.scene.removeEventListener('textureUpdate', this.textureUpdate)
+        super.componentWillUnmount();
+    }
+
+}

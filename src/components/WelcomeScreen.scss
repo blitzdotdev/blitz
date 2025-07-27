@@ -1,7 +1,10 @@
 .welcome-project-list{
-  max-width: 100%;
-  gap: $pt-grid-size;
+  max-width: calc(100% + $pt-grid-size);
+  //gap: $pt-grid-size;
+  gap: 0;
   flex-wrap: wrap;
+  margin-left: calc(-0.5 * $pt-grid-size);
+  margin-right: calc(-0.5 * $pt-grid-size);
 
   button{
     display: flex;
@@ -11,6 +14,8 @@
     justify-content: space-between !important;
     gap: $pt-grid-size;
     padding: $pt-grid-size;
+    width: 25%;
+    flex: 1 1 25% !important;
 
     > *{
       margin-right: 0;
@@ -20,6 +25,7 @@
       width: 7rem;
       height: 7rem;
       object-fit: cover;
+      border-radius: calc($pt-border-radius * 2) !important;
     }
   }
 
@@ -72,10 +78,10 @@
   flex-direction: column;
   box-shadow: 1px 0 0 0 $pt-divider-black;
 
-  background: $light-gray5;
+  background: $light-gray4;
 }
 .bp5-dark #welcome-sidebar{
-  background: $black;
+  background: $dark-gray1;
   //box-shadow: 1px 0 0 0 $pt-divider-black;
 }
 #welcome-content{
@@ -85,10 +91,10 @@
   flex-direction: column;
   gap: $pt-grid-size;
 
-  background: $light-gray4;
+  background: $light-gray5;
 }
 .bp5-dark #welcome-content {
-  background: $dark-gray1;
+  background: $black;
 }
 #welcome-sidebar-logo{
   padding: calc(2 * $pt-grid-size) calc(1.5 * $pt-grid-size);
@@ -153,7 +159,7 @@
 .welcome-main-create-actions{
   max-width: 100%;
   gap: calc($pt-grid-size * 1);
-  margin-bottom: calc($pt-grid-size * 2);
+  margin-bottom: calc($pt-grid-size * 1);
 
   button{
     display: flex;
