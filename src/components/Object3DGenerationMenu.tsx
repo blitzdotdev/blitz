@@ -89,6 +89,14 @@ const extraUiData: {
         label: 'Cylinder',
         icon: bpUiConfigIcons['shape-cylinder-filled-mono-1']({style: {color: 'transparent'}}),
     },
+    'geometry-text': {
+        label: 'Text',
+        icon: 'font',
+    },
+    'geometry-line': {
+        label: 'Line/Curve',
+        icon: 'trending-up',
+    },
 }
 
 export function Object3DGenerationMenu() {

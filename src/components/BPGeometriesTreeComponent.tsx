@@ -1,13 +1,9 @@
-import {Event2, IMaterial, IObject3D, ISceneEventMap, PickingPlugin, ThreeViewer} from "threepipe";
-import {
-    BPTreeComponent,
-    bpUiConfigIcons,
-    TreeNodeInfo,
-    UiConfigRendererContextType
-} from 'uiconfig-blueprint/lib/esm/lib'
+import {Event2, IGeometry, IObject3D, ISceneEventMap, PickingPlugin, ThreeViewer} from "threepipe";
+import {BPTreeComponent, TreeNodeInfo, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
 
-export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends BPTreeComponent<T, IObject3D> {
+
+export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends BPTreeComponent<T, IObject3D> {
     declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
 
     protected _createNodeInfo(id: string, obj: T) {
@@ -28,61 +24,31 @@ export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends B
         // if(!obj.isMesh && !obj.isLine && !obj.isPoints && !obj.isScene && !obj.isCamera && !obj.isLight)
         //     node.childNodes = ((obj.children as T[]) || []).reduce<any[]>((...args) => this.buildData(...args), [])
         node.isSelected = this._selectedIds?.includes(node.id as string) ?? false
-        if(obj.isPhysicalMaterial){
-            node.icon = bpUiConfigIcons['shape-sphere-filled-1']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
-        }
-        if(obj.isUnlitMaterial){
-            node.icon = 'full-circle'
-        }
+        // if(obj.isPhysicalMaterial){
+        //     node.icon = bpUiConfigIcons['shape-sphere-filled-1']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
+        // }
+        // if(obj.isUnlitMaterial){
+        //     node.icon = 'full-circle'
+        // }
+        // todo set icon based on if its generated or not and its type?
         return node;
     }
 
     protected _getRootNodes(): T[] {
-        // const v = this.context.methods.getRawValue(this.props.config)
-        // const materials = new Set<IMaterial>()
-        // v?.traverse((obj) => {
-        //     if (obj.material) {
-        //         const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
-        //         for (const mat of mats) {
-        //             if (mat && mat.isMaterial) {
-        //                 materials.add(mat)
-        //             }
-        //         }
-        //     }
-        // })
-        // const uuidSet = new Set<string>()
-        // // log materials with duplicate uuid
-        // materials.forEach((m) => {
-        //     if(!m.uuid || uuidSet.has(m.uuid)) {
-        //         console.warn('Materials: Material with duplicate or missing uuid, ignoring', m)
-        //         materials.delete(m)
-        //     }else if(m.uuid)
-        //         uuidSet.add(m.uuid)
-        // })
-        const showAll = false
-        const mats =
-            showAll ?
-                this.context.viewer.materialManager.getAllMaterials() || [] :
-                // only materials in scene
-                this.context.viewer.object3dManager.getMaterials()
-
+        const showAll = false // todo param in ui
+        const geoms = this.context.viewer.object3dManager.getGeometries()
         if(showAll)
-            return Array.from(mats) as T[] // todo as any
-
-        const inRoot = filterObjectsInSceneRoot(mats);
-        return Array.from(inRoot) as T[]
-
-        // return v?.children as any || [] // todo as any
-        // return this.context.viewer.materialManager.getAllMaterials() as any || [] // todo as any
-        // return getValue(this.props.config)
-        // return (this.props.config.children || []).map(c => getOrCall(c) || {}).flat(2)
+            return Array.from(geoms) as T[]
+        const inRoot = filterObjectsInSceneRoot(geoms);
+        return Array.from(inRoot) as T[] // only return geometries that are in the root scene model root
     }
 
     protected async _onNodeClick(_id: string) {
         const node = this._infoMap.get(_id)
         if(!node) return
         const value = node.isSelected ? null : node.nodeData! // unselect if already selected
-        node.nodeData!.dispatchEvent({type: 'select', value: value ?? null, material: node.nodeData!, ui: true, bubbleToObject: true, bubbleToParent: true})
+        // node.nodeData!.dispatchEvent({type: 'select', value: value ?? null, material: node.nodeData!, ui: true, bubbleToObject: true, bubbleToParent: true})
+        this.context.viewer.getPlugin(PickingPlugin)?.setSelectedObject(value)
     }
 
     protected async _onNodeDoubleClick(_id: string) {
@@ -108,8 +74,8 @@ export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends B
 
     private _selectedIds: string[] = []
     private selectedObjectChanged = (e: any) => {
-        const mats = e.material ? Array.isArray(e.material) ? e.material : [e.material] : /*e.object?.materials ||*/ []
-        this._selectedIds = mats?.map((m: IMaterial) => m.uuid)
+        const geoms = e.value ? Array.isArray(e.value) ? e.value : [e.value] : /*e.object?.materials ||*/ []
+        this._selectedIds = geoms?.map((m: IGeometry) => m.uuid)
         this.setSelected(this._selectedIds, false)
         // this.props.config.uiRefresh?.(true, 'postFrame')
         // this.refreshSelected()
@@ -121,8 +87,8 @@ export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends B
             // hierarchyConfig.children![0]!.uiRefresh?.()
         }
     }
-    private materialUpdate = (e: Event2<'materialUpdate', ISceneEventMap, IObject3D>) => {
-        // private materialUpdate = (e: any) => {
+    private geometryUpdate = (e: Event2<'geometryUpdate', ISceneEventMap, IObject3D>) => {
+        // private geometryUpdate = (e: any) => {
         if (e.refreshUi !== false && (e.change === 'name' || e.key === 'name')) {
             this.props.config.uiRefresh?.(true, 'postFrame')
             // @ts-ignore
@@ -134,23 +100,23 @@ export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends B
         super.componentDidMount();
         const viewer = this.context.viewer
         if(!viewer) {
-            console.error('BPMaterialsTreeComponent: viewer not found in context', this.context)
+            console.error('BPGeometriesTreeComponent: viewer not found in context', this.context)
             return
         }
         viewer.getPlugin(PickingPlugin)?.addEventListener('selectedObjectChanged', this.selectedObjectChanged)
-        viewer.scene.addEventListener('sceneUpdate', this.sceneUpdate) // todo: subscribe only to the material in the config instead of the whole scene
-        viewer.scene.addEventListener('materialUpdate', this.materialUpdate) // todo: subscribe only to the material in the config instead of the whole scene
+        viewer.scene.addEventListener('sceneUpdate', this.sceneUpdate) // todo: subscribe only to the geometry in the config instead of the whole scene
+        viewer.scene.addEventListener('geometryUpdate', this.geometryUpdate) // todo: subscribe only to the geometry in the config instead of the whole scene
     }
 
     componentWillUnmount() {
         const viewer = this.context.viewer
         if(!viewer) {
-            console.error('BPMaterialsTreeComponent Unmount: viewer not found in context', this.context)
+            console.error('BPGeometriesTreeComponent Unmount: viewer not found in context', this.context)
             return
         }
         viewer.getPlugin(PickingPlugin)?.removeEventListener('selectedObjectChanged', this.selectedObjectChanged)
         viewer.scene.removeEventListener('sceneUpdate', this.sceneUpdate)
-        viewer.scene.removeEventListener('materialUpdate', this.materialUpdate)
+        viewer.scene.removeEventListener('geometryUpdate', this.geometryUpdate)
         super.componentWillUnmount();
     }
 

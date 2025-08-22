@@ -1,5 +1,6 @@
-import {Event2, IMaterial, IObject3D, ISceneEventMap, ITexture, ThreeViewer} from "threepipe";
+import {Event2, IGeometry, IMaterial, IObject3D, ISceneEventMap, ITexture, PickingPlugin, ThreeViewer} from "threepipe";
 import {BPTreeComponent, TreeNodeInfo, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
+import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
 
 export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTreeComponent<T, IObject3D> {
     declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
@@ -30,38 +31,49 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
         // }
         return node;
     }
-
-    // todo use from material manager in next version
-    static GetMapsForMaterial(material: IMaterial) {
-        const maps = new Set<ITexture>()
-        // todo use MaterialProperties or similar to find the maps in the material. This is a bit hacky
-        for (const val of Object.values(material)) {
-            if (val && val.isTexture) {
-                maps.add(val)
-            }
-        }
-        for (const val of Object.values(material.userData ?? {})) {
-            if (val && (val as any).isTexture) {
-                maps.add(val as ITexture)
-            }
-        }
-        return maps
-    }
+    //
+    // // todo use from material manager in next version
+    // static GetMapsForMaterial(material: IMaterial) {
+    //     const maps = new Set<ITexture>()
+    //     // todo use MaterialProperties or similar to find the maps in the material. This is a bit hacky
+    //     for (const val of Object.values(material)) {
+    //         if (val && val.isTexture) {
+    //             maps.add(val)
+    //         }
+    //     }
+    //     for (const val of Object.values(material.userData ?? {})) {
+    //         if (val && (val as any).isTexture) {
+    //             maps.add(val as ITexture)
+    //         }
+    //     }
+    //     return maps
+    // }
 
     protected _getRootNodes(): T[] {
         // const v = this.context.methods.getRawValue(this.props.config)
         // return v?.children as any || [] // todo as any
-        const mats = this.context.viewer.materialManager.getAllMaterials() as any || [] // todo as any
-        const textures = new Set<ITexture>()
-        mats.forEach((m: IMaterial) => {
-            const maps = BPTexturesTreeComponent.GetMapsForMaterial(m)
-            maps.forEach((t: ITexture) => {
-                if (t && t.isTexture) {
-                    textures.add(t)
-                }
+        const showAll = true
+        if(showAll) {
+            let mats =
+                showAll ?
+                    this.context.viewer.materialManager.getAllMaterials() || [] :
+                    this.context.viewer.object3dManager.getMaterials() // only materials in scene
+            if(!showAll)
+                mats = Array.from(filterObjectsInSceneRoot(mats))
+
+            const textures = new Set<ITexture>()
+            mats.forEach((m: IMaterial) => {
+                const maps = m._mapRefs || []
+                maps.forEach((t: ITexture) => {
+                    if (t && t.isTexture) {
+                        textures.add(t)
+                    }
+                })
             })
-        })
-        return Array.from(textures) as T[]
+            return Array.from(textures) as T[]
+        }else {
+            return this.context.viewer.object3dManager.getTextures() as T[]
+        }
         // return getValue(this.props.config)
         // return (this.props.config.children || []).map(c => getOrCall(c) || {}).flat(2)
     }
@@ -69,8 +81,9 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
     protected async _onNodeClick(_id: string) {
         const node = this._infoMap.get(_id)
         if(!node) return
-        // const value = node.isSelected ? null : node.nodeData! // unselect if already selected
-        // node.nodeData!.dispatchEvent({type: 'select', value: value ?? null, material: node.nodeData!, ui: true, bubbleToObject: true, bubbleToParent: true})
+        const value = node.isSelected ? null : node.nodeData! // unselect if already selected
+        // node.nodeData!.dispatchEvent({type: 'select', value: value ?? null, texture: node.nodeData!, ui: true, bubbleToMaterial: true, bubbleToObject: true, bubbleToParent: true})
+        this.context.viewer.getPlugin(PickingPlugin)?.setSelectedObject(value)
     }
 
     protected async _onNodeDoubleClick(_id: string) {
@@ -95,13 +108,14 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
     // }
 
     private _selectedIds: string[] = []
-    // private selectedObjectChanged = (e: any) => {
-    //     const mats = e.material ? Array.isArray(e.material) ? e.material : [e.material] : /*e.object?.textures ||*/ []
-    //     this._selectedIds = mats?.map((m: ITexture) => m.uuid)
-    //     this.setSelected(this._selectedIds, false)
-    //     // this.props.config.uiRefresh?.(true, 'postFrame')
-    //     // this.refreshSelected()
-    // }
+    private selectedObjectChanged = (e: any) => {
+        const geoms = e.value ? Array.isArray(e.value) ? e.value : [e.value] : /*e.object?.materials ||*/ []
+        this._selectedIds = geoms?.map((m: IGeometry) => m.uuid)
+        this.setSelected(this._selectedIds, false)
+        // this.props.config.uiRefresh?.(true, 'postFrame')
+        // this.refreshSelected()
+    }
+
     private sceneUpdate = (e: any) => {
         if (e.hierarchyChanged) {
             this.props.config.uiRefresh?.(true, 'postFrame', 1)
@@ -109,7 +123,8 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
             // hierarchyConfig.children![0]!.uiRefresh?.()
         }
     }
-    private textureUpdate = (e: Event2<'textureUpdate', ISceneEventMap, IObject3D>) => {
+    // @ts-expect-error remove in 0.0.60
+    private textureUpdate = (e: Event2<'textureUpdate'|'texturesChanged', ISceneEventMap, IObject3D>) => {
         // private textureUpdate = (e: any) => {
         // if (e.refreshUi !== false && (e.change === 'name' || e.key === 'name')) {
         //     this.props.config.uiRefresh?.(true, 'postFrame')
@@ -117,7 +132,7 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
         //     // hierarchyConfig.children![0]!.uiRefresh?.()
         // }
         this.props.config.uiRefresh?.(true, 'postFrame', 1)
-        console.log('texture updated', e)
+        // console.log('texture updated', e)
     }
 
     componentDidMount() {
@@ -127,9 +142,10 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
             console.error('BPTexturesTreeComponent: viewer not found in context', this.context)
             return
         }
-        // viewer.getPlugin(PickingPlugin)?.addEventListener('selectedObjectChanged', this.selectedObjectChanged)
+        viewer.getPlugin(PickingPlugin)?.addEventListener('selectedObjectChanged', this.selectedObjectChanged)
         viewer.scene.addEventListener('sceneUpdate', this.sceneUpdate) // todo: subscribe only to the texture in the config instead of the whole scene
         viewer.scene.addEventListener('textureUpdate', this.textureUpdate) // todo: subscribe only to the texture in the config instead of the whole scene
+        viewer.scene.addEventListener('texturesChanged', this.textureUpdate) // todo: subscribe only to the texture in the config instead of the whole scene
     }
 
     componentWillUnmount() {
@@ -138,9 +154,10 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
             console.error('BPTexturesTreeComponent Unmount: viewer not found in context', this.context)
             return
         }
-        // viewer.getPlugin(PickingPlugin)?.removeEventListener('selectedObjectChanged', this.selectedObjectChanged)
+        viewer.getPlugin(PickingPlugin)?.removeEventListener('selectedObjectChanged', this.selectedObjectChanged)
         viewer.scene.removeEventListener('sceneUpdate', this.sceneUpdate)
         viewer.scene.removeEventListener('textureUpdate', this.textureUpdate)
+        viewer.scene.removeEventListener('texturesChanged', this.textureUpdate)
         super.componentWillUnmount();
     }
 

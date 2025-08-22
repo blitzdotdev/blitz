@@ -122,6 +122,17 @@ body{
     top: unset !important;
 }
 
+.editor-left-tabs{
+  .bp5-tab-list{
+    overflow-x: auto;
+    -ms-overflow-style: none;  /* Internet Explorer 10+ */
+    scrollbar-width: none;  /* Firefox, Safari 18.2+, Chromium 121+ */
+  }
+  .bp5-tab-list::-webkit-scrollbar {
+    display: none;  /* Older Safari and Chromium */
+  }
+}
+
 
 // three viewer built in dialog, !important because this is added first.
 .dialog-container{

@@ -1,4 +1,5 @@
 import {
+    AnimationObjectPlugin,
     AssetExporterPlugin,
     CameraViewPlugin,
     CanvasSnapshotPlugin,
@@ -28,7 +29,7 @@ import {
     NoiseBumpMaterialPlugin,
     NormalBufferPlugin,
     Object3DGeneratorPlugin,
-    Object3DWidgetsPlugin,
+    Object3DWidgetsPlugin, ObjectConstraintsPlugin,
     ParallaxMappingPlugin,
     PickingPlugin,
     PLYLoadPlugin,
@@ -148,6 +149,7 @@ export class ViewerInstanceManager {
             GLTFDracoExportPlugin,
             GLTFSpecGlossinessConverterPlugin,
             PopmotionPlugin,
+            AnimationObjectPlugin,
             new ProgressivePlugin(),
             new SSAAPlugin(),
             GLTFAnimationPlugin,
@@ -158,7 +160,8 @@ export class ViewerInstanceManager {
             CameraViewPlugin,
             FullScreenPlugin,
             PickingPlugin,
-            TransformControlsPlugin,
+            ObjectConstraintsPlugin,
+            new TransformControlsPlugin(true),
             OutlinePlugin,
             EditorViewWidgetPlugin,
             ViewerUiConfigPlugin,
@@ -166,6 +169,7 @@ export class ViewerInstanceManager {
             FragmentClippingExtensionPlugin,
             NoiseBumpMaterialPlugin,
             CustomBumpMapPlugin,
+            AnisotropyPlugin,
             new ParallaxMappingPlugin(false),
             GLTFKHRMaterialVariantsPlugin,
             VirtualCamerasPlugin,
@@ -181,14 +185,13 @@ export class ViewerInstanceManager {
             new SSContactShadowsPlugin(false),
             new DepthOfFieldPlugin(false),
             BloomPlugin,
-            AnisotropyPlugin,
             TemporalAAPlugin, new VelocityBufferPlugin(UnsignedByteType, false),
-            new SSGIPlugin(undefined, 1, false),
+            new SSGIPlugin(/*UnsignedByteType*/undefined, 1, false),
             KTX2LoadPlugin, KTXLoadPlugin, PLYLoadPlugin, Rhino3dmLoadPlugin, STLLoadPlugin, USDZLoadPlugin,
             BlendLoadPlugin,
+            new Object3DWidgetsPlugin(true),
             Object3DGeneratorPlugin,
             GeometryGeneratorPlugin,
-            Object3DWidgetsPlugin,
             // GaussianSplattingPlugin, // todo
             ContactShadowGroundPlugin,
             // AdvancedGroundPlugin,
@@ -211,6 +214,7 @@ export class ViewerInstanceManager {
             TilesRendererPlugin, DeepZoomImageLoadPlugin, /* SlippyMapTilesLoadPlugin,*/
             new AssimpJsPlugin(false),
             new ThreeGpuPathTracerPlugin(false),
+            // new TimelineUiPlugin(false, document.body), // todo
         ])
 
         ThreeViewer.Dialog = htmlDialogWrapper

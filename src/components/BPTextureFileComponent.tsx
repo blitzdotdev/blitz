@@ -119,10 +119,16 @@ function refreshTexturePreview(cc: TextureType|null|undefined, viewer: ThreeView
                     // }
                     // config._lastRtRefresh = Date.now()
                 }
-            } else if (cc.image instanceof ImageBitmap || cc.image instanceof HTMLImageElement || cc.image instanceof HTMLVideoElement) { // todo: support playback in video
+            } else if (cc.image instanceof ImageBitmap || cc.image instanceof HTMLImageElement /* || cc.image instanceof HTMLVideoElement*/) { // todo: try video with bitmap after ts-browser-helpers update
                 (cc.image as any).tp_src = imageBitmapToBase64(cc.image, 160)
+                if (cc.image instanceof HTMLVideoElement) {
+                    setTimeout(()=>cc.image.tp_src && delete cc.image.tp_src, 1000) // clear after 1 second so it refreshes on next render
+                }
             } else {
                 cc.image.tp_src = textureToDataUrl(cc, 160, false, 'image/png', 90) // this supports DataTexture also
+                if (cc.image instanceof HTMLVideoElement) {
+                    setTimeout(()=>cc.image.tp_src && delete cc.image.tp_src, 1000) // clear after 1 second so it refreshes on next render
+                }
             }
 
             if (!cc.image.tp_src && !cc.tp_src) {

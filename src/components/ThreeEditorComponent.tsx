@@ -17,6 +17,7 @@ import {InteractionControlsButtonGroup} from './InteractionControlsButtonGroup.t
 import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
 import {BPMaterialsTreeComponent} from "./BPMaterialsTreeComponent.tsx";
 import {BPTexturesTreeComponent} from "./BPTexturesTreeComponent.tsx";
+import {BPGeometriesTreeComponent} from "./BPGeometriesTreeComponent.tsx";
 
 // const [splitMinSizes, setMinSplitSizes] = useState([0, 350, 250])
 const splitMinSizes = [0, 350, 300]
@@ -39,6 +40,7 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
     const [hierarchyConfig, setHierarchyConfig] = useState<UiObjectConfig<any, 'hierarchy'>>({type: 'hierarchy'})
     const [materialsLib, setMaterialsLib] = useState<UiObjectConfig<any, 'materials'>>({type: 'materials'})
     const [texturesLib, setTexturesLib] = useState<UiObjectConfig<any, 'textures'>>({type: 'textures'})
+    const [geometriesLib, setGeometriesLib] = useState<UiObjectConfig<any, 'geometries'>>({type: 'geometries'})
     const [editorMode, setEditorMode] = useReducer((currentMode: EditorModes, mode: EditorModes): EditorModes=>{
         const conf = editorModesInspectorConfig[mode](viewer)
         setInsConfig(conf)
@@ -67,6 +69,10 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
             value: v.scene.modelRoot
         })
         setTexturesLib({type: 'textures',
+            uuid: Math.random().toString(36).substring(2, 15),
+            value: v.scene.modelRoot
+        })
+        setGeometriesLib({type: 'geometries',
             uuid: Math.random().toString(36).substring(2, 15),
             value: v.scene.modelRoot
         })
@@ -135,7 +141,7 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
                             vertical={false}
                             animate={true}
                             renderActiveTabPanelOnly={false}
-                            large={false}
+                            size={"medium"}
                             className={"editor-left-tabs"}
                         >
                             <Tab id="objects" panel={
@@ -147,6 +153,9 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
                             <Tab id="textures" panel={
                                 <BPTexturesTreeComponent key={texturesLib.uuid??'textures'} config={texturesLib} className={''}/>
                             } panelClassName="hierarchy-stack" title="Textures" />
+                            <Tab id="geometries" panel={
+                                <BPGeometriesTreeComponent key={geometriesLib.uuid??'geometries'} config={geometriesLib} className={''}/>
+                            } panelClassName="hierarchy-stack" title="Geometries" />
                         </Tabs>
 
                     </Card>
