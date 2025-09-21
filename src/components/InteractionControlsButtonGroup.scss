@@ -1,9 +1,9 @@
 .interactionControlsButtonContainer{
   position: absolute;
-  left: 50%;
+  left: calc($pt-grid-size / 1);
   //right: 0;
-  bottom: calc($pt-grid-size / 2);
-  transform: translateX(-50%);
+  top: calc($pt-grid-size / 1);
+  //transform: translateX(-50%);
   height: auto;
   display: flex;
   width: max-content;

@@ -1,8 +1,7 @@
-import {bpUiConfigIcons} from 'uiconfig-blueprint/lib/esm/lib'
+import {bpUiConfigIcons, UiConfigRendererContext} from 'uiconfig-blueprint/lib/esm/lib'
 import {useManager} from '../utils/ViewerInstanceManager.ts'
 import {Object3DGeneratorPlugin} from 'threepipe'
 import React, {useCallback, useContext, useMemo} from 'react'
-import {UiConfigRendererContext} from 'uiconfig-blueprint/lib/esm/lib'
 import {IconName, MenuItem} from '@blueprintjs/core'
 
 const extraUiData: {
@@ -26,6 +25,10 @@ const extraUiData: {
     'geometry': {
         label: 'Primitives',
         icon: 'shapes',
+    },
+    'troika': {
+        label: 'Text (2D)',
+        icon: 'font',
     },
     'object-empty': {
         label: 'Empty Object',
@@ -90,12 +93,16 @@ const extraUiData: {
         icon: bpUiConfigIcons['shape-cylinder-filled-mono-1']({style: {color: 'transparent'}}),
     },
     'geometry-text': {
-        label: 'Text',
+        label: 'Text (3D)',
         icon: 'font',
     },
     'geometry-line': {
         label: 'Line/Curve',
         icon: 'trending-up',
+    },
+    'troika-text-plane': {
+        label: 'Text Plane',
+        icon: 'font',
     },
 }
 

@@ -1,28 +1,43 @@
 import {
+    AnimationObjectPlugin,
     AssetExporterPlugin,
-    CameraViewPlugin, CanvasSnapshotPlugin,
+    CameraViewPlugin,
+    CanvasSnapshotPlugin,
+    CascadedShadowsPlugin,
     ChromaticAberrationPlugin,
     Class,
-    ClearcoatTintPlugin, ContactShadowGroundPlugin,
+    ClearcoatTintPlugin,
+    ContactShadowGroundPlugin,
     CustomBumpMapPlugin,
     DepthBufferPlugin,
     DropzonePlugin,
     FilmicGrainPlugin,
     FragmentClippingExtensionPlugin,
     FrameFadePlugin,
-    FullScreenPlugin, GBufferPlugin, getOrCall,
-    GLTFAnimationPlugin, GLTFKHRMaterialVariantsPlugin,
-    HDRiGroundPlugin, InteractionPromptPlugin,
-    IViewerPlugin, LoadingScreenPlugin, MeshOptSimplifyModifierPlugin,
+    FullScreenPlugin,
+    GBufferPlugin,
+    getOrCall,
+    GLTFAnimationPlugin,
+    GLTFKHRMaterialVariantsPlugin,
+    HDRiGroundPlugin,
+    InteractionPromptPlugin,
+    IViewerPlugin,
+    LoadingScreenPlugin,
+    MeshOptSimplifyModifierPlugin,
     NoiseBumpMaterialPlugin,
-    NormalBufferPlugin, ParallaxMappingPlugin,
-    PickingPlugin,
+    NormalBufferPlugin,
+    ObjectConstraintsPlugin,
+    ParallaxMappingPlugin,
     ProgressivePlugin,
     RenderTargetPreviewPlugin,
-    Rhino3dmLoadPlugin, SSAAPlugin, SSAOPlugin,
+    Rhino3dmLoadPlugin,
+    SSAAPlugin,
+    SSAOPlugin,
     ThreeViewer,
-    TonemapPlugin, TransformControlsPlugin,
-    UiObjectConfig, ValOrArr,
+    TonemapPlugin,
+    TransformControlsPlugin,
+    UiObjectConfig,
+    ValOrArr,
     VignettePlugin,
     VirtualCamerasPlugin
 } from "threepipe";
@@ -34,27 +49,32 @@ import {
     AdvancedGroundPlugin,
     AnisotropyPlugin,
     BloomPlugin,
-    DepthOfFieldPlugin, OutlinePlugin,
+    DepthOfFieldPlugin,
+    OutlinePlugin,
     SSContactShadowsPlugin,
-    SSReflectionPlugin, TemporalAAPlugin,
-    VelocityBufferPlugin, SSGIPlugin,
+    SSGIPlugin,
+    SSReflectionPlugin,
+    TemporalAAPlugin,
+    VelocityBufferPlugin,
 } from '@threepipe/webgi-plugins'
 import {
     B3DMLoadPlugin,
     CMPTLoadPlugin,
     DeepZoomImageLoadPlugin,
+    EnvironmentControlsPlugin,
+    GlobeControlsPlugin,
     I3DMLoadPlugin,
     PNTSLoadPlugin,
     TilesRendererPlugin,
-    EnvironmentControlsPlugin,
-    GlobeControlsPlugin,
 } from '@threepipe/plugin-3d-tiles-renderer'
 import {AssimpJsPlugin} from '@threepipe/plugin-assimpjs'
 import {ThreeGpuPathTracerPlugin} from '@threepipe/plugin-path-tracing'
 import {BlendLoadPlugin} from "@threepipe/plugin-blend-importer";
 import {TransfrSharePlugin} from "@threepipe/plugin-network";
+import {EditModePlugin} from "../utils/EditModePlugin.ts";
+import {TroikaTextPlugin} from "@threepipe/plugin-troika-text";
 
-export type EditorModes = 'interaction' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'import' | 'export' | 'configurators'
+export type EditorModes = 'edit' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'import' | 'export' | 'configurators'
 const pui = (v: ThreeViewer | null, c: Class<IViewerPlugin>) => {
     return () => v?.getPlugin(c)?.uiConfig || {}
 }
@@ -74,16 +94,17 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
         uiConfig: (viewer?: ThreeViewer)=>viewer?.uiConfig,
         features: ['post-processing', 'configurators', 'damping', 'path-tracing']
     },
-    interaction: {
-        label: 'Interaction',
-        icon: 'hand',
-        plugins: PickingPlugin,
-        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators']
+    edit: {
+        label: 'Edit Scene',
+        icon: 'edit',
+        plugins: EditModePlugin,
+        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'edit-mode']
     },
     postProcess: {
         label: 'Post processing',
         icon: 'clean',
-        plugins: [TonemapPlugin, ProgressivePlugin,
+        plugins: [
+            TonemapPlugin, ProgressivePlugin,
             SSAAPlugin, TemporalAAPlugin, SSAOPlugin, SSReflectionPlugin,
             DepthOfFieldPlugin,
             BloomPlugin,
@@ -96,7 +117,7 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
     animation: {
         label: 'Animation',
         icon: 'play',
-        plugins: [GLTFAnimationPlugin, CameraViewPlugin],
+        plugins: [GLTFAnimationPlugin, CameraViewPlugin, AnimationObjectPlugin, ObjectConstraintsPlugin],
         features: ['post-processing', 'damping']
     },
     configurators: {
@@ -129,6 +150,8 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
             MeshOptSimplifyModifierPlugin,
             TransformControlsPlugin,
             EnvironmentControlsPlugin, GlobeControlsPlugin,
+            TroikaTextPlugin,
+            CascadedShadowsPlugin,
         ],
         features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'prompts', 'damping']
     },
@@ -146,9 +169,9 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
 //         label: 'Viewer',
 //         children: [ViewerUiConfigPlugin, DropzonePlugin, FullScreenPlugin].map(p => pui(v, p))
 //     }),
-//     interaction: (v: ThreeViewer | null) => ({
+//     edit: (v: ThreeViewer | null) => ({
 //         type: 'panel',
-//         label: 'Interaction',
+//         label: 'edit',
 //         children: [PickingPlugin, GeometryGeneratorPlugin].map(p => pui(v, p))
 //     }),
 //     buffers: (v: ThreeViewer | null) => ({

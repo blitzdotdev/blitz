@@ -29,6 +29,7 @@ import {
     VelocityBufferPlugin
 } from '@threepipe/webgi-plugins'
 import {ThreeGpuPathTracerPlugin} from "@threepipe/plugin-path-tracing";
+import {EditModePlugin} from "./EditModePlugin.ts";
 
 export const editorFeatures = {
     'transform-controls': {
@@ -49,10 +50,20 @@ export const editorFeatures = {
     },
     'picking': {
         enable: (viewer: ThreeViewer, key?: any) => {
+            // viewer.getPlugin(FrameFadePlugin)?.disable(key ?? this)
             viewer.getPlugin(PickingPlugin)?.enable(key ?? this)
         },
         disable: (viewer: ThreeViewer, key?: any) => {
+            // viewer.getPlugin(FrameFadePlugin)?.enable(key ?? this)
             viewer.getPlugin(PickingPlugin)?.disable(key ?? this)
+        },
+    },
+    'edit-mode': {
+        enable: (viewer: ThreeViewer, key?: any) => {
+            viewer.getPlugin(EditModePlugin)?.enable(key ?? this)
+        },
+        disable: (viewer: ThreeViewer, key?: any) => {
+            viewer.getPlugin(EditModePlugin)?.disable(key ?? this)
         },
     },
     'configurators': {

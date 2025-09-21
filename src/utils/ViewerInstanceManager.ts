@@ -2,7 +2,7 @@ import {
     AnimationObjectPlugin,
     AssetExporterPlugin,
     CameraViewPlugin,
-    CanvasSnapshotPlugin,
+    CanvasSnapshotPlugin, CascadedShadowsPlugin,
     ChromaticAberrationPlugin,
     ClearcoatTintPlugin,
     ContactShadowGroundPlugin,
@@ -86,6 +86,8 @@ import {AssimpJsPlugin} from '@threepipe/plugin-assimpjs'
 import {ThreeGpuPathTracerPlugin} from '@threepipe/plugin-path-tracing'
 import {BlendLoadPlugin} from "@threepipe/plugin-blend-importer";
 import { TransfrSharePlugin } from '@threepipe/plugin-network'
+import {TroikaTextPlugin} from "@threepipe/plugin-troika-text";
+import {EditModePlugin} from "./EditModePlugin.ts";
 
 export interface ViewerProps {
     msaa: boolean,
@@ -129,6 +131,7 @@ export class ViewerInstanceManager {
             rgbm: true,
             msaa: true,
             zPrepass: false,
+            renderScale: "auto",
             ...props,
             assetManager: {
                 //todo
@@ -144,7 +147,7 @@ export class ViewerInstanceManager {
         viewer.addPluginSync(BlueprintJsUiPlugin2)
 
         viewer.addPluginsSync([
-            LoadingScreenPlugin,
+             LoadingScreenPlugin,
             AssetExporterPlugin,
             GLTFDracoExportPlugin,
             GLTFSpecGlossinessConverterPlugin,
@@ -163,7 +166,7 @@ export class ViewerInstanceManager {
             ObjectConstraintsPlugin,
             new TransformControlsPlugin(true),
             OutlinePlugin,
-            EditorViewWidgetPlugin,
+            new EditorViewWidgetPlugin('bottom-right', 100),
             ViewerUiConfigPlugin,
             ClearcoatTintPlugin,
             FragmentClippingExtensionPlugin,
@@ -192,7 +195,7 @@ export class ViewerInstanceManager {
             new Object3DWidgetsPlugin(true),
             Object3DGeneratorPlugin,
             GeometryGeneratorPlugin,
-            // GaussianSplattingPlugin, // todo
+            // GaussianSplattingPlugin, // todo embedded serialize
             ContactShadowGroundPlugin,
             // AdvancedGroundPlugin,
             CanvasSnapshotPlugin,
@@ -215,6 +218,10 @@ export class ViewerInstanceManager {
             new AssimpJsPlugin(false),
             new ThreeGpuPathTracerPlugin(false),
             // new TimelineUiPlugin(false, document.body), // todo
+            TroikaTextPlugin,
+            new CascadedShadowsPlugin(false),
+
+            EditModePlugin,
         ])
 
         ThreeViewer.Dialog = htmlDialogWrapper
@@ -491,8 +498,13 @@ export class ViewerInstanceManager {
                 error: 'no viewer'
             }
         }
+        viewer.getPlugin(EditModePlugin)?.disable('exportScene')
+        // todo any other plugin/editor features to disable?
+
         const blob = await viewer?.exportScene({
             binary: true,
+            preserveUUIDs: true,
+            viewerConfig: true,
         })
         if (!blob) {
             return {
@@ -500,11 +512,18 @@ export class ViewerInstanceManager {
             }
         }
         const file = new File([blob], 'scene.glb', {type: 'model/gltf-binary'})
-        const preview = await viewer?.getScreenshotBlob({
+        const snapshotPlugin = viewer.getPlugin(CanvasSnapshotPlugin)!
+        const preview = await snapshotPlugin.getFile('snapshot.jpeg', {
             mimeType: 'image/jpeg',
             quality: 0.85,
+            waitForProgressive: true,
+            progressiveFrames: Math.min(64, viewer.getPlugin(ProgressivePlugin)?.maxFrameCount??64),
         })
+
         const previewFile = !preview ? '' : new File([preview], 'preview.jpg', {type: 'image/jpeg'})
+
+        viewer.getPlugin(EditModePlugin)?.enable('exportScene')
+
         return await this.saveFile({
             file, preview: previewFile,
             path: name,
