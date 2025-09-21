@@ -72,7 +72,10 @@ export function useSaveFile() {
         const res = await manager.saveScene(name, async (n: string, e: string) => {
             if (await fileNameExistsPrompt(n, e)) return n
             else return await fileNameExistsPrompt2(n, e)
-        }, {isNewName, saveTempOnly})
+        }, {isNewName, saveTempOnly}).catch(e=>{
+            console.error('Error saving file', e)
+            return {error: 'Error saving file: ' + (e.message || e), warn: undefined}
+        })
         if (typeof res === 'string') {
             name = res
             // if (name !== project && setProject && !closeProject) setProject(name)
