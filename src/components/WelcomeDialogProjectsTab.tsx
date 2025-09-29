@@ -6,7 +6,6 @@ import {useEffect, useState} from 'react'
 import {SavedSceneFileMeta, useManager} from '../utils/ViewerInstanceManager.ts'
 import {useProjectActions} from '../utils/projectActions.tsx'
 
-
 export function WelcomeDialogProjectsTab() {
     const [projects, setProjects] = useState<SavedSceneFileMeta[]>([])
     const {loadingState, updateLoading} = useLoadingState()
@@ -31,12 +30,13 @@ export function WelcomeDialogProjectsTab() {
                     {projects.map((project) => (
                         <Button
                                 key={project.path}
+                                className={"file-item-button"}
                                 icon={<img src={typeof project.preview=== 'string' ? project.preview : URL.createObjectURL(project.preview as File)}/>}
                                 text={project.path.replace(/\/$/, '').split('/').pop()}
-                                minimal
+                                variant={"minimal"}
                                 alignText={'center'}
                                 loading={loadingState[project.path]}
-                                onClick={() => updateLoading(project.path, loadProject(project))}
+                                onClick={() => updateLoading(project.path, loadProject(project.path))}
                             // onClick={() => updateLoading('create-new', actions.createFile())}
                         />
                     ))}

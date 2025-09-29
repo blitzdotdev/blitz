@@ -10,15 +10,18 @@ import {
     getOrCall,
     IEvent,
     IViewerPlugin,
-    IViewerPluginSync, JSUndoManager,
+    IViewerPluginSync,
+    JSUndoManager,
     Texture,
     ThreeViewer,
-    UiObjectConfig, UndoManagerPlugin,
+    UiObjectConfig,
+    UndoManagerPlugin,
     Vector2,
     Vector3,
     Vector4
 } from 'threepipe'
 import {UiConfigRenderer} from 'uiconfig.js'
+import {RefSelectionObjectComponentTex} from "./components/RefSelectionObjectComponent.tsx";
 
 export class UiConfigRendererBlueprint2 extends UiConfigRenderer {
 
@@ -159,6 +162,12 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
      */
     get fileLoader() {
         return this._viewer || this.__viewer
+    }
+    /**
+     * Required for loading files in BPFileComponent
+     */
+    get AssetPicker() {
+        return RefSelectionObjectComponentTex
     }
 
     // when unmounting components the viewer instance might be required, but by then the

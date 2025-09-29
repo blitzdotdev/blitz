@@ -43,6 +43,7 @@ export class BrowserFileStoreIdb {
 
 }
 
+// todo we need to subscribe to changes from other tabs
 export class BrowserFileStoreIdbWithMem extends BrowserFileStoreIdb{
     cache: {[key: string]: any} = {}
 

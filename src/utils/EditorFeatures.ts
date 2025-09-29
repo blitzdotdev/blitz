@@ -18,17 +18,17 @@ import {
 } from 'threepipe'
 import {ViewerInstanceManager} from './ViewerInstanceManager.ts'
 import {EditorModes, editorModesList} from '../components/EditorModes.tsx'
-import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
-import {
-    BloomPlugin,
-    DepthOfFieldPlugin,
-    OutlinePlugin,
-    SSContactShadowsPlugin, SSGIPlugin,
-    SSReflectionPlugin,
-    TemporalAAPlugin,
-    VelocityBufferPlugin
-} from '@threepipe/webgi-plugins'
-import {ThreeGpuPathTracerPlugin} from "@threepipe/plugin-path-tracing";
+// import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
+// import {
+//     BloomPlugin,
+//     DepthOfFieldPlugin,
+//     OutlinePlugin,
+//     SSContactShadowsPlugin, SSGIPlugin,
+//     SSReflectionPlugin,
+//     TemporalAAPlugin,
+//     VelocityBufferPlugin
+// } from '@threepipe/webgi-plugins'
+// import {ThreeGpuPathTracerPlugin} from "@threepipe/plugin-path-tracing";
 import {EditModePlugin} from "./EditModePlugin.ts";
 
 export const editorFeatures = {
@@ -68,13 +68,13 @@ export const editorFeatures = {
     },
     'configurators': {
         enable: (viewer: ThreeViewer, key?: any) => {
-            viewer.getPlugin(MaterialConfiguratorPlugin)?.enable(key ?? this)
-            viewer.getPlugin(SwitchNodePlugin)?.enable(key ?? this)
+            // viewer.getPlugin(MaterialConfiguratorPlugin)?.enable(key ?? this)
+            // viewer.getPlugin(SwitchNodePlugin)?.enable(key ?? this)
             viewer.getPlugin(GLTFKHRMaterialVariantsPlugin)?.enable(key ?? this)
         },
         disable: (viewer: ThreeViewer, key?: any) => {
-            viewer.getPlugin(MaterialConfiguratorPlugin)?.disable(key ?? this)
-            viewer.getPlugin(SwitchNodePlugin)?.disable(key ?? this)
+            // viewer.getPlugin(MaterialConfiguratorPlugin)?.disable(key ?? this)
+            // viewer.getPlugin(SwitchNodePlugin)?.disable(key ?? this)
             viewer.getPlugin(GLTFKHRMaterialVariantsPlugin)?.disable(key ?? this)
         },
     },
@@ -95,17 +95,17 @@ export const editorFeatures = {
             viewer.getPlugin(FrameFadePlugin)?.enable(key ?? this)
             viewer.getPlugin(SSAOPlugin)?.enable(key ?? this)
             viewer.getPlugin(SSAAPlugin)?.enable(key ?? this)
-            viewer.getPlugin(SSReflectionPlugin)?.enable(key ?? this)
-            viewer.getPlugin(DepthOfFieldPlugin)?.enable(key ?? this)
+            // viewer.getPlugin(SSReflectionPlugin)?.enable(key ?? this)
+            // viewer.getPlugin(DepthOfFieldPlugin)?.enable(key ?? this)
             viewer.getPlugin(GBufferPlugin)?.enable(key ?? this)
             viewer.getPlugin(DepthBufferPlugin)?.enable(key ?? this)
             viewer.getPlugin(NormalBufferPlugin)?.enable(key ?? this)
-            viewer.getPlugin(BloomPlugin)?.enable(key ?? this)
-            viewer.getPlugin(SSContactShadowsPlugin)?.enable(key ?? this)
-            viewer.getPlugin(TemporalAAPlugin)?.enable(key ?? this)
-            viewer.getPlugin(VelocityBufferPlugin)?.enable(key ?? this)
-            viewer.getPlugin(OutlinePlugin)?.enable(key ?? this)
-            viewer.getPlugin(SSGIPlugin)?.enable(key ?? this)
+            // viewer.getPlugin(BloomPlugin)?.enable(key ?? this)
+            // viewer.getPlugin(SSContactShadowsPlugin)?.enable(key ?? this)
+            // viewer.getPlugin(TemporalAAPlugin)?.enable(key ?? this)
+            // viewer.getPlugin(VelocityBufferPlugin)?.enable(key ?? this)
+            // viewer.getPlugin(OutlinePlugin)?.enable(key ?? this)
+            // viewer.getPlugin(SSGIPlugin)?.enable(key ?? this)
         },
         disable: (viewer: ThreeViewer, key?: any) => {
             viewer.getPlugin(VignettePlugin)?.disable(key ?? this)
@@ -118,22 +118,22 @@ export const editorFeatures = {
             viewer.getPlugin(GBufferPlugin)?.disable(key ?? this)
             viewer.getPlugin(DepthBufferPlugin)?.disable(key ?? this)
             viewer.getPlugin(NormalBufferPlugin)?.disable(key ?? this)
-            viewer.getPlugin(SSReflectionPlugin)?.disable(key ?? this)
-            viewer.getPlugin(DepthOfFieldPlugin)?.disable(key ?? this)
-            viewer.getPlugin(BloomPlugin)?.disable(key ?? this)
-            viewer.getPlugin(SSContactShadowsPlugin)?.disable(key ?? this)
-            viewer.getPlugin(TemporalAAPlugin)?.disable(key ?? this)
-            viewer.getPlugin(VelocityBufferPlugin)?.disable(key ?? this)
-            viewer.getPlugin(OutlinePlugin)?.disable(key ?? this)
-            viewer.getPlugin(SSGIPlugin)?.disable(key ?? this)
+            // viewer.getPlugin(SSReflectionPlugin)?.disable(key ?? this)
+            // viewer.getPlugin(DepthOfFieldPlugin)?.disable(key ?? this)
+            // viewer.getPlugin(BloomPlugin)?.disable(key ?? this)
+            // viewer.getPlugin(SSContactShadowsPlugin)?.disable(key ?? this)
+            // viewer.getPlugin(TemporalAAPlugin)?.disable(key ?? this)
+            // viewer.getPlugin(VelocityBufferPlugin)?.disable(key ?? this)
+            // viewer.getPlugin(OutlinePlugin)?.disable(key ?? this)
+            // viewer.getPlugin(SSGIPlugin)?.disable(key ?? this)
         },
     },
     'path-tracing': {
         enable: (viewer: ThreeViewer, key?: any) => {
-            viewer.getPlugin(ThreeGpuPathTracerPlugin)?.enable(key ?? this)
+            // viewer.getPlugin(ThreeGpuPathTracerPlugin)?.enable(key ?? this)
         },
         disable: (viewer: ThreeViewer, key?: any) => {
-            viewer.getPlugin(ThreeGpuPathTracerPlugin)?.disable(key ?? this)
+            // viewer.getPlugin(ThreeGpuPathTracerPlugin)?.disable(key ?? this)
         },
     },
     'damping': {

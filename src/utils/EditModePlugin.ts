@@ -67,13 +67,11 @@ export class EditModePlugin extends AViewerPluginSync{
         this.cameraPerspective.position.set(0,0,10)
         this.cameraPerspective.target.set(0,0,0)
         this.cameraPerspective.userData.disableWidgets = true
-        this.cameraPerspective.autoAspect = true
         this.cameraPerspective.autoNearFar = false
         this.cameraOrtho.position.set(0,0,10)
         this.cameraOrtho.target.set(0,0,0)
         this.cameraOrtho.frustumSize = 10
         this.cameraOrtho.userData.disableWidgets = true
-        this.cameraOrtho.autoAspect = true
         this.cameraOrtho.autoNearFar = false
     }
 
@@ -135,6 +133,7 @@ export class EditModePlugin extends AViewerPluginSync{
                     this.cameraOrtho.position.copy(this.cameraPerspective.position)
                     this.cameraOrtho.target.copy(this.cameraPerspective.target)
                 }
+                cam.autoAspect = true
                 cam.activateMain()
             }
         }
@@ -155,9 +154,7 @@ export class EditModePlugin extends AViewerPluginSync{
         this._settingsSet = true
         this._settings.sceneBackgroundColor = this._viewer.scene.backgroundColor?.clone() || null
         this._viewer.scene.setBackgroundColor(this.backgroundColor)
-        // @ts-expect-error next version
         this._settings.backgroundTonemap = this._viewer.scene.backgroundTonemap
-        // @ts-expect-error next version
         this._viewer.scene.backgroundTonemap = false
         this.grid.visible = true
         // this._settings.autoNearFarEnabled = this._viewer.scene.autoNearFarEnabled
@@ -179,7 +176,6 @@ export class EditModePlugin extends AViewerPluginSync{
         this._settingsSet = false
         this._viewer.scene.setBackgroundColor(this._settings.sceneBackgroundColor)
         delete this._settings.sceneBackgroundColor
-        // @ts-expect-error next version
         this._viewer.scene.backgroundTonemap = this._settings.backgroundTonemap
         delete this._settings.backgroundTonemap
         // this._viewer.scene.autoNearFarEnabled = this._settings.autoNearFarEnabled

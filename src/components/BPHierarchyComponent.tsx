@@ -3,16 +3,23 @@ import {
     IObject3D,
     ISceneEventMap,
     JSUndoManagerCommand1,
+    ObjectPickerEventMap,
     PickingPlugin,
     ThreeViewer,
+    UiObjectConfig,
     UndoManagerPlugin
 } from "threepipe";
 import {TreeNodeInfo} from "@blueprintjs/core";
 import {BPTreeComponent, bpUiConfigIcons, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {VisibilityIcon} from "./VisibilityIcon";
-import React from "react";
+import React, {useMemo} from "react";
+import {canMakeAsset, useMakeAsset} from "../utils/ViewerInstanceManager.ts";
+import {useObjContextMenu} from "./UseObjContextMenu.tsx";
+import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
 
-export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTreeComponent<T, IObject3D> {
+interface BPHierarchyComponentPropsExtras extends HandleContextMenuCallback{
+}
+export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTreeComponent<T, IObject3D, BPHierarchyComponentPropsExtras> {
     declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
 
     protected _createNodeInfo(id: string, obj: T) {
@@ -94,6 +101,31 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
             ui: true,
             focusCamera: true
         })
+    }
+
+    protected async _onNodeContextMenu(_id:string | number, _e: React.MouseEvent<HTMLElement, MouseEvent>){
+        // console.log(_id, _e)
+        _e.preventDefault()
+        _e.stopPropagation()
+
+        const items: MenuItem2[] = []
+        const node = this._infoMap.get(_id)
+        if(!node) return
+        const obj = node.nodeData!
+
+        if(canMakeAsset(obj)){
+            items.push({
+                props: {
+                    text: 'Make Asset',
+                },
+                key: 'makeAsset',
+                action: 'makeAsset',
+                data: {obj}
+            })
+        }
+
+        this.props.handleContextMenu?.(_e, items)
+
     }
 
     protected _canDropNode(sourceNode: TreeNodeInfo<T>, _sourcePath: number[], targetNode: TreeNodeInfo<T>, _targetPath: number[], index?: number) {
@@ -179,7 +211,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
     // }
 
     private _selectedId: string|undefined = undefined
-    private selectedObjectChanged = (e: any) => {
+    private selectedObjectChanged = (e: ObjectPickerEventMap['selectedObjectChanged']) => {
         this._selectedId = e.object?.uuid
         this.setSelected(this._selectedId, true)
         // this.props.config.uiRefresh?.(true, 'postFrame')
@@ -225,4 +257,21 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         super.componentWillUnmount();
     }
 
+}
+
+export function ObjectHierarchyComponent({className, root}: {className: string, root: IObject3D|null}){
+    const {makeAsset} = useMakeAsset()
+    const actions = {makeAsset: makeAsset}
+
+    const {handleContextMenu} = useObjContextMenu(actions)
+    const config: UiObjectConfig = useMemo(()=>({
+        type: 'hierarchy',
+        uuid: Math.random().toString(36).substring(2, 15),
+        value: root
+    }), [root])
+
+
+    return <BPHierarchyComponent config={config}
+                                 handleContextMenu={handleContextMenu}
+                                 className={className}/>
 }

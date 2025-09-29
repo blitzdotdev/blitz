@@ -5,7 +5,6 @@ import {MaybeElement} from '@blueprintjs/core/src/common/props'
 import {WelcomeDialogProjectsTab} from './WelcomeDialogProjectsTab'
 import {useManager, useProject} from '../utils/ViewerInstanceManager.ts'
 import {DropzonePlugin, getUrlQueryParam, ThreeViewer} from 'threepipe';
-import {TransfrSharePlugin} from '@threepipe/plugin-network';
 import {useProjectActions} from "../utils/projectActions.tsx";
 
 const tabs = {
@@ -93,7 +92,7 @@ export function WelcomeSidebarListButton(props: {
 
 export function WelcomeScreenDialog() {
     const [currentTab, setCurrentTab] = React.useState<keyof typeof tabs>('projects')
-    const {file, project, welcomeOpen, setWelcomeOpen} = useProject()
+    const {project, welcomeOpen, setWelcomeOpen} = useProject()
     const {loadProject} = useProjectActions()
     const manager = useManager()
 
@@ -105,11 +104,13 @@ export function WelcomeScreenDialog() {
         // @ts-ignore
         viewer.__initLoaded = true
 
-        const transfr = viewer.getPlugin(TransfrSharePlugin)
-        transfr && (transfr.queryParam = 'm')
+        // todo use forPlugin
+        // const transfr = viewer.getPlugin(TransfrSharePlugin)
+        // transfr && (transfr.queryParam = 'm')
 
         let model = getUrlQueryParam('m') || getUrlQueryParam('model')
         const project = getUrlQueryParam('project') || getUrlQueryParam('p')
+        const projectFile = getUrlQueryParam('file') || getUrlQueryParam('f')
         if(project){
             if (welcomeOpen) setWelcomeOpen(false)
             manager.getMeta(project).then(meta=>{
@@ -123,7 +124,7 @@ export function WelcomeScreenDialog() {
                         console.error("Both 'model' and 'project' query parameters are set. Using 'project' parameter to load the project and ignoring 'model'.")
                         model = null
                     }
-                    loadProject(meta)
+                    loadProject(meta.path, projectFile)
                     if (welcomeOpen) setWelcomeOpen(false)
                 }
             })
@@ -133,7 +134,7 @@ export function WelcomeScreenDialog() {
         }
     }, [manager, welcomeOpen, setWelcomeOpen])
 
-    return (file || project || !welcomeOpen) ? null : <Overlay2
+    return (project || !welcomeOpen) ? null : <Overlay2
         isOpen={true}
         className={Classes.OVERLAY_SCROLL_CONTAINER}
         backdropProps={{

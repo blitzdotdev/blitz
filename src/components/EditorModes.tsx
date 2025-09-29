@@ -44,35 +44,35 @@ import {
 import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {FC} from 'react'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
-import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
-import {
-    AdvancedGroundPlugin,
-    AnisotropyPlugin,
-    BloomPlugin,
-    DepthOfFieldPlugin,
-    OutlinePlugin,
-    SSContactShadowsPlugin,
-    SSGIPlugin,
-    SSReflectionPlugin,
-    TemporalAAPlugin,
-    VelocityBufferPlugin,
-} from '@threepipe/webgi-plugins'
-import {
-    B3DMLoadPlugin,
-    CMPTLoadPlugin,
-    DeepZoomImageLoadPlugin,
-    EnvironmentControlsPlugin,
-    GlobeControlsPlugin,
-    I3DMLoadPlugin,
-    PNTSLoadPlugin,
-    TilesRendererPlugin,
-} from '@threepipe/plugin-3d-tiles-renderer'
-import {AssimpJsPlugin} from '@threepipe/plugin-assimpjs'
-import {ThreeGpuPathTracerPlugin} from '@threepipe/plugin-path-tracing'
-import {BlendLoadPlugin} from "@threepipe/plugin-blend-importer";
-import {TransfrSharePlugin} from "@threepipe/plugin-network";
+// import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
+// import {
+//     AdvancedGroundPlugin,
+//     AnisotropyPlugin,
+//     BloomPlugin,
+//     DepthOfFieldPlugin,
+//     OutlinePlugin,
+//     SSContactShadowsPlugin,
+//     SSGIPlugin,
+//     SSReflectionPlugin,
+//     TemporalAAPlugin,
+//     VelocityBufferPlugin,
+// } from '@threepipe/webgi-plugins'
+// import {
+//     B3DMLoadPlugin,
+//     CMPTLoadPlugin,
+//     DeepZoomImageLoadPlugin,
+//     EnvironmentControlsPlugin,
+//     GlobeControlsPlugin,
+//     I3DMLoadPlugin,
+//     PNTSLoadPlugin,
+//     TilesRendererPlugin,
+// } from '@threepipe/plugin-3d-tiles-renderer'
+// import {AssimpJsPlugin} from '@threepipe/plugin-assimpjs'
+// import {ThreeGpuPathTracerPlugin} from '@threepipe/plugin-path-tracing'
+// import {BlendLoadPlugin} from "@threepipe/plugin-blend-importer";
+// import {TransfrSharePlugin} from "@threepipe/plugin-network";
+// import {TroikaTextPlugin} from "@threepipe/plugin-troika-text";
 import {EditModePlugin} from "../utils/EditModePlugin.ts";
-import {TroikaTextPlugin} from "@threepipe/plugin-troika-text";
 
 export type EditorModes = 'edit' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'import' | 'export' | 'configurators'
 const pui = (v: ThreeViewer | null, c: Class<IViewerPlugin>) => {
@@ -105,13 +105,18 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
         icon: 'clean',
         plugins: [
             TonemapPlugin, ProgressivePlugin,
-            SSAAPlugin, TemporalAAPlugin, SSAOPlugin, SSReflectionPlugin,
-            DepthOfFieldPlugin,
-            BloomPlugin,
+            SSAAPlugin,
+            SSAOPlugin,
             VignettePlugin,
-            ChromaticAberrationPlugin, FilmicGrainPlugin, SSGIPlugin,
-            SSContactShadowsPlugin, OutlinePlugin,
-            FrameFadePlugin],
+            ChromaticAberrationPlugin, FilmicGrainPlugin,
+            FrameFadePlugin
+            // TemporalAAPlugin,
+            // SSReflectionPlugin,
+            // DepthOfFieldPlugin,
+            // BloomPlugin,
+            // SSGIPlugin,
+            // SSContactShadowsPlugin, OutlinePlugin,
+        ],
         features: ['post-processing', 'damping']
     },
     animation: {
@@ -123,34 +128,45 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
     configurators: {
         label: 'Configurator',
         icon: 'select',
-        plugins: [MaterialConfiguratorPlugin, SwitchNodePlugin, GLTFKHRMaterialVariantsPlugin],
+        plugins: [
+            // MaterialConfiguratorPlugin, SwitchNodePlugin,
+            GLTFKHRMaterialVariantsPlugin],
         features: ['post-processing', 'configurators', 'picking', 'damping']
     },
     import: {
         label: 'Import',
         icon: 'export',
-        plugins: [DropzonePlugin, Rhino3dmLoadPlugin, TilesRendererPlugin, BlendLoadPlugin, B3DMLoadPlugin, CMPTLoadPlugin, DeepZoomImageLoadPlugin, I3DMLoadPlugin, PNTSLoadPlugin, ],
+        plugins: [DropzonePlugin, Rhino3dmLoadPlugin,
+            // TilesRendererPlugin, BlendLoadPlugin, B3DMLoadPlugin, CMPTLoadPlugin, DeepZoomImageLoadPlugin, I3DMLoadPlugin, PNTSLoadPlugin,
+        ],
         features: ['post-processing', 'configurators', 'damping']
     },
     export: {
         label: 'Export',
         icon: 'import',
-        plugins: [AssetExporterPlugin, CanvasSnapshotPlugin, AssimpJsPlugin, LoadingScreenPlugin, ThreeGpuPathTracerPlugin, TransfrSharePlugin],
+        plugins: [AssetExporterPlugin, CanvasSnapshotPlugin,
+            LoadingScreenPlugin,
+            // AssimpJsPlugin,
+            // ThreeGpuPathTracerPlugin, TransfrSharePlugin
+        ],
         features: ['post-processing', 'configurators', 'damping', 'path-tracing']
     },
     extras: {
         label: 'Extras',
         icon: 'settings',
         plugins: [
-            ContactShadowGroundPlugin, AdvancedGroundPlugin, InteractionPromptPlugin,
+            ContactShadowGroundPlugin,
+            // AdvancedGroundPlugin,
+            InteractionPromptPlugin,
             FullScreenPlugin,
-            VirtualCamerasPlugin, HDRiGroundPlugin, ClearcoatTintPlugin, AnisotropyPlugin,
+            VirtualCamerasPlugin, HDRiGroundPlugin, ClearcoatTintPlugin,
+            // AnisotropyPlugin,
             ParallaxMappingPlugin, FragmentClippingExtensionPlugin, NoiseBumpMaterialPlugin,
             CustomBumpMapPlugin, RenderTargetPreviewPlugin,
             MeshOptSimplifyModifierPlugin,
             TransformControlsPlugin,
-            EnvironmentControlsPlugin, GlobeControlsPlugin,
-            TroikaTextPlugin,
+            // EnvironmentControlsPlugin, GlobeControlsPlugin,
+            // TroikaTextPlugin,
             CascadedShadowsPlugin,
         ],
         features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'prompts', 'damping']
@@ -158,7 +174,10 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
     buffers: {
         label: 'Buffers',
         icon: 'grid-view',
-        plugins: [GBufferPlugin, DepthBufferPlugin, NormalBufferPlugin, VelocityBufferPlugin],
+        plugins: [
+            GBufferPlugin, DepthBufferPlugin, NormalBufferPlugin,
+            // VelocityBufferPlugin
+        ],
         features: ['post-processing', 'damping']
     },
 }
@@ -228,8 +247,8 @@ export const EditorModesButtonGroup: FC<{ editorMode: EditorModes, setEditorMode
                         <Button
                             className="bpIconButton" large={true}
                             intent={editorMode === k ? Intent.PRIMARY : Intent.NONE}
-                            minimal={true} style={{transition: "background-color 0.25s ease-in-out"}}
-                            rightIcon={v.icon} active={editorMode === k} onClick={() => setEditorMode(k)}/>
+                            variant={"minimal"} style={{transition: "background-color 0.25s ease-in-out"}}
+                            endIcon={v.icon} active={editorMode === k} onClick={() => setEditorMode(k)}/>
 
                     </Tooltip>
 

@@ -1,4 +1,4 @@
-import {Event2, IMaterial, IObject3D, ISceneEventMap, PickingPlugin, ThreeViewer} from "threepipe";
+import {Event2, IMaterial, IObject3D, ISceneEventMap, PickingPlugin, ThreeViewer, UiObjectConfig} from "threepipe";
 import {
     BPTreeComponent,
     bpUiConfigIcons,
@@ -6,8 +6,15 @@ import {
     UiConfigRendererContextType
 } from 'uiconfig-blueprint/lib/esm/lib'
 import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
+import React, {useMemo} from "react";
+import {useObjContextMenu} from "./UseObjContextMenu.tsx";
+import {MenuItem2} from "./ContextMenuUtils.tsx";
+import {canMakeAsset, useMakeAsset} from "../utils/ViewerInstanceManager.ts";
 
-export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends BPTreeComponent<T, IObject3D> {
+interface BPMaterialsTreeComponentPropsExtras{
+    handleContextMenu?: (e: React.MouseEvent<HTMLElement, MouseEvent>, menuItems: MenuItem2[]) => void
+}
+export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends BPTreeComponent<T, IObject3D, BPMaterialsTreeComponentPropsExtras> {
     declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
 
     protected _createNodeInfo(id: string, obj: T) {
@@ -97,6 +104,32 @@ export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends B
         // })
     }
 
+
+    protected async _onNodeContextMenu(_id:string | number, _e: React.MouseEvent<HTMLElement, MouseEvent>){
+        // console.log(_id, _e)
+        _e.preventDefault()
+        _e.stopPropagation()
+
+        const items: MenuItem2[] = []
+        const node = this._infoMap.get(_id)
+        if(!node) return
+        const obj = node.nodeData!
+
+        if(canMakeAsset(obj)){
+            items.push({
+                props: {
+                    text: 'Make Asset',
+                },
+                key: 'makeAsset',
+                action: 'makeAsset',
+                data: {obj}
+            })
+        }
+
+        this.props.handleContextMenu?.(_e, items)
+
+    }
+
     // refreshSelected(){
     //     if(!this.context.viewer) this.setSelected(undefined)
     //     this.context.viewer?.doOnce('postFrame', () => {
@@ -154,4 +187,17 @@ export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends B
         super.componentWillUnmount();
     }
 
+}
+
+export function MaterialHierarchyComponent({className, root}: {className: string, root: IObject3D|null}){
+    const {makeAsset} = useMakeAsset()
+    const actions = {makeAsset: makeAsset}
+    const {handleContextMenu} = useObjContextMenu(actions)
+    const config: UiObjectConfig = useMemo(()=>({
+        type: 'hierarchy',
+        uuid: Math.random().toString(36).substring(2, 15),
+        value: root
+    }), [root])
+
+    return <BPMaterialsTreeComponent config={config} handleContextMenu={handleContextMenu} className={className}/>
 }

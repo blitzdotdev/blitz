@@ -165,3 +165,53 @@ body{
 .dialog-title {
   color: var(--pt-text-color) !important;
 }
+
+// todo move somewhere, remove after update this is from bp update
+.bp5-breadcrumbs>li:after {
+  background: url(data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%3E%3Cpath%20fill=%27%235f6b7c%27%20fill-rule=%27evenodd%27%20d=%27m10.71%207.29-4-4a1.003%201.003%200%200%200-1.42%201.42L8.59%208%205.3%2011.29c-.19.18-.3.43-.3.71a1.003%201.003%200%200%200%201.71.71l4-4c.18-.18.29-.43.29-.71s-.11-.53-.29-.71%27%20clip-rule=%27evenodd%27/%3E%3C/svg%3E);
+  content: "";
+  display: block;
+  height: 16px;
+  margin: 0 5px;
+  width: 16px;
+}
+
+// todo not sure why its required again, its also in blueprint...
+.bp5-dark .bp5-divider{
+  border-color:rgba(255, 255, 255, 0.2);
+}
+
+// todo move somewhere
+.file-item-button{
+  display: flex;
+  flex-direction: column;
+  text-align: center !important;
+  border-radius: calc($pt-border-radius * 2) !important;
+  justify-content: space-between !important;
+  gap: $pt-grid-size;
+  padding: $pt-grid-size;
+  width: calc(10 * $pt-grid-size);
+
+  > *{
+    margin-right: 0;
+  }
+
+  img {
+    width: 7rem;
+    height: 7rem;
+    object-fit: cover;
+    border-radius: calc($pt-border-radius * 2) !important;
+  }
+
+  .bp5-button-text{
+    flex-grow: 0 !important;
+    text-overflow: ellipsis !important;
+    overflow: hidden;
+    max-width: 100%;
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* number of lines to show */
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+}

@@ -1,9 +1,14 @@
-import {Event2, IGeometry, IObject3D, ISceneEventMap, PickingPlugin, ThreeViewer} from "threepipe";
+import {Event2, IGeometry, IObject3D, ISceneEventMap, PickingPlugin, ThreeViewer, UiObjectConfig} from "threepipe";
 import {BPTreeComponent, TreeNodeInfo, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
+import React, {useMemo} from "react";
+import {useObjContextMenu} from "./UseObjContextMenu.tsx";
+import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
 
+interface BPGeometriesTreeComponentPropsExtras extends HandleContextMenuCallback{
+}
 
-export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends BPTreeComponent<T, IObject3D> {
+export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends BPTreeComponent<T, IObject3D, BPGeometriesTreeComponentPropsExtras> {
     declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
 
     protected _createNodeInfo(id: string, obj: T) {
@@ -63,6 +68,21 @@ export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends 
         // })
     }
 
+    protected async _onNodeContextMenu(_id:string | number, _e: React.MouseEvent<HTMLElement, MouseEvent>){
+        console.log(_id, _e)
+
+        const items: MenuItem2[] = []
+        const node = this._infoMap.get(_id)
+        if(!node) return
+        // const obj = node.nodeData!
+
+        // if(canMakeAsset(obj)){
+        //     items.push(<MakeAssetMenuItem obj={obj}/>)
+        // }
+
+        this.props.handleContextMenu?.(_e, items)
+
+    }
     // refreshSelected(){
     //     if(!this.context.viewer) this.setSelected(undefined)
     //     this.context.viewer?.doOnce('postFrame', () => {
@@ -120,4 +140,15 @@ export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends 
         super.componentWillUnmount();
     }
 
+}
+
+export function GeometryHierarchyComponent({className, root}: {className: string, root: IObject3D|null}){
+    const {handleContextMenu} = useObjContextMenu()
+    const config: UiObjectConfig = useMemo(()=>({
+        type: 'hierarchy',
+        uuid: Math.random().toString(36).substring(2, 15),
+        value: root
+    }), [root])
+
+    return <BPGeometriesTreeComponent config={config} handleContextMenu={handleContextMenu} className={className}/>
 }

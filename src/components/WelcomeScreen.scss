@@ -6,38 +6,9 @@
   margin-left: calc(-0.5 * $pt-grid-size);
   margin-right: calc(-0.5 * $pt-grid-size);
 
-  button{
-    display: flex;
-    flex-direction: column;
-    text-align: center !important;
-    border-radius: calc($pt-border-radius * 2) !important;
-    justify-content: space-between !important;
-    gap: $pt-grid-size;
-    padding: $pt-grid-size;
+  .file-item-button{
     width: 25%;
     flex: 0 1 25% !important;
-
-    > *{
-      margin-right: 0;
-    }
-
-    img {
-      width: 7rem;
-      height: 7rem;
-      object-fit: cover;
-      border-radius: calc($pt-border-radius * 2) !important;
-    }
-  }
-
-  .bp5-button-text{
-    flex-grow: 0 !important;
-    text-overflow: ellipsis !important;
-    overflow: hidden;
-    max-width: 100%;
-    display: -webkit-box;
-    -webkit-line-clamp: 2; /* number of lines to show */
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
   }
 
   .bp5-icon{

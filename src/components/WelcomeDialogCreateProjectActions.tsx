@@ -8,7 +8,7 @@ import {useSaveFile} from "./UseSaveFile.tsx";
 export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment, minimal?: boolean, outlined?: boolean}) {
     const {loadingState, updateLoading} = useLoadingState()
     const {saveFile} = useSaveFile()
-    const {openProject, loadProject} = useProjectActions()
+    const {openProject, loadProject, openProjectFolder} = useProjectActions()
     const {setWelcomeOpen} = useProject()
     const {prompt} = useDialogPrompt()
 
@@ -43,35 +43,55 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
             newName = await resolveNameConflict(newName, manager)
         }
         // await saveFile({name: newName, isNewName: true, saveTempOnly: false, closeProject: false})
-        await loadProject(newName, false)
+        await loadProject(newName)
         // setWelcomeOpen(false)
     }, [saveFile, manager, fileUrlPrompt])
 
     return <>
-        <Button
-            // icon={<Icon color={Colors.GREEN4} icon={'add'}/>}
-            icon={<Icon color={Colors.GREEN4} icon={'add'}/>}
-                text={'Create New File'}
-                minimal={props.minimal} outlined={props.outlined} alignText={props.alignText}
-                loading={loadingState['create-new']}
-                onClick={() => updateLoading('create-new', setWelcomeOpen(false ))}
-                // onClick={() => setProject('Untitled')} // todo choose between this and saveFile
+        {/*<Button*/}
+        {/*    // icon={<Icon color={Colors.GREEN4} icon={'add'}/>}*/}
+        {/*    icon={<Icon color={Colors.GREEN4} icon={'add'}/>}*/}
+        {/*        text={'New Project'}*/}
+        {/*        variant={props.minimal ? "minimal" : props.outlined ? "outlined" : "solid"} alignText={props.alignText}*/}
+        {/*        loading={loadingState['create-project']}*/}
+        {/*        onClick={() => updateLoading('create-project', openProjectFolder(true))}*/}
+        {/*        // onClick={() => setProject('Untitled')} // todo choose between this and saveFile*/}
+        {/*/>*/}
+        <Button icon={<Icon color={Colors.GREEN4} icon={'folder-open'}/>}
+                text={'Open Project'}
+                variant={props.minimal ? "minimal" : props.outlined ? "outlined" : "solid"}
+                alignText={props.alignText}
+                loading={loadingState['open-folder']}
+                onClick={() => updateLoading('open-folder', openProjectFolder())}
         />
-        <Button icon={<Icon color={Colors.GOLD3} icon={'folder-open'}/>}
-                text={'Open Existing 3D File'}
-                minimal={props.minimal} outlined={props.outlined} alignText={props.alignText}
+        <Button icon={<Icon color={Colors.GOLD3} icon={'cube-edit'}/>}
+                text={'Open 3D File'}
+                variant={props.minimal ? "minimal" : props.outlined ? "outlined" : "solid"}
+                alignText={props.alignText}
                 loading={loadingState['open-file']}
                 onClick={() => updateLoading('open-file', openProject())}
         />
+        <Button
+            // icon={<Icon color={Colors.GREEN4} icon={'add'}/>}
+            icon={<Icon color={Colors.GREEN4} icon={'cube-add'}/>}
+            text={'Create New File'}
+            variant={props.minimal ? "minimal" : props.outlined ? "outlined" : "solid"}
+            alignText={props.alignText}
+            loading={loadingState['create-new']}
+            onClick={() => updateLoading('create-new', setWelcomeOpen(false ))}
+            // onClick={() => setProject('Untitled')} // todo choose between this and saveFile
+        />
         <Button icon={<Icon color={Colors.GOLD3} icon={'link'}/>}
                 text={'Import from URL'}
-                minimal={props.minimal} outlined={props.outlined} alignText={props.alignText}
+                variant={props.minimal ? "minimal" : props.outlined ? "outlined" : "solid"}
+                alignText={props.alignText}
                 loading={loadingState['import-url']}
                 onClick={() => updateLoading('import-url', importUrl())}
         />
         <Button icon={<Icon color={Colors.RED4} icon={'rocket-slant'}/>}
                 text={'Browse Community Files'}
-                minimal={props.minimal} outlined={props.outlined} alignText={props.alignText}
+                variant={props.minimal ? "minimal" : props.outlined ? "outlined" : "solid"}
+                alignText={props.alignText}
                 rightIcon={<Icon icon={'share'} size={14}/>}
                 disabled
         />

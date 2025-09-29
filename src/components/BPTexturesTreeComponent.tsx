@@ -1,8 +1,24 @@
-import {Event2, IGeometry, IMaterial, IObject3D, ISceneEventMap, ITexture, PickingPlugin, ThreeViewer} from "threepipe";
+import {
+    Event2,
+    IGeometry,
+    IMaterial,
+    IObject3D,
+    ISceneEventMap,
+    ITexture,
+    PickingPlugin,
+    ThreeViewer,
+    UiObjectConfig
+} from "threepipe";
 import {BPTreeComponent, TreeNodeInfo, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
+import React, {useMemo} from "react";
+import {useObjContextMenu} from "./UseObjContextMenu.tsx";
+import {MenuItem2} from "./ContextMenuUtils.tsx";
 
-export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTreeComponent<T, IObject3D> {
+interface BPTexturesTreeComponentPropsExtras{
+    handleContextMenu?: (e: React.MouseEvent<HTMLElement, MouseEvent>, menuItems: MenuItem2[]) => void
+}
+export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTreeComponent<T, IObject3D, BPTexturesTreeComponentPropsExtras> {
     declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
 
     protected _createNodeInfo(id: string, obj: T) {
@@ -52,7 +68,7 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
     protected _getRootNodes(): T[] {
         // const v = this.context.methods.getRawValue(this.props.config)
         // return v?.children as any || [] // todo as any
-        const showAll = true
+        const showAll = false
         if(showAll) {
             let mats =
                 showAll ?
@@ -98,6 +114,22 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
         // })
     }
 
+    protected async _onNodeContextMenu(_id:string | number, _e: React.MouseEvent<HTMLElement, MouseEvent>){
+        console.log(_id, _e)
+
+        const items: MenuItem2[] = []
+        const node = this._infoMap.get(_id)
+        if(!node) return
+        // const obj = node.nodeData!
+
+        // if(canMakeAsset(obj)){
+        //     items.push(<MakeAssetMenuItem obj={obj}/>)
+        // }
+
+        this.props.handleContextMenu?.(_e, items)
+
+
+    }
     // refreshSelected(){
     //     if(!this.context.viewer) this.setSelected(undefined)
     //     this.context.viewer?.doOnce('postFrame', () => {
@@ -123,7 +155,7 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
             // hierarchyConfig.children![0]!.uiRefresh?.()
         }
     }
-    // @ts-expect-error remove in 0.0.60
+
     private textureUpdate = (e: Event2<'textureUpdate'|'texturesChanged', ISceneEventMap, IObject3D>) => {
         // private textureUpdate = (e: any) => {
         // if (e.refreshUi !== false && (e.change === 'name' || e.key === 'name')) {
@@ -161,4 +193,15 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
         super.componentWillUnmount();
     }
 
+}
+
+export function TextureHierarchyComponent({className, root}: {className: string, root: IObject3D|null}){
+    const {handleContextMenu} = useObjContextMenu()
+    const config: UiObjectConfig = useMemo(()=>({
+        type: 'hierarchy',
+        uuid: Math.random().toString(36).substring(2, 15),
+        value: root
+    }), [root])
+
+    return <BPTexturesTreeComponent config={config} handleContextMenu={handleContextMenu} className={className}/>
 }
