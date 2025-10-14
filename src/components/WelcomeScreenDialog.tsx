@@ -6,6 +6,7 @@ import {WelcomeDialogProjectsTab} from './WelcomeDialogProjectsTab'
 import {useManager, useProject} from '../utils/ViewerInstanceManager.ts'
 import {DropzonePlugin, getUrlQueryParam, ThreeViewer} from 'threepipe';
 import {useProjectActions} from "../utils/projectActions.tsx";
+import {getMeta} from "../utils/project.ts";
 
 const tabs = {
     'projects': {
@@ -113,7 +114,7 @@ export function WelcomeScreenDialog() {
         const projectFile = getUrlQueryParam('file') || getUrlQueryParam('f')
         if(project){
             if (welcomeOpen) setWelcomeOpen(false)
-            manager.getMeta(project).then(meta=>{
+            getMeta(project).then(async meta=>{
                 if(!meta){
                     viewer.dialog.alert(`Unable to load project: Project not found: ${project}`)
                     setWelcomeOpen(true)
@@ -124,6 +125,7 @@ export function WelcomeScreenDialog() {
                         console.error("Both 'model' and 'project' query parameters are set. Using 'project' parameter to load the project and ignoring 'model'.")
                         model = null
                     }
+                    await viewer.dialog.alert(`Load project: ${meta.path}`)
                     loadProject(meta.path, projectFile)
                     if (welcomeOpen) setWelcomeOpen(false)
                 }
@@ -132,7 +134,7 @@ export function WelcomeScreenDialog() {
             if(model && welcomeOpen) setWelcomeOpen(false)
             loadModel(model, viewer)
         }
-    }, [manager, welcomeOpen, setWelcomeOpen])
+    }, [manager, welcomeOpen])
 
     return (project || !welcomeOpen) ? null : <Overlay2
         isOpen={true}

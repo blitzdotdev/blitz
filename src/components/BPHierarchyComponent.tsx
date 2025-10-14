@@ -1,5 +1,6 @@
 import {
     Event2,
+    Group,
     IObject3D,
     ISceneEventMap,
     JSUndoManagerCommand1,
@@ -9,15 +10,18 @@ import {
     UiObjectConfig,
     UndoManagerPlugin
 } from "threepipe";
-import {TreeNodeInfo} from "@blueprintjs/core";
-import {BPTreeComponent, bpUiConfigIcons, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
+import {AppToaster, bpUiConfigIcons, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {VisibilityIcon} from "./VisibilityIcon";
-import React, {useMemo} from "react";
-import {canMakeAsset, useMakeAsset} from "../utils/ViewerInstanceManager.ts";
-import {useObjContextMenu} from "./UseObjContextMenu.tsx";
+import React, {FC, useMemo} from "react";
+import {canMakeAsset, isExternalObject, logAsset, useMakeAsset, useManager} from "../utils/ViewerInstanceManager.ts";
 import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
+import {Intent, MenuDivider} from "@blueprintjs/core";
+import {BPTreeComponent} from "./BPTreeComponent.tsx";
+import {TreeNodeInfo} from "./treeTypes.ts";
+import {Object3DGenerationMenu, useOnObjectCreate} from "./Object3DGenerationMenu.tsx";
+import {useContextMenu} from "./ContextMenuProvider.tsx";
 
-interface BPHierarchyComponentPropsExtras extends HandleContextMenuCallback{
+interface BPHierarchyComponentPropsExtras extends HandleContextMenuCallback<IObject3D>{
 }
 export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTreeComponent<T, IObject3D, BPHierarchyComponentPropsExtras> {
     declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
@@ -34,13 +38,21 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         return obj.uuid;
     }
 
-    // @ts-expect-error remove in update
     protected _updateNodeInfo(node: TreeNodeInfo<T>, obj: T) {
         node.label = obj.name ? obj.name : obj.type ? `(${obj.type})` : 'unnamed';
         if(!obj.isMesh && !obj.isLine && !obj.isPoints && !obj.isScene && !obj.isCamera && !obj.isLight)
+            // todo _sChildren
             node.childNodes = ((obj.children as T[]) || []).reduce<any[]>((...args) => this.buildData(...args), [])
         node.isSelected = this._selectedId === node.id
-        node.hasCaret = (node.childNodes?.length||0) > 0
+        const isComponent = obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
+        const isExternal = isExternalObject(obj)
+        const isGroup = obj.isGroup
+        node.droppable = !isExternal && !isComponent && isGroup
+        node.draggable = !isExternal
+        node.intent = isComponent ? Intent.WARNING : isExternal ? Intent.PRIMARY : Intent.NONE
+
+        // node.hasCaret = (node.childNodes?.length||0) > 0
+        node.icon = undefined
         if(obj.isLight){
             if((obj as any).isAmbientLight) {
                 node.icon = bpUiConfigIcons['shape-diamond-filled-mono-3']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
@@ -72,6 +84,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         if(obj.isLine){
             node.icon = 'flows'
         }
+        node.hasCaret = !node.icon
         // node.icon = 'layer-outline'
         return node;
     }
@@ -88,7 +101,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         const node = this._infoMap.get(_id)
         if(!node) return
         const value = node.isSelected ? null : node.nodeData! // unselect if already selected
-        node.nodeData!.dispatchEvent({type: 'select', value: value ?? null, object: node.nodeData!, ui: true})
+        node.nodeData!.dispatchEvent({type: 'select', value: value ?? null, object: node.nodeData!, ui: true, bubbleToParent: true})
     }
 
     protected async _onNodeDoubleClick(_id: string) {
@@ -99,7 +112,8 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
             value: node.nodeData!,
             object: node.nodeData!,
             ui: true,
-            focusCamera: true
+            focusCamera: true,
+            bubbleToParent: true,
         })
     }
 
@@ -124,8 +138,25 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
             })
         }
 
-        this.props.handleContextMenu?.(_e, items)
+        // todo use uiconfig methods to find buttons
+        obj.uiConfig?.children?.filter(c=>typeof c === 'object' && c.tags?.includes('context-menu')).map(btn=>{
+            if (!btn || typeof btn !== 'object') return;
+            const label = this.context.methods.getLabel(btn)
+            items.push({
+                props: {
+                    text: this.context.methods.getLabel(btn),
+                },
+                key: btn.key  || label,
+                action: (data, obj, e) => {
+                    this.context.methods.clickButton(btn, {args: [e]})
+                },
+                data: {}
+            })
+        })
 
+        this.props.handleContextMenu?.(_e, items, obj)
+
+        return this._onNodeClick(_id as string) // select on right click
     }
 
     protected _canDropNode(sourceNode: TreeNodeInfo<T>, _sourcePath: number[], targetNode: TreeNodeInfo<T>, _targetPath: number[], index?: number) {
@@ -259,19 +290,59 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
 
 }
 
-export function ObjectHierarchyComponent({className, root}: {className: string, root: IObject3D|null}){
-    const {makeAsset} = useMakeAsset()
-    const actions = {makeAsset: makeAsset}
+function ExtraMenuItems(props: {
+    event: React.MouseEvent<HTMLElement>,
+    object: IObject3D
+}) {
+    const obj = props.object
+    const onObjectCreate = useOnObjectCreate();
+    // todo after onObjectCreate is done, expand the current object if a child is added
 
-    const {handleContextMenu} = useObjContextMenu(actions)
+    if(!obj?.isObject3D) return null
+    const isComponent = obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
+    const isExternal = isExternalObject(obj)
+    const isGroup = obj.isGroup
+    const canCreate = !isExternal && !isComponent && isGroup
+    return canCreate && onObjectCreate ? <>
+        <MenuDivider title="Create" className={"context-menu-divider"} />
+        <Object3DGenerationMenu onGenerate={(child)=>onObjectCreate(child, obj)}/>
+    </> : null
+}
+
+export function ObjectHierarchyComponent({className}: {className: string}){
+    const manager = useManager()
+    const viewer = manager.get()
+
+    const {makeAsset} = useMakeAsset()
+    const actions = {makeAsset}
+
+    // const {handleContextMenu} = useObjContextMenu(actions, (ev)=>{
+    //     return onObjectCreate ? <>
+    //         <MenuDivider title="Create" className={"context-menu-divider"} />
+    //         <Object3DGenerationMenu onGenerate={(obj)=>onObjectCreate(obj, ev.object)}/>
+    //     </> : null
+    // })
+
+    const contextMenu = useContextMenu()
+
     const config: UiObjectConfig = useMemo(()=>({
         type: 'hierarchy',
         uuid: Math.random().toString(36).substring(2, 15),
-        value: root
-    }), [root])
+        value: viewer.scene.modelRoot,
+    }), [viewer])
 
+    // const children = [...manager?.get().scene.modelRoot.children]
 
     return <BPHierarchyComponent config={config}
-                                 handleContextMenu={handleContextMenu}
+                                 // key={viewer.scene.modelRoot.uuid}
+                                 handleContextMenu={(e, items, obj)=>{
+                                     contextMenu.handleContextMenu({
+                                         event: e,
+                                         actionItems: items,
+                                         actions: actions,
+                                         obj: obj,
+                                         Items: ExtraMenuItems,
+                                     })
+                                 }}
                                  className={className}/>
 }

@@ -1,46 +1,4 @@
-import {
-    AnimationObjectPlugin,
-    AssetExporterPlugin,
-    CameraViewPlugin,
-    CanvasSnapshotPlugin,
-    CascadedShadowsPlugin,
-    ChromaticAberrationPlugin,
-    Class,
-    ClearcoatTintPlugin,
-    ContactShadowGroundPlugin,
-    CustomBumpMapPlugin,
-    DepthBufferPlugin,
-    DropzonePlugin,
-    FilmicGrainPlugin,
-    FragmentClippingExtensionPlugin,
-    FrameFadePlugin,
-    FullScreenPlugin,
-    GBufferPlugin,
-    getOrCall,
-    GLTFAnimationPlugin,
-    GLTFKHRMaterialVariantsPlugin,
-    HDRiGroundPlugin,
-    InteractionPromptPlugin,
-    IViewerPlugin,
-    LoadingScreenPlugin,
-    MeshOptSimplifyModifierPlugin,
-    NoiseBumpMaterialPlugin,
-    NormalBufferPlugin,
-    ObjectConstraintsPlugin,
-    ParallaxMappingPlugin,
-    ProgressivePlugin,
-    RenderTargetPreviewPlugin,
-    Rhino3dmLoadPlugin,
-    SSAAPlugin,
-    SSAOPlugin,
-    ThreeViewer,
-    TonemapPlugin,
-    TransformControlsPlugin,
-    UiObjectConfig,
-    ValOrArr,
-    VignettePlugin,
-    VirtualCamerasPlugin
-} from "threepipe";
+import {Class, getOrCall, IViewerPlugin, ThreeViewer, UiObjectConfig} from "threepipe";
 import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {FC} from 'react'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
@@ -72,113 +30,128 @@ import {editorFeatures} from '../utils/EditorFeatures.ts'
 // import {BlendLoadPlugin} from "@threepipe/plugin-blend-importer";
 // import {TransfrSharePlugin} from "@threepipe/plugin-network";
 // import {TroikaTextPlugin} from "@threepipe/plugin-troika-text";
-import {EditModePlugin} from "../utils/EditModePlugin.ts";
 
-export type EditorModes = 'edit' | 'viewer' | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'import' | 'export' | 'configurators'
-const pui = (v: ThreeViewer | null, c: Class<IViewerPlugin>) => {
-    return () => v?.getPlugin(c)?.uiConfig || {}
-}
+// todo rename to settings mode
+export type EditorModes = /*'edit' | 'viewer'*/ | 'buffers' | 'postProcess' | 'animation' | 'extras' | 'import' | 'export' | 'configurators'
+// todo rename to settings mode
 export type EditorModesConfig = {
     label: string,
     icon: IconName,
+    tag: string,
     uiConfig?: (viewer: ThreeViewer) => UiObjectConfig|undefined,
-    plugins?: ValOrArr<Class<IViewerPlugin>>,
+    plugins?: Array<Class<IViewerPlugin>|string>,
     features: (keyof typeof editorFeatures)[]
 }
-
+// todo rename to settings mode
 export const editorModesList: Record<EditorModes, EditorModesConfig & {
 }> = {
-    viewer: {
-        label: 'Viewer',
-        icon: 'eye-open',
-        uiConfig: (viewer?: ThreeViewer)=>viewer?.uiConfig,
-        features: ['post-processing', 'configurators', 'damping', 'path-tracing']
-    },
-    edit: {
-        label: 'Edit Scene',
-        icon: 'edit',
-        plugins: EditModePlugin,
-        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'edit-mode']
-    },
+    // viewer: {
+    //     label: 'Viewer',
+    //     icon: 'eye-open',
+    //     uiConfig: (viewer?: ThreeViewer)=>viewer?.uiConfig,
+    //     features: ['post-processing', 'configurators', 'picking', 'damping', 'path-tracing','edit-mode']
+    // },
+    // edit: {
+    //     label: 'Edit Scene',
+    //     icon: 'edit',
+    //     plugins: EditModePlugin,
+    //     features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'edit-mode']
+    // },
     postProcess: {
         label: 'Post processing',
+        tag: 'PostProcessing',
         icon: 'clean',
         plugins: [
-            TonemapPlugin, ProgressivePlugin,
-            SSAAPlugin,
-            SSAOPlugin,
-            VignettePlugin,
-            ChromaticAberrationPlugin, FilmicGrainPlugin,
-            FrameFadePlugin
-            // TemporalAAPlugin,
-            // SSReflectionPlugin,
-            // DepthOfFieldPlugin,
-            // BloomPlugin,
-            // SSGIPlugin,
-            // SSContactShadowsPlugin, OutlinePlugin,
+            'Tonemap', 'ProgressivePlugin',
+            'SSAAPlugin',
+            'SSAOPlugin',
+            'Vignette',
+            'ChromaticAberration', 'FilmicGrain',
+            'FrameFadePlugin',
+            'TemporalAAPlugin',
+            'SSReflectionPlugin',
+            'DepthOfFieldPlugin',
+            'BloomPlugin',
+            'SSGIPlugin',
+            'SSContactShadowsPlugin',
+            'OutlinePlugin',
         ],
-        features: ['post-processing', 'damping']
+        features: ['post-processing','picking',  'damping','edit-mode']
     },
     animation: {
         label: 'Animation',
+        tag: 'Animation',
         icon: 'play',
-        plugins: [GLTFAnimationPlugin, CameraViewPlugin, AnimationObjectPlugin, ObjectConstraintsPlugin],
-        features: ['post-processing', 'damping']
+        plugins: ['GLTFAnimation', 'CameraViews', 'AnimationObjectPlugin', 'ObjectConstraintsPlugin'],
+        features: ['post-processing', 'picking', 'damping','edit-mode']
     },
     configurators: {
         label: 'Configurator',
+        tag: 'Configurator',
         icon: 'select',
         plugins: [
-            // MaterialConfiguratorPlugin, SwitchNodePlugin,
-            GLTFKHRMaterialVariantsPlugin],
-        features: ['post-processing', 'configurators', 'picking', 'damping']
+            'MaterialConfiguratorPlugin',
+            'SwitchNodePlugin',
+            'GLTFKHRMaterialVariantsPlugin',
+            'TestPlugin',
+        ],
+        features: ['post-processing', 'configurators', 'picking', 'damping','edit-mode']
     },
     import: {
         label: 'Import',
+        tag: 'Import',
         icon: 'export',
-        plugins: [DropzonePlugin, Rhino3dmLoadPlugin,
+        plugins: [
+            'Dropzone', 'Rhino3dmLoadPlugin',
             // TilesRendererPlugin, BlendLoadPlugin, B3DMLoadPlugin, CMPTLoadPlugin, DeepZoomImageLoadPlugin, I3DMLoadPlugin, PNTSLoadPlugin,
         ],
-        features: ['post-processing', 'configurators', 'damping']
+        features: ['post-processing', 'configurators', 'picking', 'damping','edit-mode']
     },
     export: {
         label: 'Export',
         icon: 'import',
-        plugins: [AssetExporterPlugin, CanvasSnapshotPlugin,
-            LoadingScreenPlugin,
-            // AssimpJsPlugin,
-            // ThreeGpuPathTracerPlugin, TransfrSharePlugin
+        tag: 'Export',
+        plugins: [
+            'AssetExporterPlugin', 'CanvasSnapshotPlugin',
+            'LoadingScreenPlugin',
+            'AssimpJsPlugin',
+            'ThreeGpuPathTracerPlugin',
+            'TransfrSharePlugin'
         ],
-        features: ['post-processing', 'configurators', 'damping', 'path-tracing']
+        features: ['post-processing', 'configurators', 'damping', 'picking', 'path-tracing','edit-mode']
     },
     extras: {
         label: 'Extras',
+        tag: 'Extras',
         icon: 'settings',
         plugins: [
-            ContactShadowGroundPlugin,
-            // AdvancedGroundPlugin,
-            InteractionPromptPlugin,
-            FullScreenPlugin,
-            VirtualCamerasPlugin, HDRiGroundPlugin, ClearcoatTintPlugin,
-            // AnisotropyPlugin,
-            ParallaxMappingPlugin, FragmentClippingExtensionPlugin, NoiseBumpMaterialPlugin,
-            CustomBumpMapPlugin, RenderTargetPreviewPlugin,
-            MeshOptSimplifyModifierPlugin,
-            TransformControlsPlugin,
-            // EnvironmentControlsPlugin, GlobeControlsPlugin,
-            // TroikaTextPlugin,
-            CascadedShadowsPlugin,
+            'ContactShadowGroundPlugin',
+            'AdvancedGroundPlugin',
+            'InteractionPromptPlugin',
+            'FullScreenPlugin',
+            'VirtualCamerasPlugin', 'HDRiGroundPlugin', 'ClearcoatTintPlugin',
+            // 'AnisotropyPlugin',
+            'ParallaxMappingPlugin', 'FragmentClippingExtensionPlugin', 'NoiseBumpMaterialPlugin',
+            'CustomBumpMapPlugin', 'RenderTargetPreviewPlugin',
+            'MeshOptSimplifyModifierPlugin',
+            'TransformControlsPlugin',
+            // 'EnvironmentControlsPlugin', 'GlobeControlsPlugin',
+            // 'TroikaTextPlugin',
+            'CascadedShadowsPlugin',
+            'PickingPlugin',
+            'CannonPhysicsPlugin',
         ],
-        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'prompts', 'damping']
+        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'prompts', 'damping','edit-mode']
     },
     buffers: {
         label: 'Buffers',
+        tag: 'Buffers',
         icon: 'grid-view',
         plugins: [
-            GBufferPlugin, DepthBufferPlugin, NormalBufferPlugin,
-            // VelocityBufferPlugin
+            'GBuffer', 'DepthBufferPlugin', 'NormalBufferPlugin',
+            'VelocityBufferPlugin'
         ],
-        features: ['post-processing', 'damping']
+        features: ['post-processing', 'picking', 'damping','edit-mode']
     },
 }
 
@@ -216,16 +189,27 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
 //     }),
 // }
 
+export function getPluginsByTag(viewer: ThreeViewer, tag: string, prefix: string): IViewerPlugin[]{
+    return Object.values(viewer.plugins).filter(p=>p.constructor.PluginTags?.includes(prefix + tag))
+}
+
+// todo rename to settings
 export const editorModesInspectorConfig =
     Object.fromEntries(Object.entries(editorModesList).map(([k, v]) => [k, (viewer: ThreeViewer | null) => (
-        getOrCall(v.uiConfig, viewer) ??
-        (!Array.isArray(v.plugins) ? pui(viewer, v.plugins!) : {
+        getOrCall(v.uiConfig, viewer) ?? {
         type: 'panel',
         label: v.label,
-        children: v.plugins.map(p => pui(viewer, p))
-    }))])) as Record<EditorModes, (v: ThreeViewer | null) => UiObjectConfig<any, 'panel'>>
+        children: [()=>{
+            // if(v.label === 'Configurator') debugger
+            const plugins = [...v.plugins?.map((p)=>viewer?.getPlugin(p))||[], ...(v.tag&&viewer ? getPluginsByTag(viewer, v.tag, 'EditorMode-') : [])].filter(Boolean)
+            const uniquePlugins = Array.from(new Set(plugins))
+            // console.warn('refresh panel', v.label, uniquePlugins)
+            return uniquePlugins.map(p => p?.uiConfig||{})
+        }]
+    })])) as Record<EditorModes, (v: ThreeViewer | null) => UiObjectConfig<any, 'panel'>>
 
 
+// todo rename to settings button group
 export const EditorModesButtonGroup: FC<{ editorMode: EditorModes, setEditorMode: (mode: EditorModes) => void }> = (
     {
         editorMode,
@@ -233,23 +217,87 @@ export const EditorModesButtonGroup: FC<{ editorMode: EditorModes, setEditorMode
     }) => {
     return (
         <div className="editorModesContainer">
-            <ButtonGroup vertical={true} style={{height: "max-content"}}>
+            <ButtonGroup vertical={false} style={{
+                width: "max-content",
+                flexWrap: "wrap",
+            }}>
                 {(Object.entries(editorModesList) as [EditorModes, EditorModesConfig][]).map(([k, v]) => (
                     <Tooltip
                         content={v.label}
                         key={k}
                         intent={Intent.PRIMARY}
-                        position={Position.LEFT}
+                        position={Position.BOTTOM}
                         usePortal={false}
                         // disabled={isPopoverOpen}
                         // openOnTargetFocus={false}
                     >
                         <Button
-                            className="bpIconButton" large={true}
+                            className="bpIconButton" size={'large'}
                             intent={editorMode === k ? Intent.PRIMARY : Intent.NONE}
                             variant={"minimal"} style={{transition: "background-color 0.25s ease-in-out"}}
                             endIcon={v.icon} active={editorMode === k} onClick={() => setEditorMode(k)}/>
 
+                    </Tooltip>
+
+                ))}
+            </ButtonGroup>
+        </div>
+    )
+}
+
+export const PlayModeButtonGroup: FC<{ isPlaying: boolean, setIsPlaying: (mode: boolean) => void }> = (
+    {
+        isPlaying,
+        setIsPlaying
+    }) => {
+    return (
+        <div className="isPlayingContainer">
+            {/*<SegmentedControl*/}
+            {/*    size={"large"}*/}
+            {/*    intent={"primary"}*/}
+            {/*    options={[*/}
+            {/*        {*/}
+            {/*            label: "Edit",*/}
+            {/*            value: "edit",*/}
+            {/*            icon: "edit",*/}
+            {/*        },*/}
+            {/*        {*/}
+            {/*            label: "Play",*/}
+            {/*            value: "play",*/}
+            {/*            icon: "play",*/}
+            {/*        },*/}
+            {/*    ]}*/}
+            {/*    defaultValue="edit"*/}
+            {/*    onValueChange={(value) => setIsPlaying(value === 'play')}*/}
+            {/*    value={isPlaying ? 'play' : 'edit'}*/}
+            {/*/>*/}
+
+            <ButtonGroup vertical={false} style={{width: "max-content"}}>
+                {([{
+                    key: 'edit',
+                    label: 'Edit',
+                    icon: 'edit' as IconName,
+                    value: false,
+                }, {
+                    key: 'play',
+                    label: 'Play',
+                    icon: 'play' as IconName,
+                    value: true,
+                }]).map((v) => (
+                    <Tooltip
+                        content={v.label}
+                        key={v.key}
+                        intent={Intent.PRIMARY}
+                        position={Position.BOTTOM}
+                        usePortal={false}
+                        // disabled={isPopoverOpen}
+                        // openOnTargetFocus={false}
+                    >
+                        <Button
+                            className="bpIconButton" size={'large'}
+                            intent={v.value === isPlaying ? Intent.PRIMARY : Intent.NONE}
+                            variant={"minimal"} style={{transition: "background-color 0.25s ease-in-out"}}
+                            endIcon={v.icon} active={isPlaying === v.value} onClick={() => setIsPlaying(v.value)}/>
                     </Tooltip>
 
                 ))}

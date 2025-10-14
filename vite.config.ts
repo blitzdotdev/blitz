@@ -7,12 +7,12 @@ import { importMapPlugin } from 'importmap-vite-plugin'
 // https://vitejs.dev/config/
 export default defineConfig({
   optimizeDeps: {
-    exclude: ['ts-browser-helpers', 'uiconfig-blueprint',  'threepipe'],
+    exclude: ['ts-browser-helpers', 'uiconfig-blueprint',  'threepipe', "three"],
   },
   build: {
     commonjsOptions: {
       exclude: process.env.NODE_ENV === 'development' ? // for the error  "default" is not exported by ... "classnames" in blueprint/icons
-          [/uiconfig-blueprint/, /ts-browser-helpers//*, /threepipe/*/] : [],
+          [/uiconfig-blueprint/, /ts-browser-helpers/, /threepipe/, /three/] : [],
     },
   },
   css: {
@@ -33,7 +33,7 @@ export default defineConfig({
   },
   server: {
     // @ts-ignore
-    https: true,
+    // https: true,
   }, // Not needed for Vite 5+
   plugins: [
       react(),
@@ -42,7 +42,7 @@ export default defineConfig({
         preventAssignment: true
       }),
 
-      basicSsl(),
+      // basicSsl(),
 
     importMapPlugin({
       imports: {

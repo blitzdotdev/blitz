@@ -1,18 +1,27 @@
-import {Event2, IMaterial, IObject3D, ISceneEventMap, PickingPlugin, ThreeViewer, UiObjectConfig} from "threepipe";
 import {
-    BPTreeComponent,
+    Event2,
+    IGeometry,
+    IMaterial,
+    IObject3D,
+    ISceneEventMap,
+    PickingPlugin,
+    ThreeViewer,
+    UiObjectConfig
+} from "threepipe";
+import {
     bpUiConfigIcons,
-    TreeNodeInfo,
     UiConfigRendererContextType
 } from 'uiconfig-blueprint/lib/esm/lib'
 import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
 import React, {useMemo} from "react";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
-import {MenuItem2} from "./ContextMenuUtils.tsx";
+import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
 import {canMakeAsset, useMakeAsset} from "../utils/ViewerInstanceManager.ts";
+import {BPTreeComponent} from "./BPTreeComponent.tsx";
+import {TreeNodeInfo} from "./treeTypes.ts";
 
-interface BPMaterialsTreeComponentPropsExtras{
-    handleContextMenu?: (e: React.MouseEvent<HTMLElement, MouseEvent>, menuItems: MenuItem2[]) => void
+interface BPMaterialsTreeComponentPropsExtras extends HandleContextMenuCallback<IMaterial>{
+
 }
 export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends BPTreeComponent<T, IObject3D, BPMaterialsTreeComponentPropsExtras> {
     declare context: UiConfigRendererContextType&{viewer: ThreeViewer}
@@ -126,7 +135,7 @@ export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends B
             })
         }
 
-        this.props.handleContextMenu?.(_e, items)
+        this.props.handleContextMenu?.(_e, items, obj)
 
     }
 
@@ -189,15 +198,15 @@ export class BPMaterialsTreeComponent<T extends IMaterial = IMaterial> extends B
 
 }
 
-export function MaterialHierarchyComponent({className, root}: {className: string, root: IObject3D|null}){
+export function MaterialHierarchyComponent({className}: {className: string}){
     const {makeAsset} = useMakeAsset()
     const actions = {makeAsset: makeAsset}
     const {handleContextMenu} = useObjContextMenu(actions)
     const config: UiObjectConfig = useMemo(()=>({
         type: 'hierarchy',
         uuid: Math.random().toString(36).substring(2, 15),
-        value: root
-    }), [root])
+        value: null
+    }), [])
 
     return <BPMaterialsTreeComponent config={config} handleContextMenu={handleContextMenu} className={className}/>
 }

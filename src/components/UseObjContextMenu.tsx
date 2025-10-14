@@ -1,10 +1,17 @@
-import React, {useCallback, useState} from "react";
-import {hideContextMenu, Menu, MenuItem, showContextMenu} from "@blueprintjs/core";
-import {MenuItem2} from "./ContextMenuUtils.tsx";
+import React, {createContext, FC, useCallback, useState} from "react";
+import {ContextMenuPopover, hideContextMenu, Menu, MenuDivider, MenuItem, showContextMenu} from "@blueprintjs/core";
+import {MenuItem2, MenuItemAction} from "./ContextMenuUtils.tsx";
+import {showSuccessErrorToast} from "../utils/Toaster.tsx";
+import {AppToaster} from "uiconfig-blueprint/lib/esm/lib";
+import {logAsset} from "../utils/ViewerInstanceManager.ts";
+import {useSafeContext} from "../utils/useSafeContext.ts";
 
 // todo rename to use custom context menu
-export function useObjContextMenu(actions: Record<string, (data?: any) => void> = {}) {
-    const [_isOpen, setIsOpen] = useState(false);
+export function useObjContextMenu(actions: Record<string, MenuItemAction> = {}, Items?: FC<{
+    event: React.MouseEvent<HTMLElement>,
+    object: any
+}>) {
+    const [isOpen, setIsOpen] = useState(false);
 
     const handleClose = useCallback(() => {
         setIsOpen(false);
@@ -48,19 +55,139 @@ export function useObjContextMenu(actions: Record<string, (data?: any) => void> 
         },
         [handleClose],
     );
-    const handleContextMenu1 = (event: React.MouseEvent<HTMLElement>, menuItems: MenuItem2[])=>{
+    const handleContextMenu1 = (event: React.MouseEvent<HTMLElement>, menuItems: MenuItem2[], obj: any)=>{
+
+        if(window.location.origin === 'http://localhost:5173' && menuItems){
+            menuItems.push({
+                props: {
+                    text: 'Log in Console',
+                },
+                key: 'logAsset',
+                action: 'logAsset',
+                data: {}
+            })
+        }
+
         if(!menuItems || menuItems.length === 0) return
-        const rc = menuItems.map((m, i)=><MenuItem {...m.props} key={m.key || i} onClick={(e)=>{
-            const action = m.action as keyof typeof actions
-            if(action && actions[action]){
-                actions[action](m.data)
+
+        const defActions = {logAsset}
+        const rc = menuItems.map((m, i)=><MenuItem {...m.props} key={m.key || i} onClick={async (e)=>{
+            const action = m.action
+            const actionFunc = typeof action === 'string' ? actions[action as keyof typeof actions] || defActions[action as keyof typeof defActions] : action
+            if(actionFunc){
+                let res
+                try {
+                    res = actionFunc === m.action ? m.action(m.data, obj, e): actionFunc(m.data, obj, e)
+                    if(res && typeof res.then === 'function'){
+                        res = await res
+                    }
+                }catch (e) {
+                    res = {error: (e as Error).message || e + ''}
+                    throw e
+                }
+                if(res && (res.error || res.warn)){
+                    AppToaster().show({
+                        message: res.error || res.warn,
+                        intent: res.error ? 'danger' : 'warning',
+                        icon: res.error ? 'error' : 'warning-sign',
+                        timeout: 2000,
+                        isCloseButtonShown: true,
+                    });
+                    console.error(res)
+                }
             }
             m.props?.onClick && m.props.onClick(e)
         }}/>)
-        handleContextMenu(event, <Menu>{rc}</Menu>)
+        handleContextMenu(event, <Menu>
+            <MenuDivider title="Actions" className={"context-menu-divider"} />
+            {rc}
+            {Items ? <Items event={event} object={obj}/> : null}
+        </Menu>)
     }
 
     return {
         handleContextMenu: handleContextMenu1
     }
 }
+
+// export function ContextMenuProvider(actions: Record<string, MenuItemAction> = {}) {
+//     const [isOpen, setIsOpen] = useState(false);
+//
+//     const handleClose = useCallback(() => {
+//         setIsOpen(false);
+//         hideContextMenu();
+//     }, []);
+//
+//     const handleContextMenu = useCallback(
+//         (event: React.MouseEvent<HTMLElement>, menu: React.JSX.Element) => {
+//             // ensure `preventDefault` is called just before `showContextMenu` and in the same event handler to prevent the
+//             // default browser context menu from hiding your custom context menu
+//             event.preventDefault();
+//             showContextMenu({
+//                 content: menu,
+//                 onClose: handleClose,
+//                 targetOffset: {
+//                     left: event.clientX,
+//                     top: event.clientY,
+//                 },
+//             });
+//             setIsOpen(true);
+//         },
+//         [handleClose],
+//     );
+//     const handleContextMenu1 = (event: React.MouseEvent<HTMLElement>, menuItems: MenuItem2[], obj: any)=>{
+//
+//         if(window.location.origin === 'http://localhost:5173' && menuItems){
+//             menuItems.push({
+//                 props: {
+//                     text: 'Log in Console',
+//                 },
+//                 key: 'logAsset',
+//                 action: 'logAsset',
+//                 data: {}
+//             })
+//         }
+//
+//         if(!menuItems || menuItems.length === 0) return
+//
+//         const defActions = {logAsset}
+//         const rc = menuItems.map((m, i)=><MenuItem {...m.props} key={m.key || i} onClick={async (e)=>{
+//             const action = m.action
+//             const actionFunc = typeof action === 'string' ? actions[action as keyof typeof actions] || defActions[action as keyof typeof defActions] : action
+//             if(actionFunc){
+//                 let res
+//                 try {
+//                     res = actionFunc === m.action ? m.action(m.data, obj, e): actionFunc(m.data, obj, e)
+//                     if(res && typeof res.then === 'function'){
+//                         res = await res
+//                     }
+//                 }catch (e) {
+//                     res = {error: (e as Error).message || e + ''}
+//                     throw e
+//                 }
+//                 if(res && (res.error || res.warn)){
+//                     AppToaster().show({
+//                         message: res.error || res.warn,
+//                         intent: res.error ? 'danger' : 'warning',
+//                         icon: res.error ? 'error' : 'warning-sign',
+//                         timeout: 2000,
+//                         isCloseButtonShown: true,
+//                     });
+//                     console.error(res)
+//                 }
+//             }
+//             m.props?.onClick && m.props.onClick(e)
+//         }}/>)
+//         handleContextMenu(event, <Menu>
+//             <MenuDivider title="Actions" className={"context-menu-divider"} />
+//             {rc}
+//             {Items ? <Items event={event} object={obj}/> : null}
+//         </Menu>)
+//     }
+//
+//     // return {
+//     //     handleContextMenu: handleContextMenu1
+//     // }
+//
+//     return <ContextMenuPopover isOpen={isOpen} content={content} targetOffset={offset}/>
+// }

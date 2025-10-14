@@ -14,6 +14,7 @@ import {
 import {BPFileComponent, BPFileComponentState} from 'uiconfig-blueprint/lib/esm/lib'
 import {Spinner} from "@blueprintjs/core";
 import {CSSProperties} from "react";
+import {assetUrlPrefix} from "../utils/project.ts";
 
 type TextureType = ITexture&ImportResultExtras
 
@@ -30,8 +31,7 @@ type BPTextureFileComponentProps = {
     fileLoader: ThreeViewer
 }
 
-export class BPTextureFileComponent<T extends TextureType = TextureType, TP = {}> extends BPFileComponent<T, BPTextureFileComponentProps & TP> {
-
+export class BPTextureFileComponent<T extends TextureType = TextureType, TP = {}> extends BPFileComponent<T, BPTextureFileComponentProps & TP, ITexture> {
     // todo types
     constructor(props: any, context: any) {
         super(props, context);
@@ -44,7 +44,8 @@ export class BPTextureFileComponent<T extends TextureType = TextureType, TP = {}
         const hasPicker = !!(this.context.AssetPicker || this.props.AssetPicker)
         if (val) {
             if(val.uuid && hasPicker){
-                value = 'texture://' + val.uuid
+                // value = 'texture://' + val.uuid
+                value = val
                 mode = 'asset'
             }
             else if (val.userData) {
@@ -77,6 +78,24 @@ export class BPTextureFileComponent<T extends TextureType = TextureType, TP = {}
                     console.error('BPTextureFileComponent: texture with uuid not found in scene:', uuid)
                     return null
                 }
+            }else {
+                console.error('BPTextureFileComponent: Viewer not mounted yet')
+                return null
+            }
+        }
+        // this is not req anymore, since we are loading tex in RefSelectionObjectComponentTex
+        if(typeof value === 'string' && value?.startsWith(assetUrlPrefix)){
+            const path = value.substring(assetUrlPrefix.length)
+            const viewer = this.context.fileLoader as ThreeViewer
+            if(viewer){
+                // todo load texture and clone it. also set asset id/file id
+                // const tex = viewer.object3dManager.getTextures().find(t=>t.uuid === uuid)
+                // const tex = viewer.object3dManager.getTextures().find(t=>t.uuid === uuid)
+                // if(tex) return tex as any
+                // else {
+                //     console.error('BPTextureFileComponent: texture with uuid not found in scene:', uuid)
+                //     return null
+                // }
             }else {
                 console.error('BPTextureFileComponent: Viewer not mounted yet')
                 return null
@@ -131,10 +150,10 @@ export function TexturePreview({
 
 // copied for now, todo refactor
 // https://github.com/repalash/threepipe/blob/fd88dc852f39e8744ed51427b38dd84490d848de/plugins/tweakpane/src/tpImageInputGenerator.ts#L25
-const staticData = {
+export const staticData = {
     placeholderVal: 'placeholder',
     renderTarImage: makeTextSvg('Render Target'),
-    renderTarImage2: '...',
+    loadingImage: '...',
     dataTexImage: makeTextSvg('Data Texture'),
     lutCubeTexImage: makeTextSvg('CUBE Texture'),
     compressedTexImage: makeTextSvg('Compressed Texture'),
@@ -170,7 +189,7 @@ export function refreshTexturePreview(cc: TextureType|null|undefined, viewer: Th
 
                         refresh && refresh(dataUrl)
                     }, 100)
-                    cc.tp_src = staticData.renderTarImage2
+                    cc.tp_src = staticData.loadingImage
                     // }
                     // config._lastRtRefresh = Date.now()
                 }

@@ -1,9 +1,10 @@
 import {ThreeEditorComponent} from './components/ThreeEditorComponent.tsx'
 import {ManagerProvider, ProjectProvider} from './utils/ViewerInstanceManager.ts'
-import {DialogComponent, DialogProvider, VisualStyleProvider} from 'uiconfig-blueprint/lib/esm/lib'
+import {AppToasterOverlay, DialogComponent, DialogProvider, VisualStyleProvider} from 'uiconfig-blueprint/lib/esm/lib'
 import {WelcomeScreenDialog} from './components/WelcomeScreenDialog.tsx'
 import {BlueprintProvider} from "@blueprintjs/core";
 import {AssetsProvider} from "./utils/AssetsProvider.ts";
+import {ContextMenuProvider} from "./components/ContextMenuProvider.tsx";
 // import Split from "react-split";
 // import {InspectorStackComponent} from 'uiconfig-blueprint/lib/esm/lib'
 
@@ -16,15 +17,18 @@ function App() {
         <VisualStyleProvider>
         <DialogProvider>
         <ProjectProvider>
-        <AssetsProvider>
         <ManagerProvider>
+        <AssetsProvider>
+        <ContextMenuProvider>
             <>
                 <ThreeEditorComponent />
                 <WelcomeScreenDialog/>
                 <DialogComponent/>
+                <AppToasterOverlay/>
             </>
-        </ManagerProvider>
+        </ContextMenuProvider>
         </AssetsProvider>
+        </ManagerProvider>
         </ProjectProvider>
         </DialogProvider>
         </VisualStyleProvider>

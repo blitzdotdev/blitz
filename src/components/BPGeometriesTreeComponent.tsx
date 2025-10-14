@@ -1,11 +1,13 @@
 import {Event2, IGeometry, IObject3D, ISceneEventMap, PickingPlugin, ThreeViewer, UiObjectConfig} from "threepipe";
-import {BPTreeComponent, TreeNodeInfo, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
+import {UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
 import React, {useMemo} from "react";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
 import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
+import {BPTreeComponent} from "./BPTreeComponent.tsx";
+import {TreeNodeInfo} from "./treeTypes.ts";
 
-interface BPGeometriesTreeComponentPropsExtras extends HandleContextMenuCallback{
+interface BPGeometriesTreeComponentPropsExtras extends HandleContextMenuCallback<IGeometry>{
 }
 
 export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends BPTreeComponent<T, IObject3D, BPGeometriesTreeComponentPropsExtras> {
@@ -74,13 +76,13 @@ export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends 
         const items: MenuItem2[] = []
         const node = this._infoMap.get(_id)
         if(!node) return
-        // const obj = node.nodeData!
+        const obj = node.nodeData!
 
         // if(canMakeAsset(obj)){
         //     items.push(<MakeAssetMenuItem obj={obj}/>)
         // }
 
-        this.props.handleContextMenu?.(_e, items)
+        this.props.handleContextMenu?.(_e, items, obj)
 
     }
     // refreshSelected(){
@@ -142,13 +144,13 @@ export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends 
 
 }
 
-export function GeometryHierarchyComponent({className, root}: {className: string, root: IObject3D|null}){
+export function GeometryHierarchyComponent({className}: {className: string}){
     const {handleContextMenu} = useObjContextMenu()
     const config: UiObjectConfig = useMemo(()=>({
         type: 'hierarchy',
         uuid: Math.random().toString(36).substring(2, 15),
-        value: root
-    }), [root])
+        value: null
+    }), [])
 
     return <BPGeometriesTreeComponent config={config} handleContextMenu={handleContextMenu} className={className}/>
 }

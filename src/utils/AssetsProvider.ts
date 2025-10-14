@@ -1,13 +1,15 @@
 import {useSafeContext} from "./useSafeContext.ts";
-import {createContext, createElement, useState} from "react";
-import {SelectionObject, UiObjectConfig} from "threepipe";
-import {SavedSceneFile} from "./ViewerInstanceManager.ts";
+import {createContext, createElement, useEffect, useMemo, useState} from "react";
+import {PickingPlugin, SelectionObject, UiObjectConfig} from "threepipe";
+import {useManager, useProject} from "./ViewerInstanceManager.ts";
 
-export type SelectedInspectorItem = (SelectionObject | {
+export type SelectedInspectorItem = (Exclude<SelectionObject, null> | {
     name: string
+    uuid: string
     uiConfig?: UiObjectConfig,
     userData?: Record<string, any>
-})[]
+})
+export type SelectedInspectorItems = SelectedInspectorItem[]
 
 export type FileManifestEntry = {
     path: string
@@ -85,18 +87,35 @@ export function getFileByPath(path: string, entries: FileManifestEntry[]): FileM
 }
 
 function useSetupAssets() {
-    const [selectedInspectorItem, setSelectedInspectorItem] = useState<SelectedInspectorItem>([])
+    const [selectedInspectorItems, setSelectedInspectorItems] = useState<SelectedInspectorItems>([])
     const [selectedFiles, setSelectedFiles] = useState<FileManifestEntry[]>([])
     const [fileManifest, setFileManifest] = useState<FileManifestEntry[]>([])
+    const [currentPath, setCurrentPath] = useState<string>('/')
+    const {project} = useProject()
 
-    const canRenderInspector = selectedInspectorItem.length || selectedFiles.length
-    // const inspectorItem = selectedFiles.length === 1 ? selectedFiles[0] : selectedInspectorItem.length === 1 ? selectedInspectorItem[0] : null
+    const refreshManifest = useMemo(() => {
+        let lastCall = 0;
+        return async (force = false) => {
+            const now = Date.now();
+            if (project?.handle?.kind === "directory" && (force || (now - lastCall >= 3000))) {
+                lastCall = now;
+                return directoryToManifest(project.handle).then(f=>{
+                    setFileManifest(f)
+                    return f
+                })
+            }
+        };
+    }, [project]);
+
+    // const inspectorItem = selectedFiles.length === 1 ? selectedFiles[0] : selectedInspectorItems.length === 1 ? selectedInspectorItems[0] : null
 
     return {
-        selectedInspectorItem, setSelectedInspectorItem,
+        selectedInspectorItems, setSelectedInspectorItems,
         selectedFiles, setSelectedFiles,
-        canRenderInspector,
-        fileManifest, setFileManifest
+        // canRenderInspector,
+        currentPath, setCurrentPath,
+        fileManifest, setFileManifest,
+        refreshManifest
     }
 }
 
@@ -105,5 +124,49 @@ export const useAssets = () => useSafeContext(AssetsContext)
 
 export function AssetsProvider({children}: { children: any }) {
     const value = useSetupAssets()
+    const manager = useManager()
+
+    const {setSelectedInspectorItems, setSelectedFiles, fileManifest} = value
+    // console.log('fileManifest', fileManifest)
+    useEffect(()=>{
+        const picking = manager.get()?.getPlugin(PickingPlugin)
+        const onSelectedChanged = ()=>{
+            const sel = picking?.getSelectedObject()
+            // console.log('selected object changed', sel)
+            setSelectedInspectorItems(prev=>{
+                // debugger
+                // console.log('2selected object changed', sel, prev)
+                if(!sel && !prev.length) return prev
+                const curr = prev.length === 1 ? prev[0] : null
+                if(curr === sel) return prev
+                // if(Array.isArray(sel)){
+                //     if(prev.length === sel.length && sel.every(s=>prev.includes(s))) return prev
+                //     return sel
+                // }
+                // console.log('setting', sel ? [sel] : [])
+                return sel ? [sel] : prev.length ? []: prev
+            })
+            // if(!sel) setSelectedFiles(p=>p.length ? [] : p) // if nothing is selected, clear selected files also
+
+            // if sel is an asset itself, find the file and select it also, otherwise clear selected files
+            // if(sel && /*sel?._isTpAsset &&*/ sel.userData.tpAssetId && sel.userData.rootPath?.startsWith('asset://') && fileManifest){
+            //     const file = getFileByPath(sel.userData.rootPath.replace('asset://', ''), fileManifest)
+            //     setSelectedFiles(f=>{
+            //         // console.log('sel change 1')
+            //         if(file && !f.includes(file)) return [file]
+            //         return f.length ? [] : f
+            //     })
+            // }else{
+            //     // console.log('sel change 2')
+            //     setSelectedFiles(p=>p.length ? [] : p)
+            // }
+        }
+        picking?.addEventListener('selectedObjectChanged', onSelectedChanged)
+        return ()=>{
+            picking?.removeEventListener('selectedObjectChanged', onSelectedChanged)
+        }
+    }, [manager, fileManifest])
+
+
     return createElement(AssetsContext.Provider, {value}, children)
 }

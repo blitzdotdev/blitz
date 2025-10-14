@@ -140,6 +140,17 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
         return ui
     }
 
+    removePluginUi<T extends IViewerPlugin>(plugin: T|Class<T>): void {
+        const p = (plugin as Class<IViewerPlugin>).prototype ? this._viewer?.getPlugin<T>(plugin as Class<T>) : plugin as T
+        if (!p) {
+            console.warn('plugin not found:', plugin)
+            return
+        }
+        const i = this._plugins.indexOf(p)
+        if (i !== -1) this._plugins.splice(i, 1)
+        if (p.uiConfig) this.removeChild(p.uiConfig)
+    }
+
     refreshPluginsEnabled() {
         this._plugins.forEach(p=>{
             const config = p.uiConfig

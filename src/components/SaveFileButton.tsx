@@ -3,6 +3,7 @@ import {Button, Classes, Menu, MenuItem, Popover} from '@blueprintjs/core'
 import {useCloseWithoutSave, useSaveFile} from "./UseSaveFile.tsx";
 import {useManager, useProject} from "../utils/ViewerInstanceManager.ts";
 import {useProjectActions} from "../utils/projectActions.tsx";
+import {useEffect, useState} from "react";
 
 export function SaveFileButton() {
     const {loadingState, updateLoading} = useLoadingState()
@@ -48,14 +49,32 @@ export function SaveFileButton() {
 }
 
 
+export function useFileNeedsSave(){
+    const manager = useManager()
+    const [fileNeedsSave, setFileNeedsSave] = useState(manager.loadedNeedsSave)
+    useEffect(()=>{
+        const l = ()=>{
+            // console.log(manager.loadedNeedsSave)
+            setFileNeedsSave(manager.loadedNeedsSave)
+        }
+        manager.addEventListener('loadedNeedsSaveChange', l)
+        return ()=>{
+            manager.removeEventListener('loadedNeedsSaveChange', l)
+        }
+    }, [manager])
+    return [fileNeedsSave, setFileNeedsSave]
+}
+
 export function SaveProjectButton() {
     const {loadingState, updateLoading} = useLoadingState()
     const {closeProject} = useCloseWithoutSave()
-    const {projectFile, project, fileNeedsSave} = useProject()
+    const {project} = useProject()
     const {saveProjectFile, loadProject} = useProjectActions()
     const manager = useManager()
 
-    return !projectFile || !project || projectFile !== manager.loadedProjectFile ? null : <>
+    const [fileNeedsSave] = useFileNeedsSave()
+
+    return !manager.loadedProjectFile || !project ? null : <>
         {manager.loadedScene &&
             <Button
                     variant={"minimal"} size={"small"}

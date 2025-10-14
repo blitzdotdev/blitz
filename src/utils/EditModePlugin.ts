@@ -1,22 +1,29 @@
 import {
     AViewerPluginSync,
+    Box3B,
     Color,
+    getFittingDistance,
     glsl,
     GridHelper,
-    onChange, OrthographicCamera2, PerspectiveCamera2,
+    onChange,
+    OrbitControls3,
+    OrthographicCamera2,
+    PerspectiveCamera2,
     PickingPlugin,
     serialize,
     ShaderMaterial,
     ThreeViewer,
     uiColor,
     Vector2,
+    Vector3,
     Vector4,
 } from "threepipe";
 
+// just for edit mode settings and basic stuff, dont put project running state here.
 export class EditModePlugin extends AViewerPluginSync{
     public static readonly PluginType = 'EditModePlugin';
 
-    // todo disable this plugin when the scene is being exported. use some asset exporter hook
+    // todo disable this plugin when the scene config is being imported. use some hook
     @onChange('setDirty')
     enabled = true
 
@@ -41,7 +48,7 @@ export class EditModePlugin extends AViewerPluginSync{
         this.grid.visible = false
         // this.grid.material.transparent = true
         // this.grid.material.opacity = 1
-        console.log(this.grid.material)
+        // console.log(this.grid.material)
         // @ts-ignore
         this.grid.isWidget = true;
 //         this.grid.material.onBeforeCompile = (shader) => {
@@ -68,11 +75,13 @@ export class EditModePlugin extends AViewerPluginSync{
         this.cameraPerspective.target.set(0,0,0)
         this.cameraPerspective.userData.disableWidgets = true
         this.cameraPerspective.autoNearFar = false
+        this.cameraPerspective.autoAspect = true
         this.cameraOrtho.position.set(0,0,10)
         this.cameraOrtho.target.set(0,0,0)
         this.cameraOrtho.frustumSize = 10
         this.cameraOrtho.userData.disableWidgets = true
         this.cameraOrtho.autoNearFar = false
+        this.cameraOrtho.autoAspect = true
     }
 
     onAdded(viewer: ThreeViewer) {
@@ -133,7 +142,6 @@ export class EditModePlugin extends AViewerPluginSync{
                     this.cameraOrtho.position.copy(this.cameraPerspective.position)
                     this.cameraOrtho.target.copy(this.cameraPerspective.target)
                 }
-                cam.autoAspect = true
                 cam.activateMain()
             }
         }
@@ -148,6 +156,20 @@ export class EditModePlugin extends AViewerPluginSync{
     private _settings: any = {}
 
     private _settingsSet = false
+
+    fitView(){
+        if(!this._viewer) return
+        const camera = this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho
+        const bbox = new Box3B().expandByObject(this._viewer.scene.modelRoot, false, true)
+        const cameraZ = getFittingDistance(camera, bbox)
+        const target = bbox.getCenter(new Vector3()) // world position
+        // await this.animateToTarget(, center, duration, ease)
+        // const direction = camera.getWorldDirection(new Vector3())
+        const direction = new Vector3(0,0,-1)
+        camera.target.copy(target)
+        camera.position.copy(direction.multiplyScalar(-cameraZ * 1.5).add(camera.target))
+        camera.setDirty({change: 'position'})
+    }
 
     onEnable(){
         if(!this._viewer) return
@@ -167,6 +189,8 @@ export class EditModePlugin extends AViewerPluginSync{
         this._viewer.canvas.style.cursor = 'default' // todo prevent orbit controls etc from overriding it.
         this._settings.sceneMainCamera = this._viewer.scene.mainCamera
         ;(this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho).activateMain()
+        ;(this.cameraPerspective.controls as OrbitControls3).enableDamping = false
+        ;(this.cameraOrtho.controls as OrbitControls3).enableDamping = false
     }
 
     onDisable(){
@@ -188,9 +212,14 @@ export class EditModePlugin extends AViewerPluginSync{
         delete this._settings.viewerCursorStyle
         this._settings.sceneMainCamera.activateMain()
         delete this._settings.sceneMainCamera
+
+        const controls = this._viewer.scene.mainCamera.controls as OrbitControls3
+        controls.stopDamping() // just in case
     }
 
     toggleGrid = (_current: boolean, next: boolean)=>{
+        if(!this._viewer) return next
+        if(_current === next) return next
         this.grid.visible = next
         // @ts-ignore
         this.grid.setDirty()
@@ -198,6 +227,7 @@ export class EditModePlugin extends AViewerPluginSync{
     }
     toggleBackgroundColor = (_current: boolean, next: boolean)=>{
         if(!this._viewer) return next
+        if(_current === next) return next
         if(!next){
             this._viewer.scene.setBackgroundColor(this.backgroundColor)
         } else {
@@ -207,6 +237,7 @@ export class EditModePlugin extends AViewerPluginSync{
         return next
     }
     toggleCameraMode = (_current: boolean, next: boolean)=>{
+        if(_current === next) return next
         this.cameraMode = next ? 'orthographic' : 'perspective'
         this.setDirty()
         return next

@@ -1,9 +1,9 @@
 import {AppToaster, useDialogPrompt} from "uiconfig-blueprint/lib/esm/lib";
-import {SavedSceneFile, useManager, useProject} from "../utils/ViewerInstanceManager.ts";
+import {useManager, useProject} from "../utils/ViewerInstanceManager.ts";
 import {useProjectActions} from "../utils/projectActions.tsx";
 import {useCallback} from "react";
-import {useDialog} from "../../../uiconfig-blueprint/src/components/DialogContext.tsx";
 import {Button, Intent} from "@blueprintjs/core";
+import {getMeta, SavedSceneFile} from "../utils/project.ts";
 
 export function useSaveFile() {
     const {prompt} = useDialogPrompt()
@@ -19,7 +19,7 @@ export function useSaveFile() {
         value: project?.path || 'My File',
         // onClose: ()=>{console.log('close'); return true},
         onSubmit: async (value) => {
-            const meta = await manager.getMeta(value)
+            const meta = await getMeta(value)
             console.log(value, meta)
             if (meta) return {error: 'Filename already exists'}
             return !meta;
@@ -41,7 +41,7 @@ export function useSaveFile() {
         value: name,
         // onClose: ()=>{console.log('close'); return true},
         onSubmit: async (value) => {
-            const meta = await manager.getMeta(value)
+            const meta = await getMeta(value)
             return !meta;
         },
     }), [prompt, manager])
@@ -125,7 +125,7 @@ export function useCloseWithoutSave() {
 }
 
 export function useSaveBeforeClose() {
-    // const {open, close} = useDialog() // todo this is not working, use prompt
+    // const {open, close} = useDialog()
     const {prompt, close} = useDialogPrompt()
     const saveBeforeClose = ()=>{
         return new Promise<boolean|null>((resolve)=>{

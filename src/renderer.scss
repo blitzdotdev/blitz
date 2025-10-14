@@ -1,5 +1,7 @@
 @import 'uiconfig-blueprint/src/renderer';
-@import "./components/WelcomeScreen";
+@import 'components/tree2';
+@import "components/BPTreeComponent";
+@import "components/WelcomeScreen";
 @import "components/EditorModesButtonGroup";
 @import "components/InteractionControlsButtonGroup";
 
@@ -13,41 +15,47 @@ body{
 
 .editorSplitContainer {
   display: flex;
-  height: calc(100% - var(--pt-navbar-height));
+  //height: calc(100% - var(--pt-navbar-height));
+  flex: 1 1 auto;
 
-  .gutter {
-    background: var(--light-gray4);
-    transition: var(--background-color-transition);
-    flex-shrink: 0;
-  }
+  //.gutter {
+  //  background: var(--light-gray4);
+  //  transition: var(--background-color-transition);
+  //  flex-shrink: 0;
+  //}
+  //
+  //.gutter:hover {
+  //  background: var(--light-gray1);
+  //}
+  //
+  //.gutter-horizontal {
+  //  cursor: ew-resize;
+  //}
+  //
+  //.gutter-vertical {
+  //  cursor: ns-resize;
+  //}
 
-  .gutter:hover {
-    background: var(--light-gray1);
-  }
-
-  .gutter-horizontal {
-    cursor: ew-resize;
-  }
-
-  .gutter-vertical {
-    cursor: ns-resize;
-  }
-
-  .bp5-card{
-    transition: var(--background-color-transition);
-    background: var(--light-gray4);
-  }
+  transition: var(--background-color-transition);
+  background: var(--light-gray4);
+  //.bp5-card{
+  //  background: transparent;
+  //}
 
   .bp5-dark & {
-    .gutter {
-      background: var(--dark-gray1);
-    }
-    .gutter:hover {
-      background: var(--dark-gray4);
-    }
-    .bp5-card{
-      background: var(--dark-gray1);
-    }
+    //.gutter {
+    //  background: var(--dark-gray1);
+    //}
+    //.gutter:hover {
+    //  background: var(--dark-gray4);
+    //}
+    //.bp5-card{
+    //}
+    background: var(--dark-gray1);
+  }
+
+  .bpInspectorCard{
+    background: transparent;
   }
 }
 
@@ -83,7 +91,7 @@ body{
 //  }
 //}
 
-.editor-left-tabs{
+.window-panels-tabs{
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -122,7 +130,7 @@ body{
     top: unset !important;
 }
 
-.editor-left-tabs{
+.window-panels-tabs{
   .bp5-tab-list{
     overflow-x: auto;
     -ms-overflow-style: none;  /* Internet Explorer 10+ */
@@ -214,4 +222,14 @@ body{
     -webkit-box-orient: vertical;
   }
 
+}
+
+// used in useObjContextMenu
+.context-menu-divider{
+  margin: 0;
+  padding-top: 2px;
+  .bp5-heading {
+    font-size: 11px;
+    padding-top: 0;
+  }
 }

@@ -37,8 +37,9 @@ export class ImportMapsManager{
                 console.warn(`Import map for ${dep.key} exists in default imports, skipping.`)
                 return
             }
+            externals.push(...Object.keys(this.addedImports))
             let url = dep.url || `https://esm.sh/${dep.key}@${dep.version}`
-            if(externals.length) url += `?external=${externals.join(',')}` // todo do we need to add addedImports to externals?
+            if(externals.length) url += `?external=${externals.join(',')}`
             imports[dep.key] = url
             this.addedImports[dep.key] = {...dep, url}
         }

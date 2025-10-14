@@ -1,5 +1,5 @@
-import {AViewerPlugin, AViewerPluginSync, Class, ThreeViewer, UiObjectConfig} from "threepipe";
-import {IViewerPlugin} from "../../../threepipe/src";
+import {AViewerPlugin, AViewerPluginSync, Class, IViewerPlugin, ThreeViewer, UiObjectConfig} from "threepipe";
+
 // import {TweakpaneEditorPlugin} from "../../../threepipe/plugins/tweakpane-editor/src";
 
 export class SandboxPlugin extends AViewerPluginSync {

@@ -3,8 +3,9 @@ import {WelcomeDialogCreateProjectActions} from './WelcomeDialogCreateProjectAct
 import {WelcomeDialogEmptyProjectState} from './WelcomeDialogEmptyProjectState'
 import {useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
 import {useEffect, useState} from 'react'
-import {SavedSceneFileMeta, useManager} from '../utils/ViewerInstanceManager.ts'
+import {useManager} from '../utils/ViewerInstanceManager.ts'
 import {useProjectActions} from '../utils/projectActions.tsx'
+import {SavedSceneFileMeta} from "../utils/project.ts";
 
 export function WelcomeDialogProjectsTab() {
     const [projects, setProjects] = useState<SavedSceneFileMeta[]>([])

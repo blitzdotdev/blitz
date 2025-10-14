@@ -1,10 +1,12 @@
 import {Button, ButtonGroup, Intent, Menu, Popover, Tooltip} from "@blueprintjs/core";
 import {FC, useCallback, useEffect, useReducer} from 'react'
-import {bpUiConfigIcons} from 'uiconfig-blueprint/lib/esm/lib'
+import {AppToaster, bpUiConfigIcons} from 'uiconfig-blueprint/lib/esm/lib'
 import {useManager} from '../utils/ViewerInstanceManager.ts'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
-import {Object3DGenerationMenu} from './Object3DGenerationMenu.tsx'
+import {Object3DGenerationMenu, useOnObjectCreate} from './Object3DGenerationMenu.tsx'
 import {EditModePlugin} from "../utils/EditModePlugin.ts";
+import {IObject3D} from "threepipe";
+import {useListenProperty} from "./UseListenProperty.tsx";
 
 type SetKeys = 'transform-controls' | 'post-processing' | 'widgets' | 'grid' | 'backgroundColor' | 'cameraMode'
 
@@ -37,6 +39,8 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
             // set('cameraMode', false)
         }
     }, [])
+
+    const onObjectCreate = useOnObjectCreate();
 
     return (
         <div className="interactionControlsButtonContainer">
@@ -109,13 +113,13 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                         intent={!states['cameraMode'][0] ? Intent.PRIMARY : Intent.SUCCESS}
                         icon={'camera'} active={states['cameraMode'][0]} onClick={() => states['cameraMode'][1](!states['cameraMode'][0])}/>
                 </Tooltip>
-                <Popover
+                {!!onObjectCreate && <Popover
                     targetTagName={"div"}
                     interactionKind={'hover'}
                     position={"bottom"}
                     content={
                         <Menu >
-                            <Object3DGenerationMenu/>
+                            <Object3DGenerationMenu onGenerate={onObjectCreate}/>
                         </Menu>
                     } >
                     <Button
@@ -123,7 +127,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                         variant={"minimal"} size={"large"}
                         intent={!false ? Intent.PRIMARY : Intent.SUCCESS}
                         icon={'add'} active={false}/>
-                </Popover>
+                </Popover>}
             </ButtonGroup>
         </div>
     )
