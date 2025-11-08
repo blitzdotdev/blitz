@@ -16,7 +16,7 @@ import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
 import React, {useMemo} from "react";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
 import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
-import {canMakeAsset, useMakeAsset} from "../utils/ViewerInstanceManager.ts";
+import {canMakeAsset, useMakeAsset, useManager} from "../utils/ViewerInstanceManager.ts";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
 
@@ -207,6 +207,10 @@ export function MaterialHierarchyComponent({className}: {className: string}){
         uuid: Math.random().toString(36).substring(2, 15),
         value: null
     }), [])
+    const manager = useManager()
+    const viewer = manager.get()
 
-    return <BPMaterialsTreeComponent config={config} handleContextMenu={handleContextMenu} className={className}/>
+    return <BPMaterialsTreeComponent
+        key={viewer.scene.modelRoot.uuid} // this is required because viewer can be destroyed and recreated
+        config={config} handleContextMenu={handleContextMenu} className={className}/>
 }

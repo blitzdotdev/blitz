@@ -8,7 +8,7 @@ import {getMeta, SavedSceneFile} from "../utils/project.ts";
 export function useSaveFile() {
     const {prompt} = useDialogPrompt()
     const {project} = useProject()
-    const {loadProject} = useProjectActions()
+    const {loadProject1} = useProjectActions()
     const manager = useManager()
     const fileNamePrompt = useCallback(async () => await prompt({
         title: 'File name',
@@ -33,18 +33,20 @@ export function useSaveFile() {
         value: 'yes',
         showInput: false,
     }), [prompt, manager])
-    const fileNameExistsPrompt2 = useCallback((name: string, ext: string) => prompt({
-        title: 'File name already exists',
-        message: 'A file with the name "' + name + '.' + ext + '" already exists. Please enter a different name.',
-        closeButtonText: 'Cancel',
-        submitButtonText: 'Save',
-        value: name,
-        // onClose: ()=>{console.log('close'); return true},
-        onSubmit: async (value) => {
-            const meta = await getMeta(value)
-            return !meta;
-        },
-    }), [prompt, manager])
+    const fileNameExistsPrompt2 = useCallback((name: string, ext: string) => {
+        return prompt({
+            title: 'File name already exists',
+            message: 'A file with the name "' + name + '.' + ext + '" already exists. Please enter a different name.',
+            closeButtonText: 'Cancel',
+            submitButtonText: 'Save',
+            value: name,
+            // onClose: ()=>{console.log('close'); return true},
+            onSubmit: async (value) => {
+                const meta = await getMeta(value)
+                return !meta;
+            },
+        });
+    }, [prompt, manager])
     const saveFile = useCallback(async ({name, isNewName, saveTempOnly, closeProject}: {
         name?: string,
         isNewName?: boolean,
@@ -67,7 +69,7 @@ export function useSaveFile() {
             }
         }
         if (!name) {
-            console.error('cannot save without name')
+            // console.error('cannot save without name')
             return
         }
         const res = await manager.saveSceneAdHoc(name, async (n: string, e: string) => {
@@ -98,15 +100,16 @@ export function useSaveFile() {
                 isCloseButtonShown: true,
             });
 
-            await loadProject(closeProject ? null : meta1)
+            await loadProject1(closeProject ? null : meta1)
         }
-    }, [project, loadProject, manager, fileNamePrompt])
+    }, [project, loadProject1, manager, fileNamePrompt])
     return {fileNamePrompt, saveFile}
 }
 
 export function useCloseWithoutSave() {
     const {prompt} = useDialogPrompt()
-    const {loadProject} = useProjectActions()
+    const {loadProject1} = useProjectActions()
+    const manager = useManager()
     const closeWithoutSave = useCallback(async () => await prompt({
         title: 'Close without saving',
         message: 'Are you sure you want to close the project without saving?',
@@ -118,9 +121,10 @@ export function useCloseWithoutSave() {
     const closeProject = useCallback(async () => {
         const res = await closeWithoutSave()
         if (res) {
-            await loadProject(null)
+            manager.loadedNeedsSave = false
+            await loadProject1(null)
         }
-    }, [closeWithoutSave, loadProject])
+    }, [closeWithoutSave, loadProject1])
     return {closeProject, closeWithoutSave}
 }
 

@@ -30,12 +30,12 @@ export class ImportMapsManager{
         for (const dep of deps) {
             if(this.addedImports[dep.key]) {
                 console.error(`Import map for ${dep.key} already exists, skipping.`, dep, this.addedImports[dep.key])
-                return
+                continue
             }
             const externals = Object.keys(this.defaultImports)
             if(externals.includes(dep.key)) {
                 console.warn(`Import map for ${dep.key} exists in default imports, skipping.`)
-                return
+                continue
             }
             externals.push(...Object.keys(this.addedImports))
             let url = dep.url || `https://esm.sh/${dep.key}@${dep.version}`

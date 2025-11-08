@@ -1,14 +1,15 @@
-import {useCallback, useEffect, useReducer, useRef, useState} from 'react';
+import {useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState} from 'react';
 import {isPackageProject, useManager, useProject, ViewerProps} from '../utils/ViewerInstanceManager.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {
+    BPComponentProps,
     ConfigObjectGenerators,
     InspectorStackComponent,
     ThemeSettingsMenuComponent,
     UiConfigRendererContext,
     useConfigToStackItem,
 } from 'uiconfig-blueprint/lib/esm/lib'
-import {ImportResult, ThreeViewer, UiObjectConfig} from 'threepipe';
+import {getOrCall, ThreeViewer, TypedClass, TypedType, TypeSystem, UiObjectConfig} from 'threepipe';
 import {EditorModes, EditorModesButtonGroup, editorModesInspectorConfig, PlayModeButtonGroup} from './EditorModes.tsx'
 import {Alignment, Button, Card, IconName, Navbar, Panel, PanelStack2, Popover} from '@blueprintjs/core'
 import {BPHierarchyComponent, ObjectHierarchyComponent} from './BPHierarchyComponent.tsx'
@@ -18,19 +19,60 @@ import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
 import {BPMaterialsTreeComponent, MaterialHierarchyComponent} from "./BPMaterialsTreeComponent.tsx";
 import {BPTexturesTreeComponent, TextureHierarchyComponent} from "./BPTexturesTreeComponent.tsx";
 import {GeometryHierarchyComponent} from "./BPGeometriesTreeComponent.tsx";
-import {FilesPanel} from "./FilesPanel.tsx";
-import {
-    InspectorPanelComponent,
-    InspectorPanelProps,
-    InsSectionItem,
-    InsSectionTitle
-} from "./InspectorPanelComponent.tsx";
-import {iconForSelectionObject} from "./RefSelectionObjectComponent.tsx";
+import {ExternalFilesPanel, FilesPanel} from "./FilesPanel.tsx";
+import {InspectorPanelComponent, InspectorPanelProps} from "./InspectorPanelComponent.tsx";
 import {MaybeElement} from "@blueprintjs/core/src/common/props";
 import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
-import {assetUrlPrefix} from "../utils/project.ts";
 import {BPTreeFolderComponent} from "./BPTreeFolderComponent.tsx";
+import {iconForSelectionObject} from "../utils/icons.tsx";
+import {MemoryTab} from "./MemoryTab.tsx";
+import {objToSelectItemRef, RefSelectionObjectComponent, SelectItemRef} from "./RefSelectionObjectComponent.tsx";
+import {assetUrlPrefix} from "../utils/project.ts";
 
+
+export function RefUiConfigComponent(props: BPComponentProps<any>){
+    const uiConfigRenderer = useContext(UiConfigRendererContext)
+    const manager = useManager()
+    const classTypes = props.config.classTypes as Array<TypedClass> ?? []
+    const currentValue = uiConfigRenderer.methods.getValue(props.config, undefined)
+    const currentValueRef = useMemo(()=>{
+        const currentValueType = TypeSystem.GetType(currentValue, false)
+        const currentValueClass = currentValueType ? TypeSystem.GetClass(currentValueType) : undefined
+        return objToSelectItemRef(currentValueType, currentValueClass, currentValue);
+    }, [currentValue])
+    return <RefSelectionObjectComponent
+        object={currentValueRef}
+        objectType={classTypes}
+        label={uiConfigRenderer.methods.getLabel(props.config)}
+        allowNone={props.config.allowNull ?? false}
+        disabled={getOrCall(props.disabled ?? props.config.disabled??false) ?? false}
+        onChange={async (selected, e)=>{
+            console.log(selected)
+            let val: any = undefined
+            if(selected === null){
+                if(props.config.allowNull){
+                    val = null
+                }else {
+                    console.warn('Null selection not allowed here')
+                    return
+                }
+            }else if('cls' in selected) { // SelectItemRef
+                val = selected.item
+            }else if('entry' in selected){
+                const entry = selected.entry
+                if(!entry) return
+                const value = await manager.getAssetFromPath(assetUrlPrefix + entry.path)
+                val = value
+            }
+            if(val === undefined) return
+            console.log(props.config)
+            await uiConfigRenderer.methods.setValue(props.config, val, {last: true})
+        }}
+    ></RefSelectionObjectComponent>
+}
+
+// @ts-ignore
+ConfigObjectGenerators.reference = RefUiConfigComponent
 ConfigObjectGenerators.image = BPTextureFileComponent
 
 const editorLeftTabs = {
@@ -44,12 +86,12 @@ ConfigObjectGenerators.materials = BPMaterialsTreeComponent
 ConfigObjectGenerators.textures = BPTexturesTreeComponent
 ConfigObjectGenerators.tree = BPTreeFolderComponent
 
-export function ThreeEditorComponent(props: Partial<ViewerProps>) {
+export function ThreeEditorComponent() {
     const [viewer, setViewer] = useState<ThreeViewer | null>(null)
     // const uiConfigRenderer = viewer.getPlugin(BlueprintJsUiPlugin2)!
     const [uiConfigRenderer, setUiConfigRenderer] = useState<BlueprintJsUiPlugin2 | null>(null)
     const manager = useManager()
-    const { project} = useProject()
+    const { project } = useProject()
 
     // const [splitSizes, setSplitSizes] = useState([0, 100, 0])
 
@@ -93,7 +135,7 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
         const conf = editorModesInspectorConfig[mode](viewer)
         setInsConfig(conf)
         if(mode === currentMode) return mode
-        manager.features.refresh(mode)
+        // manager.features.refresh(mode)
         return mode
     }, 'import')
 
@@ -107,16 +149,16 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
             // todo load default scene settings first like empty env etc
             // pms = projectFile ? manager.loadProjectFile(project, projectFile) : null
         } else {
-            v = manager.reset(props)
+            v = manager.get()
             // file should only be files saved from this editor with scene settings.
-            pms = project?.file ? v.load(project.file, {}) : null
+            // pms = project?.file ? v.load(project.file, {}) : null
         }
         setViewer(v)
 
-        pms?.then((res)=>{
-            console.log(res)
-            console.log('Loaded file/scene')
-        })
+        // pms?.then((res)=>{
+        //     console.log(res)
+        //     console.log('Loaded file/scene')
+        // })
 
         const p = v.getPlugin(BlueprintJsUiPlugin2)!
         setUiConfigRenderer(p)
@@ -138,7 +180,7 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
         //     value: v.scene.modelRoot
         // })
         // setModelRoot(v.scene.modelRoot)
-        manager.features.refresh(editorMode)
+        // manager.features.refresh(editorMode)
         return () => {
             // setViewer(null)
             // setUiConfigRenderer(null)
@@ -148,7 +190,7 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
             // manager.loadProject(null)
             // manager.loadScene(null) // todo
         }
-    }, [manager, ...Object.values(props), project?.file])
+    }, [manager, project?.file])
 
     // useEffect(() => {
     //     manager.features.refresh(editorMode)
@@ -177,7 +219,19 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
             >
                 <Navbar key={project?.path ?? 'navbar'}>
                     <Navbar.Group align={Alignment.START}>
-                        <Navbar.Heading>3D Editor</Navbar.Heading>
+                        <svg width="352" height="605" className={"main-nav-logo"} viewBox="0 0 352 605" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M143.088 394.344C131.422 421.844 118.288 480.144 159.088 493.344C210.088 509.844 234.588 431.344 282.588 459.344C320.988 481.744 298.588 536.844 282.588 562.344" stroke="#1B3976" strokeWidth="14" strokeLinecap="round"/>
+                            <path d="M325.567 546.446L290.583 547.343C289.917 547.343 287.884 546.343 285.083 542.344C281.583 537.345 269.584 521.843 265.584 519.843C263.532 518.817 260.686 519.107 258.336 519.71C256.161 520.269 254.471 521.873 253.366 523.827C248.602 532.245 241.437 546.034 241.083 551.343C240.683 557.343 244.583 558.843 246.583 558.843H278.091C278.751 558.843 279.409 558.772 280.065 558.706C282.013 558.51 284.746 558.656 285.083 560.343C285.583 562.843 306.583 584.843 311.083 587.343C313.55 588.714 317.098 587.814 319.891 586.576C322.05 585.619 323.513 583.647 324.306 581.423C327.687 571.934 332.876 557.172 333.583 554.343C334.016 552.613 333.298 550.804 332.285 549.298C330.836 547.145 328.161 546.379 325.567 546.446Z" fill="#E7312C"/>
+                            <path d="M289.586 549.344C281.086 572.344 241.586 603.344 218.586 596.844" stroke="#E7312C" strokeWidth="14" strokeLinecap="round"/>
+                            <path d="M170.586 157.844C166.086 183.346 147.362 327.027 141.695 398.527C144.854 398.913 148.181 397.944 150.704 395.487L347.25 204.003C349.175 202.129 350.279 199.699 350.523 197.189C299.879 183.331 204.958 159.339 170.586 157.844Z" fill="#1F62C2"/>
+                            <path d="M208.426 0.763269C198.093 36.9288 176.086 118.846 170.586 157.844C204.958 159.339 299.879 183.331 350.523 197.189C350.776 194.583 350.102 191.889 348.458 189.637L213.281 4.5138C212.001 2.7609 210.303 1.49957 208.426 0.763269Z" fill="#4F99E6"/>
+                            <path d="M0.262264 158.337C45.1729 156.925 141.823 154.463 170.586 157.844C176.086 118.846 198.093 36.9288 208.426 0.763269C204.932 -0.607625 200.819 -0.158474 197.633 2.32675L3.08065 154.059C1.65078 155.174 0.693794 156.69 0.262264 158.337Z" fill="#266CCB"/>
+                            <path d="M141.695 398.527C147.362 327.027 166.086 183.346 170.586 157.844C141.823 154.463 45.1729 156.925 0.262264 158.337C-0.256772 160.318 -0.01564 162.488 1.07713 164.375L133.508 393.119C135.335 396.275 138.424 398.127 141.695 398.527Z" fill="#154FA9"/>
+                        </svg>
+                        <Navbar.Heading>
+                            Kite 3D
+                        </Navbar.Heading>
+                        {project && (<>
                         <Navbar.Divider/>
                         {/*<H5 style={{margin: "0"}}>{project}</H5>*/}
                         {/*<H6 style={{margin: "0"}}>{scene}</H6>*/}
@@ -185,10 +239,13 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
                         {/*<Button variant={"minimal"} size={"small"} icon="home" text="Home"/>*/}
                         {/*<Button variant={"minimal"} size={"small"} icon="document" text="Files"/>*/}
                         <Navbar.Divider/>
+                        </>)}
                     </Navbar.Group>
+                    {project && (
                     <Navbar.Group align={Alignment.START}>
                         {isPackageProject(project) ? <SaveProjectButton/> : <SaveFileButton /> }
                     </Navbar.Group>
+                    )}
                     <Navbar.Group align={Alignment.END}>
                         <PlayModeButtonGroup key="playmode" {...{isPlaying, setIsPlaying}} />
                         <Navbar.Divider/>
@@ -221,7 +278,8 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
                                 <div className={"editorCanvasContainer"} key={"editorCanvasContainer"} ref={canvasContainer}></div>
                                 {!isPlaying && <InteractionControlsButtonGroup key="interaction-controls" /> }
                             </>}],
-                        bottom: [{title: 'Files', content: <FilesPanel />}],
+                        bottom: isPackageProject(manager.loadedProject) ? [{title: 'Files', content: <FilesPanel />},
+                            {title: 'Library', content: <ExternalFilesPanel />}]: null,
                         right: [
                             {
                                 title: 'Inspector',
@@ -262,84 +320,6 @@ export function ThreeEditorComponent(props: Partial<ViewerProps>) {
         </UiConfigRendererContext.Provider>
     );
 
-}
-
-export function MemoryTab({
-    className,
-}:{
-    className?: string
-}){
-    const manager = useManager()
-    const tracker = manager.get().assetManager.tracker
-
-    // todo move all assetRegistry stuff to one manager
-    // const assets = manager.get().assetManager.assetRegistry
-    const [assetList, setAssetList] = useState({...tracker.registry})
-    useEffect(()=>{
-        const onAsset = ()=>{
-            setAssetList({...tracker.registry})
-        }
-        tracker.addEventListener('registryChanged', onAsset)
-        return ()=>{
-            tracker.removeEventListener('registryChanged', onAsset)
-        }
-    }, [tracker])
-
-    return <Card className={"bpInspectorCard " + className||''} style={{borderRadius: 0}}>
-
-        <InsSectionTitle title={"Asset Registry"}/>
-        {Object.entries(assetList).map(([path, asset])=>
-            <AssetRegistryItem key={path} path={path} asset={asset}/>
-        )}
-        {Object.keys(assetList).length === 0 &&
-            <InsSectionItem
-                text={'No assets loaded'}
-                icon={'info-sign'}
-            />
-        }
-
-    </Card>
-}
-
-export function AssetRegistryItem({
-    path,
-    asset,
-}:{
-    path: string
-    asset: {
-        pms: Promise<ImportResult|undefined>
-    }
-}){
-    const [assetData, setAssetData] = useState<any>(null)
-    const manager = useManager()
-    useEffect(()=>{
-        let mounted = true
-        asset.pms.then((res)=>{
-            if(mounted) setAssetData(res)
-        })
-        return ()=>{
-            mounted = false
-        }
-    })
-    const path2 = path.startsWith(assetUrlPrefix) ? path.slice(assetUrlPrefix.length) : path
-    // return <div> {path} {assetData?.uuid || ''} </div>
-    return <InsSectionItem
-        text={path2.split('/').pop() || path2}
-        icon={iconForSelectionObject(assetData) || 'circle'}
-        info={{text: path2, icon: 'link'}}
-        buttons={[{
-            text: 'Unload Asset',
-            key: 'unload',
-            icon: 'trash',
-            intent: 'warning',
-            onClick: async ()=>{
-                manager.unloadAsset(asset)
-            }
-        }]}
-    />
-    // return <RefSelectionObjectComponent object={assetData} disabled={true} allowNone={false}
-    //                                     canSelect={true}
-    //                                     />
 }
 
 // function getStackItem(){
@@ -412,13 +392,14 @@ export function NavProjectFileName(){
     const { project} = useProject()
     const manager = useManager()
 
-    const projectIcon: IconName = project && isPackageProject(project) ? 'folder-close' : 'cubes'
+    const pkgProject = project && isPackageProject(project)
+    const projectIcon: IconName = pkgProject ? 'folder-close' : 'cubes'
     const fileIcon: IconName|MaybeElement = !!manager.loadedScene ? 'cubes' : !!manager.loadedAssetObj ? iconForSelectionObject(manager.loadedAssetObj) : 'document'
 
     const [fileNeedsSave] = useFileNeedsSave()
     if(!project) return null
     return <>
-        {project && <Button variant={"minimal"} size={"small"} icon={projectIcon} text={project.path}/>}
-        {manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.glb$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
+        {project && <Button variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>}
+        {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.glb$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
     </>
 }

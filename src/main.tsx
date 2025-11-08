@@ -3,7 +3,7 @@ import reportWebVitals from './reportWebVitals';
 import {FocusStyleManager} from "@blueprintjs/core";
 import App from './App.tsx'
 import {createRoot} from 'react-dom/client'
-import {StrictMode} from 'react'
+// import {StrictMode} from 'react'
 import importMap from 'virtual:importmap'
 
 // todo wont work in firefox? https://github.com/remorses/importmap-vite-plugin/issues/1

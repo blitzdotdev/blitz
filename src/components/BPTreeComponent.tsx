@@ -1,6 +1,6 @@
 import {Tree2} from "./Tree2.tsx";
 import {BPComponent, BPComponentProps, BPComponentState, UiConfigRendererContextType} from "uiconfig-blueprint/lib/esm/lib";
-import {TreeNodeInfo} from "@blueprintjs/core";
+import {TreeNodeInfo} from ".//treeTypes.ts";
 import React from "react";
 
 export type BPTreeComponentState<T = {}> = BPComponentState & {
@@ -88,6 +88,12 @@ export abstract class BPTreeComponent<T = {}, TConfigVal extends any /*|Primitiv
     protected async _onNodeContextMenu(_id: string | number, _e: React.MouseEvent<HTMLElement, MouseEvent>) {
     }
 
+    protected async _onNodeMouseEnter(_id: string | number, _e: React.MouseEvent<HTMLElement, MouseEvent>) {
+    }
+
+    protected async _onNodeMouseLeave(_id: string | number, _e: React.MouseEvent<HTMLElement, MouseEvent>) {
+    }
+
     protected buildData(data: TreeNodeInfo<T>[], obj: T, _?: any, _2?: any) {
         if (!obj) return data
         const id = this._getNodeId(obj)
@@ -101,13 +107,12 @@ export abstract class BPTreeComponent<T = {}, TConfigVal extends any /*|Primitiv
 
     getUpdatedState(_state: BPTreeComponentState<T>): BPTreeComponentState<T> {
         if (!this._infoMap) this._infoMap = new Map()
+        else this._infoMap.clear()
         const children = this._getRootNodes()
         const nodes = children.map(c => {
             return this.buildData([], c)[0]
         }).filter(v => v)
-        return super.getUpdatedState({
-            nodes
-        })
+        return super.getUpdatedState({nodes})
     }
 
     deselectAll() {
@@ -205,6 +210,21 @@ export abstract class BPTreeComponent<T = {}, TConfigVal extends any /*|Primitiv
         return
     }
 
+    protected _onNodeDragStart(node: TreeNodeInfo<T>, _path: NodePath, _e: React.DragEvent<HTMLElement>) {
+    }
+
+    protected _onNodeDragOver(node: TreeNodeInfo<T>, _path: NodePath, _e: React.DragEvent<HTMLElement>, _index?: number) {
+    }
+
+    protected _onNodeDragEnd(node: TreeNodeInfo<T>, _path: NodePath, _e: React.DragEvent<HTMLElement>) {
+    }
+
+    protected _onNodeDragEnter(node: TreeNodeInfo<T>, _path: NodePath, _e: React.DragEvent<HTMLElement>, _index?: number) {
+    }
+
+    protected _onNodeDragLeave(node: TreeNodeInfo<T>, _path: NodePath, _e: React.DragEvent<HTMLElement>, _index?: number) {
+    }
+
     render() {
         const TreeT = Tree2.ofType<T>()
         return !this.state.hidden ? (
@@ -238,8 +258,28 @@ export abstract class BPTreeComponent<T = {}, TConfigVal extends any /*|Primitiv
                 onNodeContextMenu={(node, _path, _e) => {
                     this._onNodeContextMenu(node.id, _e)
                 }}
+                onNodeMouseEnter={(node, path, e) => {
+                    this._onNodeMouseEnter(node.id, e)
+                }}
+                onNodeMouseLeave={(node, path, e) => {
+                    this._onNodeMouseLeave(node.id, e)
+                }}
+                onNodeDragStart={(node, path, e) => {
+                    this._onNodeDragStart(node, path, e)
+                }}
+                onNodeDragOver={(node, path, e, index) => {
+                    this._onNodeDragOver(node, path, e, index)
+                }}
+                onNodeDragEnd={(node, path, e) => {
+                    this._onNodeDragEnd(node, path, e)
+                }}
+                onNodeDragEnter={(node, path, e, index) => {
+                    this._onNodeDragEnter(node, path, e, index)
+                }}
+                onNodeDragLeave={(node, path, e, index) => {
+                    this._onNodeDragLeave(node, path, e, index)
+                }}
             /></div>
         ) : null
     }
 }
-

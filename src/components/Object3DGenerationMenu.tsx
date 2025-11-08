@@ -1,9 +1,8 @@
-import {AppToaster, bpUiConfigIcons, UiConfigRendererContext} from 'uiconfig-blueprint/lib/esm/lib'
+import {bpUiConfigIcons, UiConfigRendererContext} from 'uiconfig-blueprint/lib/esm/lib'
 import {useManager} from '../utils/ViewerInstanceManager.ts'
 import {IObject3D, Object3DGeneratorPlugin} from 'threepipe'
 import React, {useCallback, useContext, useMemo} from 'react'
 import {IconName, MenuItem} from '@blueprintjs/core'
-import {useListenProperty} from "./UseListenProperty.tsx";
 
 const extraUiData: {
     [key: string]: {
@@ -11,6 +10,10 @@ const extraUiData: {
         icon?: IconName | React.JSX.Element
     }
 } = {
+    'geometry': {
+        label: 'Primitives',
+        icon: 'shapes',
+    },
     'object': {
         label: 'Object',
         icon: 'new-object',
@@ -22,10 +25,6 @@ const extraUiData: {
     'light': {
         label: 'Light',
         icon: 'lightbulb',
-    },
-    'geometry': {
-        label: 'Primitives',
-        icon: 'shapes',
     },
     'troika': {
         label: 'Text (2D)',
@@ -162,52 +161,3 @@ export function Object3DGenerationMenu({onGenerate}: {onGenerate?: (obj: IObject
     </>
 }
 
-export function useOnObjectCreate() {
-    const manager = useManager()
-    // this is needed to rerender react
-    const loadedProjectFile = useListenProperty(manager, 'loadedProjectFile', 'loadedProjectFileChange')
-    const onObjectCreate = ((manager.loadedAssetObj as IObject3D)?.isObject3D || manager.loadedScene || !loadedProjectFile) ? (obj: IObject3D, root?: IObject3D) => {
-        const scene = manager.get().scene
-        if(!scene || !obj) return undefined
-        if (manager.loadedAssetObj) {
-            if ((manager.loadedAssetObj as IObject3D)?.isObject3D) {
-                if(root){
-                    let p = root
-                    while(p && p !== scene.modelRoot && p !== manager.loadedAssetObj){
-                        p = p.parent as IObject3D
-                    }
-                    if(p !== manager.loadedAssetObj){
-                        AppToaster().show({
-                            message: 'The selected root is not part of the loaded asset',
-                            intent: 'warning',
-                            icon: 'warning-sign',
-                            timeout: 2000,
-                            isCloseButtonShown: true,
-                        });
-                    }else {
-                        root.add(obj)
-                    }
-                }else {
-                    (manager.loadedAssetObj as IObject3D).add(obj)
-                }
-            } else {
-                AppToaster().show({
-                    message: 'Cannot create a new object in this file',
-                    intent: 'warning',
-                    icon: 'warning-sign',
-                    timeout: 2000,
-                    isCloseButtonShown: true,
-                });
-            }
-        } else if (manager.loadedScene || !loadedProjectFile) {
-            if(root && root !== scene.modelRoot)
-                root.add(obj)
-            else
-                scene.addObject(obj)
-        }
-
-        obj?.parent && obj.dispatchEvent({type: 'select', value: obj, object: obj, ui: true})
-        return obj?.parent
-    } : null
-    return onObjectCreate;
-}

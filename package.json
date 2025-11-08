@@ -16,7 +16,7 @@
     "@threepipe/plugin-blend-importer": "^0.1.0",
     "@threepipe/plugin-configurator": "^0.2.3",
     "@threepipe/plugin-gaussian-splatting": "^0.2.5",
-    "@threepipe/plugin-geometry-generator": "^0.6.2",
+    "@threepipe/plugin-geometry-generator": "^0.6.3",
     "@threepipe/plugin-gltf-transform": "^0.2.2",
     "@threepipe/plugin-network": "^0.1.5",
     "@threepipe/plugin-path-tracing": "^0.1.4",

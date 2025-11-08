@@ -1,13 +1,24 @@
-import {IGeometry, IMaterial, IObject3D, ITexture, PickingPlugin, SelectionObject, toTitleCase} from "threepipe";
+import {
+    IGeometry,
+    IMaterial,
+    IObject3D,
+    ITexture,
+    PickingPlugin,
+    ReferenceManager,
+    SelectionObject,
+    toTitleCase,
+    TypedClass,
+    TypedType,
+    TypeSystem
+} from "threepipe";
 import {ItemPredicate, ItemRenderer, Select} from "@blueprintjs/select";
-import {Button, ButtonGroup, Icon, MenuItem} from "@blueprintjs/core";
-import type {IconName} from "@blueprintjs/icons";
-import {MaybeElement} from "@blueprintjs/core/src/common/props.ts";
+import {Button, ButtonGroup, Icon, IconName, MaybeElement, MenuItem} from "@blueprintjs/core";
 import {CSSProperties, ReactNode, useMemo, useRef} from "react";
 import {SelectFileRef, SelObjectType, useManager, useProject} from "../utils/ViewerInstanceManager.ts";
 import {FileComponentProps, FormGroupComponent, InputGroup2} from "uiconfig-blueprint/lib/esm/lib";
 import {FileManifestEntry, SelectedInspectorItem, traverseFiles, useAssets} from "../utils/AssetsProvider.ts";
 import {assetUrlPrefix, settingsKey} from "../utils/project.ts";
+import {iconForSelectionObject, iconForSelectionObjectType} from "../utils/icons.tsx";
 
 type FilterItem = SelectedInspectorItem|SelectFileRef
 
@@ -26,29 +37,12 @@ const renderFilterItem: ItemRenderer<FilterItem> = (item, { handleClick, handleF
             roleStructure="listoption"
             text={item.name || 'Unnamed'}
             style={{fontSize: 'var(--pt-font-size-small)', paddingLeft: '5px'}}
-            icon={<Icon size={12} icon={(item as SelectFileRef).entry?.path ? 'document' : 'link'}/>}
+            icon={<Icon size={12} icon={
+                item === noneSelItem || item.userData?.isPlaceholder ? 'cross' :
+                (item as SelectFileRef).entry?.path ? 'document' : iconForSelectionObject(item)}/>}
         />
     );
 };
-
-export function iconForSelectionObject(object?: SelectedInspectorItem|SelectFileRef|null): IconName | MaybeElement{
-    const type = objectToType(object)
-    return iconForSelectionObjectType(type)
-}
-
-export function iconForSelectionObjectType(type: SelObjectType|'image'|'script'): IconName | MaybeElement{
-    switch(type){
-        case 'none': return 'circle'
-        case 'object': return 'cube'
-        case 'material': return 'style'
-        case 'texture': return 'image-rotate-left'
-        case 'image': return 'image-rotate-right'
-        case 'geometry': return 'grid-view'
-        case 'plugin': return 'document-code'
-        case 'script': return 'code'
-        default: return 'help'
-    }
-}
 
 const filterSelItems: ItemPredicate<FilterItem> = (query, object, _index, exactMatch) => {
     const normalizedName = object.name.toLowerCase();
@@ -63,13 +57,20 @@ const filterSelItems: ItemPredicate<FilterItem> = (query, object, _index, exactM
 
 const noneSelItem = {uuid: 'none', name: 'None'}
 
-
+export type SelectItemRef = {
+    uuid: string
+    name: string
+    item: any
+    type: TypedType,
+    cls: TypedClass,
+    icon: IconName | MaybeElement
+}
 type RefSelectionObjectComponentProps = {
-    object: SelectedInspectorItem|SelectFileRef|null,
-    extraItems?: (SelectedInspectorItem|SelectFileRef)[],
-    objectType?: SelObjectType|'image'|'script',
+    object: SelectedInspectorItem|SelectFileRef|SelectItemRef|null,
+    extraItems?: (SelectedInspectorItem|SelectFileRef|SelectItemRef)[],
+    objectType?: SelObjectType|'image'|'script'|(TypedClass[]),
     disabled: boolean, allowNone: boolean,
-    onChange?: (selected: SelectedInspectorItem|SelectFileRef|null, e: any) => void
+    onChange?: (selected: SelectedInspectorItem|SelectFileRef|SelectItemRef|null, e: any) => void
     className?: string, style?: CSSProperties
     children?: ReactNode|ReactNode[]
     /**
@@ -105,11 +106,13 @@ export function RefSelectionObjectComponentInput(props: RefSelectionObjectCompon
     const inputGroupRef = useRef<InputGroup2>(null)
     inputGroupRef.current
 
-    const selectItems: (SelectedInspectorItem|SelectFileRef)[] = []
+    const isPlaceholder = !!(object as any)?.userData?.isPlaceholder
+
+    const selectItems: (SelectedInspectorItem|SelectFileRef|SelectItemRef)[] = []
     if(props.allowNone){
-        selectItems.push(noneSelItem)
+        selectItems.push(isPlaceholder && object ? object : noneSelItem)
     }
-    if(object){
+    if(object && !isPlaceholder){
         selectItems.push(object)
     }
     if(props.extraItems){
@@ -125,7 +128,7 @@ export function RefSelectionObjectComponentInput(props: RefSelectionObjectCompon
         // 'geometry': ['.glb', '.gltf', '.obj', '.fbx', '.ply', '.stl', '.geom.json'],
         // 'object': ['.glb', '.gltf', '.obj', '.fbx', '.ply', '.stl', '.geom.json'],
     }
-    function pathToSelctFileRef(e: FileManifestEntry, type: SelectFileRef['type']){
+    function pathToSelectFileRef(e: FileManifestEntry, type: SelectFileRef['type']){
         return {
             name: (e.path.split('/').pop() || e.path),
             uuid: e.path,
@@ -136,19 +139,40 @@ export function RefSelectionObjectComponentInput(props: RefSelectionObjectCompon
     }
     const manifestFilesByType = useMemo(() => {
         const objType = props.objectType
-        const fileType = objType === 'texture' ? 'image' : objType
-        if (!fileType || !typesExts[fileType]) return {};
+        // if(typeof objType !== 'string') return {} // todo find json files with that class type
+        const fileType =typeof objType !== 'string' ? null : objType === 'texture' ? 'image' : objType
+        // if (!fileType || !typesExts[fileType]) return {};
 
         // const pluginE = new Set<string>();
-        const filesByType: Partial<Record<SelObjectType|'image'|'script', SelectFileRef[]>> = {}
+        const filesByType: Map<SelObjectType|'image'|'script'|TypedClass, SelectFileRef[]> = new Map()
         traverseFiles((e) => {
             if(e.path.startsWith('.'+settingsKey+'/')) return
             // if (e.path.match(/\.plugin\.(ts|js)$/)) pluginE.add(e.path);
-            const exts = typesExts[fileType]
-            if(exts?.some(ext => e.path.endsWith(ext))) {
-                if(!filesByType[fileType]) filesByType[fileType] = []
-                if(!filesByType[fileType].find(f=>f.uuid === e.path || f.entry === e))
-                    filesByType[fileType].push(pathToSelctFileRef(e, fileType))
+            const exts = fileType ? typesExts[fileType] : null
+            if(fileType && exts?.some(ext => e.path.endsWith(ext))) {
+                let l = filesByType.get(fileType)
+                if(!l){
+                    l = []
+                    filesByType.set(fileType, l)
+                }
+                if(!l.find(f=>f.uuid === e.path || f.entry === e))
+                    l.push(pathToSelectFileRef(e, fileType))
+            }else if(Array.isArray(props.objectType)){
+                if(e.path.endsWith('.json')) {
+                    const typ = manager.get().assetManager.tracker.getCachedFileMeta(assetUrlPrefix + e.path)?.type
+                    if(typ){
+                        const cls = TypeSystem.GetClass(typ)
+                        const cls1 = cls ? props.objectType.find(c=>c.key === cls.key) : undefined
+                        if(!cls || !cls1) return // todo parent classes, use CanAssign
+                        let l = filesByType.get(cls1)
+                        if(!l){
+                            l = []
+                            filesByType.set(cls1, l)
+                        }
+                        if(!l.find(f=>f.uuid === e.path || f.entry === e))
+                            l.push(pathToSelectFileRef(e, [cls1]))
+                    }
+                }
             }
         }, fileManifest);
 
@@ -158,7 +182,7 @@ export function RefSelectionObjectComponentInput(props: RefSelectionObjectCompon
         //     if(exts?.some(ext => path.endsWith(ext))) {
         //         if(!filesByType[objType]) filesByType[objType] = []
         //         if(!filesByType[objType].find(f=>f.uuid === path))
-        //         filesByType[objType].push(pathToSelctFileRef(path, objType))
+        //         filesByType[objType].push(pathToSelectFileRef(path, objType))
         //     }
         // });
 
@@ -166,7 +190,10 @@ export function RefSelectionObjectComponentInput(props: RefSelectionObjectCompon
     }, [props.objectType, fileManifest, assetManifest]);
 
     if (props.objectType === 'plugin') {
-        selectItems.push(...manifestFilesByType.plugin||[]);
+        selectItems.push(...manifestFilesByType.get('plugin')||[]);
+    }
+    if (props.objectType === 'script') {
+        selectItems.push(...manifestFilesByType.get('script')||[]);
     }
     if (props.objectType === 'material') {
         // materials in the scene that do not belong to an asset (or belong to the loaded main asset)
@@ -175,29 +202,59 @@ export function RefSelectionObjectComponentInput(props: RefSelectionObjectCompon
             if(!m.appliedMeshes.size) return
             if(!m.assetType) return // if IMaterial
             if(!m.name) return // todo unnamed / internal
+            if(m.userData.isPlaceholder) return
             if(m.userData.runtimeMaterial) return // todo set in widgets and other plugins (like GroundPlugin)
             if(!selectItems.find(i=>i.uuid === m.uuid))
                 selectItems.push(m)
         })
 
-        selectItems.push(...manifestFilesByType.material||[]);
+        selectItems.push(...manifestFilesByType.get('material')||[]);
     }
     if (props.objectType === 'texture') {
         // textures in the scene that do not belong to an asset (or belong to the loaded main asset)
         viewer.object3dManager.getTextures().forEach(m=>{
             if(m._tpRootPath && m._tpRootPath !== manager.loadedPath) return // skip textures that belong to other assets
-            if(m._tpRootPath && m._tpRootPath !== manager.loadedAssetId) return // skip textures that belong to other assets
+            // if(m._tpRootPath && m._tpRootPath !== manager.loadedAssetId) return // skip textures that belong to other assets
             if(!m.appliedObjects?.size) return
             if(!m.assetType) return // if ITexture
             if(!m.name) return // todo unnamed / internal
-            if(m.userData.runtimeMaterial) return // todo set in widgets and other plugins (like GroundPlugin)
+            if(m.userData.runtimeTexture) return // todo set in widgets and other plugins (like GroundPlugin)
+            if(m.userData.isPlaceholder) return
             // todo ignore textures that belong to the scene and not a scene is loaded
             if(!selectItems.find(i=>i.uuid === m.uuid))
                 selectItems.push(m)
         })
 
         // console.log(manifestFilesByType.image)
-        selectItems.push(...manifestFilesByType.image||[]);
+        selectItems.push(...manifestFilesByType.get('image')||[]);
+    }
+
+    // objects of TypedClasses type if thats specified
+    const objectsOfType = useMemo(()=>{
+        if(!Array.isArray(props.objectType)) return []
+        const items: SelectItemRef[] = []
+        ReferenceManager.Objects.forEach(obj=>{
+            if(!Array.isArray(props.objectType)) return // for ts
+            const objType = TypeSystem.GetType(obj.object)
+            if(!objType) return
+            const cls = TypeSystem.GetClass(objType)
+            if(!cls) return
+            if(!props.objectType.find(c=>c.key === cls.key)) return // todo parent classes, use CanAssign
+            // if(!obj.object.name) return
+            // if(obj.object.userData.isPlaceholder) return
+            const item = objToSelectItemRef(objType, cls, obj.object)
+            if(item) items.push(item)
+        })
+        return items
+    }, [props.objectType])
+
+    if(Array.isArray(props.objectType)) {
+        selectItems.push(...objectsOfType.filter(o => {
+            return !selectItems.find(i => i.uuid === o.uuid)
+        }))
+        selectItems.push(...props.objectType.flatMap(o => {
+            return manifestFilesByType.get(o) || []
+        }))
     }
 
     // todo
@@ -322,11 +379,16 @@ export function objectToType(object?: SelectedInspectorItem | SelectFileRef | nu
     return 'unknown'
 }
 
+export function TypeFromClasses(classes: TypedClass[]|undefined)/*:TypedType*/ {
+    return {oneOf: classes?.map(c=>c.key) || [], type: 'Union'} as const
+}
+
 // only controlled usage for props.object
 export function RefSelectionObjectComponent({label, ...props}: RefSelectionObjectComponentProps & {label?: string}) {
     const objectType = props.objectType ?? objectToType(props.object)
-    const objectTypeLabel = toTitleCase(objectType)
-    const objectTypeIcon = iconForSelectionObjectType(objectType)
+    const objectTypeLabel = typeof objectType === 'string' ? toTitleCase(objectType) : TypeSystem.TypeToString(TypeFromClasses(objectType))
+    const objectTypeIcon = typeof objectType === 'string' ? iconForSelectionObjectType(objectType) :
+        objectType.length ===1 ? objectType[0].getIcon?.(props.object) ?? 'layer' : iconForSelectionObjectType(objectType)
     label = label || objectTypeLabel
 
     // todo
@@ -401,4 +463,16 @@ export const RefSelectionObjectComponentTex: FileComponentProps<ITexture>['Asset
         objectType={"texture"}
         objectTypeLabel={"Texture"}
     />
+}
+
+
+export function objToSelectItemRef(type: TypedType | false, cls: TypedClass | undefined, val: any): SelectItemRef | null {
+    return !type || !cls ? null : {
+        uuid: cls.getId(val),
+        name: cls.getLabel?.(val) ?? TypeSystem.TypeToString(type),
+        icon: cls.getIcon?.(val),
+        item: val,
+        cls: cls,
+        type: type,
+    } as SelectItemRef
 }

@@ -9,6 +9,59 @@ export interface ContextMenuItemsProps<T = any>{
     event: React.MouseEvent<HTMLElement>,
     object: T
 }
+
+export function renderMenuItems<T>(menuItems: MenuItem2[]|undefined, actions: Record<string, MenuItemAction>, obj: T) {
+    if(!menuItems || menuItems.length === 0) return []
+
+    const defActions = {logAsset}
+
+    async function onMenuItemClick(m: MenuItem2, e: React.MouseEvent<HTMLAnchorElement>) {
+        const action = m.action
+        const actionFunc = typeof action === 'string' ? actions[action as keyof typeof actions] || defActions[action as keyof typeof defActions] : action
+        if (actionFunc) {
+            let res
+            try {
+                res = actionFunc === m.action ? m.action(m.data, obj, e, m) : actionFunc(m.data, obj, e, m)
+                if (res && typeof res.then === 'function') {
+                    res = await res
+                }
+            } catch (e) {
+                res = {error: (e as Error).message || e + ''}
+                throw e
+            }
+            if (res && (res.error || res.warn)) {
+                AppToaster().show({
+                    message: res.error || res.warn,
+                    intent: res.error ? 'danger' : 'warning',
+                    icon: res.error ? 'error' : 'warning-sign',
+                    timeout: 2000,
+                    isCloseButtonShown: true,
+                });
+                console.error(res)
+            }
+        }
+        m.props?.onClick && m.props.onClick(e)
+    }
+
+    const renderMenuItem = (m: MenuItem2, i: number) => {
+        const {children, ...props} = m.props
+        const rc = m.children?.map(renderMenuItem)
+        const children2 = rc?.length || children ? <>
+            {children}
+            {rc}
+        </> : undefined
+        return <MenuItem
+            {...props}
+            children={children2}
+            key={m.key || `mi-${i}`}
+            onClick={async (e) => onMenuItemClick(m, e)}
+        >
+        </MenuItem>
+    }
+
+    return menuItems.map(renderMenuItem)
+}
+
 function useStore() {
     const [isOpen, setIsOpen] = useState(false);
     const [targetOffset, setTargetOffset] = useState<{left: number, top: number}>({left: 0, top: 0});
@@ -38,11 +91,12 @@ function useStore() {
             actionItems?: MenuItem2[],
             Items?: FC<ContextMenuItemsProps<T>>
         })=>{
-            const {event, obj, actions, actionItems = [], Items} = props
-            if(window.location.origin === 'http://localhost:5173' && actionItems){
+            const {event, obj, actions, actionItems, Items} = props
+            if(window.location.origin === 'http://localhost:5173' && actionItems && !actionItems.find(m=>m.key === 'logAsset')){
                 actionItems.push({
                     props: {
                         text: 'Log in Console',
+                        icon: 'console',
                     },
                     key: 'logAsset',
                     action: 'logAsset',
@@ -50,36 +104,9 @@ function useStore() {
                 })
             }
 
-            if(!actionItems || actionItems.length === 0) return
+            if((!actionItems || actionItems.length === 0) && !Items) return
+            const rc = renderMenuItems(actionItems, actions, obj);
 
-            const defActions = {logAsset}
-            const rc = actionItems.map((m, i)=><MenuItem {...m.props} key={m.key || i} onClick={async (e)=>{
-                const action = m.action
-                const actionFunc = typeof action === 'string' ? actions[action as keyof typeof actions] || defActions[action as keyof typeof defActions] : action
-                if(actionFunc){
-                    let res
-                    try {
-                        res = actionFunc === m.action ? m.action(m.data, obj, e): actionFunc(m.data, obj, e)
-                        if(res && typeof res.then === 'function'){
-                            res = await res
-                        }
-                    }catch (e) {
-                        res = {error: (e as Error).message || e + ''}
-                        throw e
-                    }
-                    if(res && (res.error || res.warn)){
-                        AppToaster().show({
-                            message: res.error || res.warn,
-                            intent: res.error ? 'danger' : 'warning',
-                            icon: res.error ? 'error' : 'warning-sign',
-                            timeout: 2000,
-                            isCloseButtonShown: true,
-                        });
-                        console.error(res)
-                    }
-                }
-                m.props?.onClick && m.props.onClick(e)
-            }}/>)
             return showContextMenu(event, <Menu>
                 {rc.length ? <MenuDivider title="Actions" className={"context-menu-divider"} /> : null}
                 {rc}

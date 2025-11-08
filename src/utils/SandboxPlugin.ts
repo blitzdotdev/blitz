@@ -129,4 +129,5 @@ export class SandboxPlugin extends AViewerPluginSync {
 }
 export interface SupPluginModule{
     __tpPluginPath?: string
+    __tpModuleError?: any
 }

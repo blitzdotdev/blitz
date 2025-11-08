@@ -8,7 +8,6 @@ import {
     textureToDataUrl,
     ThreeViewer,
     WebGLCubeRenderTarget,
-    WebGLMultipleRenderTargets,
     WebGLRenderTarget
 } from "threepipe";
 import {BPFileComponent, BPFileComponentState} from 'uiconfig-blueprint/lib/esm/lib'
@@ -24,8 +23,6 @@ Texture.prototype._ui_isPrimitive = true
 WebGLRenderTarget.prototype._ui_isPrimitive = true
 // @ts-expect-error
 WebGLCubeRenderTarget.prototype._ui_isPrimitive = true
-// @ts-expect-error
-WebGLMultipleRenderTargets.prototype._ui_isPrimitive = true
 
 type BPTextureFileComponentProps = {
     fileLoader: ThreeViewer
@@ -37,7 +34,7 @@ export class BPTextureFileComponent<T extends TextureType = TextureType, TP = {}
         super(props, context);
     }
 
-    convertValueToState(val: T | null, state: BPFileComponentState): BPFileComponentState {
+    convertValueToState(val: T | null, state: BPFileComponentState<ITexture>): BPFileComponentState<ITexture> {
         let mode: BPFileComponentState['mode'] = state.mode
         let value = state.value
         let preview = state.preview
@@ -60,7 +57,7 @@ export class BPTextureFileComponent<T extends TextureType = TextureType, TP = {}
             // doing uiConfig refresh from here because its possible the component isn't mounted yet
             preview = refreshTexturePreview(val, this.context.fileLoader as ThreeViewer, ()=>this.props.config.uiRefresh?.(false, 'postFrame')) as any
         }else {
-            if(hasPicker) mode = 'asset'
+            // if(hasPicker) mode = 'asset'
             preview = undefined
         }
         return {...state, mode, value, preview}
@@ -183,7 +180,7 @@ export function refreshTexturePreview(cc: TextureType|null|undefined, viewer: Th
                     setTimeout(() => {
                         if(!cc._target) return
                         // here we are not doing cc.image.tp_src because cc.image can be shared across multiple textures in MRT
-                        const dataUrl = viewer.renderManager.renderTargetToDataUrl(cc._target, undefined, undefined, Array.isArray(cc._target.texture) ? cc._target.texture.indexOf(cc) : undefined)
+                        const dataUrl = viewer.renderManager.renderTargetToDataUrl(cc._target, undefined, undefined, cc._target.textures.indexOf(cc))
                         cc.tp_src = dataUrl
                         setTimeout(()=>cc.tp_src && delete cc.tp_src, 1000) // clear after 1 second so it refreshes on next render
 

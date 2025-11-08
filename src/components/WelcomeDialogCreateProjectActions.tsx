@@ -1,6 +1,6 @@
 import {Alignment, Button, Colors, Icon} from '@blueprintjs/core'
 import {useDialogPrompt, useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
-import {resolveNameConflict, useProjectActions} from '../utils/projectActions.tsx'
+import {refreshQueryState, resolveNameConflict, useProjectActions} from '../utils/projectActions.tsx'
 import {queryHandlePerm, useManager, useProject, ViewerInstanceManager} from '../utils/ViewerInstanceManager.ts'
 import {useCallback} from 'react'
 import {useSaveFile} from "./UseSaveFile.tsx";
@@ -8,7 +8,7 @@ import {getMeta} from "../utils/project.ts";
 
 export function useProjectFolderActions(){
     const manager = useManager()
-    const {loadProject} = useProjectActions()
+    // const {loadProject} = useProjectActions()
 
     const openProjectFolder = useCallback(async (folderHandle?: FileSystemDirectoryHandle|null) => {
         if(!('showDirectoryPicker' in window && ViewerInstanceManager.ENABLE_FS_WRITE_API)) {
@@ -43,12 +43,13 @@ export function useProjectFolderActions(){
                 // newName = await resolveNameConflict(newName, manager)
                 throw new Error('A project with the same name already exists, please rename it first in order to avoid conflicts')
             }
-            const meta1 = await manager.getLoadedProject(meta)
-            if(!meta1) {
-                console.error('ThreeEditor - cannot load project from meta', meta)
-                return {error: 'Cannot load project from meta'}
-            }
-            return await loadProject(meta1)
+            // const meta1 = await manager.getLoadedProject(meta)
+            // if(!meta1) {
+            //     console.error('ThreeEditor - cannot load project from meta', meta)
+            //     return {error: 'Cannot load project from meta'}
+            // }
+            // return await loadProject(meta1)
+            refreshQueryState({project: meta.path, file: null}, true)
         }
         else {
             const handle = folderHandle
@@ -60,13 +61,15 @@ export function useProjectFolderActions(){
                 }
             }
             const meta2 = await manager.createNewProjectMeta(projectName, handle)
-            const m = await loadProject(meta2)
-            if(!m){
-                return {error: 'Unable to load project'}
-            }
+            refreshQueryState({project: meta2.path, file: null}, true)
+            // const m = await loadProject(meta2)
+            // if(!m){
+            //     return {error: 'Unable to load project'}
+            // }
+
             // return await loadFile(await folderHandle.getDirectory(), newName)
         }
-    }, [loadProject, manager])
+    }, [manager])
 
     const {prompt} = useDialogPrompt()
 
@@ -152,7 +155,7 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
     const {loadingState, updateLoading} = useLoadingState()
     const {setWelcomeOpen} = useProject()
     const {saveFile} = useSaveFile()
-    const {openProject, loadProject} = useProjectActions()
+    const {openProject} = useProjectActions()
     const {createProjectFolder, openProjectFolder} = useProjectFolderActions()
     const {prompt} = useDialogPrompt()
 
@@ -187,7 +190,7 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
             newName = await resolveNameConflict(newName, manager)
         }
         // await saveFile({name: newName, isNewName: true, saveTempOnly: false, closeProject: false})
-        await loadProject(newName)
+        refreshQueryState({project: newName, file: null, model: url}, true)
         // setWelcomeOpen(false)
     }, [saveFile, manager, fileUrlPrompt])
 
@@ -236,7 +239,7 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
                 text={'Browse Community Files'}
                 variant={props.minimal ? "minimal" : props.outlined ? "outlined" : "solid"}
                 alignText={props.alignText}
-                rightIcon={<Icon icon={'share'} size={14}/>}
+                endIcon={<Icon icon={'share'} size={14}/>}
                 disabled
         />
     </>

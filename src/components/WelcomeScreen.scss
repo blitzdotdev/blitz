@@ -5,14 +5,12 @@
   flex-wrap: wrap;
   margin-left: calc(-0.5 * $pt-grid-size);
   margin-right: calc(-0.5 * $pt-grid-size);
+  height: 100%;
+  --file-item-button-size: 100px;
 
   .file-item-button{
     width: 25%;
     flex: 0 1 25% !important;
-  }
-
-  .bp5-icon{
-    transform: scale(1.5);
   }
 
   .bp5-icon-share{
@@ -21,6 +19,12 @@
     top: calc($pt-grid-size * 0.5);
     right: calc($pt-grid-size * 0.5);
   }
+
+  .bp5-button-text{
+    -webkit-line-clamp: 2; /* number of lines to show */
+    line-clamp: 2;
+  }
+
 }
 
 // below from shader flow
@@ -156,6 +160,7 @@
 
     .bp5-icon{
       transform: scale(1.5);
+      margin-right: 0 !important;
     }
 
     .bp5-icon-share{

@@ -12,10 +12,10 @@ export interface WindowPanel{
 }
 export interface WindowPanesLayoutProps{
     panels: {
-        left: WindowPanel[]
-        right: WindowPanel[]
-        bottom: WindowPanel[]
-        center: WindowPanel[]
+        left: (WindowPanel|null)[]
+        right: (WindowPanel|null)[]
+        bottom: null | (WindowPanel|null)[]
+        center: (WindowPanel|null)[]
     }
 }
 
@@ -26,11 +26,12 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
             height: "100%",
             padding: "0",
             background: 'transparent',
-            // position: "relative",
+            position: "relative",
             // display: "flex",
             // flexDirection: "column",
             borderRadius: 0,
             margin: 0,
+            boxShadow: 'none',
             ...panel.style,
         }} className={panel.className}>
             {/*<div style={{fontWeight: 'bold', marginBottom: '4px'}}>{panel.title}</div>*/}
@@ -39,10 +40,11 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
         </Card>
     }
 
-    const renderPanels  = (p: WindowPanel[])=> {
+    const renderPanels  = (p0: (WindowPanel|null)[], vertical = false)=> {
+        const p = p0.filter(p=>!!p)
         if(p.length > 1){
             return <Tabs
-                vertical={false}
+                vertical={vertical}
                 animate={false}
                 renderActiveTabPanelOnly={false}
                 size={"medium"}
@@ -58,38 +60,52 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
             return renderPanel(p[0])
         }
     }
-    return  <PanelGroup className={"editorSplitContainer"} direction="horizontal" autoSaveId={"tpEditorWindowPanels"}>
+    return  <PanelGroup className={"editorSplitContainer"} direction="horizontal" autoSaveId={"tpEditorWindowPanelsRoot"}>
         <Panel
             defaultSize={20}
             collapsible={true}
             minSize={10}
             maxSize={50}
+            id={"left-panel"}
+            order={-1}
         >
             {renderPanels(panels.left)}
         </Panel>
-        <PanelResizeHandle />
-        <Panel >
-            <PanelGroup direction="vertical">
-                <Panel>
+        <PanelResizeHandle className={"window-panes-separator"} />
+        <Panel
+            id={"center-panel"}
+            order={0}
+        >
+            <PanelGroup direction="vertical" autoSaveId={"tpEditorWindowPanelsCenter"}>
+                <Panel
+                    id={"center-top-panel"}
+                    order={0}
+                >
                     {renderPanels(panels.center)}
                 </Panel>
-                <PanelResizeHandle />
+                {panels.bottom && <>
+                <PanelResizeHandle className={"window-panes-separator"} />
                 <Panel
                     defaultSize={10}
                     collapsible={true}
                     minSize={10}
                     maxSize={50}
+                    id={"center-bottom-panel"}
+                    order={1}
                 >
-                    {renderPanels(panels.bottom)}
+                    {renderPanels(panels.bottom, true)}
                 </Panel>
+                </>}
             </PanelGroup>
         </Panel>
-        <PanelResizeHandle />
+        <PanelResizeHandle className={"window-panes-separator"} />
         <Panel
             defaultSize={20}
             collapsible={true}
             minSize={10}
             maxSize={50}
+            id={"right-panel"}
+            order={1}
         >
             {renderPanels(panels.right)}
         </Panel>

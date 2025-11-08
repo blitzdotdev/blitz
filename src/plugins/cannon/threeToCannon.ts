@@ -1,9 +1,8 @@
 /* eslint-disable */
 // https://github.com/donmccurdy/three-to-cannon/blob/main/src/index.ts
-import { Box, ConvexPolyhedron, Cylinder, Quaternion as CQuaternion, Shape, Sphere, Trimesh, Vec3 } from 'cannon-es';
-import { Box3, BufferGeometry, CylinderGeometry, MathUtils, Mesh, Object3D, SphereGeometry, Vector3 } from 'three';
-import { ConvexHull, Face } from 'three/examples/jsm/math/ConvexHull.js'
-import { getComponent, getGeometry, getVertices } from './utils';
+import {Box, ConvexPolyhedron, Cylinder, Quaternion as CQuaternion, Shape, Sphere, Trimesh, Vec3} from 'cannon-es';
+import {ConvexHull, Box3, BufferGeometry, CylinderGeometry, MathUtils, Mesh, Object3D, SphereGeometry, Vector3} from 'threepipe';
+import {getComponent, getGeometry, getVertices} from './utils';
 
 const PI_2 = Math.PI / 2;
 

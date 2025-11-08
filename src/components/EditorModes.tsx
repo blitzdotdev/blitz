@@ -217,9 +217,7 @@ export const EditorModesButtonGroup: FC<{ editorMode: EditorModes, setEditorMode
     }) => {
     return (
         <div className="editorModesContainer">
-            <ButtonGroup vertical={false} style={{
-                width: "max-content",
-                flexWrap: "wrap",
+            <ButtonGroup vertical={false} className={"icon-only-tab-button-group"} style={{
             }}>
                 {(Object.entries(editorModesList) as [EditorModes, EditorModesConfig][]).map(([k, v]) => (
                     <Tooltip
@@ -232,9 +230,12 @@ export const EditorModesButtonGroup: FC<{ editorMode: EditorModes, setEditorMode
                         // openOnTargetFocus={false}
                     >
                         <Button
-                            className="bpIconButton" size={'large'}
-                            intent={editorMode === k ? Intent.PRIMARY : Intent.NONE}
-                            variant={"minimal"} style={{transition: "background-color 0.25s ease-in-out"}}
+                            className="bpIconButton icon-only-tab-button settings-tab-button" size={'medium'}
+                            intent={Intent.NONE}
+                            variant={"minimal"} style={{
+                                transition: "background-color 0.25s ease-in-out",
+                                borderRadius: "calc(var(--pt-grid-size) * 0.5)",
+                        }}
                             endIcon={v.icon} active={editorMode === k} onClick={() => setEditorMode(k)}/>
 
                     </Tooltip>
@@ -294,7 +295,7 @@ export const PlayModeButtonGroup: FC<{ isPlaying: boolean, setIsPlaying: (mode: 
                         // openOnTargetFocus={false}
                     >
                         <Button
-                            className="bpIconButton" size={'large'}
+                            className="bpIconButton icon-only-tab-button" size={'medium'}
                             intent={v.value === isPlaying ? Intent.PRIMARY : Intent.NONE}
                             variant={"minimal"} style={{transition: "background-color 0.25s ease-in-out"}}
                             endIcon={v.icon} active={isPlaying === v.value} onClick={() => setIsPlaying(v.value)}/>

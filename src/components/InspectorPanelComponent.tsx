@@ -7,12 +7,12 @@ import {
     IGeometry,
     IMaterial,
     IObject3D,
-    ITexture,
-    Object3DComponent,
+    ITexture, LineMaterial2,
+    Object3DComponent, PhysicalMaterial,
     PickingPlugin,
     TObject3DComponent,
     UiObjectConfig,
-    UndoManagerPlugin
+    UndoManagerPlugin, UnlitMaterial
 } from "threepipe";
 import {
     isExternalGeometry,
@@ -28,18 +28,30 @@ import {
     ViewerInstanceManager,
 } from "../utils/ViewerInstanceManager.ts";
 import {AppToaster, ConfigObject, FolderHeadCard, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
-import {Button, ButtonGroup, ButtonProps, Divider, Icon, Intent, Tooltip} from "@blueprintjs/core";
-import {iconForSelectionObject, RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
+import {
+    Button,
+    ButtonGroup,
+    ButtonProps,
+    Divider,
+    Icon,
+    Intent,
+    MenuDivider,
+    MenuItem,
+    Tooltip
+} from "@blueprintjs/core";
+import {RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import type {IconName} from "@blueprintjs/icons";
 import {MaybeElement} from "@blueprintjs/core/src/common/props.ts";
-import {ReactElement, useCallback, useEffect, useMemo, useState} from "react";
+import React, {FC, ReactElement, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {refreshTexturePreview, TexturePreview} from "./BPTextureFileComponent.tsx";
 import {showSuccessErrorToast} from "../utils/Toaster.tsx";
 import {assetUrlPrefix, ExternalPlugin, ExternalScript} from "../utils/project.ts";
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {useAsyncMemo} from "./UseAsyncMemo.tsx";
+import { iconForSelectionObject } from "../utils/icons.tsx";
+import {ContextMenuItemsProps, useContextMenu} from "./ContextMenuProvider.tsx";
 
-function UnkObjComponent({obj, ...props}: {obj: any,
+export function UnkObjComponent({obj, ...props}: {obj: any,
     onClick?: (event: React.MouseEvent) => void,
     open?: boolean,
     label?: string,
@@ -139,6 +151,70 @@ export function InsSectionTitle({title, icon}: { title: string, icon?: IconName 
         {title}
     </div>;
 }
+export function InsSectionHeader({
+ children, title, icon, className, style,
+}: { title: string,
+    icon?: IconName | MaybeElement,
+    className?: string,
+    style?: React.CSSProperties,
+    children?: ReactElement|ReactElement[]
+}) {
+    return <ButtonGroup className={className} style={{
+        height: "30px",
+        padding: "3px",
+        width: "100%",
+        ...style,
+    }}>
+        {/*<div>File</div>*/}
+        <InsSectionTitle title={title||'Selection'} icon={icon} />
+        {/*{selFile.uiConfig && (<ConfigObject {...props} config={selFile.uiConfig}/>)}*/}
+        {children}
+    </ButtonGroup>
+}
+
+
+/**
+ * Helps tracking the props changes made in a react functional component.
+ *
+ * Prints the name of the properties/states variables causing a render (or re-render).
+ * For debugging purposes only.
+ *
+ * @usage You can simply track the props of the components like this:
+ *  useRenderingTrace('MyComponent', props);
+ *
+ * @usage You can also track additional state like this:
+ *  const [someState] = useState(null);
+ *  useRenderingTrace('MyComponent', { ...props, someState });
+ *
+ * @param componentName Name of the component to display
+ * @param propsAndStates
+ * @param level
+ *
+ * @see https://stackoverflow.com/a/51082563/2391795
+ */
+export const useRenderingTrace = (componentName: string, propsAndStates: any, level: 'debug' | 'info' | 'log' = 'debug') => {
+    const prev = useRef(propsAndStates);
+
+    useEffect(() => {
+        const changedProps: { [key: string]: { old: any, new: any } } = Object.entries(propsAndStates).reduce((property: any, [key, value]: [string, any]) => {
+            if (prev.current[key] !== value) {
+                property[key] = {
+                    old: prev.current[key],
+                    new: value,
+                };
+            }
+            return property;
+        }, {});
+
+        if (Object.keys(changedProps).length > 0) {
+            console[level](`[${componentName}] Changed props:`, changedProps);
+        }else{
+            console[level](`[${componentName}] No props changed`);
+        }
+
+        prev.current = propsAndStates;
+    });
+};
 
 export function InspectorPanelComponent({...props}: PanelActions & InspectorPanelProps){
     // useEffect(()=>{
@@ -160,7 +236,8 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     // const objectMatManageUiConfig = useMemo<UiObjectConfig[]|undefined>(()=>object ? picking?.objectMaterialManageUiConfig(object) : undefined, [object])
     const {project} = useProject()
 
-    const selectedFileLoaded = useAsyncMemo(async ()=>project && selFile ? manager.loadAsset(selFile, project) : null, [manager, selFile, project])
+    // todo inspector based on select, but this loadAsset will reload the file everytime from scratch, use getAssetFromPath
+    // const selectedFileLoaded = useAsyncMemo(async ()=>project && selFile ? manager.loadAsset(selFile, project) : null, [manager, selFile, project])
 
     // useEffect(()=>{
     //     if(!selObject && selectedFileLoaded && picking && !picking.getSelectedObject() && (selectedFileLoaded.isObject3D || selectedFileLoaded.isMaterial || selectedFileLoaded.isTexture || selectedFileLoaded.isBufferGeometry)){
@@ -174,8 +251,6 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
         selObject = loadedAssetMain as any
         // selObjectPath = manager.loadedProjectFile?.path || null
     }
-
-    let object = (selObject as IObject3D)?.isObject3D ? selObject as IObject3D : null
 
     // if(object?.userData.tpAssetId) object = null
     // else if(object?._tpAssetId) object = null
@@ -246,21 +321,19 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
 
     // todo autosave on needssave
 
-    const inspectingScene = manager.loadedScene && !selObject && !selFile
+    const inspectingScene = !selObject && !selFile
 
-
-    let assetRootPath = (selObject as IObject3D|IMaterial|ITexture|IGeometry)?._tpRootPath || null
+    const assetRootPath1_ = (selObject as IObject3D|IMaterial|ITexture|IGeometry)?._tpRootPath || (selObject as any)?.__rootPath || null
     let assetRootUid = (selObject as IObject3D)?._tpRootUid || null // if this is set, this object is a clone of a child of an asset
 
-    const instanceRootPath = !assetRootPath ? selObject?.userData?.rootPath : null
+    const instanceRootPath = !assetRootPath1_ ? selObject?.userData?.rootPath : null
     const isAssetInstance = instanceRootPath && selObject?.userData?.rootPath?.startsWith(assetUrlPrefix)
 
-    if(assetRootPath && !assetRootPath.startsWith(assetUrlPrefix)) assetRootPath = null
+    const assetRootPathFull  = assetRootPath1_ && !assetRootPath1_.startsWith(assetUrlPrefix) ? null : assetRootPath1_
+    const assetRootPath = assetRootPathFull ? assetRootPathFull.replace(assetUrlPrefix, '') : assetRootPathFull
 
-    const assetRootPathAsset = useAsyncMemo(async ()=>assetRootPath ? manager.getAssetFromPath(assetRootPath) : null, [manager, assetRootPath])
+    const assetRootPathAsset = useAsyncMemo(async ()=>assetRootPathFull ? manager.getAssetFromPath(assetRootPathFull) : null, [manager, assetRootPathFull])
     const instanceRootPathAsset = useAsyncMemo(async ()=>instanceRootPath ? manager.getAssetFromPath(instanceRootPath) : null, [manager, instanceRootPath])
-
-    if(assetRootPath) assetRootPath = assetRootPath.replace(assetUrlPrefix, '')
 
     const assetRootPathCanEdit = !!assetRootPathAsset && !assetRootUid && manager.loadedAssetObj !== assetRootPathAsset
     const buttons: ReactElement[] = []
@@ -428,26 +501,11 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     //     }
     // }, [])
 
-    // for reacting to changes in object, because we are accessing object.material etc
-    const [objectChangeId, setObjectChangeId] = useState(0)
-    useEffect(()=>{
-        if(!object) return
-        const l = ()=>{
-            setObjectChangeId(id=>id+1)
-        }
-        object.addEventListener('objectUpdate', l)
-        object.addEventListener('materialChanged', l)
-        return ()=>{
-            object.removeEventListener('objectUpdate', l)
-            object.removeEventListener('materialChanged', l)
-        }
-    }, [object])
-
-    const objectMaterials = object && object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : []
-    const objectGeometry = object?.geometry?.isBufferGeometry ? object.geometry : null
-
-    const objectIsExternal = object ? isExternalObject(object) : false
-    // console.log({objectIsExternal}, object)
+    // useRenderingTrace('test', {
+    //     assetRootPath, assetRootPathCanEdit, isAssetInstance,
+    //     selObject, geometry, material, texture,
+    //     assetRootPathAsset, instanceRootPathAsset,
+    // })
 
     // console.log({material, assetRootPath, assetRootPathAsset, assetRootPathCanEdit})
     // console.log({selObject}, isLoadedAsset, isLoadedAssetMain, object)
@@ -464,81 +522,20 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
         {/*        return <div key={item.path}>{item.name}</div>*/}
         {/*    })}</div>*/}
         {/*</>}*/}
-        <ButtonGroup style={{
-            position: "absolute",
-            top: "0",
-            right: "0",
-            zIndex: 1,
-            height: "30px",
-            padding: "3px",
-            width: "100%",
-        }}>
-                {/*<div>File</div>*/}
-            <InsSectionTitle title={title||'Selection'} icon={icon} />
-                {/*{selFile.uiConfig && (<ConfigObject {...props} config={selFile.uiConfig}/>)}*/}
+        <InsSectionHeader
+            style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+            }}
+            title={title} icon={icon}>
             {...buttons}
-        </ButtonGroup>
+        </InsSectionHeader>
         {/*{!!selObject?.uiConfig && (isLoadedAssetMain) && !object && <>*/}
         {/*    /!*<div>Selected</div>*!/*/}
         {/*    /!*<div>Name - {selObject.name}</div>*!/*/}
         {/*    {selObject.uiConfig && (<ConfigObject key={'selObject'} {...props} config={selObject.uiConfig} icon={iconForSelectionObject(selObject)}/>)}*/}
         {/*</>}*/}
-        {!!object && <>
-            {/*<div>Object</div>*/}
-            {
-                // object.userData.tpAssetId ? <UnkObjComponent label={`Asset: ${object.name || 'Unnamed'}`} disabled={true} obj={object}/> :
-                objectIsExternal ? <UnkObjComponent key={'object'} label={`Object: ${object.name || 'Unnamed'}`} disabled={true} obj={object}/> :
-                    object.uiConfig ?
-                        isAssetInstance ? <AssetObjRootInstanceIns key={'objectins'} {...props} obj={object}/> :
-                        <ConfigObject key={'objectc'}  {...props} config={object.uiConfig} icon={iconForSelectionObject(object)}/> :
-                        null}
-            {/*{!!objectSelUiConfig?.length && objectSelUiConfig.map((c, i)=><ConfigObject key={i} {...props} config={c}/>)}*/}
-            <Divider style={{margin: 0}}/>
-
-            {/*todo show object children to select them easily*/}
-
-            {!!objectGeometry && <>
-                {/*<div>Geometry</div>*/}
-                {!!objectGeometry.uiConfig && !objectIsExternal && isGeomEditable(objectGeometry, manager) ?
-                    <ConfigObject key={'geometryc'} {...props} config={objectGeometry.uiConfig} icon={iconForSelectionObject(objectGeometry)}/> :
-                    <UnkObjComponent key={'geometry'} label={`Asset: ${objectGeometry.name || 'Unnamed'}`} disabled={true} obj={objectGeometry}/>
-                }
-
-                <Divider style={{margin: 0}}/>
-            </>}
-
-            {objectMaterials.map((material, materialI)=> //material && (material.userData.tpAssetId || material._tpAssetId) ? null :
-            // todo send a filter into RefSelectionObjectComponent so that user cannot select any material outside the asset
-                <RefSelectionObjectComponent
-                    key={'objmats'+materialI}
-                    objectType={"material"}
-                    disabled={objectIsExternal}
-                    allowNone={false} object={material}
-                    onChange={(_selected, _e) => {
-                        //todo handle error/null from fn return
-                        manager.changeMaterialForObject(object, material, _selected, project)
-                    }}/>
-            )}
-
-            {objectMaterials.map((material,i)=>
-                material?.uiConfig &&  // material has a UI
-                !objectIsExternal &&  // object is not external (i.e we can edit the current object and it will be saved)
-                isMatEditable(material, manager) && // material is not an asset or placeholder itselft
-                (!material._tpRootPath || // not part of an asset, or part of the asset we are editing in inspector
-                    (assetRootPathCanEdit && (material._tpRootPath === assetUrlPrefix + assetRootPath))
-                ) ? (<ConfigObject key={'mats' + material.uuid + i} {...props} config={material.uiConfig}
-                                   icon={iconForSelectionObject(material)}/>) :
-                    <UnkObjComponent key={'matsunk' + material.uuid + i}
-                                     label={`Material: ${material.name || 'Unnamed'}`} disabled={true} obj={material}/>
-            )}
-
-            {/*Components*/}
-            <CompsSectionComp object={object} openPanel={props.openPanel} closePanel={props.closePanel}/>
-
-            {/*{!!objectMatManageUiConfig?.length && objectMatManageUiConfig.map((c, i)=><ConfigObject key={i} {...props} config={c}/>)}*/}
-            <Divider style={{margin: 0}}/>
-
-        </>}
         {!!geometry && <>
             {/*<div>Geometry</div>*/}
             {!!geometry.uiConfig && isGeomEditable(geometry, manager) && (assetRootPathCanEdit || !isExternalGeometry(geometry) )?
@@ -582,7 +579,13 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
 
             <Divider style={{margin: 0}}/>
         </>}
-
+        {(selObject as IObject3D)?.isObject3D && <ObjectInspectorUI
+            object={(selObject as IObject3D)}
+            isAssetInstance={isAssetInstance}
+            assetRootPath={assetRootPath}
+            assetRootPathCanEdit={assetRootPathCanEdit}
+            {...props}
+        />}
         {isPackageJson && <>
             <PluginsSectionComp/>
             <Divider style={{margin: 0}}/>
@@ -591,12 +594,153 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
         {inspectingScene && <>
             {viewer.uiConfig.children?.map((c, i)=>{
                 const uiConfig: UiObjectConfig|undefined = getOrCall(c) // todo use uiconfigmethods
-                return uiConfig && typeof uiConfig === 'object' && (<ConfigObject key={uiConfig.uuid ?? ('scn'+i)} {...props} config={uiConfig} icon={iconForSelectionObject(selObject)}/>)
+                if(!uiConfig || typeof uiConfig !== 'object') return null
+                if(uiConfig.label === 'Scene') return null // Added to hierarchy
+                uiConfig.expanded = true
+                return <ConfigObject key={uiConfig.uuid ?? ('scn'+i)} {...props} config={uiConfig} icon={iconForSelectionObject(selObject)}/>
             })}
 
         </>}
     </div>
 
+}
+
+export function ObjectInspectorUI({
+    object,
+    isAssetInstance,
+    assetRootPath,
+    assetRootPathCanEdit,
+    ...props
+}: {object: IObject3D,
+    isAssetInstance: boolean,
+    assetRootPath: string | null,
+    assetRootPathCanEdit: boolean,
+} & PanelActions){
+
+    const manager = useManager()
+    const {project} = useProject()
+
+    // for reacting to changes in object, because we are accessing object.material etc
+    const [objectChangeId, setObjectChangeId] = useState(0)
+    useEffect(()=>{
+        if(!object) return
+        const l = ()=>{
+            setObjectChangeId(id=>id+1)
+        }
+        object.addEventListener('objectUpdate', l)
+        object.addEventListener('materialChanged', l)
+        return ()=>{
+            object.removeEventListener('objectUpdate', l)
+            object.removeEventListener('materialChanged', l)
+        }
+    }, [object])
+
+    const objectMaterials = object && object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : []
+    const objectGeometry = object?.geometry?.isBufferGeometry ? object.geometry : null
+
+    const objectIsExternal = object ? isExternalObject(object) : false
+    // console.log({objectIsExternal}, object)
+
+    if(object?.uiConfig) {
+        object.uiConfig.expanded = true
+    }
+    const contextMenu = useContextMenu()
+
+    return <>
+        {!!object && <>
+            {/*<div>Object</div>*/}
+            <Divider style={{margin: 0}}/>
+            {
+                // object.userData.tpAssetId ? <UnkObjComponent label={`Asset: ${object.name || 'Unnamed'}`} disabled={true} obj={object}/> :
+                objectIsExternal ? <UnkObjComponent key={'object'} label={`Object: ${object.name || 'Unnamed'}`} disabled={true} obj={object}/> :
+                    object.uiConfig ?
+                        isAssetInstance ? <AssetObjRootInstanceIns key={'objectins'} {...props} obj={object}/> :
+                            <ConfigObject key={'objectc'}  {...props} config={object.uiConfig} icon={iconForSelectionObject(object)}/> :
+                        null}
+            {/*{!!objectSelUiConfig?.length && objectSelUiConfig.map((c, i)=><ConfigObject key={i} {...props} config={c}/>)}*/}
+            <Divider style={{margin: 0}}/>
+
+            {/*todo show object children to select them easily*/}
+
+            {!!objectGeometry && <>
+                {/*<div>Geometry</div>*/}
+                {!!objectGeometry.uiConfig && !objectIsExternal && isGeomEditable(objectGeometry, manager) ?
+                    <ConfigObject key={'geometryc'} {...props} config={objectGeometry.uiConfig} icon={iconForSelectionObject(objectGeometry)}/> :
+                    <UnkObjComponent key={'geometry'} label={`Asset: ${objectGeometry.name || 'Unnamed'}`} disabled={true} obj={objectGeometry}/>
+                }
+
+                <Divider style={{margin: 0}}/>
+            </>}
+
+            {/*Components*/}
+            <CompsSectionComp object={object} openPanel={props.openPanel} closePanel={props.closePanel}/>
+
+            {/*{!!objectMatManageUiConfig?.length && objectMatManageUiConfig.map((c, i)=><ConfigObject key={i} {...props} config={c}/>)}*/}
+            <Divider style={{margin: 0}}/>
+
+            {objectMaterials.map((material, materialI)=> //material && (material.userData.tpAssetId || material._tpAssetId) ? null :
+                // todo send a filter into RefSelectionObjectComponent so that user cannot select any material outside the asset
+                <RefSelectionObjectComponent
+                    key={'objmats'+materialI}
+                    objectType={"material"}
+                    disabled={objectIsExternal}
+                    allowNone={true} object={material}
+                    onChange={async (_selected, _e) => {
+                        //todo loading while await
+                        showSuccessErrorToast('', '', await manager.changeMaterialForObject(object, material, _selected, project))
+                    }}
+                >
+                    {!!material.userData.isPlaceholder ?
+                    <ButtonWithTooltip tooltip={'New Material'} text={""} icon={"plus"} onClick={(e)=>{
+                        contextMenu.handleContextMenu({
+                            event: e,
+                            obj: object,
+                            Items: (p)=>(<NewMaterialContextMenu {...p} onClick={async (newm)=>{
+                                //todo loading while await
+                                showSuccessErrorToast('', '', await manager.changeMaterialForObject(object, material, newm, project))
+                            }}/>),
+                            actions: {},
+                        })
+                    }}/> :
+                    <ButtonWithTooltip tooltip={'Remove Material'} text={""} icon={"cross"} onClick={async ()=>{
+                        //todo loading while await
+                        showSuccessErrorToast('', '', await manager.changeMaterialForObject(object, material, null, project))
+                    }}/>
+                    }
+                </RefSelectionObjectComponent>
+            )}
+
+            {objectMaterials.map((material,i)=>
+                material?.uiConfig &&  // material has a UI
+                !objectIsExternal &&  // object is not external (i.e we can edit the current object and it will be saved)
+                isMatEditable(material, manager) && // material is not an asset or placeholder itselft
+                (!material._tpRootPath || // not part of an asset, or part of the asset we are editing in inspector
+                    (assetRootPathCanEdit && (material._tpRootPath === assetUrlPrefix + assetRootPath))
+                ) ? (<ConfigObject key={'mats' + material.uuid + i} {...props} config={material.uiConfig}
+                                   icon={iconForSelectionObject(material)}/>) :
+                    material.userData.isPlaceholder ? null : <UnkObjComponent key={'matsunk' + material.uuid + i}
+                                                                              label={`Material: ${material.name || 'Unnamed'}`} disabled={true} obj={material}/>
+            )}
+
+            {/*{!!objectMatManageUiConfig?.length && objectMatManageUiConfig.map((c, i)=><ConfigObject key={i} {...props} config={c}/>)}*/}
+            <Divider style={{margin: 0}}/>
+
+        </>}
+    </>
+}
+
+export function ButtonWithTooltip({tooltip, ...props}: ButtonProps & {tooltip: string}) {
+    return <Tooltip
+        content={tooltip}
+        hoverOpenDelay={150}
+        hoverCloseDelay={300}
+    >
+        <Button
+            variant={"minimal"} size={"small"}
+            title={tooltip}
+            {...props}
+        />
+    </Tooltip>
 }
 
 export function InsSectionItem(props: {
@@ -632,21 +776,14 @@ export function InsSectionItem(props: {
         >
             {typeof props.info.icon === 'string' ? <Icon icon={props.info.icon} style={{marginLeft: "6px"}} size={12}/> : props.info.icon}
         </Tooltip>}
-        {props.buttons?.map(({key, text, showText, ...b})=><Tooltip
+        {props.buttons?.map(({key, text, showText, ...b})=><ButtonWithTooltip
             key={key}
-            content={text}
-            hoverOpenDelay={150}
-            hoverCloseDelay={300}
-        >
-            <Button
-                variant={"minimal"} size={"small"}
-                // icon="trash"
-                title={text}
-                {...b}
-                text={showText ? text : undefined}
-                // intent={"warning"}
-            />
-        </Tooltip>)}
+            tooltip={text}
+            // icon="trash"
+            title={text}
+            {...b}
+            text={showText ? text : undefined}
+        />)}
     </div>
 }
 
@@ -728,7 +865,7 @@ export function AddPluginComp(){
     const {project} = useProject()
     const addProjectPlugin = async (path: string)=>{
         if(!project) return false
-        const res = await manager.addProjectPlugin({import: path}).then(()=>({error: null})).catch(e=>{
+        const res = await manager.addProjectPlugin({import: './'+path}).then(()=>({error: null})).catch(e=>{
             return {error: e?.message ?? 'Unknown error'}
         })
         const r = showSuccessErrorToast(res ? `Loaded ${project.path}${path} successfully` : 'Unknown Error', 'Unable to load plugin', res)
@@ -952,7 +1089,7 @@ export function AddCompComp({object, ...panelProps}: {object: IObject3D} & Panel
         }
     }
     return <RefSelectionObjectComponent
-        label={"Add"}
+        label={"Add Comp"}
         objectType={"script"}
         object={selectedScript}
         disabled={false}
@@ -971,7 +1108,7 @@ export function AddCompComp({object, ...panelProps}: {object: IObject3D} & Panel
 
 export const addProjectScript = async (path: string, manager: ViewerInstanceManager)=>{
     if(!manager.loadedProject) return false
-    const res = await manager.addProjectScript({import: path}).then(()=>({error: null})).catch(e=>{
+    const res = await manager.addProjectScript({import: './'+path}).then(()=>({error: null})).catch(e=>{
         return {error: e?.message ?? 'Unknown error'}
     })
     const r = showSuccessErrorToast(res ? `Loaded ${manager.loadedProject.path}${path} successfully` : 'Unknown Error', 'Unable to load plugin', res)
@@ -982,3 +1119,29 @@ export const addProjectScript = async (path: string, manager: ViewerInstanceMana
     return mod.components
 }
 
+export const NewMaterialContextMenu: FC<ContextMenuItemsProps<IObject3D>&{
+    onClick?: (mat: IMaterial)=>void
+}> = (props)=>{
+    const manager = useManager()
+    const picking = manager.get().getPlugin(PickingPlugin)
+    const obj = props.object
+    const types = picking?.materialTypes.map(matType=>({
+        label: `New ${matType.name} Material`,
+        type: 'button',
+        hidden: matType.line ?
+            // ()=>(!obj.isLineSegments2 && !obj.isLine && !obj.isLineSegments) || !(!obj.materials?.length || obj.materials.length === 1 && obj.materials[0].userData?.isPlaceholder) :
+            !obj.isLineSegments2 && !obj.isLine && !obj.isLineSegments && !obj.isWireframe || !(!obj.materials?.length || obj.materials.length === 1 && obj.materials[0] === matType.def) :
+            !(!obj.materials?.length || obj.materials.length === 1 && obj.materials[0].userData?.isPlaceholder) || !obj.isMesh,
+        value: ()=>{
+            return new matType.cls() as any
+        },
+    })) || []
+    return <>
+        <MenuDivider title="Create a Material" className={"context-menu-divider"} />
+        {types.map((t, i)=>!t.hidden && <MenuItem key={i} text={t.label} onClick={()=>{
+            const mat = t.value() as IMaterial
+            props.onClick?.(mat)
+        }}/>)}
+    </>
+
+}

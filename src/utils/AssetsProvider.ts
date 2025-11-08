@@ -28,7 +28,8 @@ export async function manifestEntryToFile(f: FileManifestEntry): Promise<File | 
 
 export async function directoryToManifest(
     handle: FileSystemDirectoryHandle,
-    basePath: string = ''
+    basePath: string = '',
+    existingManifest?: FileManifestEntry[]
 ): Promise<FileManifestEntry[]> {
     const entries: FileManifestEntry[] = []
 
@@ -36,7 +37,14 @@ export async function directoryToManifest(
     for await (const [name, entryHandle] of handle.entries()) {
         const fullPath = basePath ? `${basePath}/${name}` : name
 
+        const existing = existingManifest?.find(e => e.path === fullPath && e.name === name && e.type === entryHandle.kind)
+
         if (entryHandle.kind === 'file') {
+            if(existing){
+                // reuse existing entry
+                entries.push(existing)
+                continue
+            }
             // Handle file entry
             entries.push({
                 name,
@@ -47,9 +55,15 @@ export async function directoryToManifest(
 
             })
         } else if (entryHandle.kind === 'directory') {
-            // Handle directory entry - recursively process subdirectories
-            const children = await directoryToManifest(entryHandle, fullPath)
+            if(existing){
+                // reuse existing entry
+                entries.push(existing)
+            }
 
+            // Handle directory entry - recursively process subdirectories
+            const children = await directoryToManifest(entryHandle, fullPath, existing?.children)
+
+            if(!existing)
             entries.push({
                 name,
                 path: fullPath,
@@ -58,6 +72,8 @@ export async function directoryToManifest(
                 children: children,
                 isFSEntry: true
             })
+            else
+            existing.children = children
         }
     }
 
@@ -95,11 +111,14 @@ function useSetupAssets() {
 
     const refreshManifest = useMemo(() => {
         let lastCall = 0;
+        let last = undefined as FileManifestEntry[] | undefined
         return async (force = false) => {
+            console.log('refresh manifest', force)
             const now = Date.now();
             if (project?.handle?.kind === "directory" && (force || (now - lastCall >= 3000))) {
                 lastCall = now;
-                return directoryToManifest(project.handle).then(f=>{
+                return directoryToManifest(project.handle, '', last).then(f=>{
+                    last = f
                     setFileManifest(f)
                     return f
                 })
@@ -114,7 +133,7 @@ function useSetupAssets() {
         selectedFiles, setSelectedFiles,
         // canRenderInspector,
         currentPath, setCurrentPath,
-        fileManifest, setFileManifest,
+        fileManifest, /*setFileManifest,*/
         refreshManifest
     }
 }

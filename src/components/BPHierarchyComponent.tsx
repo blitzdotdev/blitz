@@ -1,11 +1,12 @@
 import {
+    Box3B,
     Event2,
     Group,
     IObject3D,
     ISceneEventMap,
     JSUndoManagerCommand1,
     ObjectPickerEventMap,
-    PickingPlugin,
+    PickingPlugin, RootScene,
     ThreeViewer,
     UiObjectConfig,
     UndoManagerPlugin
@@ -15,11 +16,13 @@ import {VisibilityIcon} from "./VisibilityIcon";
 import React, {FC, useMemo} from "react";
 import {canMakeAsset, isExternalObject, logAsset, useMakeAsset, useManager} from "../utils/ViewerInstanceManager.ts";
 import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
-import {Intent, MenuDivider} from "@blueprintjs/core";
+import {Button, Icon, Intent, MenuDivider} from "@blueprintjs/core";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
-import {Object3DGenerationMenu, useOnObjectCreate} from "./Object3DGenerationMenu.tsx";
+import {Object3DGenerationMenu} from "./Object3DGenerationMenu.tsx";
 import {useContextMenu} from "./ContextMenuProvider.tsx";
+import {CanvasFileDropHandler, isDraggableDroppableNode} from "../utils/CanvasFileDropHandler.ts";
+import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
 
 interface BPHierarchyComponentPropsExtras extends HandleContextMenuCallback<IObject3D>{
 }
@@ -44,12 +47,6 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
             // todo _sChildren
             node.childNodes = ((obj.children as T[]) || []).reduce<any[]>((...args) => this.buildData(...args), [])
         node.isSelected = this._selectedId === node.id
-        const isComponent = obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
-        const isExternal = isExternalObject(obj)
-        const isGroup = obj.isGroup
-        node.droppable = !isExternal && !isComponent && isGroup
-        node.draggable = !isExternal
-        node.intent = isComponent ? Intent.WARNING : isExternal ? Intent.PRIMARY : Intent.NONE
 
         // node.hasCaret = (node.childNodes?.length||0) > 0
         node.icon = undefined
@@ -75,24 +72,43 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
             node.icon = bpUiConfigIcons['shape-cube-transparent-filled-mono']({style: {color: 'transparent'}, className: 'bp5-tree-node-icon-svg'})
         }
         if(obj.isCamera){
-            node.icon = (obj as any).isPerspectiveCamera ?
+            node.icon = /*(obj as any).isPerspectiveCamera ?
                 bpUiConfigIcons['shape-trapezium-filled-mono-2']({style: {color: 'transparent'}}) :
                 (obj as any).isOrthographicCamera ?
-                    bpUiConfigIcons['shape-cuboid-filled-mono-1']({style: {color: 'transparent'}}) :
+                    bpUiConfigIcons['shape-cuboid-filled-mono-1']({style: {color: 'transparent'}}) :*/
                 'camera'
         }
         if(obj.isLine){
             node.icon = 'flows'
         }
-        node.hasCaret = !node.icon
+        if(obj.isScene){
+            node.icon = 'cubes'
+        }
         // node.icon = 'layer-outline'
+
+        if((obj as any as RootScene).isRootScene){
+            node.icon = 'layers'
+            node.label = 'Scene'
+            node.intent = 'none'
+            node.hasCaret = false
+            node.droppable = false
+            node.draggable = false
+        }else {
+            const {isComponent, isExternal, draggable, droppable} = isDraggableDroppableNode(obj)
+            node.droppable = droppable
+            node.draggable = draggable
+            node.intent = isComponent ? Intent.WARNING : isExternal ? Intent.PRIMARY : Intent.NONE
+            node.hasCaret = !node.icon
+        }
+
         return node;
     }
 
     protected _getRootNodes(): T[] {
-        // @ts-expect-error config type?
-        const v = this.context.methods.getRawValue<T>(this.props.config)
-        return v?.children as any || [] // todo as any
+        const root = this.context.viewer.scene.modelRoot
+        const scene = this.context.viewer.scene
+        const camera = this.context.viewer.scene.defaultCamera
+        return [scene, camera, ...root.children] as T[]
         // return getValue(this.props.config)
         // return (this.props.config.children || []).map(c => getOrCall(c) || {}).flat(2)
     }
@@ -107,14 +123,19 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
     protected async _onNodeDoubleClick(_id: string) {
         const node = this._infoMap.get(_id)
         if(!node) return
+        let isScene = node.nodeData! === this.context.viewer.scene as any
+        let obj = node.nodeData!
         node.nodeData!.dispatchEvent({
             type: 'select',
             value: node.nodeData!,
             object: node.nodeData!,
             ui: true,
-            focusCamera: true,
+            focusCamera: !isScene,
             bubbleToParent: true,
         })
+        if(isScene){
+            this.context.viewer.getPlugin(PickingPlugin)?.focusObject(this.context.viewer.scene.modelRoot)
+        }
     }
 
     protected async _onNodeContextMenu(_id:string | number, _e: React.MouseEvent<HTMLElement, MouseEvent>){
@@ -165,65 +186,64 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         if (!target || !source) return false
         if (sourceNode.id === targetNode.id) return false
 
-        const noTypes = [ 'Mesh', 'Line', 'Points' ]
-        if (noTypes.includes(target.type)) return false
-        let compatible = true
-        target.traverseAncestors(c=>c.id === source!.id && (compatible = false))
-        if(!compatible) return false // source is an ancestor of target
-
-        // target ancestor of source
-        // source.traverseAncestors(c=>c.id === target!.id && (compatible = false))
-        if(source.parent === target){
-            if(index !== undefined && target.children.indexOf(source) !== index) return true
-            else return false
-        }else if(index === undefined) {
-            // if no index is given, we can drop it anywhere
-            return true
-        }
-        return true
+        const drop = this.context.viewer?.getPlugin(CanvasFileDropHandler)
+        return drop?.canDropNode(source, target, index) ?? false
     }
 
     protected _onDropNode(sourceNode: TreeNodeInfo<T>, _sourcePath: number[], targetNode: TreeNodeInfo<T>, _targetPath: number[], _e?: React.DragEvent, index?: number) {
         if(!targetNode.nodeData || !sourceNode.nodeData) return
         const source = sourceNode.nodeData
         const target = targetNode.nodeData
-        if(source === target || source.id === target.id) return // same object
-        const viewer = this.context.viewer
-        if(!viewer) {
-            console.error('BPHierarchyComponent: viewer not found in context', this.context)
-            return
-        }
-        const lastParent = source.parent
-        const lastIndex = lastParent?.children.indexOf(source) ?? -1
-        let newIndex = index ?? -1
-        const undoManager = viewer.getPlugin(UndoManagerPlugin)?.undoManager
+        if(source === target || sourceNode.id === targetNode.id) return // same object
+        const drop = this.context.viewer?.getPlugin(CanvasFileDropHandler)
+        drop?.setDraggedItem(source)
+        drop?.setDropTarget(target, true, {index})
+        return
+    }
 
-        function addAtIndex(target: IObject3D, newIndex: number = -1) {
-            // todo check if target is parent of source, in case only reordering (but that wont fire events like setDirty?)
-            target.add(source)
-            const newIndex2 = target.children.indexOf(source)
-            if (newIndex >= 0 && newIndex2 >= 0 && newIndex !== newIndex2) {
-                target.children.splice(newIndex2, 1)
-                target.children.splice(newIndex, 0, source) // add at new index
-                return newIndex
+    protected _onNodeDragStart(sourceNode: TreeNodeInfo<T>, _sourcePath: number[], e?: React.DragEvent) {
+        if(!sourceNode.nodeData) return
+        const source = sourceNode.nodeData
+        const drop = this.context.viewer?.getPlugin(CanvasFileDropHandler)
+        drop?.setDraggedItem(source)
+
+        if(e) {
+            try {
+                e.dataTransfer.clearData();
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('application/json', JSON.stringify({uuid: source.uuid, name: source.name})); // todo put the json of obj or file blob here
+            } catch {
+                // ignore
             }
-            return newIndex2;
         }
+        return
+    }
 
-        const cmd = {
-            redo: () => {
-                // todo use attach if e?.shiftKey
-                newIndex = addAtIndex(target, newIndex);
-            },
-            undo: () => {
-                if (lastParent) {
-                    addAtIndex(lastParent, lastIndex);
-                    // source!.dispatchEvent({type: 'select', value: source, object: source, ui: true})
-                }
-            },
-        } as JSUndoManagerCommand1
-        undoManager?.record(cmd)
-        cmd.redo() // apply the command immediately
+    protected _onNodeDragEnd(sourceNode: TreeNodeInfo<T>, _sourcePath: number[], e?: React.DragEvent) {
+        if(!sourceNode.nodeData) return
+        const source = sourceNode.nodeData
+        const drop = this.context.viewer?.getPlugin(CanvasFileDropHandler)
+        drop?.clearDraggedItem(false, source)
+        e?.dataTransfer.clearData();
+        return
+    }
+
+    protected _onNodeDragOver(targetNode: TreeNodeInfo<T>, _targetPath: number[], e?: React.DragEvent, index?: number) {
+        if(!targetNode.nodeData) return
+        const target = targetNode.nodeData
+        const drop = this.context.viewer?.getPlugin(CanvasFileDropHandler)
+        drop?.setDropTarget(target, false, {index})
+        e?.dataTransfer.clearData();
+        return
+    }
+
+    protected _onNodeDragLeave(targetNode: TreeNodeInfo<T>, _targetPath: number[], e?: React.DragEvent, index?: number) {
+        if(!targetNode.nodeData) return
+        const target = targetNode.nodeData
+        const drop = this.context.viewer?.getPlugin(CanvasFileDropHandler)
+        if(target === drop?.dropTarget)
+            drop?.setDropTarget(null, false, {index})
+        e?.dataTransfer.clearData();
         return
     }
 
@@ -301,7 +321,7 @@ function ExtraMenuItems(props: {
     if(!obj?.isObject3D) return null
     const isComponent = obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
     const isExternal = isExternalObject(obj)
-    const isGroup = obj.isGroup
+    const isGroup = !obj.isMesh && !obj.material && !obj.isLine && !obj.isPoints && !obj.isCamera // groups, lights, cameras, helpers, etc
     const canCreate = !isExternal && !isComponent && isGroup
     return canCreate && onObjectCreate ? <>
         <MenuDivider title="Create" className={"context-menu-divider"} />
@@ -333,16 +353,23 @@ export function ObjectHierarchyComponent({className}: {className: string}){
 
     // const children = [...manager?.get().scene.modelRoot.children]
 
-    return <BPHierarchyComponent config={config}
-                                 // key={viewer.scene.modelRoot.uuid}
-                                 handleContextMenu={(e, items, obj)=>{
-                                     contextMenu.handleContextMenu({
-                                         event: e,
-                                         actionItems: items,
-                                         actions: actions,
-                                         obj: obj,
-                                         Items: ExtraMenuItems,
-                                     })
-                                 }}
-                                 className={className}/>
+    return <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+    }}>
+        <BPHierarchyComponent
+         config={config}
+         key={viewer.scene.modelRoot.uuid} // this is required because viewer can be destroyed and recreated
+         handleContextMenu={(e, items, obj)=>{
+             contextMenu.handleContextMenu({
+                 event: e,
+                 actionItems: items,
+                 actions: actions,
+                 obj: obj,
+                 Items: ExtraMenuItems,
+             })
+         }}
+         className={className}/>
+    </div>
 }

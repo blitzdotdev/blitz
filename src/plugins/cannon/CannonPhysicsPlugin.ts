@@ -1,21 +1,53 @@
-import {Body, Shape, World, Material as CannonMaterial, ContactMaterial } from "cannon-es"
+import {Body, ContactMaterial, Material as CannonMaterial, Shape, World} from "cannon-es"
 import {
     AViewerPluginSync,
-    EntityComponentPlugin, FrameFadePlugin, IObject3D, IViewerEvent, Object3DWidgetsPlugin,
+    EntityComponentPlugin,
+    FrameFadePlugin, generateUUID,
+    IObject3D,
+    IViewerEvent,
+    Matrix4,
+    Object3DWidgetsPlugin,
+    Quaternion,
     serialize,
-    ThreeSerialization, ThreeViewer, TObject3DComponent,
+    ThreeSerialization,
+    ThreeViewer,
+    TObject3DComponent,
+    TypeSystem,
     uiConfig,
-    uiFolderContainer,
-    uiToggle
+    uiFolderContainer, uiInput, uiMonitor, uiNumber,
+    uiToggle,
+    Vector3
 } from "threepipe"
-import {Matrix4, Quaternion, Vector3} from "three";
-import {
-    Cannon3DShapeComponent,
-    Cannon3DShapeHelper,
-    CannonShapeType,
-    cannonShapeTypes
-} from "./Cannon3DShapeComponent.ts";
-import {Cannon3DBodyComponent, PhysicsBodyType, physicsBodyType} from "./Cannon3DBodyComponent.ts";
+import {Cannon3DShapeComponent, Cannon3DShapeHelper} from "./Cannon3DShapeComponent.ts";
+import {Cannon3DBodyComponent} from "./Cannon3DBodyComponent.ts";
+
+@uiFolderContainer('Cannon Material')
+export class CannonMaterial2 extends CannonMaterial{
+    @uiInput()
+    declare name: string
+    @uiMonitor()
+    uuid: string = generateUUID()
+    @uiNumber()
+    declare friction
+    @uiNumber()
+    declare restitution
+}
+ThreeSerialization.MakeSerializable(CannonMaterial as any, 'CannonMaterial', ['friction', 'restitution']) // this is not needed actually, but just in case
+ThreeSerialization.MakeSerializable(CannonMaterial2 as any, 'CannonMaterial', ['name', 'uuid', 'friction', 'restitution']) // this should be after CannonMaterial
+ThreeSerialization.MakeSerializable(ContactMaterial as any, 'CannonContactMaterial', [/* 'materials', */'friction', 'restitution', 'contactEquationStiffness', 'contactEquationRelaxation', 'frictionEquationStiffness', 'frictionEquationRelaxation'])
+TypeSystem.AddClass({
+    key: 'CannonMaterial',
+    getId(obj: CannonMaterial2) {
+        return obj.uuid
+    },
+    getLabel(obj?: CannonMaterial2) {
+        return obj ? obj.name : 'Cannon Material'
+    },
+    setName(obj: CannonMaterial2, name: string) {
+        obj.name = name
+    },
+    ctor: CannonMaterial2,
+})
 
 // uses https://github.com/pmndrs/cannon-es
 
@@ -26,11 +58,15 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
     get world() { return this._world }
     // dependencies: Class<IViewerPlugin<any>>[]
 
+    @serialize()
+    @uiToggle()
+    enabled = true
+
     static CannonTypes = {
         Body, Shape, World, Material: CannonMaterial, ContactMaterial,
     }
-    @uiToggle('Enabled', (_that: CannonPhysicsPlugin)=>({onChange: ()=>{return}}))
-    @serialize() enabled = true
+    @uiToggle('Running', (_that: CannonPhysicsPlugin)=>({onChange: ()=>{return}}))
+    running = true
 
     nextSteps = 0
 
@@ -42,6 +78,10 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
                 this.nextSteps = this.stepPhysics.stepCount
             },
         }
+
+    @uiConfig()
+    @serialize()
+        defaultMaterial = new CannonMaterial2('default')
 
     // @uiButton('Make Root Bodies')
     //     makeRootBodies = () => {
@@ -67,28 +107,59 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
     //     // this._viewer?.setDirty()
     // }
 
-    constructor(enabled = true) {
+    constructor(enabled = true, running = false) {
         super()
         this.enabled = enabled
+        this.running = running
 
-        this._world.addEventListener('beginContact', (e)=>{
-            console.log(e)
+        // replaced for UI
+        this.defaultMaterial.friction = 0
+        this.defaultMaterial.restitution = 0
+        this._world.defaultMaterial = this.defaultMaterial
+        this._world.defaultContactMaterial.materials = [this.defaultMaterial, this.defaultMaterial]
+
+        let collisionEv: CollisionEvent = {} as any
+        this._world.addEventListener('beginContact', (e: any)=>{
+            const compA = this.cannonBodies.get(e.bodyA)
+            const compB = this.cannonBodies.get(e.bodyB)
+            if(!compA || !compB){
+                console.warn('[CannonPhysicsPlugin] Contact bodies not managed by plugin', e.bodyA, e.bodyB)
+                return
+            }
+            collisionEv.object = compB.object
+            collisionEv.body = compB
+            EntityComponentPlugin.ObjectDispatch(compA.object, 'onBeginContact', collisionEv)
+            collisionEv.object = compA.object
+            collisionEv.body = compA
+            EntityComponentPlugin.ObjectDispatch(compB.object, 'onBeginContact', collisionEv)
         })
-        this._world.addEventListener('endContact', (e)=>{
-            console.log(e)
+        this._world.addEventListener('endContact', (e: any)=>{
+            const compA = this.cannonBodies.get(e.bodyA)
+            const compB = this.cannonBodies.get(e.bodyB)
+            if(!compA || !compB){
+                console.warn('[CannonPhysicsPlugin] Contact bodies not managed by plugin', e.bodyA, e.bodyB)
+                return
+            }
+            collisionEv.object = compB.object
+            collisionEv.body = compB
+            EntityComponentPlugin.ObjectDispatch(compA.object, 'onEndContact', collisionEv)
+            collisionEv.object = compA.object
+            collisionEv.body = compA
+            EntityComponentPlugin.ObjectDispatch(compB.object, 'onEndContact', collisionEv)
         })
-        this._world.addEventListener('beginShapeContact', (e)=>{
-            console.log(e)
-        })
-        this._world.addEventListener('endShapeContact', (e)=>{
-            console.log(e)
-        })
-        this._world.addEventListener(Body.COLLIDE_EVENT_NAME, (e)=>{
-            console.log(e)
-        })
+        // this._world.addEventListener('beginShapeContact', (e)=>{
+        //     console.log(e)
+        // })
+        // this._world.addEventListener('endShapeContact', (e)=>{
+        //     console.log(e)
+        // })
+        // this._world.addEventListener(Body.COLLIDE_EVENT_NAME, (e)=>{
+        //     console.log(e)
+        // })
         this._world.gravity.set(0, -9.81, 0)
         // this._world.gravity.set(0, 0, 0)
 
+        console.log(this.enabled)
         //
         // // Max solver iterations: Use more for better force propagation, but keep in mind that it's not very computationally cheap!
         // this._world.solver.iterations = 20
@@ -100,12 +171,6 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
         //
 
         // coeff of restitution: 0 = no bounce, 1 = perfect bounce
-
-        ThreeSerialization.MakeSerializable(CannonMaterial as any, 'CannonMaterial', ['friction', 'restitution'])
-        // ;(CannonMaterial.prototype as any).serializableClassId = 'CannonMaterial'
-        // Serialization.SerializableClasses.set((CannonMaterial.prototype as any).serializableClassId, CannonMaterial)
-        // Serialization.TypeMap.set(CannonMaterial as any, [/* ['name', 'name'], */['friction', 'friction'], ['restitution', 'restitution']])
-        ThreeSerialization.MakeSerializable(ContactMaterial as any, 'CannonContactMaterial', [/* 'materials', */'friction', 'restitution', 'contactEquationStiffness', 'contactEquationRelaxation', 'frictionEquationStiffness', 'frictionEquationRelaxation'])
 
         // test
 
@@ -142,10 +207,11 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
     protected _preFrame = (e: IViewerEvent) => {
         const viewer = this._viewer
         if (!viewer) return
+        if(this.isDisabled()) return
         const frameFadePlugin = viewer.getPlugin(FrameFadePlugin)
         // todo use isDisabled
-        if (!this.enabled) {
-            if (this.nextSteps > 0) this.enabled = true
+        if (!this.running) {
+            if (this.nextSteps > 0) this.running = true
             else {
                 if (frameFadePlugin && this.frameFadeToggled) {
                     frameFadePlugin.enable(CannonPhysicsPlugin.PluginType)
@@ -166,7 +232,7 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
             }
         } else {
             const dt = e.deltaTime
-            this._world.fixedStep(0.001) // todo there are 2 modes?
+            this._world.fixedStep() // todo there are 2 modes?
         }
 
         this._dirty = false
@@ -200,7 +266,7 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
                 this._m2.decompose(this._v1, this._q1, this._s2)
                 mesh.position.copy(this._v1)
                 mesh.quaternion.copy(this._q1)
-                mesh.setDirty({change: 'transform', source: 'CannonPhysicsPlugin'})
+                mesh.setDirty && mesh.setDirty({change: 'transform', source: 'CannonPhysicsPlugin'})
             }
         }
         this._dirty = dirty
@@ -209,15 +275,23 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
         viewer.renderManager.resetShadows()
 
         if (this.nextSteps > 0) {
-            this.enabled = false
+            this.running = false
             this.nextSteps = 0
         }
     }
 
-    async onAdded(viewer: ThreeViewer): Promise<void> {
+    private _onRemove: (()=>void)[] = []
+
+    async onAdded(viewer: ThreeViewer): Promise<
+        void> {
         super.onAdded(viewer)
 
-        viewer.addEventListener('preFrame', this._preFrame)
+        const offUpdate = viewer.on('preFrame', {
+            order: -1, // before most things
+            callback: this._preFrame,
+        })
+        if (offUpdate) this._onRemove.push(offUpdate)
+
         Object.values(this.componentTypes).forEach((compType) => {
             viewer.getPlugin(EntityComponentPlugin)?.addComponentType(compType)
         })
@@ -249,20 +323,20 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
         if (!ecs) return
         const existing = EntityComponentPlugin.GetComponentData(obj, this.componentTypes.body)
         if (existing) return
-        const pBody = ecs.addComponent(obj, this.componentTypes.body).component
-        const pShape = ecs.addComponent(obj, this.componentTypes.shape).component
-        if (!pBody || !pShape) return
-        pBody.mass = typeof obj.userData.physicsMass === 'number' ? obj.userData.physicsMass : 0
-        if (obj.userData.physicsBodyType !== undefined) {
-            if (typeof obj.userData.physicsBodyType === 'string' && physicsBodyType.includes(obj.userData.physicsBodyType as PhysicsBodyType)) {
-                pBody.type = obj.userData.physicsBodyType as PhysicsBodyType
-            }
-        }
-        if (obj.userData.physicsShape !== undefined) {
-            if (typeof obj.userData.physicsShape === 'string' && cannonShapeTypes.includes(obj.userData.physicsShape as CannonShapeType)) {
-                pShape.type = obj.userData.physicsShape as CannonShapeType
-            }
-        }
+        // const pBody = ecs.addComponent(obj, this.componentTypes.body).component
+        // const pShape = ecs.addComponent(obj, this.componentTypes.shape).component
+        // if (!pBody || !pShape) return
+        // pBody.mass = typeof obj.userData.physicsMass === 'number' ? obj.userData.physicsMass : 0
+        // if (obj.userData.physicsBodyType !== undefined) {
+        //     if (typeof obj.userData.physicsBodyType === 'string' && physicsBodyType.includes(obj.userData.physicsBodyType as PhysicsBodyType)) {
+        //         pBody.type = obj.userData.physicsBodyType as PhysicsBodyType
+        //     }
+        // }
+        // if (obj.userData.physicsShape !== undefined) {
+        //     if (typeof obj.userData.physicsShape === 'string' && cannonShapeTypes.includes(obj.userData.physicsShape as CannonShapeType)) {
+        //         pShape.type = obj.userData.physicsShape as CannonShapeType
+        //     }
+        // }
     }
 
     private _objectRemove = (e: {object?: IObject3D})=>{
@@ -272,7 +346,7 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
     }
 
     onRemove(viewer: ThreeViewer) {
-        viewer.removeEventListener('preFrame', this._preFrame)
+        this._onRemove.forEach(off=>off())
         Object.values(this.componentTypes).forEach((compType) => {
             viewer.getPlugin(EntityComponentPlugin)?.removeComponentType(compType)
         })
@@ -291,10 +365,12 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
     } satisfies Record<string, TObject3DComponent>
 
     bodyComponents = new Set<Cannon3DBodyComponent>()
+    cannonBodies = new WeakMap<Body, Cannon3DBodyComponent>()
     addBody(body: Cannon3DBodyComponent) {
         if (this.bodyComponents.has(body)) return
         this.bodyComponents.add(body)
         this._world.addBody(body.body)
+        this.cannonBodies.set(body.body, body)
         // this._bodyMeshMap.set(body.body, body.object)
         // this._viewer?.setDirty()
     }
@@ -302,8 +378,21 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
         if (!this.bodyComponents.has(body)) return
         this.bodyComponents.delete(body)
         this._world.removeBody(body.body)
+        this.cannonBodies.delete(body.body)
         // this._bodyMeshMap.delete(body.body)
         // this._viewer?.setDirty()
     }
 
+}
+
+export interface CollisionEvent{
+    object: IObject3D
+    body: Cannon3DBodyComponent
+}
+declare module 'threepipe'{
+    interface Object3DComponent{
+        onBeginContact?(collisionEvent: any):void
+        onEndContact?(collisionEvent: any):void
+
+    }
 }

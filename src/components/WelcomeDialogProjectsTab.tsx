@@ -4,7 +4,7 @@ import {WelcomeDialogEmptyProjectState} from './WelcomeDialogEmptyProjectState'
 import {useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
 import {useEffect, useState} from 'react'
 import {useManager} from '../utils/ViewerInstanceManager.ts'
-import {useProjectActions} from '../utils/projectActions.tsx'
+import {refreshQueryState, useProjectActions} from '../utils/projectActions.tsx'
 import {SavedSceneFileMeta} from "../utils/project.ts";
 
 export function WelcomeDialogProjectsTab() {
@@ -17,7 +17,7 @@ export function WelcomeDialogProjectsTab() {
     // useEffect(() => {
     //     console.log(projects)
     // }, [projects]);
-    const {loadProject} = useProjectActions()
+    // const {loadProject} = useProjectActions()
 
     return projects.length > 0 ? (
             <div className="welcome-main-container">
@@ -32,12 +32,12 @@ export function WelcomeDialogProjectsTab() {
                         <Button
                                 key={project.path}
                                 className={"file-item-button"}
-                                icon={<img src={typeof project.preview=== 'string' ? project.preview : URL.createObjectURL(project.preview as File)}/>}
+                                icon={<img className={"bp5-icon"} src={typeof project.preview=== 'string' ? project.preview : URL.createObjectURL(project.preview as File)}/>}
                                 text={project.path.replace(/\/$/, '').split('/').pop()}
                                 variant={"minimal"}
                                 alignText={'center'}
                                 loading={loadingState[project.path]}
-                                onClick={() => updateLoading(project.path, loadProject(project.path))}
+                                onClick={() => updateLoading(project.path, refreshQueryState({project: project.path, file: null}, true))}
                             // onClick={() => updateLoading('create-new', actions.createFile())}
                         />
                     ))}

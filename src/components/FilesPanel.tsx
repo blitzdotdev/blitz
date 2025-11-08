@@ -1,15 +1,31 @@
-import {thumbPath, useManager, useProject} from "../utils/ViewerInstanceManager.ts";
+import {isLoadableFile, thumbPath, useManager, useProject} from "../utils/ViewerInstanceManager.ts";
 import type {BreadcrumbProps} from "@blueprintjs/core/src/components/breadcrumbs/breadcrumb.tsx";
-import {Breadcrumbs, Button, ButtonGroup, ButtonProps, Icon} from "@blueprintjs/core";
-import {FC, useEffect, useState} from "react";
+import {
+    Breadcrumbs,
+    Button,
+    ButtonGroup,
+    ButtonProps,
+    Icon,
+    IconName,
+    MaybeElement,
+    MenuItem,
+    Slider, Tab, Tabs
+} from "@blueprintjs/core";
+import React, {FC, useEffect, useRef, useState} from "react";
 import {useProjectActions} from "../utils/projectActions.tsx";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
-import {MenuItem2} from "./ContextMenuUtils.tsx";
+import {MenuItem2, MenuItemAction} from "./ContextMenuUtils.tsx";
 import {FileManifestEntry, getFileByPath, manifestEntryToFile, useAssets} from "../utils/AssetsProvider.ts";
 import {useSaveBeforeClose} from "./UseSaveFile.tsx";
 import {useDialogPrompt, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
-import {IObject3D, PhysicalMaterial, PickingPlugin, UnlitMaterial} from "threepipe";
+import {IObject3D, PhysicalMaterial, PickingPlugin, ThreeSerialization, TypeSystem, UnlitMaterial} from "threepipe";
 import {ErrorRes, showSuccessErrorToast} from "../utils/Toaster.tsx";
+import {fileToIcon} from "../utils/icons.tsx";
+import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.ts";
+import {PopupMenuButton} from "./PopupMenuButton.tsx";
+import {CannonMaterial2, CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
+import {assetUrlPrefix} from "../utils/project.ts";
+import {TypedClass} from "threepipe";
 
 export function FilesPanelBreadCrumbs({}: {}){
     const {project} = useProject()
@@ -41,7 +57,8 @@ export function FilesPanelBreadCrumbs({}: {}){
         //     { current: true, text: "image.jpg" },
         // ]}
         items={items}
-        minVisibleItems={3}
+        className={"files-panel-breadcrumbs"}
+        minVisibleItems={1}
     />
 }
 
@@ -70,6 +87,16 @@ const menuItemsEmpty: MenuItem2[] = [{
     key: 'createPluginJs',
     tags: ['dirHandle'],
     props: {text: 'New Plugin (JS)', icon: 'document-code'},
+},{
+    action: 'createScriptJs',
+    key: 'createScriptJs',
+    tags: ['dirHandle'],
+    props: {text: 'New Script (JS)', icon: 'document-code'},
+},{
+    // action: 'createTypedObject',
+    key: 'createTypedObject',
+    tags: ['dirHandle'],
+    props: {text: 'New JSON Object', icon: 'code-block'},
 },{
     action: 'createEmptyFolder',
     key: 'createEmptyFolder',
@@ -113,7 +140,7 @@ export function FilesPanelGrid({}: {
                 const res = await manager.loadProjectFile(r, force).catch(e=>{
                     return {error: e?.message ?? 'Unknown error'}
                 })
-                const r2 = showSuccessErrorToast(res ? `Loaded ${project.path}${r.path} successfully` : 'Unknown Error', 'Unable to load plugin', res as ErrorRes)
+                const r2 = showSuccessErrorToast(res ? `Loaded ${project.path}${r.path} successfully` : 'Unknown Error', 'Unable to load file', res as ErrorRes)
             }else {
                 // directory or something
             }
@@ -180,17 +207,10 @@ export function FilesPanelGrid({}: {
         if(!dirHandle || !project?.handle) return
         while(true) {
             let res = await prompt({
-                // title: 'Create New Scene',
-                // message: 'Enter the name of the new scene',
-                // placeholder: 'MyScene',
-                // value: 'NewScene',
-                // helperText: 'The .scene.glb extension will be added automatically',
-                // submitButtonText: 'Create',
-                // closeButtonText: 'Cancel'
                 ...props
             })
             if (!res) return
-            res = res + suffix
+            res = res + (suffix||'')
             // check if file exists
             const exists = await dirHandle.getFileHandle(res, {create: false}).catch(e => {
                 if(e.name === "NotFoundError") return null
@@ -243,7 +263,7 @@ export function FilesPanelGrid({}: {
             f && setSelectedFiles([f])
         })
     }
-    const actions = {
+    const actions: Record<string, MenuItemAction> = {
         createEmptyScene: async ()=>{
             if(!dirHandle || !project?.handle) return
             await whileExistsPrompt({
@@ -324,7 +344,88 @@ export function FilesPanelGrid({}: {
                 closeButtonText: 'Cancel',
                 isDir: false,
                 suffix: '.plugin.js',
-                callback: createFile,
+                callback: (n)=>{
+                    const def = `` // todo sample plugin
+                    return createFile(n, def.trim())
+                },
+            })
+        },
+        createScriptJs: async ()=>{
+            if(!dirHandle || !project?.handle) return
+            await whileExistsPrompt({
+                title: 'Create New Script',
+                message: 'Enter the name of the new file',
+                placeholder: 'MyScript',
+                value: 'NewScript',
+                helperText: 'The .script.js extension will be added automatically',
+                submitButtonText: 'Create',
+                closeButtonText: 'Cancel',
+                isDir: false,
+                suffix: '.script.js',
+                callback: (n)=>{
+                    const def = `
+import {Object3DComponent} from 'threepipe'
+/**
+ * Sample component that simulates a basic rigid body with forces, impulses, and velocity
+ */
+export class MyComponent extends Object3DComponent {
+    static StateProperties = ['running', 'radius', 'timeScale']
+    static ComponentType = 'MyComponent'
+
+    running = true
+
+    radius = 2
+
+    timeScale = 1
+
+
+    update({time}) {
+        if (!this.running) return
+        if (!this.object) return
+        this.object.position.x = Math.cos(time * this.timeScale / 1000) * this.radius
+        this.object.position.z = Math.sin(time * this.timeScale / 1000) * this.radius
+        return true // to set viewer dirty
+    }
+    
+    // @uiButton() // only in ts
+    ToggleRunning = () => {
+        this.running = !this.running
+    }
+    
+    uiConfig = {
+        type: 'folder',
+        label: 'MyComponent',
+        children: [{
+            type: 'button',
+            label: 'Toggle Running',
+            onClick: this.ToggleRunning,
+        }],
+    }
+}
+                    ` // todo sample script
+                    return createFile(n, def.trim())
+                }
+            })
+        },
+        createTypedObject: async (def: TypedClass)=>{
+            if(!dirHandle || !project?.handle) return
+            console.log(def)
+            await whileExistsPrompt({
+                title: 'Create New File',
+                message: 'Enter the name of the new file',
+                placeholder: 'MyFile',
+                value: 'MyFile',
+                helperText: 'The .json extension will be added automatically',
+                submitButtonText: 'Create',
+                closeButtonText: 'Cancel',
+                isDir: false,
+                suffix: '.json',
+                callback: (n)=>{
+                    const object = new def.ctor()
+                    if(def.setName) def.setName(object, n.replace('.json', ''))
+                    const json = ThreeSerialization.Serialize(object)
+                    return createFile(n, JSON.stringify(json, null, 2))
+                }
             })
         },
         createEmptyFolder: ()=>{
@@ -378,40 +479,121 @@ export function FilesPanelGrid({}: {
         menuItemsFiles1 = menuItemsFiles1.filter(f => !f.tags || !f.tags.includes('dirHandle'))
     }
 
-    return <ButtonGroup className="" style={{
-        height: '100%',
-        width: '100%',
-        flex: "1 1",
-        display: "flex",
-        flexWrap: "wrap",
-        alignContent: "flex-start",
-        overflowY: 'auto',
-        paddingTop: '10px',
-        paddingBottom: '10px',
-        boxSizing: 'border-box',
-        gap: '1px',
-    }} onContextMenu={e=>{
-        e.preventDefault()
-        e.stopPropagation()
-        handleContextMenu(e, menuItemsEmpty1, null)
-    }} onClick={e=>{
-        e.preventDefault()
-        e.stopPropagation()
-        console.log('click out')
-        setSelectedFiles([])
-    }}
-    onKeyDown={(e)=>{
-        if(e.key === 'Escape'){
+    const dragger = manager.get().getPlugin(CanvasFileDropHandler)
+
+    // clear dragged on unmount
+    useEffect(() => {
+        return () => {
+            dragger?.handleDragEnd()
+        };
+    }, [dragger]);
+
+    const selectedFilesRef = useRef<FileManifestEntry[]>([])
+    useEffect(() => {
+        selectedFilesRef.current = selectedFiles
+    }, [selectedFiles])
+    const openFile = (f: FileManifestEntry, newTab: boolean) => {
+        if (f.type === 'directory') {
+            setCurrentPath(f.path)
             setSelectedFiles([])
+        } else {
+            const allowedTypes = ['.scene.glb', '.glb', '.mat', /*'.glb', '.mat.json', '.js', '.ts'*/]
+            if (allowedTypes.some(ext => f.path.endsWith(ext))) {
+                // todo check type of file and open it if possible
+                // check for needssave
+                if (newTab) {
+                    // todo
+                    // window.open(window.location.pathname + '?project=' + encodeURIComponent(f.path) + (project?.path ? '&base=' + encodeURIComponent(project.path) : ''), '_blank')
+                    return
+                }
+                updateLoading(f.path, loadFile(f))
+            }
         }
-    }}
+    }
+    const selectFiles = async (files: FileManifestEntry[], e: React.MouseEvent|React.KeyboardEvent)=>{
+        selectedFilesRef.current = files
+        setSelectedFiles(files)
+        if(files.length === 1){
+            const f = files[0]
+            if(!isLoadableFile(f.path)) return
+            let cancelled = false
+            const picking  = manager.get().getPlugin(PickingPlugin)
+            const cancel = ()=>{ // cancel selection if something else is selected/unselected
+                cancelled = true
+                picking?.removeEventListener('selectedObjectChanged', cancel)
+            }
+            picking?.addEventListener('selectedObjectChanged', cancel)
+            const fileAsset = await manager.getAssetFromPath(assetUrlPrefix + f.path)
+            console.log(fileAsset)
+            if(fileAsset && !cancelled && picking &&
+                selectedFilesRef.current.length === 1 && selectedFilesRef.current[0] === f &&
+                picking.getSelectedObject() !== fileAsset
+            ){
+                picking.setSelectedObject(fileAsset)
+            }
+            cancel()
+        }
+    }
+
+    return <ButtonGroup
+        className="file-item-button-group"
+        onContextMenu={e=>{
+            e.preventDefault()
+            e.stopPropagation()
+
+            const c = menuItemsEmpty1.find(mi=>mi.key === 'createTypedObject')
+            if(c) c.children = [...TypeSystem.Classes.values()].map(def=>{
+                return {
+                    action: 'createTypedObject',
+                    key: def.key,
+                    data: def,
+                    props: {text: def.getLabel?.()||def.ctor.name, icon: def.getIcon?.()||'code-block'},
+                }
+            })
+
+            handleContextMenu(e, menuItemsEmpty1, null)
+        }}
+        onClick={e=>{
+            e.preventDefault()
+            e.stopPropagation()
+            console.log('click out')
+            setSelectedFiles([])
+        }}
+        onKeyDown={(e)=>{
+            if(e.key === 'Escape'){
+                setSelectedFiles([])
+            }
+            if(e.key === 'Enter' && selectedFiles.length === 1) {
+                e.preventDefault()
+                e.stopPropagation()
+                const f = selectedFiles[0]
+                const newTab = e.metaKey || e.ctrlKey
+                openFile(f, newTab);
+            }
+            if(e.key === 'ArrowRight' || e.key === 'ArrowLeft'){
+                e.preventDefault()
+                e.stopPropagation()
+                const f = selectedFiles[0]
+                const idx = f ? items.indexOf(f) : -1
+                if(idx < 0) return
+                let idx2 = idx + (e.key === 'ArrowRight' ? 1 : -1)
+                if(idx2 < 0) idx2 = 0
+                if(idx2 >= items.length) idx2 = items.length - 1
+                const f2 = items[idx2]
+                selectFiles([f2], e)
+            }
+            // todo arrow keys to traverse up down
+        }}
     >
         {items.map(f=>{
             const selected = selectedFiles.includes(f)
             return <FileButton
-                f={f}
+                fileEntry={f}
                 key={f.path}
                 active={selected}
+                draggable={dragger?.canDragFile(f)}
+                onDragStart={(e) => dragger?.handleDragStart(e, f)}
+                onDragEnd={dragger?.handleDragEnd}
                 loading={loadingState[f.path]}
                 onContextMenu={(e)=>{
                     e.preventDefault()
@@ -430,38 +612,21 @@ export function FilesPanelGrid({}: {
                                 return f.path.endsWith(ext1)
                             }
                             return false
-                        })
-                    )
+                        }))
 
                     handleContextMenu(e, menuItemsFiles2.map(i=>({...i, data: {file: f}})), f)
                 }}
                 onDoubleClick={(e)=>{
                     e.preventDefault()
                     e.stopPropagation()
-                    if(f.type === 'directory') {
-                        setCurrentPath(f.path)
-                        setSelectedFiles([])
-                    }else {
-                        const newTab = e.metaKey || e.ctrlKey
-                        const allowedTypes = ['.scene.glb', '.glb', '.mat', /*'.glb', '.mat.json', '.js', '.ts'*/]
-                        if(allowedTypes.some(ext=>f.path.endsWith(ext))) {
-                            // todo check type of file and open it if possible
-                            // check for needssave
-                            if(newTab){
-                                // todo
-                                // window.open(window.location.pathname + '?project=' + encodeURIComponent(f.path) + (project?.path ? '&base=' + encodeURIComponent(project.path) : ''), '_blank')
-                                return
-                            }
-                            updateLoading(f.path, loadFile(f))
-                        }
-                    }
+                    const newTab = e.metaKey || e.ctrlKey
+                    openFile(f, newTab);
                 }}
                 onClick={(e)=>{
                     // if(f.type === 'directory') setCurrentPath(f.path)
                     e.preventDefault()
                     e.stopPropagation()
-                    // todo multiple files
-                    setSelectedFiles([f])
+                    selectFiles([f], e)
                 }}
                 // loading={loadingState[project.path]}
                 // onClick={() => updateLoading(project.path, loadProject(project))}
@@ -469,6 +634,51 @@ export function FilesPanelGrid({}: {
             />
         })}
     </ButtonGroup>
+}
+
+export function SliderMenuItem({thumbSize, setThumbSize, icon = "rect-width"}: {
+    thumbSize: number,
+    icon?: IconName | MaybeElement,
+    setThumbSize: (size: number)=>void,
+}){
+    return <MenuItem
+        icon={icon}
+        text={<div style={{
+            width: '50px',
+        }}>
+            <Slider
+                value={thumbSize}
+                stepSize={1}
+                min={16}
+                max={256}
+                onChange={setThumbSize}
+                labelRenderer={false}
+            />
+        </div>}
+        // intent={intent}
+        // labelElement={"⌘,"}
+        roleStructure="menuitem"
+    />
+}
+
+export function PanelHeader({children}: {
+    children: React.ReactNode
+}){
+    return <div style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: '10px',
+        // justifyContent: 'space-between',
+        borderBottom: '1px solid var(--bp5-border-color)',
+        height: 'calc(var(--pt-grid-size) * 3)',
+        // position: "absolute",
+        // top: "-10px",
+        // zIndex: 100,
+        // right: 0,
+    }}>
+        {children}
+    </div>
 }
 
 export function FilesPanel({}: {
@@ -500,17 +710,151 @@ export function FilesPanel({}: {
         };
     }, [refreshManifest]);
 
-    return !manager.loadedProject ? null : <>
+    const [thumbSize, setThumbSize] = useState(32);
+
+    return !manager.loadedProject ? null : <div style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        // @ts-ignore
+        '--file-item-button-size': `${thumbSize}px`,
+    }}>
+        <PanelHeader>
             <FilesPanelBreadCrumbs/>
+            <div style={{flexGrow: 1}}></div>
+            <PopupMenuButton icon={"cog"} text={""}>
+                <SliderMenuItem setThumbSize={setThumbSize} thumbSize={thumbSize}/>
+            </PopupMenuButton>
+        </PanelHeader>
+        <div className={"files-panel-grid"}>
             <FilesPanelGrid/>
-        </>
+        </div>
+        </div>
 }
 
-export const FileButton: FC<ButtonProps & {f: FileManifestEntry}> = ({f, ...props}) => {
+export type TExternalFile = Omit<FileManifestEntry, 'handle'|'isFSEntry'|'children'>&{children: TExternalFile[]}
+const externalFiles: TExternalFile[] = [{
+    name: '3D Models',
+    path: 'models-3d/',
+    type: 'directory',
+    children: [{
+        name: 'Iridescent Dish With Olives',
+        path: 'https://threejs.org/examples/models/gltf/IridescentDishWithOlives.glb',
+        type: 'file',
+        children: [],
+    }],
+}, {
+    name: 'Materials',
+    path: 'materials/',
+    type: 'directory',
+    children: [],
+}, {
+    name: 'Environment Maps',
+    path: 'env-maps/',
+    type: 'directory',
+    children: [],
+}, {
+    name: 'Textures',
+    path: 'textures/',
+    type: 'directory',
+    children: [],
+},
+]
+
+export function ExternalFilesGrid({group}: {
+    group: TExternalFile
+}){
+    const manager = useManager()
+    const dragger = manager.get().getPlugin(CanvasFileDropHandler)
+
+    // clear dragged on unmount
+    useEffect(() => {
+        return () => {
+            dragger?.handleDragEnd()
+        };
+    }, [dragger]);
+
+    const items = group.children || []
+    const onClick = (f: TExternalFile, e: React.MouseEvent)=>{
+
+    }
+
+
+    return <div className={"files-panel-grid"}>
+        <ButtonGroup
+            className="file-item-button-group"
+        >
+            {items.map(f=>{
+                return <FileButton
+                    fileEntry={f}
+                    key={f.path}
+                    disabled={f.type === 'directory'}
+                    onClick={(e)=>onClick(f, e)}
+                    draggable={dragger?.canDragFile(f)}
+                    onDragStart={(e) => dragger?.handleDragStart(e, {path: f.path, isFSEntry: false})}
+                    onDragEnd={dragger?.handleDragEnd}
+                />
+            })}
+        </ButtonGroup>
+    </div>
+}
+
+export function ExternalFilesPanel({}: {
+}){
+    // const {project} = useProject()
+    const manager = useManager()
+
+    const files = externalFiles
+    // const {refreshManifest} = useExternalAssets()
+    //
+    // // console.log(fileManifest)
+    // useEffect(()=>{
+    //     refreshManifest()
+    // }, [refreshManifest]) // refreshManifest changes on project change
+
+    const [thumbSize, setThumbSize] = useState(32);
+
+    return !manager.loadedProject ? null : <div style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        // @ts-ignore
+        '--file-item-button-size': `${thumbSize}px`,
+    }}>
+        {/*<PanelHeader>*/}
+        {/*    /!*<FilesPanelBreadCrumbs/>*!/*/}
+        {/*    <div style={{flexGrow: 1}}></div>*/}
+        {/*</PanelHeader>*/}
+        <PopupMenuButton icon={"cog"} text={""} style={{
+            position: 'absolute',
+            right: 0, top: 0,
+            zIndex: 1,
+        }}>
+            <SliderMenuItem setThumbSize={setThumbSize} thumbSize={thumbSize}/>
+        </PopupMenuButton>
+        <Tabs
+            animate={false}
+            renderActiveTabPanelOnly={true}
+            size={"medium"}
+            vertical={false}
+            defaultSelectedTabId={"a"}
+            // style={{zIndex: 0}}
+        >
+            {files.map((f, i)=><Tab key={f.path} id={f.path} title={f.name} panel={<ExternalFilesGrid group={f}/>}/>)}
+        </Tabs>
+
+        <div className={"files-panel-grid"}>
+        </div>
+    </div>
+}
+
+export const FileButton: FC<ButtonProps & {fileEntry: {
+    path: string,
+}}> = ({fileEntry, ...props}) => {
     // const {loadingState, updateLoading} = useLoadingState()
 
     const {fileManifest} = useAssets()
-    const iconFile = getFileByPath(thumbPath(f.path), fileManifest)
+    const iconFile = getFileByPath(thumbPath(fileEntry.path), fileManifest)
     // const iconFileBlob = useMemo(()=>{
     //     if(!iconFile || (iconFile.handle as FileSystemFileHandle).kind !== 'file') return null
     //     return (iconFile.handle as FileSystemFileHandle).getFile().catch(e=>{
@@ -539,38 +883,17 @@ export const FileButton: FC<ButtonProps & {f: FileManifestEntry}> = ({f, ...prop
         } // revoke on change or unmount
     }, [iconFile])
 
-    const icon =
-        f.type === 'directory' ? 'folder-close' :
-        f.path.endsWith('.scene.glb') ? 'cubes' :
-        f.path.endsWith('.asset.glb') ? 'package' :
-        f.path.endsWith('.glb') ? 'cube' :
-        f.path.endsWith('.mat') || f.path.endsWith('.mat.json') ? 'style' :
-        f.path.endsWith('.js') || f.path.endsWith('.ts') ? 'code' :
-        f.path.endsWith('.png') ||
-        f.path.endsWith('.jpg') ||
-        f.path.endsWith('.webp') ||
-        f.path.endsWith('.gif') ||
-        f.path.endsWith('.mp4') ||
-        f.path.endsWith('.webm') ||
-        f.path.endsWith('.exr') ||
-        f.path.endsWith('.hdr') ||
-        f.path.endsWith('.ktx2') ||
-        f.path.endsWith('.jpeg') ? 'media' :
-        f.path === ('package.json') ? 'box' :
-        f.path.endsWith('.json') ? 'document-code' :
-            'document'
+    const icon = fileToIcon(fileEntry);
 
     return <Button
         className={"file-item-button"}
-        key={f.path}
+        key={fileEntry.path}
         // icon={<img src={typeof f.preview=== 'string' ? project.preview : URL.createObjectURL(f.preview as File)}/>}
-        icon={iconUrl ? <img src={iconUrl} style={{
-            height: "calc(32px + var(--pt-grid-size))",
-            maxWidth: "100%",
-            width: "auto",
-        }} className={"bp5-icon"}/> : <Icon style={{padding: "5px"}} icon={icon} size={32}/>}
-        text={f.path.replace(/\/$/, '').split('/').pop()}
-        title={f.path}
+        icon={iconUrl ? <img src={iconUrl} className={"bp5-icon"}/> : <Icon style={{padding: "5px"}} icon={icon}/>}
+        text={<span className={"file-item-button-text"}>
+            {fileEntry.path.replace(/\/$/, '').split('/').pop()}
+        </span>}
+        title={fileEntry.path}
         variant={"minimal"}
         alignText={'center'}
         // loading={loadingState[f.path]}

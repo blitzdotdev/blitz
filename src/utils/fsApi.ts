@@ -1,20 +1,25 @@
 export async function getDirHandle(base: FileSystemDirectoryHandle, parts: string[]|string, create = true) {
     if(typeof parts === 'string') parts = parts.split('/').filter(Boolean)
     let dirHandle = base
+    const handles = [dirHandle]
     for (let i = 0; i < parts.length; i++) {
         const part = parts[i]
-        // if(i === parts.length - 1){
-        //     fileHandle = await dirHandle.getFileHandle(part, {create: true})
-        // } else {
+        if(!part || part === '.') continue
+        if(part === '..') {
+            handles.pop()
+            if(!handles.length) dirHandle = base
+            else dirHandle = handles[handles.length - 1]
+            continue
+        }
         dirHandle = await dirHandle.getDirectoryHandle(part, {create})
-        // }
+        handles.push(dirHandle)
     }
     return dirHandle
 }
 
 // path should not start with / here and should be clean
 export async function getFileHandle(base: FileSystemDirectoryHandle, path: string, create = true) {
-    const parts = path.split('/')
+    const parts = decodeURIComponent(path).split('/')
     const dirHandle = await getDirHandle(base, parts.slice(0, -1), create).catch(e=>{
         // (e) => {
         // todo handle if there is dir with same name

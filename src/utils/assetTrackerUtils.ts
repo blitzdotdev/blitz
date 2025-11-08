@@ -137,33 +137,62 @@ export function getSObjects(node: IObject3D, onlyS = false) {
     return objects
 }
 
+type AssetRoot = (IObject3D | IMaterial) & {
+    userData: {
+        rootPath: string
+        // tpAssetId: string
+        [key: string]: any
+    }
+    _tpRootPath: string
+}
+type AssetChild<T> = (IObject3D|IMaterial|ITexture|IGeometry) & {
+    _tpRootPath: string
+}
+type AssetComponent = (IObject3D | IMaterial) & {
+    userData: {
+        rootPath: string
+        // tpAssetId: string
+        [key: string]: any
+    }
+    _tpRootPath: string
+    _sChildren: any[]
+}
+type AssetComponentChild<T> = AssetChild<T> & {
+    _tpRootUid: string
+}
+
 export function populateRootPath(node: IObject3D, objects: IObject3D[]) {
     const rootPath = node.userData.rootPath
     if (!rootPath) return
 
-    const c = (obj: IObject3D|IMaterial|ITexture|IGeometry)=> {
-        if (obj.userData.tpAssetRefIds) { // set in AssetExporter
+    const c = (assetChild: IObject3D|IMaterial|ITexture|IGeometry)=> {
+        if (assetChild.userData.tpAssetRefIds) { // set in AssetExporter
             // todo defer find by id and assign when available (in object manager)
             console.error('TODO - Not implemented, external material property reference')
         }
 
-        if ((obj as IObject3D).isObject3D) {
-            if (obj.userData.tpAssetRefIds?.material) { // set in AssetExporter
+        if ((assetChild as IObject3D).isObject3D) {
+            if (assetChild.userData.tpAssetRefIds?.material) { // set in AssetExporter
                 // todo defer find by id and assign when available (in object manager)
                 console.error('TODO - Not implemented, external material reference')
             }
-            if (obj.userData.tpAssetRefIds?.geometry) { // set in AssetExporter
+            if (assetChild.userData.tpAssetRefIds?.geometry) { // set in AssetExporter
                 // todo defer find by id and assign when available (in object manager)
                 console.error('TODO - Not implemented, external geometry reference')
             }
         }
 
-        if (obj.userData.rootPath && obj !== node) {
-            if ((obj as ITexture).isTexture) obj._tpRootPath = obj.userData.rootPath // assuming textures cannot have sub assets
-            // todo geometry same as texture?
-            return false
+        if (assetChild.userData.rootPath && assetChild !== node) {
+            if ((assetChild as ITexture).isTexture || (assetChild as IGeometry).isBufferGeometry) { // todo because textures and geoms are not cloned when creating assets?
+                assetChild._tpRootPath = assetChild.userData.rootPath // assuming textures cannot have sub assets
+            } else {
+                // assetChild has userData.rootPath, that means it can be an assetRoot or assetComponent, cannot be assetRoot because it's inside an asset/scene
+                const assetComponent = assetChild
+                assetComponent._tpRootPath = rootPath // here obj is an embeddedAssetClone = (assetComponent & assetChild)
+            }
+            return false // so that we traverse its children
         }
-        obj._tpRootPath = rootPath
+        assetChild._tpRootPath = rootPath
         return true
     }
     traverseTpAsset(objects, c, c, c, c)

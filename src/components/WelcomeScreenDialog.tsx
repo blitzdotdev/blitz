@@ -3,7 +3,7 @@ import React, {useEffect} from 'react'
 import {IconName} from '@blueprintjs/icons'
 import {MaybeElement} from '@blueprintjs/core/src/common/props'
 import {WelcomeDialogProjectsTab} from './WelcomeDialogProjectsTab'
-import {useManager, useProject} from '../utils/ViewerInstanceManager.ts'
+import {queryHandlePerm, useManager, useProject} from '../utils/ViewerInstanceManager.ts'
 import {DropzonePlugin, getUrlQueryParam, ThreeViewer} from 'threepipe';
 import {useProjectActions} from "../utils/projectActions.tsx";
 import {getMeta} from "../utils/project.ts";
@@ -82,19 +82,20 @@ export function WelcomeSidebarListButton(props: {
     return <Button
         id={'welcome-sidebar-list-button-' + props.name}
         icon={<Icon color={props.val.color} icon={props.val.icon}/>} text={props.val.text}
-        alignText={Alignment.LEFT}
+        alignText={Alignment.START}
         disabled={props.disabled}
-        minimal fill className="welcome-sidebar-list-button"
+        variant={"minimal"}
+        fill className="welcome-sidebar-list-button"
         active={props.currentTab === props.name}
         onClick={props.onClick}
-        rightIcon={props.val.rightIcon}
+        endIcon={props.val.rightIcon}
     />
 }
 
 export function WelcomeScreenDialog() {
     const [currentTab, setCurrentTab] = React.useState<keyof typeof tabs>('projects')
     const {project, welcomeOpen, setWelcomeOpen} = useProject()
-    const {loadProject} = useProjectActions()
+    const {loadProject1} = useProjectActions()
     const manager = useManager()
 
     useEffect(()=>{
@@ -118,6 +119,11 @@ export function WelcomeScreenDialog() {
                 if(!meta){
                     viewer.dialog.alert(`Unable to load project: Project not found: ${project}`)
                     setWelcomeOpen(true)
+                    await loadProject1({
+                        path: '',
+                        file: new File([], 'Untitled', {type: 'model/gltf-binary'}), // no extension in file name
+                        lastModified: Date.now(),
+                    }, null)
                     loadModel(model, viewer)
                     if(model && welcomeOpen) setWelcomeOpen(false)
                 }else {
@@ -125,18 +131,32 @@ export function WelcomeScreenDialog() {
                         console.error("Both 'model' and 'project' query parameters are set. Using 'project' parameter to load the project and ignoring 'model'.")
                         model = null
                     }
-                    await viewer.dialog.alert(`Load project: ${meta.path}`)
-                    loadProject(meta.path, projectFile)
                     if (welcomeOpen) setWelcomeOpen(false)
+                    if(meta.handle) {
+                        try {
+                            await queryHandlePerm(meta.handle)
+                        }catch (e) {
+                            console.warn('Handle permission not available automatically:', e)
+                            // dialog for user interaction
+                            await viewer.dialog.alert(`Load project: ${meta.path}`)
+                        }
+                    }
+                    loadProject1(meta.path, projectFile)
                 }
             })
         }else {
-            if(model && welcomeOpen) setWelcomeOpen(false)
-            loadModel(model, viewer)
+            loadProject1({
+                path: '',
+                file: new File([], 'Untitled', {type: 'model/gltf-binary'}), // no extension in file name
+                lastModified: Date.now(),
+            }, null).then(()=>{
+                loadModel(model, viewer)
+                if(model && welcomeOpen) setWelcomeOpen(false)
+            })
         }
     }, [manager, welcomeOpen])
 
-    return (project || !welcomeOpen) ? null : <Overlay2
+    return (project?.file.size || !welcomeOpen) ? null : <Overlay2
         isOpen={true}
         className={Classes.OVERLAY_SCROLL_CONTAINER}
         backdropProps={{
@@ -159,9 +179,9 @@ export function WelcomeScreenDialog() {
               elevation={4} >
             <div id="welcome-sidebar">
                 <div id="welcome-sidebar-logo">
-                    <img src="/logo.svg" width={35} height={35} alt="Threepipe"/>
+                    <img src="/logo.svg" width={60} height={60} alt="Kite3D" style={{margin: "-10px"}} className={"welcome-screen-logo"}/>
                     <div style={{display: 'flex', flexDirection: 'column'}}>
-                        <h4 style={{margin: "0"}}>Threepipe Editor</h4>
+                        <h4 style={{margin: "0"}}>Kite 3D</h4>
                         <div>Alpha</div>
                     </div>
                 </div>

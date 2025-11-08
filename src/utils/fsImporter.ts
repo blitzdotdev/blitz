@@ -64,7 +64,18 @@ export class FsImporter {
     async import(path: string, prefix = true) {
         await this.ready;
         if(prefix) path = this.prefix + path.replace(/^\/+/, "");
-        return import(/* @vite-ignore */ path);
+        console.log('Importing module:', path);
+        // return import(/* @vite-ignore */ path);
+
+        const timeoutMs = 10000; // 10 seconds timeout
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`Import timeout: ${path}`)), timeoutMs)
+        );
+
+        return Promise.race([
+            import(/* @vite-ignore */ path),
+            timeoutPromise
+        ]);
     }
 
 }

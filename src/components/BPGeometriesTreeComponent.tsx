@@ -6,6 +6,7 @@ import {useObjContextMenu} from "./UseObjContextMenu.tsx";
 import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
+import {useManager} from "../utils/ViewerInstanceManager.ts";
 
 interface BPGeometriesTreeComponentPropsExtras extends HandleContextMenuCallback<IGeometry>{
 }
@@ -38,6 +39,7 @@ export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends 
         //     node.icon = 'full-circle'
         // }
         // todo set icon based on if its generated or not and its type?
+        node.icon = 'grid-view'
         return node;
     }
 
@@ -145,6 +147,9 @@ export class BPGeometriesTreeComponent<T extends IGeometry = IGeometry> extends 
 }
 
 export function GeometryHierarchyComponent({className}: {className: string}){
+    const manager = useManager()
+    const viewer = manager.get()
+
     const {handleContextMenu} = useObjContextMenu()
     const config: UiObjectConfig = useMemo(()=>({
         type: 'hierarchy',
@@ -152,5 +157,7 @@ export function GeometryHierarchyComponent({className}: {className: string}){
         value: null
     }), [])
 
-    return <BPGeometriesTreeComponent config={config} handleContextMenu={handleContextMenu} className={className}/>
+    return <BPGeometriesTreeComponent
+        key={viewer.scene.modelRoot.uuid} // this is required because viewer can be destroyed and recreated
+        config={config} handleContextMenu={handleContextMenu} className={className}/>
 }

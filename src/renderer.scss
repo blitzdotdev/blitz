@@ -5,6 +5,9 @@
 @import "components/EditorModesButtonGroup";
 @import "components/InteractionControlsButtonGroup";
 
+html{
+  overscroll-behavior: none; // prevent overscroll on touch devices
+}
 body{
   overflow: hidden;
 }
@@ -70,6 +73,32 @@ body{
   }
 }
 
+.main-nav-logo{
+  width: 30px;
+  height: auto;
+  margin-top: 20px;
+  filter: invert(1);
+  margin-right: 12px;
+  transition: filter 0.2s ease-in-out;
+  //cursor: pointer;
+}
+.bp5-navbar-group{
+  overflow-y: hidden;
+}
+.bp5-navbar-group:hover{
+  overflow-y: visible;
+  .main-nav-logo{
+    filter: invert(0) brightness(1.2);
+  }
+}
+.welcome-screen-logo{
+  transition: filter 0.2s ease-in-out;
+  filter: invert(0) brightness(1);
+}
+.welcome-screen-logo:hover{
+  filter: invert(1) brightness(1.2);
+}
+
 .editorCanvasContainer{
   width: 100%;
   height: 100%;
@@ -91,23 +120,105 @@ body{
 //  }
 //}
 
-.window-panels-tabs{
+.editorSplitContainer .bp5-tabs{
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 0px;
   padding-bottom: 0px;
+  --tab-color-selected: var(--pt-text-color);
+  --tab-color: var(--pt-text-color-muted);
 
-  .bp5-tab-panel {
+  > .bp5-tab-panel {
     margin: 0;
     height: 100%;
+    width: 100%;
     overflow: auto;
   }
 
-  .bp5-tab-list{
-    padding-left: 10px;
+  > .bp5-tab-list{
+    padding-left: 5px;
     margin-bottom: 0;
+    gap: calc($pt-grid-size * 0.5);
+    padding-top: calc($pt-grid-size * 0.5);
+    padding-bottom: calc($pt-grid-size * 0.5);
   }
+
+  .bp5-tab{
+    box-shadow: none; // remove border bottom
+    font-size: $pt-font-size-small;
+    color: var(--tab-color);
+    position: relative;
+    padding-left: calc($pt-grid-size * 0.8);
+    padding-right: calc($pt-grid-size * 0.8);
+    line-height: calc($pt-grid-size * 2);
+    margin: 0;
+    background-color: transparent !important;
+  }
+
+  .bp5-tab:not([aria-disabled=true]):hover, .bp5-tab[aria-selected=true]{
+    color: var(--tab-color-selected);
+
+    &::before {
+      content: " ";
+      display: block;
+      width: 100%;
+      //height: calc(100% - $pt-grid-size);
+      //top: calc($pt-grid-size * 0.5);
+      height: 100%;
+      top: 0;
+      left: 0;
+      position: absolute;
+      //z-index: -1;
+      /* The magic is here! */
+      opacity: 0.15;
+      background-color: var(--tab-color);
+      border-radius: calc($pt-grid-size * 0.5);
+    }
+  }
+
+  &.bp5-vertical{
+    flex-direction: row;
+    > .bp5-tab-panel{
+      margin: 0;
+      padding: 0;
+    }
+    > .bp5-tab-list{
+      padding-left: 5px;
+      padding-right: 5px;
+      gap: calc($pt-grid-size * 0.5);
+      border-right: 1px solid #ffffff1e;
+    }
+  }
+
+}
+
+.icon-only-tab-button-group{
+  width: max-content;
+  flex-wrap: wrap;
+  padding-left: $pt-grid-size;
+}
+.icon-only-tab-button{
+  //border-radius: calc($pt-grid-size * 0.5) !important;
+  margin-right: 0px !important;
+
+  .bp5-icon > svg{
+    width: $pt-font-size;
+    height: $pt-font-size;
+  }
+}
+.settings-tab-button{
+  margin-right: 3px !important;
+}
+
+// hide scrollbar for all tab lists
+.bp5-tab-list{
+  overflow-x: auto;
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox, Safari 18.2+, Chromium 121+ */
+}
+.bp5-tab-list::-webkit-scrollbar {
+  display: none;  /* Older Safari and Chromium */
 }
 
 
@@ -130,15 +241,13 @@ body{
     top: unset !important;
 }
 
-.window-panels-tabs{
-  .bp5-tab-list{
-    overflow-x: auto;
-    -ms-overflow-style: none;  /* Internet Explorer 10+ */
-    scrollbar-width: none;  /* Firefox, Safari 18.2+, Chromium 121+ */
-  }
-  .bp5-tab-list::-webkit-scrollbar {
-    display: none;  /* Older Safari and Chromium */
-  }
+.hidden-scrollbar{
+  overflow-x: auto;
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox, Safari 18.2+, Chromium 121+ */
+}
+.hidden-scrollbar::-webkit-scrollbar {
+  display: none;  /* Older Safari and Chromium */
 }
 
 
@@ -174,7 +283,7 @@ body{
   color: var(--pt-text-color) !important;
 }
 
-// todo move somewhere, remove after update this is from bp update
+// todo move somewhere, remove after update, this is from bp update
 .bp5-breadcrumbs>li:after {
   background: url(data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2016%2016%27%3E%3Cpath%20fill=%27%235f6b7c%27%20fill-rule=%27evenodd%27%20d=%27m10.71%207.29-4-4a1.003%201.003%200%200%200-1.42%201.42L8.59%208%205.3%2011.29c-.19.18-.3.43-.3.71a1.003%201.003%200%200%200%201.71.71l4-4c.18-.18.29-.43.29-.71s-.11-.53-.29-.71%27%20clip-rule=%27evenodd%27/%3E%3C/svg%3E);
   content: "";
@@ -184,11 +293,55 @@ body{
   width: 16px;
 }
 
-// todo not sure why its required again, its also in blueprint...
-.bp5-dark .bp5-divider{
-  border-color:rgba(255, 255, 255, 0.2);
+//data-panel-group-direction === vertical
+.window-panes-separator[data-panel-group-direction="vertical"]{
+      //cursor: row-resize;
+      height: 1px;
+      //width: 100%;
+}
+//data-panel-group-direction === horizontal
+.window-panes-separator[data-panel-group-direction="horizontal"]{
+        //cursor: col-resize;
+        width: 1px;
+        //width: 100%;
+}
+.window-panes-separator{
+  background-color: $pt-divider-black;
+}
+.editorSplitContainer{
+  border-top: 1px solid $pt-divider-black;
+}
+.bp5-dark .window-panes-separator{
+  background-color: #ffffff1e;
+}
+.bp5-dark .editorSplitContainer{
+  border-top: 1px solid #ffffff1e;
+}
+.bp5-dark .bp5-navbar-divider{
+  border-left: 1px solid #ffffff1e;
+}
+.bp5-dark .bp5-menu-header:not(:first-of-type){
+  border-top: 1px solid #ffffff1e;
 }
 
+.files-panel-grid {
+  height: 100%;
+  width: 100%;
+  flex: 1 1;
+  overflow-y: auto;
+}
+.file-item-button-group{
+    height: max-content;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    padding-top: 0px;
+    padding-bottom: 10px;
+    box-sizing: border-box;
+    gap: 1px;
+    min-height: 100%;
+}
 // todo move somewhere
 .file-item-button{
   display: flex;
@@ -196,40 +349,133 @@ body{
   text-align: center !important;
   border-radius: calc($pt-border-radius * 2) !important;
   justify-content: space-between !important;
-  gap: $pt-grid-size;
-  padding: $pt-grid-size;
-  width: calc(10 * $pt-grid-size);
+  gap: calc(0.5 * $pt-grid-size);
+  padding: calc(0.5 * $pt-grid-size);
+  width: calc(28px + calc(var(--file-item-button-size, 32px) + $pt-grid-size));
+  margin-right: 0 !important;
 
   > *{
     margin-right: 0;
   }
 
-  img {
-    width: 7rem;
-    height: 7rem;
+  .bp5-icon{
+    height: calc(var(--file-item-button-size, 32px) + $pt-grid-size);
+    max-width: 100%;
+    width: auto;
+  }
+  img.bp5-icon {
     object-fit: cover;
     border-radius: calc($pt-border-radius * 2) !important;
+  }
+  .bp5-icon > svg{
+    width: var(--file-item-button-size, 32px);
+    height: var(--file-item-button-size, 32px);
   }
 
   .bp5-button-text{
     flex-grow: 0 !important;
-    text-overflow: ellipsis !important;
-    overflow: hidden;
+    //text-overflow: ellipsis !important;
+    overflow: scroll;
     max-width: 100%;
     display: -webkit-box;
-    -webkit-line-clamp: 2; /* number of lines to show */
-    line-clamp: 2;
     -webkit-box-orient: vertical;
+    overflow-x: auto;
+    -ms-overflow-style: none;  /* Internet Explorer 10+ */
+    scrollbar-width: none;  /* Firefox, Safari 18.2+, Chromium 121+ */
+  }
+  .bp5-button-text::-webkit-scrollbar {
+    display: none;  /* Older Safari and Chromium */
+  }
+
+  .file-item-button-text{
+    width: max-content;
+    -webkit-line-clamp: 1; /* number of lines to show */
+    line-clamp: 1;
+    text-wrap: nowrap;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    font-size: $pt-font-size-small;
   }
 
 }
 
-// used in useObjContextMenu
-.context-menu-divider{
-  margin: 0;
-  padding-top: 2px;
-  .bp5-heading {
-    font-size: 11px;
-    padding-top: 0;
+.files-panel-breadcrumbs{
+  margin-left: calc($pt-grid-size * 1);
+  .bp5-breadcrumb{
+    font-size: $pt-font-size;
   }
+  .bp5-icon > svg{
+    width: $pt-font-size;
+    height: $pt-font-size;
+  }
+  >li:after {
+    height: $pt-font-size;
+    margin: 0 4px;
+    width: $pt-font-size;
+  }
+}
+
+// this can be moved to uiconfig-blueprint
+.bp5-menu{
+  //background: #222c;
+  //backdrop-filter: blur(8px);
+  //border: 0.5px solid rgba(20, 20, 20, 0.3);
+  width: auto;
+  height: auto;
+  //position: absolute;
+  //display: flex;
+  //flex-direction: column;
+  //z-index: 9999;
+  padding: 0.25rem 0.25rem;
+  border-radius: calc($pt-border-radius * 2) !important;
+  min-width: 8rem;
+  //pointer-events: auto;
+  //box-shadow: 0 2px 10px rgba(12, 12, 12, 0.2);
+
+  //--menu-item-color-hover: var(--pt-intent-primary);
+
+  .bp5-menu-item{
+    //color: white;
+    font-size: $pt-font-size-small;
+    //font-family: monospace;
+    //background-color: transparent;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: calc($pt-border-radius * 2) !important;
+    line-height: 1rem;
+    font-weight: 400;
+    //transition: background-color 0.25s ease-in-out;
+
+    .bp5-menu-item-icon {
+      height: 1rem;
+      margin-right: 5px;
+      .bp5-icon > svg {
+        width: $pt-font-size-small;
+        height: $pt-font-size-small;
+      }
+    }
+  }
+
+  .bp5-menu-item:hover {
+    //color: white;
+    //background-color: #017AFF;
+  }
+
+  // used in useObjContextMenu
+  .context-menu-divider{
+    margin: 0;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    .bp5-heading {
+      font-size: calc($pt-font-size-small - 1px);
+      color: $pt-text-color-muted;
+      padding-top: 0;
+      font-weight: normal;
+    }
+  }
+
+}
+
+.bp5-popover .bp5-popover-content{
+  border-radius: calc($pt-border-radius * 2) !important;
 }

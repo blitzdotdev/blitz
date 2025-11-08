@@ -14,6 +14,7 @@ export function showSuccessErrorToast(message: string, errMessage: string, res?:
         console.error(res)
         return false
     } else {
+        console.warn(res)
         AppToaster().show({
             message,
             intent: 'success',

@@ -12,25 +12,21 @@ import {
     Trimesh,
     Vec3 as CannonVector3,
 } from 'cannon-es'
-import {BoxGeometry, LineMaterial2, PlaneGeometry, Wireframe, WireframeGeometry3} from "threepipe";
-import {BufferGeometry, CylinderGeometry, Float32BufferAttribute, Mesh, SphereGeometry, Vector3 as ThreeVector3} from "three";
+import {
+    BoxGeometry,
+    BufferGeometry,
+    CylinderGeometry,
+    Float32BufferAttribute,
+    LineMaterial2,
+    Mesh,
+    PlaneGeometry,
+    SphereGeometry,
+    Vector3 as ThreeVector3,
+    Wireframe,
+    WireframeGeometry3
+} from "threepipe";
+
 type ComplexShape = Shape & {geometryId?: number}
-// const _material = new MeshBasicMaterial({color: color ?? 0x00ff00, wireframe: true})
-const _material = new LineMaterial2({
-    color: 0x00ff00,
-    linewidth: 3, // in world units with size attenuation, pixels otherwise
-    vertexColors: false,
-    worldUnits: false,
-
-    dashed: false,
-    alphaToCoverage: true,
-
-    toneMapped: false,
-    transparent: true,
-    // depthTest: false,
-    depthWrite: false,
-})
-
 
 export function cannonDebugger() {
     const scale = 1
@@ -42,6 +38,23 @@ export function cannonDebugger() {
     const _sphereGeometry = new SphereGeometry(1)
     const _boxGeometry = new BoxGeometry(1, 1, 1)
     const _planeGeometry = new PlaneGeometry(10, 10, 10, 10)
+    // const _material = new MeshBasicMaterial({color: color ?? 0x00ff00, wireframe: true})
+    const _material = new LineMaterial2({
+        color: 0x00ff00,
+        linewidth: 3, // in world units with size attenuation, pixels otherwise
+        vertexColors: false,
+        worldUnits: false,
+
+        dashed: false,
+        alphaToCoverage: true,
+
+        toneMapped: false,
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+    })
+    _material.userData.renderToGBuffer = false
+    _material.userData.renderToDepth = false
 
 // Move the planeGeometry forward a little bit to prevent z-fighting
     _planeGeometry.translate(0, 0, 0.0001)

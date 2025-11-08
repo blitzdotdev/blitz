@@ -1,14 +1,21 @@
 import {
     AssetExporter,
     AssetImporter,
+    copyObject3DUserData,
     EventDispatcher,
+    getPartialProps, IImportResultUserData,
     IMaterial,
     IMaterialEventMap,
-    ImportResult, ImportResultExtras,
-    IObject3D, ITexture, Vector3,
-    threeMaterialPropList,
+    ImportResult,
+    ImportResultExtras,
+    IObject3D,
+    IObject3DEventMap,
+    ITexture,
+    Object3DManager, PickingPlugin,
     Quaternion,
-    getPartialProps, IObject3DEventMap, copyObject3DUserData, setPartialProps
+    setPartialProps,
+    threeMaterialPropList, ThreeViewer, TypedType, TypeSystem,
+    Vector3
 } from "threepipe"
 import {
     getSObjects,
@@ -18,48 +25,178 @@ import {
     subscribeToObjectDispose,
     trackerExportHooks
 } from "./assetTrackerUtils"
+import {ObservableSet} from "./observableSet.ts";
+import {PickingPluginEventMap} from "../../../threepipe/lib/plugins/interaction/PickingPlugin";
 
+export type AssetRefItem = any // todo
 export interface AssetRegistryItem{
     pms: Promise<ImportResult|undefined>,
     object?: ImportResult|undefined
+    refs: ObservableSet<AssetRefItem>
 }
+
 
 export class AssetTracker extends EventDispatcher<{
     registryChanged: {path: string, action: 'add'|'remove'|'refresh'|'load'},
+    replaceItem: {old: ImportResult, new: ImportResult}
 }> {
 
     isEditor = false
+    importer: AssetImporter
 
-    constructor(public importer: AssetImporter, exporter: AssetExporter) {
+    constructor(
+        public viewer: ThreeViewer
+    ) {
         super()
+        const exporter = viewer.assetManager.exporter
+        const manager = viewer.object3dManager
+        this.importer = viewer.assetManager.importer
         this._setupObjectProcess()
         // todo chain hooks if they already exist by some other plugin
         exporter.exportHooks = trackerExportHooks
+        manager.addEventListener('textureAdd', (e)=>{
+            const rootPath = e.texture.userData?.rootPath
+            if(!rootPath || typeof rootPath !== 'string') return
+            const asset = this.getFromRegistry(rootPath, e.texture.userData.rootPathOptions)
+            if(!asset) return;
+            asset.refs.add(e.texture)
+        })
+        manager.addEventListener('textureRemove', (e)=>{
+            const rootPath = e.texture.userData?.rootPath
+            if(!rootPath || typeof rootPath !== 'string') return
+            const asset = this.registry[rootPath]
+            if(!asset) return;
+            asset.refs.delete(e.texture)
+            if(!asset.refs.size){
+                this.removeFromRegistry(rootPath)
+            }
+        })
+        manager.addEventListener('materialAdd', (e)=>{
+            const rootPath = e.material.userData?.rootPath
+            if(!rootPath || typeof rootPath !== 'string') return
+            const asset = this.getFromRegistry(rootPath, e.material.userData.rootPathOptions)
+            if(!asset) return;
+            asset.refs.add(e.material)
+        })
+        manager.addEventListener('materialRemove', (e)=>{
+            const rootPath = e.material.userData?.rootPath
+            if(!rootPath || typeof rootPath !== 'string') return
+            const asset = this.registry[rootPath]
+            if(!asset) return;
+            asset.refs.delete(e.material)
+            if(!asset.refs.size){
+                this.removeFromRegistry(rootPath)
+            }
+        })
+        manager.addEventListener('geometryAdd', (e)=>{
+            const rootPath = e.geometry.userData?.rootPath
+            if(!rootPath || typeof rootPath !== 'string') return
+            const asset = this.getFromRegistry(rootPath, e.geometry.userData.rootPathOptions)
+            if(!asset) return;
+            asset.refs.add(e.geometry)
+        })
+        manager.addEventListener('geometryRemove', (e)=>{
+            const rootPath = e.geometry.userData?.rootPath
+            if(!rootPath || typeof rootPath !== 'string') return
+            const asset = this.registry[rootPath]
+            if(!asset) return;
+            asset.refs.delete(e.geometry)
+            if(!asset.refs.size){
+                this.removeFromRegistry(rootPath)
+            }
+        })
+        manager.addEventListener('objectAdd', (e)=>{
+            const rootPath = e.object.userData?.rootPath
+            if(!rootPath || typeof rootPath !== 'string') return
+            const asset = this.getFromRegistry(rootPath, e.object.userData.rootPathOptions)
+            if(!asset) return;
+            asset.refs.add(e.object)
+        })
+        manager.addEventListener('objectRemove', (e)=>{
+            const rootPath = e.object.userData?.rootPath
+            if(!rootPath || typeof rootPath !== 'string') return
+            const asset = this.registry[rootPath]
+            if(!asset) return;
+            asset.refs.delete(e.object)
+            if(!asset.refs.size){
+                this.removeFromRegistry(rootPath)
+            }
+        })
+
+        const selectionChange = (e:PickingPluginEventMap['selectedObjectChanged'])=>{
+            const picking = viewer.getPlugin(PickingPlugin)
+            if(!picking) return
+            const {value, lastValue} = e
+            if(value === lastValue) return
+            const lastRootPath = (lastValue as ImportResultExtras)?.__rootPath // not userdata rootpath
+            if (lastRootPath && typeof lastRootPath === 'string') {
+                const asset = this.registry[lastRootPath]
+                if (asset) {
+                    asset.refs.delete(lastValue)
+                    if (!asset.refs.size) {
+                        this.removeFromRegistry(lastRootPath)
+                    }
+                }
+            }
+            const rootPath = (value as ImportResultExtras)?.__rootPath
+            if (rootPath && typeof rootPath === 'string') {
+                const asset = this.getFromRegistry(rootPath, (value as ImportResultExtras).__rootPathOptions)
+                if (asset) {
+                    asset.refs.add(value)
+                }
+            }
+        }
+        viewer.forPlugin(PickingPlugin, (picking)=>{
+            picking.addEventListener('selectedObjectChanged', selectionChange)
+        }, (picking)=>{
+            picking.removeEventListener('selectedObjectChanged', selectionChange)
+        }, )
     }
 
     protected _setupObjectProcess() {
         this.importer.addEventListener('processRaw', (event) => {
+            const object = event.data
+            if(!object) return
 
             // fill in rootpath and asset ids to all sub assets, this is useful in editor to know which asset something belongs to
-            if(this.isEditor) this.processRawPopulateRefs(event.data)
+            if(this.isEditor) this.processRawPopulateRefs(object)
 
             // if an embedded asset is loaded from the importer or some loader(like from LoadRootPathTextures, GLTFLoader, etc), it wont be in the registry so we need to add it
-            const rootPath = event.data.userData?.rootPath
+            const rootPath = object.__rootPath
             if(rootPath) { // todo check for asset url prefix maybe
 
-                if(event.data.userData?.sProperties){
-                    console.error('AssetTracker: Imported object already has sProperties, this may cause issues with asset management, clearing', event.data)
-                    delete event.data.userData.sProperties
+                if(object.userData?.sProperties){
+                    console.error('AssetTracker: Imported object already has sProperties, this may cause issues with asset management, clearing', object)
+                    delete object.userData.sProperties
                 }
-                if(!this.registry[rootPath]) {
-                    this.addToRegistry(rootPath, event.data)
+                if(!this.registry[rootPath]) { // already loaded through the tracker
+                    this.addToRegistry(rootPath, object, object.__rootPathOptions)
                 }
+
+                if(object.serializableClassId){
+                    const type = TypeSystem.GetType(object, false)
+                    const cls = type ? TypeSystem.GetClass(type) : undefined
+                    if(type && cls){
+                        const uuid = cls.getId(object)
+                        const existing = this.cachedFileMeta[rootPath]
+                        if(existing){
+                            if(existing.uuid !== uuid){
+                                console.warn('AssetTracker: Asset changed at path', rootPath, 'old uuid:', existing.uuid, 'new uuid:', uuid)
+                            }else if(existing.type !== type){
+                                console.warn('AssetTracker: Asset type changed at path', rootPath, 'old type:', existing.type, 'new type:', type)
+                            }
+                        }
+                        // todo check if file with uuid already exists at some other path and remove that.
+                        this.cachedFileMeta[rootPath] = {type, uuid, path: rootPath}
+                        // console.log('file meta', {type, uuid, path: rootPath})
+                    }
+                }
+
             }
 
-
             // load any embedded assets in this
-            if (event.data && event.data.isObject3D) {
-                const node = event.data as IObject3D
+            if (object.isObject3D) {
+                const node = object as IObject3D
                 this.loadObjectDependencies(node)
                 return
             }
@@ -67,7 +204,6 @@ export class AssetTracker extends EventDispatcher<{
         })
 
     }
-
 
     processRawPopulateRefs = (node: ImportResult) => {
         if(!this.isEditor) return
@@ -120,7 +256,7 @@ export class AssetTracker extends EventDispatcher<{
         }
     }
 
-    getFromRegistry(path: string, options?: any) {
+    getFromRegistry(path: string, options: any) {
         let asset = this.registry[path]
         if (!asset) {
             this.registry[path] = asset = {
@@ -131,13 +267,15 @@ export class AssetTracker extends EventDispatcher<{
                     this.dispatchEvent({type: 'registryChanged', path, action: 'load'})
                     return res
                 }),
+                refs: new ObservableSet<AssetRefItem>(),
             }
+            // console.log('AssetTracker: Added asset to registry for path', path)
             this.dispatchEvent({type: 'registryChanged', path, action: 'add'})
         }
         return asset
     }
 
-    addToRegistry(path: string, object: ImportResult) {
+    addToRegistry(path: string, object: ImportResult, options?: any) {
         let asset = this.registry[path]
         if (!asset) {
             this.registry[path] = asset = {
@@ -146,11 +284,13 @@ export class AssetTracker extends EventDispatcher<{
                     this.dispatchEvent({type: 'registryChanged', path, action: 'load'})
                     return object
                 })(),
-                object
+                object,
+                refs: new ObservableSet<AssetRefItem>(),
             }
+            // console.log('AssetTracker: Added asset to registry for path', path, object)
             this.dispatchEvent({type: 'registryChanged', path, action: 'add'})
         } else {
-            this.refreshFromRegistry(path, undefined, Promise.resolve(object))
+            this.refreshFromRegistry(path, options, Promise.resolve(object))
         }
         return asset
     }
@@ -159,15 +299,25 @@ export class AssetTracker extends EventDispatcher<{
         const asset = this.registry[path]
         if (!asset) return this.getFromRegistry(path, options)
         asset.pms = (res ?? this.importer.importSingle(path, options || {})).then(async(res) => {
+            if(!res){
+                console.error('AssetTracker: Unable to refresh asset, import returned empty result for path', path)
+                return asset.object
+            }
             const current = asset.object
-            if (res === current) return res
+            if (res === current) {
+                console.warn('Imported asset same as current(maybe its being cached somewhere), not refreshing', path, res)
+                return res
+            }
+            if(current) this.dispatchEvent({type: 'replaceItem', old: current, new: res}) // to replace in picking etc
             this.removeFromRegistry(path, false)
             // todo unload current (traverse) and dispatch _assetUnload and dispose?
             asset.object = res
             await this._onAssetRefresh(path, asset)
+            // console.log('AssetTracker: Refreshed asset in registry for path', path)
             this.dispatchEvent({type: 'registryChanged', path, action: 'load'})
             return res
         })
+        // console.log('AssetTracker: Refreshing asset in registry for path', path)
         this.dispatchEvent({type: 'registryChanged', path, action: 'refresh'})
         return asset
     }
@@ -175,21 +325,33 @@ export class AssetTracker extends EventDispatcher<{
     removeFromRegistry(path: string, remove = true) {
         const asset = this.registry[path]
         if (!asset) return
+        if(asset.refs.size && remove){
+            console.error('Removing an asset that still has references', path, asset)
+        }
         if (asset.object) {
             if ((asset.object as IObject3D).isObject3D) {
                 const object = asset.object as IObject3D
                 object.traverse((obj: IObject3D) => {
+                    // @ts-expect-error later
+                    obj.dispatchEvent({type: '_assetUnload'})
+                    // @ts-expect-error later
+                    obj.dispatchEvent({type: '__unregister'}) // to unselect any selected object in picking on this
                     obj.dispose && obj.dispose(false)
                 })
-                if (object.parent) object.removeFromParent()
+                if(object.dispose) object.dispose(true)
+                if(object.parent) object.removeFromParent()
             } else if (typeof asset.object.dispose === 'function') {
                 asset.object.dispose()
             }
             // todo it needs to be dispatched to all children
-            asset.object.dispatchEvent({type: '_assetUnload'}) // todo we need to unselect any selected object in picking on this
+            if(asset.object.dispatchEvent) {
+                asset.object.dispatchEvent({type: '_assetUnload'})
+                asset.object.dispatchEvent({type: '__unregister'}) // to unselect any selected object in picking on this
+            }
         }
         if (remove) {
             delete this.registry[path]
+            // console.log('AssetTracker: Removed asset from registry for path', path)
             this.dispatchEvent({type: 'registryChanged', path, action: 'remove'})
         }
     }
@@ -207,45 +369,45 @@ export class AssetTracker extends EventDispatcher<{
         return this.removeFromRegistry(rootPath)
     }
 
-
-
     // refreshes the contents of the object obj, when the root path asset is loaded/refreshed
-    private _objectRefreshCallback = (obj: IObject3D|IMaterial)=>{
-        const remove = this.onAssetRefresh(async(path: string, asset: AssetRegistryItem|null)=>{
-            if (path !== obj.userData.rootPath) return
-            if (!asset) {
-                // todo asset unloaded
-                return
-            }
-            // todo append to obj._loadingPromise?
-            const res1 = asset.object
-            if (!res1) {
-                console.error('AssetImporter: No asset found in asset for rootPath', obj.userData.rootPath, asset)
-                return
-            }
-            if (res1._loadingPromise) await res1._loadingPromise // wait for parent to load first
+    private _objectRefresh = async(obj: IObject3D | IMaterial, path: string, asset: AssetRegistryItem|null)=>{
+        if (path !== obj.userData.rootPath) return
+        if (!asset) {
+            // todo asset unloaded
+            return
+        }
+        // todo append to obj._loadingPromise?
+        const res1 = asset.object
+        if (!res1) {
+            console.error('AssetImporter: No asset found in asset for rootPath', obj.userData.rootPath, asset)
+            return
+        }
+        if(res1 === obj) {
+            console.log('Tried to subscribe to the same object for asset refresh, ignoring', obj.userData.rootPath, obj)
+            return
+        }
+        if (res1._loadingPromise) await res1._loadingPromise // wait for parent to load first
 
-            if ((res1 as IObject3D).isObject3D && (obj as IObject3D).isObject3D) {
-                obj = obj as IObject3D
-                // reset children to _sChildren
-                if (obj._sChildren) {
-                    for (const child of [...obj.children]) {
-                        if (obj._sChildren.includes(child)) continue
-                        child.dispose(true)
-                    }
+        if ((res1 as IObject3D).isObject3D && (obj as IObject3D).isObject3D) {
+            obj = obj as IObject3D
+            // reset children to _sChildren
+            if (obj._sChildren) {
+                for (const child of [...obj.children]) {
+                    if (obj._sChildren.includes(child)) continue
+                    child.dispose && child.dispose(true)
+                    if(child.parent) child.removeFromParent()
                 }
-
-                updateObjectAsset(res1 as IObject3D, obj, this)
-            } else if ((res1 as IMaterial).isMaterial && (obj as IMaterial).isMaterial) {
-                obj = obj as IMaterial
-
-                updateMaterialAsset(res1 as IMaterial, obj, this)
-            } else {
-                console.error('AssetImporter: Imported rootPath is not an Object3D or Material or type mismatch', obj.userData.rootPath, res1)
-                return
             }
-        })
-        return remove
+
+            updateObjectAsset(res1 as IObject3D, obj, this)
+        } else if ((res1 as IMaterial).isMaterial && (obj as IMaterial).isMaterial) {
+            obj = obj as IMaterial
+
+            updateMaterialAsset(res1 as IMaterial, obj, this)
+        } else {
+            console.error('AssetImporter: Imported rootPath is not an Object3D or Material or type mismatch', obj.userData.rootPath, res1)
+            return
+        }
     }
 
     /**
@@ -285,17 +447,9 @@ export class AssetTracker extends EventDispatcher<{
                     obj.userData.sProperties = [...defSPropsObj]
                 }
 
-                // todo when to remove? on asset unload? maybe we shouldn't
-                const remove = subscribeToObjectDispose(obj, this._objectRefreshCallback)
-
-                const asset = this.getFromRegistry(obj.userData.rootPath, obj.userData.rootPathOptions)
-                obj._loadingPromise = asset.pms.catch((err) => {
-                    console.error('AssetImporter: Error importing rootPath', obj.userData.rootPath, err)
-                })
-                pms.push(obj._loadingPromise)
+                pms.push(this.subsToAsset(obj))
             }
             for (const obj of materials) {
-                // debugger
                 if (!obj.userData.rootPath || (obj as ImportResultExtras).__rootPath || obj.userData.rootPathRefresh) continue
                 if (obj._loadingPromise) {
                     pms.push(obj._loadingPromise)
@@ -310,19 +464,48 @@ export class AssetTracker extends EventDispatcher<{
 
                 // obj.userData.sLocked = true // todo set this?
 
-                // todo when to remove? on material applied meshes size = 0? see subscribeToObjectDispose above for object
-                const remove = this._objectRefreshCallback(obj)
-
-                const asset = this.getFromRegistry(obj.userData.rootPath, obj.userData.rootPathOptions)
-                obj._loadingPromise = asset.pms.catch((err) => {
-                    console.error('AssetImporter: Error importing rootPath', obj.userData.rootPath, err)
-                })
-                pms.push(obj._loadingPromise)
+                pms.push(this.subsToAsset(obj))
             }
             if (pms.length) object._loadingPromise = Promise.allSettled(pms)
         }
     }
 
+    subsToAsset(obj: IMaterial|IObject3D) {
+        if(!obj.userData.rootPath) return
+
+        if((obj as IObject3D).isObject3D){
+            const refresher = (obj1: any)=>this.onAssetRefresh((path, asset)=>this._objectRefresh(obj1, path, asset))
+            // todo when to remove? on asset unload? maybe we shouldn't
+            const remove = subscribeToObjectDispose(obj as IObject3D, refresher)
+        }else {
+
+            // todo when to remove? on material applied meshes size = 0? see subscribeToObjectDispose above for object
+            const remove = this.onAssetRefresh((path, asset) => this._objectRefresh(obj, path, asset))
+
+        }
+
+        const asset = this.getFromRegistry(obj.userData.rootPath, obj.userData.rootPathOptions)
+        const assetPms = asset.object ?
+            this._objectRefresh(obj, obj.userData.rootPath, asset) :
+            // this._onAssetRefresh(obj.userData.rootPath, asset) : // already loaded, we need to just trigger refresh
+            asset.pms
+        obj._loadingPromise = assetPms.catch((err) => {
+            console.error('AssetImporter: Error updating asset from rootPath', obj.userData.rootPath, err)
+        })
+        return obj._loadingPromise
+    }
+
+    // cachedFileTypes: Record<string, TypedType> = {}
+    cachedFileMeta: Record<string, AssetFileMeta> = {}
+    getCachedFileMeta(path: string): AssetFileMeta | undefined{
+        console.log(path)
+        return this.cachedFileMeta[path]
+    }
+}
+interface AssetFileMeta{
+    type: TypedType
+    uuid: string
+    path: string
 }
 
 // adding anything here, also update copyProps function below if required for type
@@ -364,7 +547,7 @@ function copySPropsObject(props: Partial<IObject3D>, obj: IObject3D) {
     obj.userData.uuid = obj.uuid // just in case
     obj.userData.sProperties = sprops // it might be cleared above
 
-    obj.setDirty()
+    obj.setDirty && obj.setDirty()
 }
 
 function copySPropsMaterial(props1: Partial<IMaterial>, obj: IMaterial) {
@@ -380,27 +563,30 @@ function copySPropsMaterial(props1: Partial<IMaterial>, obj: IMaterial) {
     // Note that _tpAssetId is not set on the obj here, but userData.tpAssetId should be copied in setValues above
 }
 
-export function updateObjectAsset(res1: IObject3D, obj: IObject3D, manager: AssetTracker) {
-    // if (res1._isTpAsset) {
+function updateObjectAsset(assetRoot: IObject3D, obj: IObject3D, manager: AssetTracker) {
+    // if (assetRoot._isTpAsset) {
     // todo check if tpAssetId is saved in obj.userData.tpAssetId, if not, save it and set needs save.
     //  if it exists but mismatch use some manifest to find the correct asset by id, if not found, assume the id has changed of the same file.
     // }
 
     // todo - if 404 or diff id, find new path from manifest/some hook and use that and set _tpAssetNeedsSave and call setDirty
 
+    // console.log('AssetTracker: Updating object asset for rootPath', assetRoot.userData?.rootPath, obj, assetRoot)
     // clone and copy children
-    res1.children.forEach(c => {
+    assetRoot.children.forEach(assetChild => {
         // if (!c._tpAssetId) {
         //     console.warn('AssetImporter: Object inside an asset does not contain _tpAssetId, this may cause issues with asset management', c)
         // }
-        const cl = cloneAssetItem(c) as IObject3D
+        const cl = cloneAssetItem(assetChild) as IObject3D
         obj.add(cl) // todo add to same index
 
+        // if(!cl._tpRootPath) cl._tpRootPath = assetChild.userData.rootPath
+
         if(manager.isEditor){
-            // todo subs to userdata changes in res1 also, right now only keeps the children in sync
+            // todo subs to userdata changes in assetRoot also, right now only keeps the children in sync
             cl.traverse(clo=>{
                 if (!clo._tpRootPath) {
-                    console.error('Object inside an asset does not contain _tpRootPath', c, clo)
+                    console.error('Object inside an asset does not contain _tpRootPath', assetChild, clo)
                     return
                 }
                 const rp = clo._tpRootPath
@@ -443,7 +629,7 @@ export function updateObjectAsset(res1: IObject3D, obj: IObject3D, manager: Asse
     // Note that _tpAssetId is not set on the obj here, but userData.tpAssetId should be present already
     })
 
-    copySPropsObject(res1, obj)
+    copySPropsObject(assetRoot, obj)
 
     // todo
     // merge userdata
@@ -455,22 +641,22 @@ export function updateObjectAsset(res1: IObject3D, obj: IObject3D, manager: Asse
     // check troika text, tiles renderer, embedded splat files.
     // what happens on local file drop
     // check code for load object dependencies in AssetManager
-    // subscribe to changes in res1 and apply to obj.
+    // subscribe to changes in assetRoot and apply to obj.
 
     if(manager.isEditor){
         const onObjUpdate = (e: IObject3DEventMap['objectUpdate'])=> {
             // todo root object updated
             console.log('asset root obj updated', e)
         }
-        res1.addEventListener('objectUpdate', onObjUpdate)
-        res1.addEventListener('_assetUnload', ()=>{ // todo dispatch this when unloaded
-            res1?.removeEventListener('objectUpdate', onObjUpdate)
-            // res1 = null
+        assetRoot.addEventListener('objectUpdate', onObjUpdate)
+        assetRoot.addEventListener('_assetUnload', ()=>{ // todo dispatch this when unloaded
+            assetRoot?.removeEventListener('objectUpdate', onObjUpdate)
+            // assetRoot = null
         })
     }
 }
 
-export function updateMaterialAsset(res1: IMaterial, obj: IMaterial, manager: AssetTracker) {
+function updateMaterialAsset(res1: IMaterial, obj: IMaterial, manager: AssetTracker) {
     // if (res1._isTpAsset) {
     // todo check if tpAssetId is saved in obj.userData.tpAssetId, if not, save it and set needs save.
     //  if it exists but mismatch use some manifest to find the correct asset by id, if not found, assume the id has changed of the same file.
@@ -598,11 +784,11 @@ declare module 'threepipe' {
 }
 
 // maybe just accept AssetRegistryItem
-export function cloneAssetItem<T extends IObject3D|IMaterial|ITexture= IObject3D|IMaterial|ITexture>(item: T) {
+export function cloneAssetItem<T extends IObject3D|IMaterial|ITexture= IObject3D|IMaterial|ITexture>(item: T, rootPath?: string) {
     // if (this._tpAssetId) clone._tpAssetId = this._tpAssetId // todo copy/remove on add and remove from parent?
     const clone = ((item as IObject3D).isObject3D ? (item as IObject3D).clone(false) : (item as IMaterial).isMaterial ? (item as IMaterial).clone(false) : item.clone()) as typeof item
-    if (item._tpRootPath) {// todo copy/remove on add and remove from parent?
-        clone._tpRootPath = item._tpRootPath
+    if (rootPath||item._tpRootPath) {// todo copy/remove on add and remove from parent?
+        clone._tpRootPath = rootPath||item._tpRootPath
     }
     if ((item as IObject3D).isObject3D) {
         (clone as IObject3D)._tpRootUid = (item as IObject3D)._tpRootUid || item.uuid

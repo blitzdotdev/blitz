@@ -5,7 +5,7 @@ import {
     FrameFadePlugin,
     GBufferPlugin,
     GLTFKHRMaterialVariantsPlugin,
-    InteractionPromptPlugin,
+    InteractionPromptPlugin, IViewerEvent,
     NormalBufferPlugin,
     Object3DWidgetsPlugin,
     PickingPlugin,
@@ -30,6 +30,13 @@ import {EditorModes, editorModesList} from '../components/EditorModes.tsx'
 // } from '@threepipe/webgi-plugins'
 // import {ThreeGpuPathTracerPlugin} from "@threepipe/plugin-path-tracing";
 import {EditModePlugin} from "./EditModePlugin.ts";
+import {CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
+import {DepthOfFieldPlugin, SSReflectionPlugin} from "@threepipe/webgi-plugins";
+
+const pluginDisableListener = (k: any)=>((ev: IViewerEvent)=>{
+    if(typeof !ev.plugin?.disable !== 'function') return
+    ev.plugin.disable(k)
+})
 
 export const editorFeatures = {
     'transform-controls': {
@@ -87,45 +94,51 @@ export const editorFeatures = {
         },
     },
     'post-processing': {
+        pluginTypes: [
+            'VignettePlugin',
+            'ChromaticAberrationPlugin',
+            'FilmicGrainPlugin',
+            'TonemapPlugin',
+            'FrameFadePlugin',
+            'SSAOPlugin',
+            'SSAAPlugin',
+            'GBufferPlugin',
+            'DepthBufferPlugin',
+            'NormalBufferPlugin',
+            'SSReflectionPlugin',
+            'DepthOfFieldPlugin',
+            'BloomPlugin',
+            'SSContactShadowsPlugin',
+            'TemporalAAPlugin',
+            'VelocityBufferPlugin',
+            'OutlinePlugin',
+            'SSGIPlugin',
+        ],
+        pluginDisableListeners: new Map<any, (ev:any)=>void>(),
         enable: (viewer: ThreeViewer, key?: any) => {
-            viewer.getPlugin(VignettePlugin)?.enable(key ?? this)
-            viewer.getPlugin(ChromaticAberrationPlugin)?.enable(key ?? this)
-            viewer.getPlugin(FilmicGrainPlugin)?.enable(key ?? this)
-            viewer.getPlugin(TonemapPlugin)?.enable(key ?? this)
-            viewer.getPlugin(FrameFadePlugin)?.enable(key ?? this)
-            viewer.getPlugin(SSAOPlugin)?.enable(key ?? this)
-            viewer.getPlugin(SSAAPlugin)?.enable(key ?? this)
-            // viewer.getPlugin(SSReflectionPlugin)?.enable(key ?? this)
-            // viewer.getPlugin(DepthOfFieldPlugin)?.enable(key ?? this)
-            viewer.getPlugin(GBufferPlugin)?.enable(key ?? this)
-            viewer.getPlugin(DepthBufferPlugin)?.enable(key ?? this)
-            viewer.getPlugin(NormalBufferPlugin)?.enable(key ?? this)
-            // viewer.getPlugin(BloomPlugin)?.enable(key ?? this)
-            // viewer.getPlugin(SSContactShadowsPlugin)?.enable(key ?? this)
-            // viewer.getPlugin(TemporalAAPlugin)?.enable(key ?? this)
-            // viewer.getPlugin(VelocityBufferPlugin)?.enable(key ?? this)
-            // viewer.getPlugin(OutlinePlugin)?.enable(key ?? this)
-            // viewer.getPlugin(SSGIPlugin)?.enable(key ?? this)
+            const k = key ?? this
+            const {pluginTypes, pluginDisableListeners} = editorFeatures['post-processing']
+            let listener = pluginDisableListeners.get(k)
+            if(listener) {
+                viewer.removePluginListener('add', listener)
+                pluginDisableListeners.delete(k)
+            }
+            for(const type of pluginTypes) {
+                viewer.getPlugin(type)?.enable(key ?? this)
+            }
         },
         disable: (viewer: ThreeViewer, key?: any) => {
-            viewer.getPlugin(VignettePlugin)?.disable(key ?? this)
-            viewer.getPlugin(ChromaticAberrationPlugin)?.disable(key ?? this)
-            viewer.getPlugin(FilmicGrainPlugin)?.disable(key ?? this)
-            viewer.getPlugin(TonemapPlugin)?.disable(key ?? this)
-            viewer.getPlugin(FrameFadePlugin)?.disable(key ?? this)
-            viewer.getPlugin(SSAOPlugin)?.disable(key ?? this)
-            viewer.getPlugin(SSAAPlugin)?.disable(key ?? this)
-            viewer.getPlugin(GBufferPlugin)?.disable(key ?? this)
-            viewer.getPlugin(DepthBufferPlugin)?.disable(key ?? this)
-            viewer.getPlugin(NormalBufferPlugin)?.disable(key ?? this)
-            // viewer.getPlugin(SSReflectionPlugin)?.disable(key ?? this)
-            // viewer.getPlugin(DepthOfFieldPlugin)?.disable(key ?? this)
-            // viewer.getPlugin(BloomPlugin)?.disable(key ?? this)
-            // viewer.getPlugin(SSContactShadowsPlugin)?.disable(key ?? this)
-            // viewer.getPlugin(TemporalAAPlugin)?.disable(key ?? this)
-            // viewer.getPlugin(VelocityBufferPlugin)?.disable(key ?? this)
-            // viewer.getPlugin(OutlinePlugin)?.disable(key ?? this)
-            // viewer.getPlugin(SSGIPlugin)?.disable(key ?? this)
+            const k = key ?? this
+            const {pluginTypes, pluginDisableListeners} = editorFeatures['post-processing']
+            let listener = pluginDisableListeners.get(k)
+            if(!listener) {
+                listener = pluginDisableListener(k)
+                pluginDisableListeners.set(k, listener)
+            }
+            viewer.addPluginListener('add', listener, ...pluginTypes)
+            for(const type of pluginTypes) {
+                viewer.getPlugin(type)?.disable(key ?? this)
+            }
         },
     },
     'path-tracing': {
@@ -134,6 +147,20 @@ export const editorFeatures = {
         },
         disable: (viewer: ThreeViewer, key?: any) => {
             // viewer.getPlugin(ThreeGpuPathTracerPlugin)?.disable(key ?? this)
+        },
+    },
+    'physics': {
+        enable: (viewer: ThreeViewer, key?: any) => {
+            const physics = viewer.getPlugin(CannonPhysicsPlugin)
+            if(physics) {
+                physics.running = true
+            }
+        },
+        disable: (viewer: ThreeViewer, key?: any) => {
+            const physics = viewer.getPlugin(CannonPhysicsPlugin)
+            if(physics) {
+                physics.running = false
+            }
         },
     },
     'damping': {

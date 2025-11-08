@@ -5,14 +5,13 @@ export function WelcomeDialogEmptyProjectState() {
     return <NonIdealState
         // icon={'projects'}
         icon={<img src={'/logo.svg'} height={100}/>}
-        title={'Threepipe Editor'}
+        title={'Kite 3D Editor'}
         description={(
             <p style={{textAlign: 'justify'}}>
                 <br/>
-                View, Edit, Render, Export and Embed 3D files.
+                View, Edit, Render, Export and Embed 3D files and games
                 <br/>
-                <br/>
-                Drag and Drop any 3D file and start editing.
+                Drag and Drop any 3D file to start editing.
             </p>)}
         // action={<Button icon={"add"} text={"New Project"} outlined />}
         children={(

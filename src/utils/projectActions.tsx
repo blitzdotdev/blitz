@@ -6,7 +6,7 @@ import {
 } from './ViewerInstanceManager.ts'
 import {useCallback} from 'react'
 import {uploadFile} from 'threepipe'
-import {showSuccessErrorToast} from "./Toaster.tsx";
+import {ErrorRes, showSuccessErrorToast} from "./Toaster.tsx";
 import {getMeta, LoadedProject, SavedSceneFile} from "./project.ts";
 
 export async function resolveNameConflict(newName: string, manager: ViewerInstanceManager) {
@@ -26,22 +26,26 @@ export async function resolveNameConflict(newName: string, manager: ViewerInstan
     return newName
 }
 
-export function refreshQueryState(data: {project: string|null, file: string|null}) {
+export function refreshQueryState(data: {project: string|null, file: string|null, model?: string}, reload = false) {
     const params = new URLSearchParams(location.search)
     const current = {
         project: params.get('project') || params.get('p') || null,
         file: params.get('file') || params.get('f') || null,
+        model: params.get('model') || params.get('m') || null,
     }
-    if (JSON.stringify(current) !== JSON.stringify(data)) {
+    if (reload || JSON.stringify(current) !== JSON.stringify(data)) {
         if (params.has('project')) params.delete('project')
         if (params.has('p')) params.delete('p')
         if (params.has('file')) params.delete('file')
         if (params.has('f')) params.delete('f')
+        if( params.has('model')) params.delete('model')
+        if( params.has('m')) params.delete('m')
 
         if (data.project) params.set('p', data.project)
         if (data.file) params.set('f', data.file)
-        window.history.replaceState({}, '', '?' + params.toString())
-        if(!data.project && current.project) {
+        if(data.model) params.set('m', data.model)
+        window.history.pushState({}, '', '?' + params.toString())
+        if(reload || (!data.project && current.project)) {
             // force reload to reset state and import maps
             window.location.reload()
         }
@@ -54,30 +58,40 @@ export function useProjectActions() {
     const {setProject, setWelcomeOpen} = useProject()
 
     const loadFile = useCallback(async (meta: LoadedProject, file: SavedSceneFile | null = null) => {
-        manager.loadProject(meta, {})
-        await manager.loadProjectFile(file)
+        await manager.loadProject(meta, {})
+        // await manager.loadProjectFile(file)
         // refreshQueryState({project: meta.path, file: file?.path??null})
-        setProject(meta)
+        const res = await manager.loadProjectFile(file).catch(e=>{
+            console.error(e)
+            return {error: e?.message ?? 'Unknown error'}
+        })
+        // console.log(res)
+        if(meta.path) showSuccessErrorToast(`Loaded ${meta.path}${file?.path||''}`, 'Unable to load project file', res as ErrorRes)
         // setPFile(file)
+        setProject(meta)
     }, [setProject, manager])
 
     const unloadFile = useCallback(async () => {
+        if(manager.loadedNeedsSave) return
         // refreshQueryState({project: null, file: null})
-        await manager.loadProjectFile(null)
-        manager.loadProject(null, {})
+        const res = await manager.loadProjectFile(null, false, true).catch(e=>{
+            return {error: e?.message ?? 'Unknown error'}
+        })
+        if(manager.loadedProject) showSuccessErrorToast(`Closed Project`, 'Unable to close project', res as ErrorRes)
+        await manager.loadProject(null, {})
         setProject(null)
         setWelcomeOpen(true)
         return null
     }, [setProject, manager])
 
-    const loadProject = useCallback(async (metaOrPath: LoadedProject | string | null, file?: string|null) => {
+    const loadProject1 = useCallback(async (metaOrPath: LoadedProject | string | null, file?: string|null) => {
         if (!metaOrPath) {
             return await unloadFile()
         }
         let meta: LoadedProject|null = null
         if(typeof metaOrPath === 'string') {
             const meta1 = await getMeta(metaOrPath) ?? null
-            meta = await manager.getLoadedProject(meta1) ?? {path: metaOrPath, file: new File(['{}'], 'dummy'), lastModified: Date.now() }
+            meta = await manager.getLoadedProject(meta1) ?? {path: metaOrPath, file: new File(['{}'], 'dummy.scene.glb'), lastModified: Date.now() }
         }else {
             meta = metaOrPath
         }
@@ -170,7 +184,8 @@ export function useProjectActions() {
                     console.error('ThreeEditor - cannot load project from meta', meta)
                     return
                 }
-                return await loadProject(meta1)
+                // return await loadProject(meta1)
+                refreshQueryState({project: meta.path, file: null}, true)
             }
             else {
                 return await loadFile({
@@ -218,5 +233,5 @@ export function useProjectActions() {
         // }
     }, [manager])
 
-    return {loadProject, openProject, saveProjectFile}
+    return {loadProject1, openProject, saveProjectFile}
 }

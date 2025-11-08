@@ -41,7 +41,7 @@
 }
 
 .bp5-tree-node-content{
-  transition: background-color 0.2s ease-in-out;
+  //transition: background-color 0.2s ease-in-out;
 }
 
 @for $i from 1 through 10 {
@@ -65,6 +65,9 @@
     padding: 0 5px;
     position: relative;
   }
+  .bp5-tree-node-icon > svg{ // (this is only for built in bp icons)
+    padding: 1px; // to match the size of other svg icons
+  }
 }
 
 
@@ -81,4 +84,8 @@
   .bp5-tree-node-secondary-label{
     display: block;
   }
+}
+.bp5-tree-node-label{
+  font-size: $pt-font-size-small;
+  font-weight: 400;
 }

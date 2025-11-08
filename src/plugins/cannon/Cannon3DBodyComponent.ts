@@ -8,7 +8,7 @@ import {
     Object3DComponent, Quaternion, Vector3
 } from "threepipe"
 import {Cannon3DShapeComponent} from "./Cannon3DShapeComponent.ts";
-import {CannonPhysicsPlugin} from "./CannonPhysicsPlugin.ts";
+import {CannonMaterial2, CannonPhysicsPlugin} from "./CannonPhysicsPlugin.ts";
 
 export const physicsBodyType = ['static', 'dynamic', 'kinematic'] as const
 export type PhysicsBodyType = typeof physicsBodyType[number]
@@ -18,13 +18,14 @@ export class Cannon3DBodyComponent extends Object3DComponent {
     static StateProperties: ComponentDefn['StateProperties'] = ['mass', {
         key: 'type',
         type: literalStrings(physicsBodyType),
-    }, 'isTrigger']
+    }, 'isTrigger', 'material']
 
     declare body: Body
 
     mass = 1
     type: PhysicsBodyType = 'dynamic'
     isTrigger = false
+    material: CannonMaterial2 = new CannonMaterial2()
 
     private _typeToCannon(type: PhysicsBodyType) {
         if (type === 'static') return Body.STATIC
@@ -39,18 +40,24 @@ export class Cannon3DBodyComponent extends Object3DComponent {
             if (!this.body) return
             this.body.mass = v
             this.body.updateMassProperties()
-            this.object.setDirty({source: 'Cannon3DBodyComponent'})
+            this.object.setDirty?.({source: 'Cannon3DBodyComponent'})
         })
         this.onStateChange('type', (v)=>{
             if (!this.body) return
             this.body.type = this._typeToCannon(v)
             this.body.updateMassProperties()
-            this.object.setDirty({source: 'Cannon3DBodyComponent'})
+            this.object.setDirty?.({source: 'Cannon3DBodyComponent'})
         })
         this.onStateChange('isTrigger', (v)=>{
             if (!this.body) return
             this.body.isTrigger = v
-            this.object.setDirty({source: 'Cannon3DBodyComponent'})
+            this.object.setDirty?.({source: 'Cannon3DBodyComponent'})
+        })
+        this.onStateChange('material', (v)=>{
+            if (!this.body) return
+            this.body.material = v
+            this.uiConfig?.uiRefresh?.()
+            this.object.setDirty?.({source: 'Cannon3DBodyComponent'})
         })
     }
 
@@ -65,6 +72,7 @@ export class Cannon3DBodyComponent extends Object3DComponent {
         super.init(object, state)
         const cannon = this.ctx.plugin(CannonPhysicsPlugin)
         this.body = new Body()
+        this.body.material = this.material
         this.body.mass = this.mass
         this.body.type = this._typeToCannon(this.type)
         this.body.isTrigger = this.isTrigger
@@ -163,7 +171,7 @@ export class Cannon3DBodyComponent extends Object3DComponent {
             this.body.updateBoundingRadius()
 
             this.body.aabbNeedsUpdate = true
-            this.object.setDirty({source: 'Cannon3DBodyComponent'})
+            this.object.setDirty?.({source: 'Cannon3DBodyComponent'})
         }
     }
 }

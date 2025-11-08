@@ -12,6 +12,9 @@ const files = new Map<string, JsFileParsed>()
 let moduleCacheKey = '1'
 const fsImporter = new FsImporter(async (p)=>{
     const ff = files.get(p)
+    if(!ff){
+        console.warn('[JS Import] - File not found: ', p)
+    }
     return !ff ? undefined : {str: ff.code, ct: 'application/javascript'}
 })
 
@@ -67,27 +70,30 @@ function getLatestDeps(code: string, cacheKey: string){
 async function loadModules1(paths1: string[], readFile: (path: string)=>Promise<string>){
     const paths = [...paths1]
     const pf = async (path: string)=>{
-        const str = await readFile(path)
+        const pathURL = new URL(path, 'http://example.com')
+        const path1 = pathURL.pathname.replace(/^\/+/, "") + pathURL.search
+        const str = await readFile(path1)
         const {code, ds} = getLatestDeps(str, moduleCacheKey)
         const ff = {
-            code: code + '\n//# sourceURL=' + path.replace(/\s/g, '_') + '\n',
+            code: code + '\n//# sourceURL=' + path1.replace(/\s/g, '_') + '\n',
             deps: [] as string[],
             depsn: [] as string[], // nested
             depd: [] as string[], // dependants
             _isParsedJs: true as const,
         }
-        files.set(path, ff)
+        files.set(path1, ff)
         for (const dep of ds) {
             if(dep.startsWith('./') || dep.startsWith('../')){
-                const path1 = new URL(dep, path).href
-                if(ff.deps.includes(path1)) continue
-                ff.deps.push(path1)
-                ff.depsn.push(path1)
-                if(!paths.includes(path1)){
-                    paths.push(path1)
-                    await pf(path1)
+                const url2 = new URL(dep, pathURL)
+                const path2 = url2.pathname.replace(/^\/+/, "") + url2.search
+                if(ff.deps.includes(path2)) continue
+                ff.deps.push(path2)
+                ff.depsn.push(path2)
+                if(!paths.includes(path2)){
+                    paths.push(path2)
+                    await pf(path2)
                 }
-                const fl = files.get(path1)
+                const fl = files.get(path2)
                 if(fl && fl.deps.length > 0){
                     for (const d of fl.deps) {
                         if(!ff.depsn.includes(d)){
@@ -96,7 +102,7 @@ async function loadModules1(paths1: string[], readFile: (path: string)=>Promise<
                     }
                 }
                 if(fl){
-                    fl.depd.push(path1)
+                    fl.depd.push(path2)
                 }
             }else {
                 ff.deps.push(dep)
@@ -138,9 +144,10 @@ async function loadModules1(paths1: string[], readFile: (path: string)=>Promise<
             }
         }
         const module = await fsImporter.import(p1, false).catch((err)=>{
-            console.error('Error loading module:', path, err)
+            console.error('Error loading module:', path)
+            console.error(err)
             // throw err
-            return {}
+            return {__tpModuleError: err}
         })
         modules.push(module)
         files2.push(ff)

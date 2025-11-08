@@ -6,13 +6,13 @@ import {
     IMaterial,
     IObject3D,
     literalStrings,
+    Mesh,
     Object3DComponent,
     PartialRecord
 } from "threepipe"
 import {getShapeParameters, ShapeParameters, ShapeResult, ShapeType, threeToCannon} from "./threeToCannon"
 import {Quaternion as CQuaternion, Shape, Vec3} from "cannon-es"
 import {Cannon3DBodyComponent} from "./Cannon3DBodyComponent.ts";
-import {Mesh} from "three";
 import {CannonDebugger} from "./helper.ts";
 
 export const typeToCannon = {
@@ -63,7 +63,7 @@ export class Cannon3DShapeComponent extends Object3DComponent {
             if (params) {
                 const params1 = {}
                 Object.entries(params).forEach(([k, v]) => {
-                    (params1 as any)[k] = (v as TypedArray).slice ? (v as TypedArray).slice() : v
+                    (params1 as any)[k] = (v as Array<any>).slice ? (v as Array<any>).slice() : v
                 })
                 this.params = {
                     type: typeToCannon[this.type],
@@ -103,7 +103,12 @@ export class Cannon3DShapeComponent extends Object3DComponent {
 
     refreshShape(refreshBody = true) {
         // todo auto refresh on geometry or hierarchy changed if set to auto
+        if (!this.object.__cannonShapes) this.object.__cannonShapes = []
 
+        if(this.result){
+            const index = this.object.__cannonShapes.indexOf(this.result)
+            if(index !== -1) this.object.__cannonShapes.splice(index, 1)
+        }
         const shapeType = typeToCannon[this.type]
         const shapeParameters = this.params ?? (shapeType && this.object.isMesh ? getShapeParameters(this.object, {type: shapeType}) : null)
 
@@ -113,7 +118,6 @@ export class Cannon3DShapeComponent extends Object3DComponent {
             this.result = Cannon3DShapeComponent.EmptyResult
         }
 
-        if (!this.object.__cannonShapes) this.object.__cannonShapes = []
         if (!this.object.__cannonShapes.includes(this.result)) this.object.__cannonShapes.push(this.result)
 
         if (refreshBody && this.bodyRef) this.bodyRef.refreshShapes()
@@ -131,6 +135,7 @@ export class Cannon3DShapeHelper extends AHelperWidget {
         super(object, false)
 
         this.attach(object)
+        this.visible = false
     }
 
     update() {
@@ -182,7 +187,7 @@ export class Cannon3DShapeHelper extends AHelperWidget {
     }
 
     static Check(obj: IObject3D) {
-        return !!EntityComponentPlugin.GetComponentData(obj, Cannon3DShapeComponent) !== null
+        return !!EntityComponentPlugin.GetComponentData(obj, Cannon3DShapeComponent)
     }
 
     static Create(obj: IObject3D) {

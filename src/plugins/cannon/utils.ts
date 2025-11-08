@@ -1,7 +1,7 @@
 /* eslint-disable */
 // https://github.com/donmccurdy/three-to-cannon/blob/main/src/utils.ts
 
-import { BufferAttribute, BufferGeometry, Mesh, Object3D, Quaternion, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, Mesh, Object3D, Quaternion, Vector3 } from 'threepipe';
 
 const _v1 = new Vector3();
 const _v2 = new Vector3();

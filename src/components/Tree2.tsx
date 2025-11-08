@@ -88,7 +88,7 @@ export interface TreeProps<T = {}> extends Props {
     /**
      * Invoked when a node is dragged over another node.
      */
-    onNodeDragOver?: (node: TreeNodeInfo<T>, path: number[], event: React.DragEvent<HTMLElement>) => void;
+    onNodeDragOver?: (node: TreeNodeInfo<T>, path: number[], event: React.DragEvent<HTMLElement>, index?: number) => void;
 
     /**
      * Invoked when a node drag ends.
@@ -98,12 +98,12 @@ export interface TreeProps<T = {}> extends Props {
     /**
      * Invoked when a dragged node enters another node.
      */
-    onNodeDragEnter?: (node: TreeNodeInfo<T>, path: number[], event: React.DragEvent<HTMLElement>) => void;
+    onNodeDragEnter?: (node: TreeNodeInfo<T>, path: number[], event: React.DragEvent<HTMLElement>, index?: number) => void;
 
     /**
      * Invoked when a dragged node leaves another node.
      */
-    onNodeDragLeave?: (node: TreeNodeInfo<T>, path: number[], event: React.DragEvent<HTMLElement>) => void;
+    onNodeDragLeave?: (node: TreeNodeInfo<T>, path: number[], event: React.DragEvent<HTMLElement>, index?: number) => void;
 
     /**
      * A function that determines whether a node can be dropped onto another node.
@@ -267,8 +267,9 @@ export class Tree2<T = {}> extends React.Component<TreeProps<T>> {
         this.draggingNode = { node, path };
         this.rootRef?.current?.classList.add(Classes.TREE + "-dragging-node");
         this.addNodeClass(node, TREE_NODE + "-dragging");
-        e.dataTransfer.effectAllowed = "move";
         try {
+            e.dataTransfer.clearData();
+            e.dataTransfer.effectAllowed = "move";
             e.dataTransfer.setData("application/json", JSON.stringify({ nodeId: node.id, path }));
         } catch {
             // ignore
@@ -293,7 +294,7 @@ export class Tree2<T = {}> extends React.Component<TreeProps<T>> {
         }
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
-        this.props.onNodeDragOver?.(node, path, e);
+        this.props.onNodeDragOver?.(node, path, e, index);
     };
 
     private handleNodeDrop = (targetNode: TreeNodeInfo<T>, targetPath: number[], e: React.DragEvent<HTMLElement>, index?: number) => {
@@ -321,14 +322,14 @@ export class Tree2<T = {}> extends React.Component<TreeProps<T>> {
         this.props.onNodeDragEnd?.(node, path, e);
     };
 
-    private handleNodeDragEnter = (node: TreeNodeInfo<T>, path: number[], e: React.DragEvent<HTMLElement>, _index?: number) => {
-        this.props.onNodeDragEnter?.(node, path, e);
+    private handleNodeDragEnter = (node: TreeNodeInfo<T>, path: number[], e: React.DragEvent<HTMLElement>, index?: number) => {
+        this.props.onNodeDragEnter?.(node, path, e, index);
     };
 
-    private handleNodeDragLeave = (node: TreeNodeInfo<T>, path: number[], e: React.DragEvent<HTMLElement>, _index?: number) => {
+    private handleNodeDragLeave = (node: TreeNodeInfo<T>, path: number[], e: React.DragEvent<HTMLElement>, index?: number) => {
         if (this.dragOverNode) this.removeNodeClass(this.dragOverNode.node, TREE_NODE + "-dragover", this.dragOverNode.currentTarget);
         this.dragOverNode = undefined;
-        this.props.onNodeDragLeave?.(node, path, e);
+        this.props.onNodeDragLeave?.(node, path, e, index);
     };
 
     private addNodeClass = (node: TreeNodeInfo<T>|number[], className: string, currentTarget?: HTMLElement) => {

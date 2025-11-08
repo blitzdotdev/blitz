@@ -16,6 +16,7 @@ import {useObjContextMenu} from "./UseObjContextMenu.tsx";
 import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
+import {useManager} from "../utils/ViewerInstanceManager.ts";
 
 interface BPTexturesTreeComponentPropsExtras extends HandleContextMenuCallback<ITexture>{
 
@@ -47,6 +48,7 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
         // if(obj.isUnlitTexture){
         //     node.icon = 'full-circle'
         // }
+        node.icon = 'media'
         return node;
     }
     //
@@ -198,6 +200,8 @@ export class BPTexturesTreeComponent<T extends ITexture = ITexture> extends BPTr
 }
 
 export function TextureHierarchyComponent({className}: {className: string}){
+    const manager = useManager()
+    const viewer = manager.get()
     const {handleContextMenu} = useObjContextMenu()
     const config: UiObjectConfig = useMemo(()=>({
         type: 'hierarchy',
@@ -205,5 +209,7 @@ export function TextureHierarchyComponent({className}: {className: string}){
         value: null
     }), [])
 
-    return <BPTexturesTreeComponent config={config} handleContextMenu={handleContextMenu} className={className}/>
+    return <BPTexturesTreeComponent
+        key={viewer.scene.modelRoot.uuid} // this is required because viewer can be destroyed and recreated
+        config={config} handleContextMenu={handleContextMenu} className={className}/>
 }

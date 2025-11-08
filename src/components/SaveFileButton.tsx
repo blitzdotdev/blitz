@@ -36,7 +36,7 @@ export function SaveFileButton() {
                              // icon={'floppy-disk'}
                              onClick={() => updateLoading('save-file', saveFile({closeProject: true}))}/>
                          <MenuItem
-                             text={'Close'}
+                             text={'Close File'}
                              // icon={'floppy-disk'}
                              onClick={() => updateLoading('save-file', closeProject())}/>
                      </Menu>
@@ -69,7 +69,7 @@ export function SaveProjectButton() {
     const {loadingState, updateLoading} = useLoadingState()
     const {closeProject} = useCloseWithoutSave()
     const {project} = useProject()
-    const {saveProjectFile, loadProject} = useProjectActions()
+    const {saveProjectFile, loadProject1} = useProjectActions()
     const manager = useManager()
 
     const [fileNeedsSave] = useFileNeedsSave()
@@ -99,9 +99,9 @@ export function SaveProjectButton() {
                          <MenuItem
                              text={'Save and Close'}
                              // icon={'floppy-disk'}
-                             onClick={() => updateLoading('save-file', saveProjectFile().then(()=>loadProject(null)))}/>
+                             onClick={() => updateLoading('save-file', saveProjectFile().then(()=>loadProject1(null)))}/>
                          <MenuItem
-                             text={'Close'}
+                             text={'Close Project'}
                              // icon={'floppy-disk'}
                              onClick={() => updateLoading('save-file', closeProject())}/>
                      </Menu>
