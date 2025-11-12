@@ -225,14 +225,20 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
             frameFadePlugin.disable(CannonPhysicsPlugin.PluginType)
         }
 
-        // Step the physics world
-        if (this.nextSteps > 0) {
-            for (let i = 0; i < this.stepPhysics.stepCount; i++) {
-                this._world.step(this.stepPhysics.delta)
+        try {
+            // Step the physics world
+            if (this.nextSteps > 0) {
+                for (let i = 0; i < this.stepPhysics.stepCount; i++) {
+                    this._world.step(this.stepPhysics.delta)
+                }
+            } else {
+                // todo use dt
+                // const dt = e.deltaTime
+                this._world.fixedStep()
             }
-        } else {
-            const dt = e.deltaTime
-            this._world.fixedStep() // todo there are 2 modes?
+        }catch (e) {
+            console.error('[CannonPhysicsPlugin] Error stepping physics world')
+            console.error(e)
         }
 
         this._dirty = false
@@ -260,13 +266,17 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
             }
             if (dirty) {
                 this._m1.compose(this._v1, this._q1, this._s2)
-                if (!mesh.parent) throw new Error('no parent')
-                this._m2.copy(mesh.parent.matrixWorld).invert()
-                this._m2.multiply(this._m1)
-                this._m2.decompose(this._v1, this._q1, this._s2)
-                mesh.position.copy(this._v1)
-                mesh.quaternion.copy(this._q1)
-                mesh.setDirty && mesh.setDirty({change: 'transform', source: 'CannonPhysicsPlugin'})
+                if (!mesh.parent) {
+                    // throw new Error('no parent')
+                    console.error('[CannonPhysicsPlugin] Mesh has no parent, cannot set world transform', mesh)
+                }else {
+                    this._m2.copy(mesh.parent.matrixWorld).invert()
+                    this._m2.multiply(this._m1)
+                    this._m2.decompose(this._v1, this._q1, this._s2)
+                    mesh.position.copy(this._v1)
+                    mesh.quaternion.copy(this._q1)
+                    mesh.setDirty && mesh.setDirty({change: 'transform', source: 'CannonPhysicsPlugin'})
+                }
             }
         }
         this._dirty = dirty

@@ -467,7 +467,6 @@ export class EditModePlugin extends AViewerPluginSync{
         this._settings.sceneMainCamera = this._viewer.scene.mainCamera
         ;(this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho).activateMain()
 
-
         const controlProps = {
             enableDamping: false,
             minDistance: 0.5,
@@ -475,7 +474,7 @@ export class EditModePlugin extends AViewerPluginSync{
             zoomSpeed: 0.5,
             maxZoomSpeed: 0.5,
             autoPushTarget: true,
-            autoPullTarget: true,
+            autoPullTarget: false,
         }
 
         Object.assign((this.cameraPerspective.controls as OrbitControls3), controlProps)

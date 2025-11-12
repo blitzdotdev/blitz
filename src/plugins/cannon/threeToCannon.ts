@@ -318,6 +318,11 @@ function getBoundingCylinderParameters (
         orientation: new CQuaternion()
             .setFromEuler(eulerX, eulerY, 0, 'XYZ')
             .normalize(),
+        offset: new Vec3(
+            (box.max.x + box.min.x) / 2,
+            (box.max.y + box.min.y) / 2,
+            (box.max.z + box.min.z) / 2,
+        ),
     };
 }
 
@@ -355,10 +360,18 @@ function getBoundingSphereParameters (
     const geometry = getGeometry(object);
     if (!geometry) return null;
     geometry.computeBoundingSphere();
+    const sphere = geometry.boundingSphere;
+    if(!sphere) return null;
+    if(!isFinite(sphere.radius)) return null;
+
+    // const localPosition = sphere.center.clone().sub(object.position);
 
     return {
         type: ShapeType.SPHERE,
         params: { radius: geometry.boundingSphere!.radius },
+        // offset: localPosition.lengthSq()
+        //     ? new Vec3(localPosition.x, localPosition.y, localPosition.z)
+        //     : undefined,
     };
 }
 

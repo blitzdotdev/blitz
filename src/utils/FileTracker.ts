@@ -24,7 +24,7 @@ export class FileTracker extends EventDispatcher<{
         const ex = this._fileStash[p]
         if (ex) {
             ex.lastUsed = Date.now()
-            console.log('get from stash', p)
+            // console.log('get from stash', p)
             ex.onUpdate.forEach(f => f())
         } else {
             console.log('not in stash', p, {...this._fileStash})
@@ -44,7 +44,7 @@ export class FileTracker extends EventDispatcher<{
             path: p,
         }
         this.dispatchEvent({type: 'fileAdd', path, item: this._fileStash[p]})
-        console.log('set in stash', encodeURI(p), path)
+        // console.log('set in stash', encodeURI(p), path)
         return url
     }
 

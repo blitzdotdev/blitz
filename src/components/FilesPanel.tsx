@@ -523,7 +523,7 @@ export class MyComponent extends Object3DComponent {
                 picking?.removeEventListener('selectedObjectChanged', cancel)
             }
             picking?.addEventListener('selectedObjectChanged', cancel)
-            const fileAsset = await manager.getAssetFromPath(assetUrlPrefix + f.path)
+            const fileAsset = await manager.getAssetFromEntry(f)
             console.log(fileAsset)
             if(fileAsset && !cancelled && picking &&
                 selectedFilesRef.current.length === 1 && selectedFilesRef.current[0] === f &&

@@ -2,16 +2,16 @@ import {
     AHelperWidget,
     ComponentDefn,
     ComponentJSON,
-    EntityComponentPlugin,
+    EntityComponentPlugin, Group,
     IMaterial,
     IObject3D,
     literalStrings,
     Mesh,
-    Object3DComponent,
+    Object3DComponent, Object3DWidgetsPlugin,
     PartialRecord
 } from "threepipe"
 import {getShapeParameters, ShapeParameters, ShapeResult, ShapeType, threeToCannon} from "./threeToCannon"
-import {Quaternion as CQuaternion, Shape, Vec3} from "cannon-es"
+import {Box, Quaternion as CQuaternion, Shape, Vec3} from "cannon-es"
 import {Cannon3DBodyComponent} from "./Cannon3DBodyComponent.ts";
 import {CannonDebugger} from "./helper.ts";
 
@@ -48,7 +48,7 @@ export class Cannon3DShapeComponent extends Object3DComponent {
         key: 'type',
         type: literalStrings(cannonShapeTypes),
     }]
-    static EmptyResult: ShapeResult = {shape: new Shape()}
+    static EmptyResult: ShapeResult = {shape: new Box(new Vec3(0.025, 0.025, 0.025))}
 
     result: ShapeResult = Cannon3DShapeComponent.EmptyResult
     bodyRef: Cannon3DBodyComponent | undefined
@@ -90,6 +90,10 @@ export class Cannon3DShapeComponent extends Object3DComponent {
         } else {
             body.addShape(this)
         }
+        this.object.addEventListener('objectUpdate', this.objectUpdate)
+        this.object.addEventListener('childadded', this.childadded)
+        this.object.addEventListener('childremoved', this.childremoved)
+        this.ctx.viewer.addEventListener('preFrame', this.preFrame)
     }
 
     destroy(): Record<string, any> {
@@ -97,6 +101,8 @@ export class Cannon3DShapeComponent extends Object3DComponent {
             this.bodyRef.removeShape(this, false)
             this.bodyRef = undefined
         }
+        this.object.removeEventListener('objectUpdate', this.objectUpdate)
+        this.ctx.viewer.removeEventListener('preFrame', this.preFrame)
         this.result = Cannon3DShapeComponent.EmptyResult
         return super.destroy()
     }
@@ -109,9 +115,11 @@ export class Cannon3DShapeComponent extends Object3DComponent {
             const index = this.object.__cannonShapes.indexOf(this.result)
             if(index !== -1) this.object.__cannonShapes.splice(index, 1)
         }
-        const shapeType = typeToCannon[this.type]
-        const shapeParameters = this.params ?? (shapeType && this.object.isMesh ? getShapeParameters(this.object, {type: shapeType}) : null)
 
+        const shapeType = typeToCannon[this.type]
+        const shapeParameters = this.params ?? (shapeType ? getShapeParameters(this.object, {type: shapeType}) : null)
+
+        console.log('shapeParameters', shapeParameters)
         if (shapeParameters) {
             this.result = threeToCannon(this.object, undefined, shapeParameters)!
         } else {
@@ -121,8 +129,36 @@ export class Cannon3DShapeComponent extends Object3DComponent {
         if (!this.object.__cannonShapes.includes(this.result)) this.object.__cannonShapes.push(this.result)
 
         if (refreshBody && this.bodyRef) this.bodyRef.refreshShapes()
+
+        this.object.setDirty?.()
+        this.ctx.plugin(Object3DWidgetsPlugin)?.refreshObject(this.object)
     }
 
+    private _needsUpdate = false
+    objectUpdate = (e: any)=>{
+    }
+
+    childadded = (e: any)=>{
+        this._needsUpdate = true
+        e.child.addEventListener('objectUpdate', this.objectUpdate)
+        e.child.addEventListener('childadded', this.childadded)
+        e.child.addEventListener('childremoved', this.childremoved)
+        console.log('childadded', {...e})
+    }
+    childremoved = (e: any)=>{
+        this._needsUpdate = true
+        e.child.removeEventListener('objectUpdate', this.objectUpdate)
+        e.child.removeEventListener('childadded', this.childadded)
+        e.child.removeEventListener('childremoved', this.childremoved)
+        console.log('childremoved', {...e})
+    }
+
+    preFrame = ()=>{
+        if(this._needsUpdate){
+            this._needsUpdate = false
+            this.refreshShape()
+        }
+    }
 }
 
 export class Cannon3DShapeHelper extends AHelperWidget {
@@ -131,15 +167,24 @@ export class Cannon3DShapeHelper extends AHelperWidget {
     private _meshes = new WeakMap<Shape, Mesh>()
     declare object: IObject3D | undefined
 
+    private _gp = new Group()
     constructor(object: IObject3D) {
         super(object, false)
 
         this.attach(object)
+        this.add(this._gp)
         this.visible = false
     }
 
     update() {
         super.update()
+
+        this._gp.scale.setFromMatrixScale(this.matrixWorld)
+        this._gp.scale.set(
+            1./this._gp.scale.x,
+            1./this._gp.scale.y,
+            1./this._gp.scale.z
+        )
 
         const shapes = (this.object?.__cannonShapes || []) as ShapeResult[]
         const added = shapes.filter(s => !this._shapes.includes(s))
@@ -149,7 +194,7 @@ export class Cannon3DShapeHelper extends AHelperWidget {
         for (const shape of removed) {
             const mesh = this._meshes.get(shape.shape)
             if (mesh) {
-                this.remove(mesh)
+                this._gp.remove(mesh)
                 mesh.geometry.dispose()
                 ;(mesh.material as IMaterial).dispose()
                 this._meshes.delete(shape.shape)
@@ -161,14 +206,21 @@ export class Cannon3DShapeHelper extends AHelperWidget {
             // update
             const mesh = CannonDebugger.updateMesh(current, shape.shape)
             if (mesh !== current && mesh) {
-                this.add(mesh)
+                this._gp.add(mesh)
                 if (current) {
                     current.removeFromParent()
                     current.geometry.dispose()
                     ;(current.material as IMaterial).dispose()
                 }
                 this._meshes.set(shape.shape, mesh)
-                console.log(mesh)
+            }
+            if(mesh){
+                if(shape.offset){
+                    mesh.position.set(shape.offset.x, shape.offset.y, shape.offset.z)
+                }
+                if(shape.orientation){
+                    mesh.quaternion.set(shape.orientation.x, shape.orientation.y, shape.orientation.z, shape.orientation.w)
+                }
             }
             this._shapes.push(shape)
         }

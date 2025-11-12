@@ -2,7 +2,7 @@ import {
     buildProjectBundleCode,
     getMeta,
     initProjectHandles,
-    LoadedProject,
+    LoadedProject, parseAssetsJSONManifest,
     parsePackageJsonSettings, resolveFile
 } from "./utils/project.ts";
 import {getUrlQueryParam} from "threepipe";
@@ -17,6 +17,9 @@ export async function main(){
     const handles = await initProjectHandles(meta)
     if(!handles.package.file) return {error: 'Project has no package.json'}
     const loadedProject = await parsePackageJsonSettings(handles.package.file, meta)
+    const assetsJsonText = handles.assetsJson.file ? await handles.assetsJson.file.text() : ''
+    const json = parseAssetsJSONManifest(assetsJsonText)
+    loadedProject.assetsManifest = json
 
     if(!loadedProject.settings) return
 

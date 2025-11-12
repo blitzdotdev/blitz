@@ -38,7 +38,7 @@ export async function getFileHandle(base: FileSystemDirectoryHandle, path: strin
         // if(e.name === "TypeMismatchError") return true
         // return undefined
         // }
-        console.error(e)
+        console.error(path, e)
         return undefined
     })
     return {fileHandle, dirHandle};

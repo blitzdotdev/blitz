@@ -44,7 +44,7 @@ function getLatestDeps(code: string, cacheKey: string){
         if(p1.startsWith('./') || p1.startsWith('../')){
             const url = new URL(p1, 'http://example.com')
             url.searchParams.set('cache', cacheKey)
-            return m.replace(p1, url.pathname + url.search)
+            return m.replace(p1, './' + url.pathname.replace(/^\/+/, "") + url.search)
         }
         return m
     })
@@ -52,7 +52,7 @@ function getLatestDeps(code: string, cacheKey: string){
         if(p1.startsWith('./') || p1.startsWith('../')){
             const url = new URL(p1, 'http://example.com')
             url.searchParams.set('cache', cacheKey)
-            return m.replace(p1, url.pathname + url.search)
+            return m.replace(p1, './' + url.pathname.replace(/^\/+/, "") + url.search)
         }
         return m
     })
@@ -60,7 +60,7 @@ function getLatestDeps(code: string, cacheKey: string){
         if(p1.startsWith('./') || p1.startsWith('../')){
             const url = new URL(p1, 'http://example.com')
             url.searchParams.set('cache', cacheKey)
-            return m.replace(p1, url.pathname + url.search)
+            return m.replace(p1, './' + url.pathname.replace(/^\/+/, "") + url.search)
         }
         return m
     })
@@ -85,11 +85,11 @@ async function loadModules1(paths1: string[], readFile: (path: string)=>Promise<
         for (const dep of ds) {
             if(dep.startsWith('./') || dep.startsWith('../')){
                 const url2 = new URL(dep, pathURL)
-                const path2 = url2.pathname.replace(/^\/+/, "") + url2.search
+                const path2 = './' + url2.pathname.replace(/^\/+/, "") + url2.search
                 if(ff.deps.includes(path2)) continue
                 ff.deps.push(path2)
                 ff.depsn.push(path2)
-                if(!paths.includes(path2)){
+                if(!paths.includes(path2)){ // todo check scriptModules? but hot reload?
                     paths.push(path2)
                     await pf(path2)
                 }

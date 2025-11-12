@@ -60,4 +60,4 @@ export class BrowserFileStoreIdbWithMem extends BrowserFileStoreIdb{
     }
 }
 
-export const browserFileStore = new BrowserFileStoreIdbWithMem()
+export const browserFileStore = new BrowserFileStoreIdb()

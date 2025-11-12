@@ -61,7 +61,7 @@ export function RefUiConfigComponent(props: BPComponentProps<any>){
             }else if('entry' in selected){
                 const entry = selected.entry
                 if(!entry) return
-                const value = await manager.getAssetFromPath(assetUrlPrefix + entry.path)
+                const value = await manager.getAssetFromEntry(entry)
                 val = value
             }
             if(val === undefined) return

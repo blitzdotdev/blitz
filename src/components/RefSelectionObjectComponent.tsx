@@ -426,6 +426,7 @@ export const RefSelectionObjectComponentTex: FileComponentProps<ITexture>['Asset
         if(!project) return null
         // (selected as SelectFileRef).entry?.isFSEntry ? assetUrlPrefix + (selected as SelectFileRef).entry.path : null
         const entry = (selected as SelectFileRef).entry?.isFSEntry ? (selected as SelectFileRef).entry : null
+        // todo use getFromPath to avoid reloading if already in memory
         const res = await manager.loadAsset(entry, project)
         if(!res?.isTexture) {
             console.error('RefSelectionObjectComponentTex: loaded object is not a texture', res, selected)

@@ -83,7 +83,7 @@ export function SaveProjectButton() {
                     disabled={!fileNeedsSave}
                     onClick={() => updateLoading('save-scene', saveProjectFile())}/>
         }
-        {manager.loadedAssetId &&
+        {manager.loadedAssetObj &&
             <Button
                     variant={"minimal"} size={"small"}
                     icon="git-repo" text="Save File"

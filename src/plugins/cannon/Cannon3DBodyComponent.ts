@@ -34,18 +34,36 @@ export class Cannon3DBodyComponent extends Object3DComponent {
         return Body.STATIC
     }
 
+    updateMassProperties(){
+        if (!this.body) return
+        try {
+            this.body.updateMassProperties()
+        }catch (e) {
+            console.error('[Cannon3DBodyComponent] updateMassProperties error', e)
+        }
+    }
+    updateBoundingRadius(){
+        if (!this.body) return
+        try {
+            this.body.updateBoundingRadius()
+        }catch (e) {
+            console.error('[Cannon3DBodyComponent] updateBoundingRadius error', e)
+        }
+    }
+
+
     constructor() {
         super()
         this.onStateChange('mass', (v)=>{
             if (!this.body) return
             this.body.mass = v
-            this.body.updateMassProperties()
+            this.updateMassProperties()
             this.object.setDirty?.({source: 'Cannon3DBodyComponent'})
         })
         this.onStateChange('type', (v)=>{
             if (!this.body) return
             this.body.type = this._typeToCannon(v)
-            this.body.updateMassProperties()
+            this.updateMassProperties()
             this.object.setDirty?.({source: 'Cannon3DBodyComponent'})
         })
         this.onStateChange('isTrigger', (v)=>{
@@ -76,7 +94,7 @@ export class Cannon3DBodyComponent extends Object3DComponent {
         this.body.mass = this.mass
         this.body.type = this._typeToCannon(this.type)
         this.body.isTrigger = this.isTrigger
-        this.body.updateMassProperties()
+        this.updateMassProperties()
         this.resetTransform()
         object.addEventListener('objectUpdate', this._objectUpdate)
         cannon.addBody(this)
@@ -155,20 +173,52 @@ export class Cannon3DBodyComponent extends Object3DComponent {
                 }
             }
         }
+        const bodyObj = this.object
+        bodyObj.updateMatrixWorld(true)
+        const bodyWorldPos = bodyObj.getWorldPosition(new Vector3())
+        const bodyWorldQuat = bodyObj.getWorldQuaternion(new Quaternion())
         for (const s of this.shapeRefs) {
             // s.bodyRef = this
             if (!this.body.shapes.includes(s.result.shape)) {
                 const shape = s.result.shape
                 this.body.shapes.push(shape)
-                this.body.shapeOffsets.push(s.result.offset ?? new Vec3())
-                this.body.shapeOrientations.push(s.result.orientation ?? new CQuaternion())
+                const offset = new Vec3()
+                const quat = new CQuaternion()
+                if(s.result.offset){
+                    offset.x += s.result.offset.x
+                    offset.y += s.result.offset.y
+                    offset.z += s.result.offset.z
+                }
+                if(s.result.orientation){
+                    quat.x = s.result.orientation.x
+                    quat.y = s.result.orientation.y
+                    quat.z = s.result.orientation.z
+                    quat.w = s.result.orientation.w
+                }
+                const shapeObj = s.object
+                if(bodyObj !== shapeObj){
+                    shapeObj.updateMatrixWorld(true)
+                    const worldPos = shapeObj.getWorldPosition(new Vector3())
+                    offset.x += worldPos.x - bodyWorldPos.x
+                    offset.y += worldPos.y - bodyWorldPos.y
+                    offset.z += worldPos.z - bodyWorldPos.z
+                    const worldQuat = shapeObj.getWorldQuaternion(new Quaternion())
+                    const relQuat = worldQuat.multiply(bodyWorldQuat.invert())
+                    // todo we need to multiply here
+                    quat.x = relQuat.x
+                    quat.y = relQuat.y
+                    quat.z = relQuat.z
+                    quat.w = relQuat.w
+                }
+                this.body.shapeOffsets.push(offset)
+                this.body.shapeOrientations.push(quat)
                 shape.body = this.body
                 changed = true
             }
         }
         if (update && changed) {
-            this.body.updateMassProperties()
-            this.body.updateBoundingRadius()
+            this.updateMassProperties()
+            this.updateBoundingRadius()
 
             this.body.aabbNeedsUpdate = true
             this.object.setDirty?.({source: 'Cannon3DBodyComponent'})

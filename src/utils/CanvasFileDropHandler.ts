@@ -20,6 +20,7 @@ import {
 } from "./ViewerInstanceManager.ts";
 import React from "react";
 import {assetUrlPrefix} from "./project.ts";
+import {FileManifestEntry} from "./AssetsProvider.ts";
 
 type DraggedItem = IMaterial | IObject3D
 
@@ -189,15 +190,14 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
     }
 
     private draggingEntry: {path: string, isFSEntry: boolean} | null = null
-    handleDragStart = async (e: React.DragEvent, f: {path: string, isFSEntry: boolean}) => {
+    handleDragStart = async (e: React.DragEvent, f: FileManifestEntry | {path: string, isFSEntry: false}) => {
         if(this.draggingEntry) return // already dragging something
         this.draggingEntry = f
-        const path = f.isFSEntry ? assetUrlPrefix+f.path : f.path
         draggingSpinner.style.display = 'block'
         e.dataTransfer.setData('text/uri-list', ' ');
         e.dataTransfer!.setDragImage(transparentPixelCanvas, 16, 16);
         // e.preventDefault();
-        const r = await this.manager.getAssetFromPath(path)
+        const r = await this.manager.getAssetFromEntry(f)
         if(!r) return
         if(!this.draggingEntry) return // drag was cancelled in the meantime
         draggingSpinner.style.display = 'none'
@@ -208,6 +208,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         this.setDraggedItem(r);
         e.dataTransfer.clearData();
         e.dataTransfer.effectAllowed = 'copy';
+        // const path = f.isFSEntry ? assetUrlPrefix+f.path : f.path
         // e.dataTransfer.setData('application/json', JSON.stringify({path}));
         e.dataTransfer.setData('text/uri-list', ' ');
     };

@@ -22,12 +22,42 @@ export interface SavedSceneFile {
     // viewerConfig?: File | string | any // todo
 }
 
+
+export interface AssetsJSONManifest{
+    files: Record<string, { // id to files meta
+        path: string,
+    }>
+    version: number,
+}
+
+export function parseAssetsJSONManifest(text: any): AssetsJSONManifest{
+    const json = parse(text) as AssetsJSONManifest
+
+    if(json.files && typeof json.files !== 'object'){
+        throw new Error('Invalid assets.json file: files should be an object')
+    }
+    if(json.version !== undefined && typeof json.version !== 'number'){
+        throw new Error('Invalid assets.json file: version should be a number')
+    }
+
+    if(!json.files) {
+        json.files = {}
+    }
+    if(!json.version){
+        json.version = 1
+    }
+
+    return json
+}
+
 export interface LoadedProject extends SavedSceneFile {
     settings?: {
         mainScene: string|null // path in project
         json: any
         config: ProjectConfigSettings
+        assetsJson: any
     }
+    assetsManifest?: AssetsJSONManifest
 }
 
 export interface ExternalPlugin{
@@ -167,7 +197,7 @@ export async function getMetaWithPreview(path: string): Promise<SavedSceneFileMe
 export async function initProjectHandles(meta: SavedSceneFileMeta | SavedSceneFileMetaStored){
     if(!meta.handle) throw new Error('No handle to check project init')
     const handle = meta.handle
-    let packageFileHandle = await handle.getFileHandle(meta.file).catch((e) => {
+    const packageFileHandle = await handle.getFileHandle(meta.file).catch((e) => {
         // todo handle if there is dir with same name
         // if(e.name === "NotFoundError") return null
         if(e.name === "TypeMismatchError") {
@@ -175,11 +205,19 @@ export async function initProjectHandles(meta: SavedSceneFileMeta | SavedSceneFi
         }
         return undefined
     })
-    let mainJsHandle = await handle.getFileHandle(meta.file).catch((e) => {
+    const mainJsHandle = await handle.getFileHandle('main.js').catch((e) => {
         // todo handle if there is dir with same name
         // if(e.name === "NotFoundError") return null
         if(e.name === "TypeMismatchError") {
             throw new Error('A directory with the name "main.js" exists in the project folder, cannot continue')
+        }
+        return undefined
+    })
+    const assetsJsonHandle = await handle.getFileHandle('assets.json').catch((e) => {
+        // todo handle if there is dir with same name
+        // if(e.name === "NotFoundError") return null
+        if(e.name === "TypeMismatchError") {
+            throw new Error('A directory with the name "assets.json" exists in the project folder, cannot continue')
         }
         return undefined
     })
@@ -191,7 +229,11 @@ export async function initProjectHandles(meta: SavedSceneFileMeta | SavedSceneFi
         }, mainJs: {
             handle: mainJsHandle,
             file: await mainJsHandle?.getFile(),
-        }}
+        }, assetsJson: {
+            handle: assetsJsonHandle,
+            file: await assetsJsonHandle?.getFile(),
+        }
+    }
 }
 
 export async function parsePackageJsonSettings(file: File, project: LoadedProject|SavedSceneFileMeta|SavedSceneFileMetaStored){

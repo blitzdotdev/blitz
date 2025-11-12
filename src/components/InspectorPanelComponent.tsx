@@ -626,6 +626,7 @@ export function ObjectInspectorUI({
         if(!object) return
         const l = ()=>{
             setObjectChangeId(id=>id+1)
+            // console.log('object changed, updating inspector', object)
         }
         object.addEventListener('objectUpdate', l)
         object.addEventListener('materialChanged', l)
@@ -976,6 +977,20 @@ export function CompsSectionComp({object, ...panelProps}: {object: IObject3D} & 
     const ecs = manager.get().getPlugin(EntityComponentPlugin)
     const [comps, setComps] = useState<Object3DComponent[]>([...EntityComponentPlugin.ObjectToComponents.get(object) || []])
 
+    // for reacting to changes in object, because we are accessing object.material etc
+    // const [objectChangeId, setObjectChangeId] = useState(0)
+    // useEffect(()=>{
+    //     if(!object) return
+    //     const l = (e: any)=>{
+    //         if(!e.refreshUi) return
+    //         setObjectChangeId(id=>id+1)
+    //     }
+    //     object.addEventListener('objectUpdate', l)
+    //     return ()=>{
+    //         object.removeEventListener('objectUpdate', l)
+    //     }
+    // }, [object])
+
     useEffect(()=>{
         if(!ecs) return
         const l = (ev: {object: IObject3D})=>{
@@ -1016,7 +1031,7 @@ export function CompsSectionComp({object, ...panelProps}: {object: IObject3D} & 
             if(!comp.uiConfig) return null
             return [
             <ConfigObject key={comp.uuid} config={comp.uiConfig} icon={"package"} {...panelProps}/>,
-            <Divider key={comp.uuid+'div'}  style={{margin: 0}}/>
+            <Divider key={comp.uuid+'div'} style={{margin: 0}}/>
             ]
         }).flat()}
 
@@ -1108,14 +1123,17 @@ export function AddCompComp({object, ...panelProps}: {object: IObject3D} & Panel
 
 export const addProjectScript = async (path: string, manager: ViewerInstanceManager)=>{
     if(!manager.loadedProject) return false
-    const res = await manager.addProjectScript({import: './'+path}).then(()=>({error: null})).catch(e=>{
+    const res = await manager.addProjectScript({import: './'+path}, true).then(()=>({error: null})).catch(e=>{
         return {error: e?.message ?? 'Unknown error'}
     })
     const r = showSuccessErrorToast(res ? `Loaded ${manager.loadedProject.path}${path} successfully` : 'Unknown Error', 'Unable to load plugin', res)
-    const mod = manager.scriptModules.get(path)
+    const mod = manager.scriptModules.get('./'+path)
     if(!mod){
         return false
     }
+    // todo mod.module.__tpModuleError show in toast
+    if((mod.module as any)?.__tpModuleError)
+        console.error((mod.module as any).__tpModuleError)
     return mod.components
 }
 

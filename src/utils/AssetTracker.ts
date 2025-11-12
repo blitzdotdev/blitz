@@ -35,7 +35,6 @@ export interface AssetRegistryItem{
     refs: ObservableSet<AssetRefItem>
 }
 
-
 export class AssetTracker extends EventDispatcher<{
     registryChanged: {path: string, action: 'add'|'remove'|'refresh'|'load'},
     replaceItem: {old: ImportResult, new: ImportResult}
@@ -131,10 +130,17 @@ export class AssetTracker extends EventDispatcher<{
             const lastRootPath = (lastValue as ImportResultExtras)?.__rootPath // not userdata rootpath
             if (lastRootPath && typeof lastRootPath === 'string') {
                 const asset = this.registry[lastRootPath]
-                if (asset) {
-                    asset.refs.delete(lastValue)
-                    if (!asset.refs.size) {
-                        this.removeFromRegistry(lastRootPath)
+                const uid = lastValue?.uuid
+                if (asset && uid) {
+                    // todo it could be a file also? anything else?
+                    const regs = manager.getObject(uid) ||
+                        manager.getMaterial(uid) || manager.getTexture(uid) ||
+                        manager.getGeometry(uid)
+                    if(!regs) {
+                        asset.refs.delete(lastValue)
+                        if (!asset.refs.size) {
+                            this.removeFromRegistry(lastRootPath)
+                        }
                     }
                 }
             }
@@ -532,12 +538,15 @@ function copySPropsObject(props: Partial<IObject3D>, obj: IObject3D) {
     }
     if (props.layers?.mask !== undefined) obj.layers.mask = props.layers.mask
 
-    // todo .userdata
+    // todo merge .userdata
     // todo .animations
 
     if (props.userData) {
+        const ud = obj.userData
         obj.userData = {} // clear existing userData
         copyObject3DUserData(obj.userData, props.userData, ['uuid', 'sProperties'])
+        Object.assign(obj.userData, ud)
+        // todo add entity components
     }
 
     obj.name = name

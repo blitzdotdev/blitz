@@ -46,7 +46,7 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
             return <Tabs
                 vertical={vertical}
                 animate={false}
-                renderActiveTabPanelOnly={false}
+                renderActiveTabPanelOnly={true}
                 size={"medium"}
                 className={"window-panels-tabs"}
             >

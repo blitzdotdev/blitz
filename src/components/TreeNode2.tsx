@@ -97,6 +97,7 @@ export class TreeNode2<T = {}> extends React.Component<TreeNodeProps<T>> {
                     onDragLeave: this.handleDragLeave,
                 };
 
+        // console.log('render TreeNode2', label, isExpanded);
         return (
             <li className={classes}>
                 <div className={contentClasses} ref={this.handleContentRef} {...eventHandlers}>
@@ -109,7 +110,8 @@ export class TreeNode2<T = {}> extends React.Component<TreeNodeProps<T>> {
                     >{label}</span>
                     {this.maybeRenderSecondaryLabel()}
                 </div>
-                <Collapse isOpen={isExpanded}>{children}</Collapse>
+                {/*<Collapse isOpen={isExpanded}>{children}</Collapse>*/}
+                {isExpanded && <div className={""}>{children}</div>}
             </li>
         );
     }

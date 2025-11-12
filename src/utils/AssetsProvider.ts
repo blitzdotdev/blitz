@@ -55,6 +55,10 @@ export async function directoryToManifest(
 
             })
         } else if (entryHandle.kind === 'directory') {
+            if(entryHandle.name === 'node_modules') {
+                // skip node_modules
+                continue
+            }
             if(existing){
                 // reuse existing entry
                 entries.push(existing)

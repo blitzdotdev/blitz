@@ -43,10 +43,12 @@ export abstract class BPTreeComponent<T = {}, TConfigVal extends any /*|Primitiv
 
     protected _cloneNodes(callback?: (t:TreeNodeInfo<T>)=>void, state?: TreeNodeInfo<T>[]): TreeNodeInfo<T>[] {
         return (state ?? this.state.nodes).map(n => {
-            let res: TreeNodeInfo<T> = {
-                ...n,
-                childNodes: n.childNodes ? this._cloneNodes(callback, n.childNodes) : undefined
-            }
+            // let res: TreeNodeInfo<T> = {
+            //     ...n,
+            //     childNodes: n.childNodes ? this._cloneNodes(callback, n.childNodes) : undefined
+            // }
+            const res = n
+            n.childNodes = n.childNodes ? this._cloneNodes(callback, n.childNodes) : undefined
             if(callback) callback(res)
             this._infoMap.set(n.id, res)
             return res
@@ -94,24 +96,33 @@ export abstract class BPTreeComponent<T = {}, TConfigVal extends any /*|Primitiv
     protected async _onNodeMouseLeave(_id: string | number, _e: React.MouseEvent<HTMLElement, MouseEvent>) {
     }
 
-    protected buildData(data: TreeNodeInfo<T>[], obj: T, _?: any, _2?: any) {
+    protected buildData(data: TreeNodeInfo<T>[], obj: T, _?: any, _2?: any): TreeNodeInfo<T>[] {
         if (!obj) return data
         const id = this._getNodeId(obj)
         if (!this._infoMap.has(id)) this._infoMap.set(id, this._createNodeInfo(id, obj))
         const node = this._infoMap.get(id)!
         const node2 = this._updateNodeInfo(node, obj)
         if (node2 !== node) this._infoMap.set(id, node2)
+        this.nSet?.add(id)
         data.push(node2)
         return data
     }
 
+    nSet?: Set<string|number>
     getUpdatedState(_state: BPTreeComponentState<T>): BPTreeComponentState<T> {
         if (!this._infoMap) this._infoMap = new Map()
-        else this._infoMap.clear()
+        // else this._infoMap.clear()
         const children = this._getRootNodes()
+        if(!this.nSet) this.nSet = new Set()
+        this.nSet.clear()
         const nodes = children.map(c => {
-            return this.buildData([], c)[0]
+            return this.buildData([], c, undefined, undefined)[0]
         }).filter(v => v)
+        // remove old nodes
+        for (const key of [...this._infoMap.keys()]) {
+            if (!this.nSet.has(key)) this._infoMap.delete(key)
+        }
+        this.nSet.clear()
         return super.getUpdatedState({nodes})
     }
 
