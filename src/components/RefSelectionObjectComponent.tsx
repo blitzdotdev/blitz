@@ -95,7 +95,7 @@ export function RefSelectionObjectComponentInput(props: RefSelectionObjectCompon
     const picking = viewer.getPlugin(PickingPlugin)
 
     const {fileManifest} = useAssets()
-    const assetManifest = manager.assetManifest
+    // const assetManifest = manager.assetManifest
 
     const object = props.object
     const selectItem = props.canSelect !== false && picking && object && isSelectionObject(object) ? ()=>{
@@ -187,7 +187,7 @@ export function RefSelectionObjectComponentInput(props: RefSelectionObjectCompon
         // });
 
         return filesByType
-    }, [props.objectType, fileManifest, assetManifest]);
+    }, [props.objectType, fileManifest/*, assetManifest*/]);
 
     if (props.objectType === 'plugin') {
         selectItems.push(...manifestFilesByType.get('plugin')||[]);
