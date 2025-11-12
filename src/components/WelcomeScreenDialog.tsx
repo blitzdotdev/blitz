@@ -168,6 +168,8 @@ export function WelcomeScreenDialog() {
             },
         }}
         usePortal={false}
+        enforceFocus={false}
+        autoFocus={false}
         onClose={()=>setWelcomeOpen(false)}>
         <Card id="welcome-dialog"
               onDragEnter={(_e) => {

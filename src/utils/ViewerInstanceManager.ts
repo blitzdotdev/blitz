@@ -2957,6 +2957,13 @@ export class ViewerInstanceManager extends EventDispatcher<{
         const v = this.get()
         v.scene.disposeSceneModels(true, true)
         v.scene.disposeTextures(true)
+        // todo for now
+        const comps = EntityComponentPlugin.ObjectToComponents.get(v.scene.defaultCamera)
+        // v.getPlugin(EntityComponentPlugin)?.removeComponent()
+        comps?.forEach(c=>{
+            v.getPlugin(EntityComponentPlugin)?.removeComponent(v.scene.defaultCamera, c.uuid)
+        })
+        delete v.scene.defaultCamera.userData.EntityComponentPlugin
     }
 
     // use loadProjectFile(null)

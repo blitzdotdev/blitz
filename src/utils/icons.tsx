@@ -2,7 +2,7 @@ import {FileManifestEntry, SelectedInspectorItem} from "./AssetsProvider.ts";
 import {SelectFileRef, SelObjectType} from "./ViewerInstanceManager.ts";
 import {objectToType} from "../components/RefSelectionObjectComponent.tsx";
 import {IconName, MaybeElement} from "@blueprintjs/core";
-import {TypedClass} from "../../../threepipe/lib";
+import {TypedClass} from "threepipe";
 
 export function iconForSelectionObject(object?: SelectedInspectorItem|SelectFileRef|null): IconName | MaybeElement{
     const type = objectToType(object)

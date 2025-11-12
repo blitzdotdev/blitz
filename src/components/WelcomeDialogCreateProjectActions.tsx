@@ -5,6 +5,7 @@ import {queryHandlePerm, useManager, useProject, ViewerInstanceManager} from '..
 import {useCallback} from 'react'
 import {useSaveFile} from "./UseSaveFile.tsx";
 import {getMeta} from "../utils/project.ts";
+import {ThreeViewer} from "threepipe";
 
 export function useProjectFolderActions(){
     const manager = useManager()
@@ -77,15 +78,15 @@ export function useProjectFolderActions(){
         if(!('showDirectoryPicker' in window && ViewerInstanceManager.ENABLE_FS_WRITE_API)) {
             throw new Error('File System Access API not supported')
         }
-        const r1 = await prompt({
-            title: 'Pick a folder',
-            message: 'Select a location to create the new project, ideally this should be a "Projects" folder in your home directory.',
-            showInput: false,
-            closeButtonText: 'Cancel',
-            submitButtonText: 'Okay',
-            canClose: false,
-        })
-        if(r1 === null) return
+        // const r1 = await prompt({
+        //     title: 'Pick a folder',
+        //     message: 'Select a location to create the new project, ideally this should be a "Projects" folder in your home directory.',
+        //     showInput: false,
+        //     closeButtonText: 'Cancel',
+        //     submitButtonText: 'Okay',
+        //     canClose: false,
+        // })
+        // if(r1 === null) return
 
         const folderHandle = await showDirectoryPicker({
             id: 'create-project',

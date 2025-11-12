@@ -26,7 +26,7 @@ import {
     trackerExportHooks
 } from "./assetTrackerUtils"
 import {ObservableSet} from "./observableSet.ts";
-import {PickingPluginEventMap} from "../../../threepipe/lib/plugins/interaction/PickingPlugin";
+import {PickingPluginEventMap} from "threepipe";
 
 export type AssetRefItem = any // todo
 export interface AssetRegistryItem{
