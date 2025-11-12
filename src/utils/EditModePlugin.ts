@@ -475,6 +475,7 @@ export class EditModePlugin extends AViewerPluginSync{
             maxZoomSpeed: 0.5,
             autoPushTarget: true,
             autoPullTarget: false,
+            rotateSpeed: 1,
         }
 
         Object.assign((this.cameraPerspective.controls as OrbitControls3), controlProps)

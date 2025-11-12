@@ -636,7 +636,9 @@ export class ViewerInstanceManager extends EventDispatcher<{
                 name: meta.path.replace(/\/$/, '').split('/').pop() || packageJsonTemplate.name,
             }
             const file = new File([JSON.stringify(defaultPackageJson, null, 2)], 'package.json', {type: 'application/json', lastModified: Date.now()})
-            const w = await this.writeFile(init.base, meta.file, file, meta.path, true).catch(e=>{
+            // @ts-ignore todo fix all types, browser store thing...
+            const filename = typeof meta.file === 'string' ? meta.file : meta.file.name
+            const w = await this.writeFile(init.base, filename, file, meta.path, true).catch(e=>{
                 console.error('ThreeEditor - cannot write default package.json file', e)
                 return false
             })
@@ -735,6 +737,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             const assetsJsonText = init.assetsJson.file ? await init.assetsJson.file.text() : ''
             const json = parseAssetsJSONManifest(assetsJsonText)
             m.assetsManifest = json
+            await this.browserStore.put(m, m.path + FILE_META_KEY)
             return m
         }catch (e){
             console.error('ThreeEditor - cannot read package.json file', e)
@@ -749,9 +752,10 @@ export class ViewerInstanceManager extends EventDispatcher<{
             // todo handle if there is dir with same name
             // if(e.name === "NotFoundError") return null
             // if(e.name === "TypeMismatchError") return true
+            // console.error(e)
             return undefined
         })
-        if(!packageFileHandle) throw new Error('No handle to update project config')
+        if(!packageFileHandle) throw new Error('No packageFileHandle to update project config')
         let packageJsonFile = await packageFileHandle.getFile()
         const text = await packageJsonFile.text()
 
@@ -797,7 +801,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
     async addIdToAssetsManifest(file: FileManifestEntry| { path: string, file?: File }, assetId?: string){
         assetId = assetId || generateUUID()
         const project = this.loadedProject
-        if(!project?.handle) throw new Error('No handle to update project config')
+        if(!project?.handle) throw new Error('No handle to add asset to manifest')
         const handle = project.handle
         const fileName = 'assets.json'
         let fileHandle = await handle.getFileHandle(fileName).catch((e) => {
@@ -806,7 +810,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             // if(e.name === "TypeMismatchError") return true
             return undefined
         })
-        if(!fileHandle) throw new Error('No handle to update project config')
+        if(!fileHandle) throw new Error('No file handle for assets manifest')
         let fileObj = await fileHandle.getFile()
         const text = await fileObj.text()
 
@@ -1122,6 +1126,10 @@ export class ViewerInstanceManager extends EventDispatcher<{
                     meta.assetsManifest = project.assetsManifest
                 }
             }
+        }
+        if(typeof project.file === 'object'){
+            // temp hack for type issue in meta browser store.
+            if(typeof meta.file === 'string') meta.file = project.file
         }
         return {meta, error: null, handle: meta.handle, assets: meta.assets}
     }
