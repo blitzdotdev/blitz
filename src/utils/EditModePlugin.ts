@@ -210,7 +210,7 @@ export class EditModePlugin extends AViewerPluginSync{
             }
             if (this.keyMap['s']) {// Move backward
                 deltaPosition.add(forward.clone().multiplyScalar(-1))
-                deltaTarget2.add(forward.clone().multiplyScalar(-1))
+                // deltaTarget2.add(forward.clone().multiplyScalar(-1))
                 needsUpdate = true
             }
             if (this.keyMap['d']) {// Move left
@@ -236,6 +236,7 @@ export class EditModePlugin extends AViewerPluginSync{
 
             if (needsUpdate) {
                 deltaPosition.normalize().multiplyScalar(movementSpeed)
+                deltaTarget2.add(deltaTarget).normalize().multiplyScalar(movementSpeed)
                 deltaTarget.normalize().multiplyScalar(movementSpeed)
                 // Move both camera and target to maintain relative positioning
                 camera.position.add(deltaPosition)
@@ -244,11 +245,12 @@ export class EditModePlugin extends AViewerPluginSync{
                 // if (updateTarget) camera.target.add(deltaPosition)
 
                 const dir = camera.position.clone().sub(camera.target)
+                const neg = dir.dot(forward) < 0
                 // minDistance
-                if (dir.length() - deltaTarget.length() < controls.minDistance) {
+                if (neg || dir.length() - deltaTarget.length() < controls.minDistance) {
                     if (controls.autoPushTarget) {
                         // camera.target.copy(camera.position).add(dir.clone().normalize().multiplyScalar(controls.minDistance))
-                        camera.target.add(deltaTarget2)
+                        camera.target.sub(deltaTarget).add(deltaTarget2)
                     } else {
                         // prevent getting too close when not updating target
                         camera.position.copy(camera.target.clone().add(dir.clone().normalize().multiplyScalar(controls.minDistance)))
@@ -317,7 +319,7 @@ export class EditModePlugin extends AViewerPluginSync{
                 if (this.isDisabled()) return
                 const picking = this._viewer?.getPlugin(PickingPlugin)
                 if (!picking) return
-                const selected = picking.getSelectedObject()
+                const selected = picking.getSelectedObject() || this._viewer?.scene.modelRoot
                 if (selected && (selected as IObject3D).isObject3D) {
                     event.preventDefault()
                     await picking.focusObject((selected as IObject3D))
