@@ -1833,7 +1833,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }
     }
 
-    extraViewerPlugins: IViewerPlugin['constructor'][] = []
+    extraViewerPlugins: Record<string, PluginRef> = {}
     async refLoadModule(mod: ScriptModule){
         // this.pluginsLoading = true
         const {module, plugins, path, components} = mod
@@ -1844,8 +1844,15 @@ export class ViewerInstanceManager extends EventDispatcher<{
                 const pluginCons = exp as PluginRef['exp']
                 const e = this.findExtPlugin(key, path)
                 if (e && !plugins.find(r => r.def === e) && !newRefs.find(r => r.def === e)) {
-                    if(this.extraViewerPlugins.includes(pluginCons)){
-                        this.extraViewerPlugins = this.extraViewerPlugins.filter(p=>p!==pluginCons)
+                    // if(this.extraViewerPlugins.includes(pluginCons)){
+                    //     this.extraViewerPlugins = this.extraViewerPlugins.filter(p=>p!==pluginCons)
+                    //     this.dispatchEvent({type: 'extraPluginsChange'})
+                    // }
+                    if(this.extraViewerPlugins[pluginCons.PluginType]?.def !== e) {
+                        this.extraViewerPlugins[pluginCons.PluginType] = {
+                            exp: pluginCons,
+                            def: e,
+                        }
                         this.dispatchEvent({type: 'extraPluginsChange'})
                     }
                     newRefs.push({
@@ -1854,8 +1861,19 @@ export class ViewerInstanceManager extends EventDispatcher<{
                     })
                 }else {
                     const ignored = ['AssetManager', 'AViewerPlugin']
-                    if(!ignored.includes(pluginCons.PluginType) && !this.extraViewerPlugins.includes(pluginCons)){
-                        this.extraViewerPlugins.push(pluginCons)
+                    // if(!ignored.includes(pluginCons.PluginType) && !this.extraViewerPlugins.includes(pluginCons)){
+                    //     this.extraViewerPlugins.push(pluginCons)
+                    //     this.dispatchEvent({type: 'extraPluginsChange'})
+                    // }
+                    if(!ignored.includes(pluginCons.PluginType) && this.extraViewerPlugins[pluginCons.PluginType]?.def !== e) {
+                        this.extraViewerPlugins[pluginCons.PluginType] = {
+                            exp: pluginCons,
+                            def: {
+                                import: path,
+                                className: key,
+                                params: [],
+                            },
+                        }
                         this.dispatchEvent({type: 'extraPluginsChange'})
                     }
                 }

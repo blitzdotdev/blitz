@@ -515,6 +515,9 @@ export class MyComponent extends Object3DComponent {
         setSelectedFiles(files)
         if(files.length === 1){
             const f = files[0]
+            if(f.path === 'package.json') return
+            if(f.path === 'kite.json') return
+            if(f.path === (project?.assets ?? 'assets.json')) return
             if(!isLoadableFile(f.path)) return
             let cancelled = false
             const picking  = manager.get().getPlugin(PickingPlugin)
@@ -524,7 +527,7 @@ export class MyComponent extends Object3DComponent {
             }
             picking?.addEventListener('selectedObjectChanged', cancel)
             const fileAsset = await manager.getAssetFromEntry(f)
-            console.log(fileAsset)
+            // console.log(fileAsset)
             if(fileAsset && !cancelled && picking &&
                 selectedFilesRef.current.length === 1 && selectedFilesRef.current[0] === f &&
                 picking.getSelectedObject() !== fileAsset

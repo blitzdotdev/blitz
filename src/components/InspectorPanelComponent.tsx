@@ -7,12 +7,13 @@ import {
     IGeometry,
     IMaterial,
     IObject3D,
-    ITexture, LineMaterial2,
+    ITexture, IViewerPlugin, LineMaterial2,
     Object3DComponent, PhysicalMaterial,
     PickingPlugin,
     TObject3DComponent,
     UiObjectConfig,
-    UndoManagerPlugin, UnlitMaterial
+    UndoManagerPlugin, UnlitMaterial,
+    Class
 } from "threepipe";
 import {
     isExternalGeometry,
@@ -21,7 +22,7 @@ import {
     isExternalTexture,
     isGeomEditable,
     isMatEditable,
-    isTexEditable,
+    isTexEditable, PluginRef,
     SelectFileRef,
     useManager,
     useProject,
@@ -380,7 +381,7 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
                     size={"small"} variant={"minimal"}
                     title={"Reload Asset"} intent={Intent.NONE}
                     loading={loadingState['resetAsset']}
-                //todo handle error/null from fn return
+                // todo handle error/null from fn return
                     onClick={() => updateLoading('resetAsset', resetAsset())}
             />
         )
@@ -480,7 +481,19 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     else if(inspectingScene) title = 'Global Settings'
     else if(assetRootPathAsset && assetRootPath) {
         const editing = assetRootPathCanEdit ? 'Editing: ' : ''
-        title = editing + assetRootPath + (selObject !== assetRootPathAsset ? ' ⮕ ' + selObject!.name : '')
+        let p = assetRootPath
+        if(assetRootPath.startsWith('@')){
+            // its an id path
+            const assetId = assetRootPath.slice(1).split('/')[0]
+            const assetManifest = manager.loadedProject?.assetsManifest
+            if(!assetManifest?.files[assetId]){
+                // debugger
+                console.error('Asset id not found in manifest', assetRootPath)
+            }else {
+                p = assetManifest.files[assetId].path
+            }
+        }
+        title = editing + p + (selObject !== assetRootPathAsset ? ' ⮕ ' + selObject!.name : '')
         icon = iconForSelectionObject(assetRootPathAsset)
     }else if(isAssetInstance){
         title = 'Instance: ' + instanceRootPath.replace(assetUrlPrefix, '')
@@ -856,7 +869,7 @@ export function PluginsSectionComp(){
 }
 
 export function AddPluginComp(){
-    const [selectedPlugin, setSelectedPlugin] = useState<SelectFileRef|null>(null)
+    const [selectedPlugin, setSelectedPlugin] = useState<SelectFileRef|{name: string, uuid: string, def: ExternalPlugin}|null>(null)
     const manager = useManager()
     // const viewer = manager.get()
     // const picking = viewer?.getPlugin(PickingPlugin)
@@ -864,20 +877,21 @@ export function AddPluginComp(){
     const {loadingState, updateLoading} = useLoadingState()
 
     const {project} = useProject()
-    const addProjectPlugin = async (path: string)=>{
+    const addProjectPlugin = async (path: string|ExternalPlugin)=>{
         if(!project) return false
-        const res = await manager.addProjectPlugin({import: './'+path}).then(()=>({error: null})).catch(e=>{
+        const path1 = typeof path === 'string' ? path : (path.import + (path.className ? `::${path.className}` : ''))
+        const res = await manager.addProjectPlugin(typeof path === 'string' ? {import: './'+path} : path).then(()=>({error: null})).catch(e=>{
             return {error: e?.message ?? 'Unknown error'}
         })
-        const r = showSuccessErrorToast(res ? `Loaded ${project.path}${path} successfully` : 'Unknown Error', 'Unable to load plugin', res)
+        const r = showSuccessErrorToast(res ? `Loaded ${project.path}${path1} successfully` : 'Unknown Error', 'Unable to load plugin', res)
         return r
     }
 
-    const extraPlugins = useListenProperty(manager, 'extraViewerPlugins', 'extraPluginsChange', (v)=>([...v||[]]))
+    const extraPlugins = useListenProperty(manager, 'extraViewerPlugins', 'extraPluginsChange', (v)=>({...v||{}}))
     // todo usememo?
-    const extraItems = extraPlugins
-        .filter(p=>!manager.get().getPlugin(p.PluginType))
-        .map(p=>({plugin: p, name: p.PluginType, uuid: generateUUID()}))
+    const extraItems = Object.values(extraPlugins)
+        .filter(p=>!manager.get().getPlugin(p.exp.PluginType) && p.def && p.exp)
+        .map(p=>({plugin: p.exp, name: p.exp.PluginType, def: p.def, uuid: generateUUID()}))
     // console.log(extraItems)
 
     return <RefSelectionObjectComponent
@@ -891,14 +905,15 @@ export function AddPluginComp(){
         }}
     >
         <Button variant={"minimal"} title={"Add Plugin"} icon={<Icon size={12} icon={"plus"}/>}
-                disabled={!selectedPlugin?.entry.path}
+                disabled={!(selectedPlugin as SelectFileRef)?.entry?.path && !(selectedPlugin as any)?.def}
                 loading={loadingState['addPlugin']}
             // onClick={() => updateLoading(onChange({value: null}))}
                 onClick={()=>{
-                    const path = selectedPlugin?.entry.path
-                    if(!path) return
+                    const path = (selectedPlugin as SelectFileRef)?.entry?.path
+                    const def = (selectedPlugin as any)?.def as ExternalPlugin|undefined
+                    if(!path && !def) return
                     // todo success, error toast
-                    updateLoading('addPlugin', addProjectPlugin(path))
+                    updateLoading('addPlugin', addProjectPlugin(path ?? def))
                 }}
         ></Button>
     </RefSelectionObjectComponent>
