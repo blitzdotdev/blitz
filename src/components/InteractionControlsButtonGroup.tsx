@@ -26,8 +26,9 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
         states['transform-controls'][1](false)
         states['post-processing'][1](true)
         states['widgets'][1](true)
-        states['grid'][1](true)
-        states['cameraMode'][1](false)
+        states['grid'][1](editModePlugin.grid.visible)
+        states['backgroundColor'][1](editModePlugin.viewer?.renderManager.renderPass.renderBackground ?? false)
+        states['cameraMode'][1](editModePlugin.cameraMode === 'orthographic')
 
         // on unmount
         return () => {

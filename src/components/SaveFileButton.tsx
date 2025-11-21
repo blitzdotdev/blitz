@@ -10,6 +10,19 @@ export function SaveFileButton() {
     const {fileNamePrompt, saveFile} = useSaveFile()
     const {closeProject} = useCloseWithoutSave()
 
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 's') {
+                event.preventDefault()
+                updateLoading('save-file', saveFile({}))
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+        }
+    }, [saveFile, updateLoading])
+
     return <>
         <Button
                 variant={"minimal"} size={"small"}
@@ -73,6 +86,19 @@ export function SaveProjectButton() {
     const manager = useManager()
 
     const [fileNeedsSave] = useFileNeedsSave()
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 's') {
+                event.preventDefault()
+                updateLoading('save-scene', saveProjectFile())
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+        }
+    }, [saveProjectFile, updateLoading])
 
     return !manager.loadedProjectFile || !project ? null : <>
         {manager.loadedScene &&

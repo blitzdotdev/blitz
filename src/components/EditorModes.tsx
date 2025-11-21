@@ -139,9 +139,10 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
             // 'TroikaTextPlugin',
             'CascadedShadowsPlugin',
             'PickingPlugin',
+            'EditModePlugin',
             'CannonPhysicsPlugin',
         ],
-        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'prompts', 'damping','edit-mode']
+        features: ['widgets', 'post-processing', 'transform-controls', 'picking', 'configurators', 'prompts', 'damping', 'edit-mode']
     },
     buffers: {
         label: 'Buffers',

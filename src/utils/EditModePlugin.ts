@@ -13,13 +13,14 @@ import {
     serialize,
     ShaderMaterial,
     ThreeViewer,
-    uiColor, UndoManagerPlugin,
+    uiColor, uiFolderContainer, uiNumber, uiToggle, UndoManagerPlugin,
     Vector2,
     Vector3,
     Vector4,
 } from "threepipe";
 
 // just for edit mode settings and basic stuff, dont put project running state here.
+@uiFolderContainer('Edit Mode', {expanded: true})
 export class EditModePlugin extends AViewerPluginSync{
     public static readonly PluginType = 'EditModePlugin';
 
@@ -106,9 +107,6 @@ export class EditModePlugin extends AViewerPluginSync{
     onAdded(viewer: ThreeViewer) {
         super.onAdded(viewer);
 
-        const picking = viewer.getPlugin(PickingPlugin)!
-        this.uiConfig = picking.uiConfig
-
         // this.grid.material.color.set(0xff0000)
 
         // console.log(this.grid)
@@ -134,6 +132,9 @@ export class EditModePlugin extends AViewerPluginSync{
         document.addEventListener('keydown', this._keyDownGlobal, true)
         viewer.canvas.addEventListener('keyup', this._keyUp, true)
         document.addEventListener('keyup', this._keyUpGlobal, true)
+        viewer.canvas.addEventListener('pointerdown', this._pointerDown, true)
+        viewer.canvas.addEventListener('pointerup', this._pointerUp, true)
+        viewer.canvas.addEventListener('contextmenu', this._contextMenu, true)
 
         this._lastEnabled = false
         this.setDirty()
@@ -145,6 +146,9 @@ export class EditModePlugin extends AViewerPluginSync{
         document.removeEventListener('keydown', this._keyDownGlobal, true)
         viewer.canvas.removeEventListener('keyup', this._keyUp, true)
         document.removeEventListener('keyup', this._keyUpGlobal, true)
+        viewer.canvas.removeEventListener('pointerdown', this._pointerDown, true)
+        viewer.canvas.removeEventListener('pointerup', this._pointerUp, true)
+        viewer.canvas.removeEventListener('contextmenu', this._contextMenu, true)
 
         this.onDisable()
         this.grid.removeFromParent()
@@ -155,9 +159,19 @@ export class EditModePlugin extends AViewerPluginSync{
     }
 
     @onChange('setDirty')
+    @uiToggle()
+    @serialize()
     enableWASDMovement = true
+
     @onChange('setDirty')
+    @uiNumber()
+    @serialize()
     wasdMovementSpeed = 1
+
+    // @onChange('setDirty')
+    @uiNumber()
+    @serialize()
+    focusAnimDuration = 500
 
     _viewerListeners: PartialRecord<IViewerEventTypes, (e: IViewerEvent) => void> = {
         preFrame: (e)=> {
@@ -167,9 +181,10 @@ export class EditModePlugin extends AViewerPluginSync{
             if(camView.animating) return
             const picking = this._viewer!.getPlugin(PickingPlugin)!
             const selected = picking.getSelectedObject()
-            if(this.keyMap['f'] && (selected as IObject3D)?.isObject3D){
-                picking.focusObject((selected as IObject3D))
-            }
+            // if(this.keyMap['f'] && (selected as IObject3D)?.isObject3D){
+            //     picking.focusObject((selected as IObject3D))
+            // }
+            if (selected && !this.keyMap['mouse0']) return
 
             let needsUpdate = false
             let movementSpeed = this.wasdMovementSpeed
@@ -245,7 +260,7 @@ export class EditModePlugin extends AViewerPluginSync{
                 // if (updateTarget) camera.target.add(deltaPosition)
 
                 const dir = camera.position.clone().sub(camera.target)
-                const neg = dir.dot(forward) < 0
+                const neg = dir.dot(forward) > 0
                 // minDistance
                 if (neg || dir.length() - deltaTarget.length() < controls.minDistance) {
                     if (controls.autoPushTarget) {
@@ -322,7 +337,8 @@ export class EditModePlugin extends AViewerPluginSync{
                 const selected = picking.getSelectedObject() || this._viewer?.scene.modelRoot
                 if (selected && (selected as IObject3D).isObject3D) {
                     event.preventDefault()
-                    await picking.focusObject((selected as IObject3D))
+                    // await picking.focusObject((selected as IObject3D))
+                    this._viewer?.fitToView(selected ?? undefined, 1.5, this.focusAnimDuration, 'linear')
                 }
             }
         },
@@ -391,6 +407,22 @@ export class EditModePlugin extends AViewerPluginSync{
         }
     }
 
+    private _pointerDown = (event: PointerEvent) => {
+        // Mouse button mapping: 0 = left, 1 = middle, 2 = right, 3 = back, 4 = forward
+        const button = `mouse${event.button}`
+        this.keyMap[button] = true
+    }
+
+    private _pointerUp = (event: PointerEvent) => {
+        const button = `mouse${event.button}`
+        this.keyMap[button] = false
+    }
+
+    private _contextMenu = (event: MouseEvent) => {
+        // Prevent context menu on right click if needed
+        // Can be customized based on requirements
+    }
+
     setDirty(): any {
         if(!this._viewer) return
         if(!this.isDisabled() !== this._lastEnabled){
@@ -418,9 +450,9 @@ export class EditModePlugin extends AViewerPluginSync{
 
     serializeWithViewer = false
 
-    @uiColor()
-    @serialize()
-    backgroundColor = new Color(0x3f3f3f)
+    // @uiColor()
+    // @serialize()
+    // backgroundColor = new Color(0x3f3f3f)
     // backgroundColor = new Color(0x1e1e1e)
 
     private _settings: any = {}
@@ -529,6 +561,10 @@ export class EditModePlugin extends AViewerPluginSync{
         // @ts-ignore
         this.grid.setDirty()
         return next
+    }
+
+    get viewer(){
+        return this._viewer
     }
     toggleBackgroundColor = (_current: boolean, next: boolean)=>{
         if(!this._viewer) return next

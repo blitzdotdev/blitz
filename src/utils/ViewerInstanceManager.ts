@@ -90,7 +90,12 @@ import {
     settingsKey,
     STORE_NAME
 } from "./project.ts";
-import {defaultIconTemplate, mainJsTemplate, packageJsonTemplate} from './projectTemplates.ts'
+import {
+    defaultIconTemplatePng,
+    defaultIconTemplateSvg,
+    mainJsTemplate,
+    packageJsonTemplate
+} from './projectTemplates.ts'
 import {getDirHandle, getFileHandle} from "./fsApi.ts";
 import {FetchProxy} from "./FetchProxy.ts";
 import {refreshTexturePreview, staticData} from "../components/BPTextureFileComponent.tsx";
@@ -666,7 +671,10 @@ export class ViewerInstanceManager extends EventDispatcher<{
                     // // write empty png
                     // await writer.write(Uint8Array.from(defaultIconTemplate, c => c.charCodeAt(0)))
                     // await writer.close()
-                    await this._writeFileHandle(iconFileHandle, Uint8Array.from(defaultIconTemplate, c => c.charCodeAt(0))).catch(e=>{
+                    const d = meta.preview.endsWith('.svg') ?
+                        defaultIconTemplateSvg :
+                        Uint8Array.from(defaultIconTemplatePng, c => c.charCodeAt(0))
+                    await this._writeFileHandle(iconFileHandle, d).catch(e=>{
                         console.error('ThreeEditor - cannot write default icon file', e)
                         // ignore error
                     })

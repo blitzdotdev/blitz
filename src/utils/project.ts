@@ -7,7 +7,7 @@ export const settingsKey = "kite"
 export const assetUrlPrefix = '/' + settingsKey + '/'
 
 const packageFilePath = 'package.json'
-const iconFilePath = 'icon.png'
+const iconFilePath = 'icon.svg'
 const assetsDirPath = 'assets/'
 export const mainScenePath = `${assetsDirPath}main.scene.glb`
 
@@ -197,7 +197,8 @@ export async function getMetaWithPreview(path: string): Promise<SavedSceneFileMe
 export async function initProjectHandles(meta: SavedSceneFileMeta | SavedSceneFileMetaStored){
     if(!meta.handle) throw new Error('No handle to check project init')
     const handle = meta.handle
-    const packageFileHandle = await handle.getFileHandle(meta.file).catch((e) => {
+    // @ts-ignore
+    const packageFileHandle = await handle.getFileHandle(typeof meta.file === 'string' ? meta.file : meta.file.name).catch((e) => {
         // todo handle if there is dir with same name
         // if(e.name === "NotFoundError") return null
         if(e.name === "TypeMismatchError") {
