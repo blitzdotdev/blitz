@@ -119,7 +119,7 @@ export class Cannon3DShapeComponent extends Object3DComponent {
         const shapeType = typeToCannon[this.type]
         const shapeParameters = this.params ?? (shapeType ? getShapeParameters(this.object, {type: shapeType}) : null)
 
-        console.log('shapeParameters', shapeParameters)
+        // console.log('shapeParameters', shapeParameters)
         if (shapeParameters) {
             this.result = threeToCannon(this.object, undefined, shapeParameters)!
         } else {
@@ -143,14 +143,14 @@ export class Cannon3DShapeComponent extends Object3DComponent {
         e.child.addEventListener('objectUpdate', this.objectUpdate)
         e.child.addEventListener('childadded', this.childadded)
         e.child.addEventListener('childremoved', this.childremoved)
-        console.log('childadded', {...e})
+        // console.log('childadded', {...e})
     }
     childremoved = (e: any)=>{
         this._needsUpdate = true
         e.child.removeEventListener('objectUpdate', this.objectUpdate)
         e.child.removeEventListener('childadded', this.childadded)
         e.child.removeEventListener('childremoved', this.childremoved)
-        console.log('childremoved', {...e})
+        // console.log('childremoved', {...e})
     }
 
     preFrame = ()=>{

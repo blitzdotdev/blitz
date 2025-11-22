@@ -90,8 +90,18 @@ export function useProjectActions() {
         }
         let meta: LoadedProject|null = null
         if(typeof metaOrPath === 'string') {
-            const meta1 = await getMeta(metaOrPath) ?? null
-            meta = await manager.getLoadedProject(meta1) ?? {path: metaOrPath, file: new File(['{}'], 'dummy.scene.glb'), lastModified: Date.now() }
+            try {
+                const meta1 = await getMeta(metaOrPath) ?? null
+                meta = await manager.getLoadedProject(meta1) ?? {
+                    path: metaOrPath,
+                    file: new File(['{}'], 'dummy.scene.glb'),
+                    lastModified: Date.now()
+                }
+            }catch (e: any) {
+                showSuccessErrorToast('', 'Unable to load project', {error: e?.message || e?.toString()})
+                console.error('ThreeEditor - unable to load project meta for path', metaOrPath, e)
+                return
+            }
         }else {
             meta = metaOrPath
         }

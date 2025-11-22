@@ -61,6 +61,7 @@ export class FsImporter {
         });
     }
 
+
     async import(path: string, prefix = true) {
         await this.ready;
         if(prefix) path = this.prefix + path.replace(/^\/+/, "");
@@ -72,8 +73,13 @@ export class FsImporter {
             setTimeout(() => reject(new Error(`Import timeout: ${path}`)), timeoutMs)
         );
 
+        // Use Function constructor to create import that Vite can't analyze
+        // This prevents Vite from adding ?import parameter
+        const dynamicImport = new Function('path', 'return import( /* @vite-ignore */ path)');
+
         return Promise.race([
-            import(/* @vite-ignore */ path),
+            // import(/* @vite-ignore */ path),
+            dynamicImport(path),
             timeoutPromise
         ]);
     }
