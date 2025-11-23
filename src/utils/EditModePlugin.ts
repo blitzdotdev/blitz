@@ -1,7 +1,8 @@
 import {
+    AViewerPluginEventMap,
     AViewerPluginSync,
     Box3B, CameraViewPlugin,
-    Color,
+    Color, EditorViewWidgetPlugin,
     getFittingDistance,
     glsl,
     GridHelper, IObject3D, iObjectCommons, IViewerEvent, IViewerEventTypes,
@@ -21,8 +22,14 @@ import {
 
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
-export class EditModePlugin extends AViewerPluginSync{
+export class EditModePlugin extends AViewerPluginSync<{
+    enableChanged: {}
+} & AViewerPluginEventMap>{
     public static readonly PluginType = 'EditModePlugin';
+
+    get isEnabled2(){
+        return !this.isDisabled()
+    }
 
     // todo disable this plugin when the scene config is being imported. use some hook
     @onChange('setDirty')
@@ -520,6 +527,13 @@ export class EditModePlugin extends AViewerPluginSync{
             this._settings.pickingWidgetEnabled = picking.widgetEnabled
             picking.widgetEnabled = true
         }
+
+        const editViewWidget = this._viewer.getPlugin(EditorViewWidgetPlugin)
+        if(editViewWidget){
+            editViewWidget.enabled = true
+        }
+
+        this.dispatchEvent({type: 'enableChanged'})
     }
 
     onDisable(){
@@ -552,6 +566,12 @@ export class EditModePlugin extends AViewerPluginSync{
             picking.widgetEnabled = this._settings.pickingWidgetEnabled
             delete this._settings.pickingWidgetEnabled
         }
+        const editViewWidget = this._viewer.getPlugin(EditorViewWidgetPlugin)
+        if(editViewWidget){
+            editViewWidget.enabled = false
+        }
+
+        this.dispatchEvent({type: 'enableChanged'})
     }
 
     toggleGrid = (_current: boolean, next: boolean)=>{

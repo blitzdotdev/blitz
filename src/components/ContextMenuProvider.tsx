@@ -44,13 +44,13 @@ export function renderMenuItems<T>(menuItems: MenuItem2[]|undefined, actions: Re
     }
 
     const renderMenuItem = (m: MenuItem2, i: number) => {
-        const {children, ...props} = m.props
+        const {children, hidden, ...props} = m.props
         const rc = m.children?.map(renderMenuItem)
         const children2 = rc?.length || children ? <>
             {children}
             {rc}
         </> : undefined
-        return <MenuItem
+        return hidden ? null : <MenuItem
             {...props}
             children={children2}
             key={m.key || `mi-${i}`}

@@ -1,5 +1,12 @@
 // blueprint tree drag and drop styles
 
+// Make caret animation more snappy
+.bp5-tree-node-caret,
+.bp5-tree-node-caret-open,
+.bp5-tree-node-caret-closed {
+  transition: transform 0.1s ease-out !important;
+}
+
 //.bp5-tree-node-dragging{
 //    opacity: 0.5;
 //    background-color: green !important;

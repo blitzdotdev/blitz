@@ -1,13 +1,14 @@
-import {Button, ButtonGroup, Intent, Menu, Popover, Tooltip} from "@blueprintjs/core";
-import {FC, useCallback, useEffect, useReducer} from 'react'
-import {AppToaster, bpUiConfigIcons} from 'uiconfig-blueprint/lib/esm/lib'
+import {ButtonGroup, Intent, Menu, Popover, Tooltip} from "@blueprintjs/core";
+import {FC, useCallback, useEffect, useReducer, useState} from 'react'
 import {useManager} from '../utils/ViewerInstanceManager.ts'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
 import {Object3DGenerationMenu} from './Object3DGenerationMenu.tsx'
 import {EditModePlugin} from "../utils/EditModePlugin.ts";
-import {IObject3D} from "threepipe";
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
+import {InteractionIconButton} from "./InteractionIconButton.tsx";
+import {TransformControlsPlugin} from "threepipe";
+import {TransformControlsSettingsMenu} from "./TransformControlsSettingsMenu.tsx";
 
 type SetKeys = 'transform-controls' | 'post-processing' | 'widgets' | 'grid' | 'backgroundColor' | 'cameraMode'
 
@@ -18,9 +19,14 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     const states = Object.fromEntries(keys.map(k => [k, useReducer((_: boolean, value: boolean)=> set(k, value), true)])) as Record<SetKeys, [boolean, (v: boolean)=>void]>
 
     const editModePlugin = manager.get().getPlugin(EditModePlugin)!
+    const editEnabled = useListenProperty(editModePlugin, 'isEnabled2', 'enableChanged')
+
     states['grid'] = useReducer(editModePlugin.toggleGrid, false)
     states['backgroundColor'] = useReducer(editModePlugin.toggleBackgroundColor, false)
     states['cameraMode'] = useReducer(editModePlugin.toggleCameraMode, false)
+
+    const transformControls = manager.get().getPlugin(TransformControlsPlugin)?.transformControls
+    // transformControls.mode, space, size
 
     useEffect(() => {
         states['transform-controls'][1](false)
@@ -43,33 +49,57 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     }, [])
 
     const onObjectCreate = useOnObjectCreate();
+    const [tcPopoverOpen, setTcPopoverOpen] = useState(false);
 
-    return (
+    return !editEnabled ? null : (
         <div className="interactionControlsButtonContainer">
-            <ButtonGroup vertical={false} style={{width: "max-content"}}>
-                <Tooltip
-                    content={(states['transform-controls'][0] ? 'Disable' : 'Enable') + ' Transform Controls'}
-                    usePortal
+            <ButtonGroup vertical={false} style={{width: "max-content"}}
+                         onContextMenu={e=> e.preventDefault()}
+            >
+                {transformControls && <Popover
+                    targetTagName={"div"}
+                    interactionKind={'hover'}
                     position={"bottom"}
+                    hoverOpenDelay={150}
+                    hoverCloseDelay={300}
+                    isOpen={tcPopoverOpen}
+                    onInteraction={setTcPopoverOpen}
+                    onClose={e => {
+                        // setTcPopoverOpen(false)
+                    }}
+                    disabled={!states['transform-controls'][0]}
+                    content={
+                        <TransformControlsSettingsMenu transformControls={transformControls} />
+                    }
                 >
-                    <Button
-                        className="bpIconButton icon-only-tab-button"
-                        variant={"minimal"} size={"medium"}
-                        intent={!states['transform-controls'][0] ? Intent.PRIMARY : Intent.SUCCESS}
-                        // icon={bpUiConfigIcons['axes-cube']} active={states['transform-controls'][0]}
-                        icon={"move"} active={states['transform-controls'][0]}
-                        onClick={() => states['transform-controls'][1](!states['transform-controls'][0])}/>
-                </Tooltip>
+                    <Tooltip
+                        content={(states['transform-controls'][0] ? 'Disable' : 'Enable') + ' Transform Controls'}
+                        usePortal
+                        position={"bottom"}
+                    >
+                        <InteractionIconButton
+                            intent={!states['transform-controls'][0] ? Intent.NONE : Intent.SUCCESS}
+                            // icon={bpUiConfigIcons['axes-cube']} active={states['transform-controls'][0]}
+                            icon={"move"} active={states['transform-controls'][0]}
+                            // to prevent focus away from canvas on click
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                                states['transform-controls'][1](!states['transform-controls'][0])
+                                setTcPopoverOpen(true)
+                            }}/>
+                    </Tooltip>
+                </Popover>}
+
                 <Tooltip
                     content={(states['post-processing'][0] ? 'Disable' : 'Enable') + ' Post Processing'}
                     usePortal
                     position={"bottom"}
                 >
-                    <Button
-                        className="bpIconButton icon-only-tab-button"
-                        variant={"minimal"} size={"medium"}
-                        intent={!states['post-processing'][0] ? Intent.PRIMARY : Intent.SUCCESS}
+                    <InteractionIconButton
+                        intent={!states['post-processing'][0] ? Intent.NONE : Intent.SUCCESS}
                         icon={'clean'} active={states['post-processing'][0]}
+                        // to prevent focus away from canvas on click
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => states['post-processing'][1](!states['post-processing'][0])}/>
                 </Tooltip>
                 <Tooltip
@@ -77,10 +107,10 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                     usePortal
                     position={"bottom"}
                 >
-                    <Button
-                        className="bpIconButton icon-only-tab-button"
-                        variant={"minimal"} size={"medium"}
-                        intent={!states['widgets'][0] ? Intent.PRIMARY : Intent.SUCCESS}
+                    <InteractionIconButton
+                        intent={!states['widgets'][0] ? Intent.NONE : Intent.SUCCESS}
+                        // to prevent focus away from canvas on click
+                        onMouseDown={(e) => e.preventDefault()}
                         icon={'widget'} active={states['widgets'][0]} onClick={() => states['widgets'][1](!states['widgets'][0])}/>
                 </Tooltip>
                 <Tooltip
@@ -88,10 +118,10 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                     usePortal
                     position={"bottom"}
                 >
-                    <Button
-                        className="bpIconButton icon-only-tab-button"
-                        variant={"minimal"} size={"medium"}
-                        intent={!states['grid'][0] ? Intent.PRIMARY : Intent.SUCCESS}
+                    <InteractionIconButton
+                        intent={!states['grid'][0] ? Intent.NONE : Intent.SUCCESS}
+                        // to prevent focus away from canvas on click
+                        onMouseDown={(e) => e.preventDefault()}
                         icon={'grid'} active={states['grid'][0]} onClick={() => states['grid'][1](!states['grid'][0])}/>
                 </Tooltip>
                 <Tooltip
@@ -99,10 +129,10 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                     usePortal
                     position={"bottom"}
                 >
-                    <Button
-                        className="bpIconButton icon-only-tab-button"
-                        variant={"minimal"} size={"medium"}
-                        intent={!states['backgroundColor'][0] ? Intent.PRIMARY : Intent.SUCCESS}
+                    <InteractionIconButton
+                        intent={!states['backgroundColor'][0] ? Intent.NONE : Intent.SUCCESS}
+                        // to prevent focus away from canvas on click
+                        onMouseDown={(e) => e.preventDefault()}
                         icon={'layers'} active={states['backgroundColor'][0]} onClick={() => states['backgroundColor'][1](!states['backgroundColor'][0])}/>
                 </Tooltip>
                 <Tooltip
@@ -110,10 +140,10 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                     usePortal
                     position={"bottom"}
                 >
-                    <Button
-                        className="bpIconButton icon-only-tab-button"
-                        variant={"minimal"} size={"medium"}
-                        intent={!states['cameraMode'][0] ? Intent.PRIMARY : Intent.SUCCESS}
+                    <InteractionIconButton
+                        intent={!states['cameraMode'][0] ? Intent.NONE : Intent.SUCCESS}
+                        // to prevent focus away from canvas on click
+                        onMouseDown={(e) => e.preventDefault()}
                         icon={'camera'} active={states['cameraMode'][0]} onClick={() => states['cameraMode'][1](!states['cameraMode'][0])}/>
                 </Tooltip>
                 {!!onObjectCreate && <Popover
@@ -125,10 +155,10 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                             <Object3DGenerationMenu onGenerate={onObjectCreate}/>
                         </Menu>
                     } >
-                    <Button
-                        className="bpIconButton icon-only-tab-button"
-                        variant={"minimal"} size={"medium"}
-                        intent={!false ? Intent.PRIMARY : Intent.SUCCESS}
+                    <InteractionIconButton
+                        intent={Intent.NONE}
+                        // to prevent focus away from canvas on click
+                        onMouseDown={(e) => e.preventDefault()}
                         icon={'add'} active={false}/>
                 </Popover>}
             </ButtonGroup>

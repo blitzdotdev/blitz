@@ -53,8 +53,16 @@ import {
     TObject3DComponent,
     TransformControlsPlugin,
     UnlitMaterial,
-    USDZLoadPlugin, GLTFLoader2,
-    ILight, RootScene, IScene, PhysicalMaterial, UndoManagerPlugin, TypedClass, GLTFAnimationPlugin
+    USDZLoadPlugin,
+    GLTFLoader2,
+    ILight,
+    RootScene,
+    IScene,
+    PhysicalMaterial,
+    UndoManagerPlugin,
+    TypedClass,
+    GLTFAnimationPlugin,
+    onChangeDispatchEvent
 } from 'threepipe'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {GeometryGeneratorPlugin} from '@threepipe/plugin-geometry-generator'
@@ -154,6 +162,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
     extScriptsChange: {},
     extraPluginsChange: {},
     loadedProjectFileChange: {},
+    editPreviewChange: {},
+    runModePauseChange: {},
     // assetRegistryChange: {},
 }>{
     private _viewers = new Map<string, ThreeViewer>()
@@ -346,6 +356,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
         ])
         viewer.getPlugin(PickingPlugin)!.widgetEnabled = false
+        viewer.getPlugin(EditorViewWidgetPlugin)!.enabled = false
 
         viewer.addPluginSync(EditModePlugin)
         viewer.assetManager.importer.cacheImportedAssets = false
@@ -2616,6 +2627,25 @@ export class ViewerInstanceManager extends EventDispatcher<{
     editorId = generateUUID()
     _runningSceneFile: File|null = null
 
+    isEditorPreviewing = false
+
+    async startEditPreview(){
+        this.features.disable('widgets', 'EditPreview')
+        this.features.disable('transform-controls', 'EditPreview')
+        // this.features.disable('picking', 'EditPreview')
+        this.features.disable('edit-mode', 'EditPreview')
+        this.isEditorPreviewing = true
+        this.dispatchEvent({type: 'editPreviewChange'})
+    }
+    async stopEditPreview(){
+        this.features.enable('widgets', 'EditPreview')
+        this.features.enable('transform-controls', 'EditPreview')
+        // this.features.enable('picking', 'EditPreview')
+        this.features.enable('edit-mode', 'EditPreview')
+        this.isEditorPreviewing = false
+        this.dispatchEvent({type: 'editPreviewChange'})
+    }
+
     async startRunMode(){
         // check if scene is loaded
         // save current scene to running.glb
@@ -2624,14 +2654,19 @@ export class ViewerInstanceManager extends EventDispatcher<{
         if(!this.loadedScene) return false
         if(!this.loadedProjectFile) return false
 
+        if(this.isRunningMode){
+            if(this.isPausedRunning){
+                this.unpauseRunMode(true)
+                return true
+            }
+            return true
+        }
+
         const project = this.loadedProject
         const isPackage = isPackageProject(project)
         if(!project || (isPackage && !project.handle)) return false
 
-        this.features.disable('widgets', 'PlayingMode')
-        this.features.disable('transform-controls', 'PlayingMode')
-        // this.features.disable('picking', 'PlayingMode')
-        this.features.disable('edit-mode', 'PlayingMode')
+        await this.startEditPreview()
 
         let load
 
@@ -2684,10 +2719,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
                     }
                 }
             } catch (e) {
-                this.features.enable('widgets', 'PlayingMode')
-                this.features.enable('transform-controls', 'PlayingMode')
-                // this.features.enable('picking', 'PlayingMode')
-                this.features.enable('edit-mode', 'PlayingMode')
+                await this.stopEditPreview()
                 throw e
             }
         }
@@ -2700,10 +2732,81 @@ export class ViewerInstanceManager extends EventDispatcher<{
         if(load) await load()
 
         this.get().timeline.start()
-
         this.get().getPlugin(EntityComponentPlugin)!.start()
-
         return true
+    }
+
+    isPausedRunning = false
+
+    async pauseRunMode(){
+        if(this.isPausedRunning) return
+        this.isPausedRunning = true
+        this.get().timeline.stop()
+        this.dispatchEvent({type: 'runModePauseChange'})
+    }
+    async unpauseRunMode(startTime = true){
+        if(!this.isPausedRunning) return
+        this.isPausedRunning = false
+        if(startTime) this.get().timeline.start()
+        this.dispatchEvent({type: 'runModePauseChange'})
+    }
+
+    async stopRunMode(){
+        if(!this.isRunningMode) return false
+        this.isRunningMode = false
+
+        await this.unpauseRunMode(false)
+
+        const project = this.loadedProject
+        const isPackage = isPackageProject(project)
+        if(!project || (isPackage && !project.handle)) return false
+
+        if(!this.loadedProjectFile || !this.loadedScene) return
+
+        const v = this.get()
+        const picking = v.getPlugin(PickingPlugin)
+        const selected = picking?.getSelectedObject()?.uuid
+
+        v.getPlugin(EntityComponentPlugin)!.stop()
+
+        if(isPackage) {
+            this.unloadScene()
+        }
+
+        this.features.disable('physics', 'PlayingMode')
+
+        await this.stopEditPreview()
+
+        v.timeline.stop()
+        v.timeline.reset()
+
+        if(isPackage) {
+            const filePath = `.${settingsKey}/running/${this.editorId}.scene.glb` // todo delete file after run mode closed?
+
+            let tempFile = this._runningSceneFile
+            if (!tempFile) {
+                // try to load from disk
+                const file = await resolveFile(filePath, project.path, project.handle)
+                if (file) tempFile = file as File
+            }
+            if (!tempFile) {
+                console.error('No running scene file found, cannot reload scene.')
+                return
+            }
+            // todo delete tempFile
+
+            const res2 = await this.loadImport({
+                file: tempFile, path: filePath,
+            }, project, true).catch(e => {
+                return {error: e.message}
+            })
+
+            if (picking && selected) {
+                const obj = v.object3dManager.getObject(selected)
+                if (obj) picking.setSelectedObject(obj)
+            }
+        }
+
     }
 
     // todo expose for scripts
@@ -2736,64 +2839,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
         this.get().timeline.start()
         this.get().getPlugin(EntityComponentPlugin)!.start()
-    }
-
-    async stopRunMode(){
-        if(!this.isRunningMode) return false
-        this.isRunningMode = false
-
-        const project = this.loadedProject
-        const isPackage = isPackageProject(project)
-        if(!project || (isPackage && !project.handle)) return false
-
-        if(!this.loadedProjectFile || !this.loadedScene) return
-
-        const v = this.get()
-        const picking = v.getPlugin(PickingPlugin)
-        const selected = picking?.getSelectedObject()?.uuid
-
-        v.getPlugin(EntityComponentPlugin)!.stop()
-
-        if(isPackage) {
-            this.unloadScene()
-        }
-
-        this.features.disable('physics', 'PlayingMode')
-
-        this.features.enable('widgets', 'PlayingMode')
-        this.features.enable('transform-controls', 'PlayingMode')
-        // this.features.enable('picking', 'PlayingMode')
-        this.features.enable('edit-mode', 'PlayingMode')
-        v.timeline.stop()
-        v.timeline.reset()
-
-        if(isPackage) {
-            const filePath = `.${settingsKey}/running/${this.editorId}.scene.glb` // todo delete file after run mode closed?
-
-            let tempFile = this._runningSceneFile
-            if (!tempFile) {
-                // try to load from disk
-                const file = await resolveFile(filePath, project.path, project.handle)
-                if (file) tempFile = file as File
-            }
-            if (!tempFile) {
-                console.error('No running scene file found, cannot reload scene.')
-                return
-            }
-            // todo delete tempFile
-
-            const res2 = await this.loadImport({
-                file: tempFile, path: filePath,
-            }, project, true).catch(e => {
-                return {error: e.message}
-            })
-
-            if (picking && selected) {
-                const obj = v.object3dManager.getObject(selected)
-                if (obj) picking.setSelectedObject(obj)
-            }
-        }
-
     }
 
     /**

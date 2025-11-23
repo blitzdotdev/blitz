@@ -1,7 +1,9 @@
-import {Panel, PanelGroup, PanelResizeHandle,} from "react-resizable-panels";
-import {CSSProperties, ReactNode, useEffect} from "react";
+import {Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle} from "react-resizable-panels";
+import {CSSProperties, ReactNode, useRef, useState, useEffect} from "react";
 import {Card, Tab, Tabs} from "@blueprintjs/core";
 import {toTitleCase} from "threepipe";
+import {EditPreviewButtonGroup} from "./EditPreviewButtonGroup.tsx";
+import {InteractionControlsButtonGroup} from "./InteractionControlsButtonGroup.tsx";
 
 export interface WindowPanel{
     title: string
@@ -20,6 +22,44 @@ export interface WindowPanesLayoutProps{
 }
 
 export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
+    const leftPanelRef = useRef<ImperativePanelHandle>(null);
+    const rightPanelRef = useRef<ImperativePanelHandle>(null);
+    const bottomPanelRef = useRef<ImperativePanelHandle>(null);
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    const toggleExpand = () => {
+        if (isExpanded) {
+            // Restore panels
+            leftPanelRef.current?.expand();
+            rightPanelRef.current?.expand();
+            if (bottomPanelRef.current) {
+                bottomPanelRef.current.expand();
+            }
+        } else {
+            // Collapse all panels
+            leftPanelRef.current?.collapse();
+            rightPanelRef.current?.collapse();
+            if (bottomPanelRef.current) {
+                bottomPanelRef.current.collapse();
+            }
+        }
+        setIsExpanded(!isExpanded);
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.shiftKey && event.code === 'Space') {
+                event.preventDefault();
+                toggleExpand();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown, true);
+        };
+    }, [isExpanded]);
+
     const renderPanel  = (panel: WindowPanel, index = 0)=> {
         return <Card key={panel.key ?? index} style={{
             width: "100%",
@@ -62,6 +102,7 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
     }
     return  <PanelGroup className={"editorSplitContainer"} direction="horizontal" autoSaveId={"tpEditorWindowPanelsRoot"}>
         <Panel
+            ref={leftPanelRef}
             defaultSize={20}
             collapsible={true}
             minSize={10}
@@ -76,30 +117,35 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
             id={"center-panel"}
             order={0}
         >
-            <PanelGroup direction="vertical" autoSaveId={"tpEditorWindowPanelsCenter"}>
-                <Panel
-                    id={"center-top-panel"}
-                    order={0}
-                >
-                    {renderPanels(panels.center)}
-                </Panel>
-                {panels.bottom && <>
-                <PanelResizeHandle className={"window-panes-separator"} />
-                <Panel
-                    defaultSize={10}
-                    collapsible={true}
-                    minSize={10}
-                    maxSize={50}
-                    id={"center-bottom-panel"}
-                    order={1}
-                >
-                    {renderPanels(panels.bottom, true)}
-                </Panel>
-                </>}
-            </PanelGroup>
+                <PanelGroup direction="vertical" autoSaveId={"tpEditorWindowPanelsCenter"}>
+                    <Panel
+                        id={"center-top-panel"}
+                        order={0}
+                        style={{position: 'relative'}}
+                    >
+                        {renderPanels(panels.center)}
+                        <InteractionControlsButtonGroup key="interaction-controls" />
+                        <EditPreviewButtonGroup key="editpreview" isExpanded={isExpanded} toggleExpand={toggleExpand} />
+                    </Panel>
+                    {panels.bottom && <>
+                    <PanelResizeHandle className={"window-panes-separator"} />
+                    <Panel
+                        ref={bottomPanelRef}
+                        defaultSize={10}
+                        collapsible={true}
+                        minSize={10}
+                        maxSize={50}
+                        id={"center-bottom-panel"}
+                        order={1}
+                    >
+                        {renderPanels(panels.bottom, true)}
+                    </Panel>
+                    </>}
+                </PanelGroup>
         </Panel>
         <PanelResizeHandle className={"window-panes-separator"} />
         <Panel
+            ref={rightPanelRef}
             defaultSize={20}
             collapsible={true}
             minSize={10}

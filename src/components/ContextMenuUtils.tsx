@@ -8,7 +8,8 @@ export interface MenuItem2{
     data?: any
     key: string
     tags?: string[],
-    children?: MenuItem2[]
+    children?: MenuItem2[],
+    hidden?: boolean,
 }
 export interface HandleContextMenuCallback<T = any>{
     handleContextMenu?: (e: React.MouseEvent<HTMLElement, MouseEvent>, menu: MenuItem2[], obj: T) => void

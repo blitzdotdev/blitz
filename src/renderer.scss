@@ -198,6 +198,7 @@ body{
   flex-wrap: wrap;
   padding-left: $pt-grid-size;
 }
+
 .icon-only-tab-button{
   //border-radius: calc($pt-grid-size * 0.5) !important;
   margin-right: 0px !important;
@@ -413,6 +414,11 @@ body{
     margin: 0 4px;
     width: $pt-font-size;
   }
+}
+
+.bp5-tooltip .bp5-popover-content{
+  font-size: $pt-font-size-small;
+  padding: 6px 7px;
 }
 
 // this can be moved to uiconfig-blueprint

@@ -243,6 +243,10 @@ export abstract class BPTreeComponent<T = {}, TConfigVal extends any /*|Primitiv
                 style={{width: "100%", height: "100%"}}
                 onKeyDown={e => this._handleKeyDown(e)}
                 tabIndex={0}
+                onContextMenu={e=>{
+                    e.preventDefault()
+                    e.stopPropagation()
+                }}
             >
             <TreeT
                 contents={this.state.nodes}

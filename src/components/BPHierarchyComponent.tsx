@@ -1,6 +1,6 @@
 import {
     Box3B,
-    Event2,
+    Event2, getOrCall,
     Group,
     IObject3D,
     ISceneEventMap,
@@ -163,12 +163,24 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         obj.uiConfig?.children?.filter(c=>typeof c === 'object' && c.tags?.includes('context-menu')).map(btn=>{
             if (!btn || typeof btn !== 'object') return;
             const label = this.context.methods.getLabel(btn)
+            const getProps = ()=>{ // todo use UiConfigMethods.getBaseProps
+                const hidden = getOrCall(btn.hidden) ?? false
+                const disabled = getOrCall(btn.disabled) ?? false
+                const readOnly = getOrCall(btn.readOnly) ?? false
+                return { hidden, disabled, readOnly }
+            }
+            const props = getProps()
             items.push({
                 props: {
                     text: this.context.methods.getLabel(btn),
+                    disabled: props.disabled || props.readOnly,
+                    hidden: props.hidden,
+                    // icon: this.context.methods.getIcon(btn),
                 },
                 key: btn.key  || label,
                 action: (data, obj, e) => {
+                    const {hidden, disabled, readOnly} = getProps()
+                    if(hidden || disabled || readOnly) return
                     this.context.methods.clickButton(btn, {args: [e]})
                 },
                 data: {}

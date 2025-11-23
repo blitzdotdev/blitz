@@ -10,7 +10,11 @@ import {
     useConfigToStackItem,
 } from 'uiconfig-blueprint/lib/esm/lib'
 import {getOrCall, ThreeViewer, TypedClass, TypedType, TypeSystem, UiObjectConfig} from 'threepipe';
-import {EditorModes, EditorModesButtonGroup, editorModesInspectorConfig, PlayModeButtonGroup} from './EditorModes.tsx'
+import {
+    EditorModes,
+    EditorModesButtonGroup,
+    editorModesInspectorConfig
+} from './EditorModes.tsx'
 import {Alignment, Button, Card, IconName, Navbar, Panel, PanelStack2, Popover} from '@blueprintjs/core'
 import {BPHierarchyComponent, ObjectHierarchyComponent} from './BPHierarchyComponent.tsx'
 import {SaveFileButton, SaveProjectButton, useFileNeedsSave} from './SaveFileButton.tsx'
@@ -28,6 +32,8 @@ import {iconForSelectionObject} from "../utils/icons.tsx";
 import {MemoryTab} from "./MemoryTab.tsx";
 import {objToSelectItemRef, RefSelectionObjectComponent, SelectItemRef} from "./RefSelectionObjectComponent.tsx";
 import {assetUrlPrefix} from "../utils/project.ts";
+import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
+import {EditPreviewButtonGroup} from "./EditPreviewButtonGroup.tsx";
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){
@@ -101,34 +107,6 @@ export function ThreeEditorComponent() {
     // const [texturesLib, setTexturesLib] = useState<UiObjectConfig<any, 'textures'>>({type: 'textures'})
     // const [geometriesLib, setGeometriesLib] = useState<UiObjectConfig<any, 'geometries'>>({type: 'geometries'})
     // const [modelRoot, setModelRoot] = useState<IObject3D|null>(null)
-
-    const [isPlaying, setIsPlaying1] = useState(manager.isRunningMode)
-
-    const setIsPlaying = useCallback(async (val: boolean)=>{
-        if(val === manager.isRunningMode) setIsPlaying1(val)
-        else {
-            if(val){
-                await manager.startRunMode().catch(e=>{
-                    console.error('Could not start run mode:', e) // todo show toast
-                    return false
-                })
-            }else {
-                await manager.stopRunMode().catch(e=>{
-                    console.error('Could not stop run mode:', e) // todo show toast
-                    return false
-                })
-            }
-            setIsPlaying1(manager.isRunningMode)
-        }
-    }, [manager])
-
-    // todo on playing change
-    //  set picking enabled
-    //  set playing in viewer
-    //  disable save button
-    //  disable loading another file
-    //  when playing stopped, reload scene
-    //  dont track object/material updates when playing
 
     // todo rename to settings mode
     const [editorMode, setEditorMode] = useReducer((currentMode: EditorModes, mode: EditorModes): EditorModes=>{
@@ -247,7 +225,7 @@ export function ThreeEditorComponent() {
                     </Navbar.Group>
                     )}
                     <Navbar.Group align={Alignment.END}>
-                        <PlayModeButtonGroup key="playmode" {...{isPlaying, setIsPlaying}} />
+                        <PlayModeButtonGroup key="playmode" />
                         <Navbar.Divider/>
                         <Popover targetProps={{style: {}}}
                                  minimal
@@ -273,10 +251,9 @@ export function ThreeEditorComponent() {
                         center: [{title: 'Content', style: {
                             position: "relative",
                             display: "flex",
-                            flexDirection: "row",
+                            flexDirection: "column",
                         }, content: <>
                                 <div className={"editorCanvasContainer"} key={"editorCanvasContainer"} ref={canvasContainer}></div>
-                                {!isPlaying && <InteractionControlsButtonGroup key="interaction-controls" /> }
                             </>}],
                         bottom: isPackageProject(manager.loadedProject) ? [{title: 'Files', content: <FilesPanel />},
                             {title: 'Library', content: <ExternalFilesPanel />}]: null,

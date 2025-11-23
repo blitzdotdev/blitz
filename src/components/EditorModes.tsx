@@ -2,6 +2,8 @@ import {Class, getOrCall, IViewerPlugin, ThreeViewer, UiObjectConfig} from "thre
 import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {FC} from 'react'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
+import {EditModePlugin} from "../utils/EditModePlugin.ts";
+import {InteractionIconButton} from "./InteractionIconButton.tsx";
 // import {MaterialConfiguratorPlugin, SwitchNodePlugin} from '@threepipe/plugin-configurator'
 // import {
 //     AdvancedGroundPlugin,
@@ -218,7 +220,9 @@ export const EditorModesButtonGroup: FC<{ editorMode: EditorModes, setEditorMode
     }) => {
     return (
         <div className="editorModesContainer">
-            <ButtonGroup vertical={false} className={"icon-only-tab-button-group"} style={{
+            <ButtonGroup
+                onContextMenu={e=> e.preventDefault()}
+                vertical={false} className={"icon-only-tab-button-group"} style={{
             }}>
                 {(Object.entries(editorModesList) as [EditorModes, EditorModesConfig][]).map(([k, v]) => (
                     <Tooltip
@@ -230,80 +234,18 @@ export const EditorModesButtonGroup: FC<{ editorMode: EditorModes, setEditorMode
                         // disabled={isPopoverOpen}
                         // openOnTargetFocus={false}
                     >
-                        <Button
-                            className="bpIconButton icon-only-tab-button settings-tab-button" size={'medium'}
+                        <InteractionIconButton
                             intent={Intent.NONE}
-                            variant={"minimal"} style={{
+                            className="settings-tab-button"
+                            style={{
                                 transition: "background-color 0.25s ease-in-out",
                                 borderRadius: "calc(var(--pt-grid-size) * 0.5)",
                         }}
                             endIcon={v.icon} active={editorMode === k} onClick={() => setEditorMode(k)}/>
-
                     </Tooltip>
-
                 ))}
             </ButtonGroup>
         </div>
     )
 }
 
-export const PlayModeButtonGroup: FC<{ isPlaying: boolean, setIsPlaying: (mode: boolean) => void }> = (
-    {
-        isPlaying,
-        setIsPlaying
-    }) => {
-    return (
-        <div className="isPlayingContainer">
-            {/*<SegmentedControl*/}
-            {/*    size={"large"}*/}
-            {/*    intent={"primary"}*/}
-            {/*    options={[*/}
-            {/*        {*/}
-            {/*            label: "Edit",*/}
-            {/*            value: "edit",*/}
-            {/*            icon: "edit",*/}
-            {/*        },*/}
-            {/*        {*/}
-            {/*            label: "Play",*/}
-            {/*            value: "play",*/}
-            {/*            icon: "play",*/}
-            {/*        },*/}
-            {/*    ]}*/}
-            {/*    defaultValue="edit"*/}
-            {/*    onValueChange={(value) => setIsPlaying(value === 'play')}*/}
-            {/*    value={isPlaying ? 'play' : 'edit'}*/}
-            {/*/>*/}
-
-            <ButtonGroup vertical={false} style={{width: "max-content"}}>
-                {([{
-                    key: 'edit',
-                    label: 'Edit',
-                    icon: 'edit' as IconName,
-                    value: false,
-                }, {
-                    key: 'play',
-                    label: 'Play',
-                    icon: 'play' as IconName,
-                    value: true,
-                }]).map((v) => (
-                    <Tooltip
-                        content={v.label}
-                        key={v.key}
-                        intent={Intent.PRIMARY}
-                        position={Position.BOTTOM}
-                        usePortal={false}
-                        // disabled={isPopoverOpen}
-                        // openOnTargetFocus={false}
-                    >
-                        <Button
-                            className="bpIconButton icon-only-tab-button" size={'medium'}
-                            intent={v.value === isPlaying ? Intent.PRIMARY : Intent.NONE}
-                            variant={"minimal"} style={{transition: "background-color 0.25s ease-in-out"}}
-                            endIcon={v.icon} active={isPlaying === v.value} onClick={() => setIsPlaying(v.value)}/>
-                    </Tooltip>
-
-                ))}
-            </ButtonGroup>
-        </div>
-    )
-}

@@ -13,7 +13,7 @@ import {
     TObject3DComponent,
     UiObjectConfig,
     UndoManagerPlugin, UnlitMaterial,
-    Class
+    Class, RootScene
 } from "threepipe";
 import {
     isExternalGeometry,
@@ -660,6 +660,8 @@ export function ObjectInspectorUI({
     }
     const contextMenu = useContextMenu()
 
+    const isRootScene = (object as RootScene).isRootScene as boolean
+
     return <>
         {!!object && <>
             {/*<div>Object</div>*/}
@@ -669,7 +671,13 @@ export function ObjectInspectorUI({
                 objectIsExternal ? <UnkObjComponent key={'object'} label={`Object: ${object.name || 'Unnamed'}`} disabled={true} obj={object}/> :
                     object.uiConfig ?
                         isAssetInstance ? <AssetObjRootInstanceIns key={'objectins'} {...props} obj={object}/> :
-                            <ConfigObject key={'objectc'}  {...props} config={object.uiConfig} icon={iconForSelectionObject(object)}/> :
+                            <ConfigObject key={'objectc'} {...props}
+                                          config={object.uiConfig}
+                                          filter={isRootScene ? (c)=>{
+                                              return c.type !== 'folder'// todo temp, remove this line and use propertyKey check after uiconfig.js update
+                                              return c?.propertyKey !== 'defaultCamera'
+                                          } : undefined}
+                                          icon={iconForSelectionObject(object)} /> :
                         null}
             {/*{!!objectSelUiConfig?.length && objectSelUiConfig.map((c, i)=><ConfigObject key={i} {...props} config={c}/>)}*/}
             <Divider style={{margin: 0}}/>
