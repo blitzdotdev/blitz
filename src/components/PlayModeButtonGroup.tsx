@@ -8,7 +8,6 @@ export const PlayModeButtonGroup: FC<{}> = ({}) => {
     const manager = useManager()
     const [isPlaying, setIsPlaying1] = useState(manager.isRunningMode)
     const isPausedRunning = useListenProperty(manager, 'isPausedRunning', 'runModePauseChange')
-    console.log(isPausedRunning)
 
     // todo listed to isRunningMode change from outside?
     const setIsPlaying = useCallback(async (val: boolean) => {

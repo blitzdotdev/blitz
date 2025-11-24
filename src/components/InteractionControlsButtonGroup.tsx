@@ -9,8 +9,9 @@ import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
 import {TransformControlsPlugin} from "threepipe";
 import {TransformControlsSettingsMenu} from "./TransformControlsSettingsMenu.tsx";
+import {SceneOverrideMaterialMenu} from "./SceneOverrideMaterialMenu.tsx";
 
-type SetKeys = 'transform-controls' | 'post-processing' | 'widgets' | 'grid' | 'backgroundColor' | 'cameraMode'
+type SetKeys = 'transform-controls' | 'post-processing' | 'widgets' | 'grid' | 'backgroundColor' | 'cameraMode' | 'overrideMaterial'
 
 export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     const manager = useManager()
@@ -25,6 +26,9 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     states['backgroundColor'] = useReducer(editModePlugin.toggleBackgroundColor, false)
     states['cameraMode'] = useReducer(editModePlugin.toggleCameraMode, false)
 
+    // Track actual override material state, not just toggle
+    const [overrideMaterialActive, setOverrideMaterialActive] = useState<'basic' | 'depth' | 'normal' | null>(null);
+
     const transformControls = manager.get().getPlugin(TransformControlsPlugin)?.transformControls
     // transformControls.mode, space, size
 
@@ -35,6 +39,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
         states['grid'][1](editModePlugin.grid.visible)
         states['backgroundColor'][1](editModePlugin.viewer?.renderManager.renderPass.renderBackground ?? false)
         states['cameraMode'][1](editModePlugin.cameraMode === 'orthographic')
+        setOverrideMaterialActive(null)
 
         // on unmount
         return () => {
@@ -45,11 +50,13 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
             // set('grid', true)
             // set('backgroundColor', true)
             // set('cameraMode', false)
+            // setOverrideMaterialActive(null)
         }
     }, [])
 
     const onObjectCreate = useOnObjectCreate();
     const [tcPopoverOpen, setTcPopoverOpen] = useState(false);
+    const [omPopoverOpen, setOmPopoverOpen] = useState(false);
 
     return !editEnabled ? null : (
         <div className="interactionControlsButtonContainer">
@@ -146,6 +153,38 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                         onMouseDown={(e) => e.preventDefault()}
                         icon={'camera'} active={states['cameraMode'][0]} onClick={() => states['cameraMode'][1](!states['cameraMode'][0])}/>
                 </Tooltip>
+                <Popover
+                    targetTagName={"div"}
+                    interactionKind={'hover'}
+                    position={"bottom"}
+                    hoverOpenDelay={150}
+                    hoverCloseDelay={300}
+                    isOpen={omPopoverOpen}
+                    onInteraction={setOmPopoverOpen}
+                    content={
+                        <SceneOverrideMaterialMenu
+                            currentMaterial={overrideMaterialActive}
+                            setCurrentMaterial={setOverrideMaterialActive}
+                        />
+                    }
+                >
+                    <Tooltip
+                        content={(overrideMaterialActive ? 'Disable' : 'Enable') + ' Scene Override Material'}
+                        usePortal
+                        position={"bottom"}
+                    >
+                        <InteractionIconButton
+                            intent={!overrideMaterialActive ? Intent.NONE : Intent.SUCCESS}
+                            // to prevent focus away from canvas on click
+                            onMouseDown={(e) => e.preventDefault()}
+                            icon={'tint'} active={!!overrideMaterialActive}
+                            onClick={() => {
+                                // Just open the popover, don't toggle the state
+                                // The state is controlled by the menu selections
+                                setOmPopoverOpen(true)
+                            }}/>
+                    </Tooltip>
+                </Popover>
                 {!!onObjectCreate && <Popover
                     targetTagName={"div"}
                     interactionKind={'hover'}

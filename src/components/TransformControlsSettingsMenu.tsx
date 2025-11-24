@@ -1,4 +1,4 @@
-import {TransformControls2} from "../../../threepipe/lib";
+import {TransformControls2} from "threepipe";
 import {useEffect, useReducer, useState} from "react";
 import {Intent, Menu, MenuDivider, MenuItem} from "@blueprintjs/core";
 

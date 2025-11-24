@@ -1,23 +1,36 @@
+import type {BufferGeometry, Camera, Group, IMaterial, PhysicalMaterial, Scene, WebGLRenderer} from "threepipe";
 import {
     AViewerPluginEventMap,
     AViewerPluginSync,
-    Box3B, CameraViewPlugin,
-    Color, EditorViewWidgetPlugin,
+    BasicDepthPacking,
+    Box3B,
+    CameraViewPlugin,
+    Color,
+    EditorViewWidgetPlugin,
     getFittingDistance,
-    glsl,
-    GridHelper, IObject3D, iObjectCommons, IViewerEvent, IViewerEventTypes,
+    GridHelper,
+    IObject3D,
+    iObjectCommons,
+    IViewerEvent,
+    IViewerEventTypes,
+    Mesh,
+    MeshBasicMaterial,
+    MeshDepthMaterialOverride,
+    MeshNormalMaterialOverride,
+    NoBlending,
     onChange,
     OrbitControls3,
-    OrthographicCamera2, PartialRecord,
+    OrthographicCamera2,
+    PartialRecord,
     PerspectiveCamera2,
     PickingPlugin,
     serialize,
-    ShaderMaterial,
     ThreeViewer,
-    uiColor, uiFolderContainer, uiNumber, uiToggle, UndoManagerPlugin,
-    Vector2,
+    uiFolderContainer,
+    uiNumber,
+    uiToggle,
+    UndoManagerPlugin,
     Vector3,
-    Vector4,
 } from "threepipe";
 
 // just for edit mode settings and basic stuff, dont put project running state here.
@@ -56,6 +69,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.grid.visible = false
         this.grid.material.userData.renderToGBuffer = false
         this.grid.material.userData.renderToDepth = false
+        this.grid.material.allowOverride = false
 
         // this.grid.material.transparent = true
         // this.grid.material.opacity = 1
@@ -182,123 +196,180 @@ export class EditModePlugin extends AViewerPluginSync<{
 
     _viewerListeners: PartialRecord<IViewerEventTypes, (e: IViewerEvent) => void> = {
         preFrame: (e)=> {
-            if (!this.enableWASDMovement || this.isDisabled()) return
-            // if()
-            const camView = this._viewer!.getPlugin(CameraViewPlugin)!
-            if(camView.animating) return
-            const picking = this._viewer!.getPlugin(PickingPlugin)!
-            const selected = picking.getSelectedObject()
-            // if(this.keyMap['f'] && (selected as IObject3D)?.isObject3D){
-            //     picking.focusObject((selected as IObject3D))
-            // }
-            if (selected && !this.keyMap['mouse0']) return
+            if(this.isDisabled() || !this._viewer) return
+            this.movementUpdate()
+            if(this._sceneOverrideMaterialType === 'depth'){
+                const bounds = new Box3B().expandByObject(this._viewer.scene.modelRoot, false, true)
+                if (!bounds.isEmpty()) {
+                    const camera = this.cameraPerspective
+                    // const cameraPos = camera.position
+                    //
+                    // // Get camera forward direction (view direction)
+                    // const viewDir = new Vector3()
+                    // camera.getWorldDirection(viewDir)
+                    // viewDir.normalize()
+                    //
+                    // // Get all 8 corners of the bounding box
+                    // const corners = [
+                    //     new Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
+                    //     new Vector3(bounds.min.x, bounds.min.y, bounds.max.z),
+                    //     new Vector3(bounds.min.x, bounds.max.y, bounds.min.z),
+                    //     new Vector3(bounds.min.x, bounds.max.y, bounds.max.z),
+                    //     new Vector3(bounds.max.x, bounds.min.y, bounds.min.z),
+                    //     new Vector3(bounds.max.x, bounds.min.y, bounds.max.z),
+                    //     new Vector3(bounds.max.x, bounds.max.y, bounds.min.z),
+                    //     new Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
+                    // ]
+                    //
+                    // // Project each corner onto the camera's view axis to get depth
+                    // let minDepth = Infinity
+                    // let maxDepth = -Infinity
+                    // for (const corner of corners) {
+                    //     const toCorner = corner.clone().sub(cameraPos)
+                    //     // Project onto view direction to get depth along camera axis
+                    //     const depth = toCorner.dot(viewDir)
+                    //     minDepth = Math.min(minDepth, depth)
+                    //     maxDepth = Math.max(maxDepth, depth)
+                    // }
+                    //
+                    // // Handle edge cases when camera is inside or at edge of bounds
+                    // // If minDepth is negative, camera is inside/behind some geometry
+                    // const nearPlane = minDepth > 0. ? minDepth * 0.5 : 0.01
+                    // // If maxDepth is negative, all geometry is behind camera - use fallback
+                    // const farPlane = maxDepth > 0.1 ? maxDepth * 1.5 : Math.max(nearPlane * 2, 100)
 
-            let needsUpdate = false
-            let movementSpeed = this.wasdMovementSpeed
-            // if (ev.shiftKey) movementSpeed *= 4
-            // if (ev.ctrlKey) movementSpeed *= 0.25
-            if(this.keyMap['shift']) movementSpeed *= 4
-            if(this.keyMap['control']) movementSpeed *= 0.25
-
-            // Get camera's local coordinate system
-            const camera = this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho
-            const controls = camera.controls as OrbitControls3
-            if(!controls || !controls.enablePan || !controls.enabled) return
-
-            const forward = new Vector3()
-            const right = new Vector3()
-            const up = new Vector3(0, 1, 0)
-
-            // Calculate forward direction (camera looking direction)
-            camera.getWorldDirection(forward)
-            forward.normalize()
-
-            // Calculate right direction (cross product of up and forward)
-            right.crossVectors(up, forward)
-            right.normalize()
-
-            // Recalculate up to ensure orthogonal coordinate system
-            up.crossVectors(forward, right)
-            up.normalize()
-
-            const deltaPosition = new Vector3()
-            const deltaTarget = new Vector3()
-            const deltaTarget2 = new Vector3()
-
-            if (this.keyMap['w']) {// Move forward
-                deltaPosition.add(forward.clone().multiplyScalar(1))
-                deltaTarget2.add(forward.clone().multiplyScalar(1))
-                needsUpdate = true
+                    camera.near = 1
+                    camera.far = bounds.getSize(new Vector3()).length() * 1.5
+                    // console.log('Adjusted near/far:', nearPlane, farPlane)
+                    camera.updateProjectionMatrix()
+                }
+            }else{
+                // reset to defaults
+                const camera = this.cameraPerspective
+                camera.near = 0.1
+                camera.far = 1000
+                camera.updateProjectionMatrix()
             }
-            if (this.keyMap['s']) {// Move backward
-                deltaPosition.add(forward.clone().multiplyScalar(-1))
-                // deltaTarget2.add(forward.clone().multiplyScalar(-1))
-                needsUpdate = true
-            }
-            if (this.keyMap['d']) {// Move left
-                deltaPosition.add(right.clone().multiplyScalar(-1))
-                deltaTarget.add(right.clone().multiplyScalar(-1))
-                needsUpdate = true
-            }
-            if (this.keyMap['a']) {// Move right
-                deltaPosition.add(right.clone().multiplyScalar(1))
-                deltaTarget.add(right.clone().multiplyScalar(1))
-                needsUpdate = true
-            }
-            if (this.keyMap['q']) {// Move down
-                deltaPosition.add(up.clone().multiplyScalar(-1))
-                deltaTarget.add(up.clone().multiplyScalar(-1))
-                needsUpdate = true
-            }
-            if (this.keyMap['e']) {// Move up
-                deltaPosition.add(up.clone().multiplyScalar(1))
-                deltaTarget.add(up.clone().multiplyScalar(1))
-                needsUpdate = true
-            }
+        }
+    }
 
-            if (needsUpdate) {
-                deltaPosition.normalize().multiplyScalar(movementSpeed)
-                deltaTarget2.add(deltaTarget).normalize().multiplyScalar(movementSpeed)
-                deltaTarget.normalize().multiplyScalar(movementSpeed)
-                // Move both camera and target to maintain relative positioning
-                camera.position.add(deltaPosition)
-                camera.target.add(deltaTarget)
-                // (camera as ICamera).target?.add(deltaPosition)
-                // if (updateTarget) camera.target.add(deltaPosition)
+    movementUpdate(){
+        if (!this.enableWASDMovement) return
+        // if()
+        const camView = this._viewer!.getPlugin(CameraViewPlugin)!
+        if(camView.animating) return
+        const picking = this._viewer!.getPlugin(PickingPlugin)!
+        const selected = picking.getSelectedObject()
+        // if(this.keyMap['f'] && (selected as IObject3D)?.isObject3D){
+        //     picking.focusObject((selected as IObject3D))
+        // }
+        if (selected && !this.keyMap['mouse0']) return
 
-                const dir = camera.position.clone().sub(camera.target)
-                const neg = dir.dot(forward) > 0
-                // minDistance
-                if (neg || dir.length() - deltaTarget.length() < controls.minDistance) {
-                    if (controls.autoPushTarget) {
-                        // camera.target.copy(camera.position).add(dir.clone().normalize().multiplyScalar(controls.minDistance))
-                        camera.target.sub(deltaTarget).add(deltaTarget2)
+        let needsUpdate = false
+        let movementSpeed = this.wasdMovementSpeed
+        // if (ev.shiftKey) movementSpeed *= 4
+        // if (ev.ctrlKey) movementSpeed *= 0.25
+        if(this.keyMap['shift']) movementSpeed *= 4
+        if(this.keyMap['control']) movementSpeed *= 0.25
+
+        // Get camera's local coordinate system
+        const camera = this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho
+        const controls = camera.controls as OrbitControls3
+        if(!controls || !controls.enablePan || !controls.enabled) return
+
+        const forward = new Vector3()
+        const right = new Vector3()
+        const up = new Vector3(0, 1, 0)
+
+        // Calculate forward direction (camera looking direction)
+        camera.getWorldDirection(forward)
+        forward.normalize()
+
+        // Calculate right direction (cross product of up and forward)
+        right.crossVectors(up, forward)
+        right.normalize()
+
+        // Recalculate up to ensure orthogonal coordinate system
+        up.crossVectors(forward, right)
+        up.normalize()
+
+        const deltaPosition = new Vector3()
+        const deltaTarget = new Vector3()
+        const deltaTarget2 = new Vector3()
+
+        if (this.keyMap['w']) {// Move forward
+            deltaPosition.add(forward.clone().multiplyScalar(1))
+            deltaTarget2.add(forward.clone().multiplyScalar(1))
+            needsUpdate = true
+        }
+        if (this.keyMap['s']) {// Move backward
+            deltaPosition.add(forward.clone().multiplyScalar(-1))
+            // deltaTarget2.add(forward.clone().multiplyScalar(-1))
+            needsUpdate = true
+        }
+        if (this.keyMap['d']) {// Move left
+            deltaPosition.add(right.clone().multiplyScalar(-1))
+            deltaTarget.add(right.clone().multiplyScalar(-1))
+            needsUpdate = true
+        }
+        if (this.keyMap['a']) {// Move right
+            deltaPosition.add(right.clone().multiplyScalar(1))
+            deltaTarget.add(right.clone().multiplyScalar(1))
+            needsUpdate = true
+        }
+        if (this.keyMap['q']) {// Move down
+            deltaPosition.add(up.clone().multiplyScalar(-1))
+            deltaTarget.add(up.clone().multiplyScalar(-1))
+            needsUpdate = true
+        }
+        if (this.keyMap['e']) {// Move up
+            deltaPosition.add(up.clone().multiplyScalar(1))
+            deltaTarget.add(up.clone().multiplyScalar(1))
+            needsUpdate = true
+        }
+
+        if (needsUpdate) {
+            deltaPosition.normalize().multiplyScalar(movementSpeed)
+            deltaTarget2.add(deltaTarget).normalize().multiplyScalar(movementSpeed)
+            deltaTarget.normalize().multiplyScalar(movementSpeed)
+            // Move both camera and target to maintain relative positioning
+            camera.position.add(deltaPosition)
+            camera.target.add(deltaTarget)
+            // (camera as ICamera).target?.add(deltaPosition)
+            // if (updateTarget) camera.target.add(deltaPosition)
+
+            const dir = camera.position.clone().sub(camera.target)
+            const neg = dir.dot(forward) > 0
+            // minDistance
+            if (neg || dir.length() - deltaTarget.length() < controls.minDistance) {
+                if (controls.autoPushTarget) {
+                    // camera.target.copy(camera.position).add(dir.clone().normalize().multiplyScalar(controls.minDistance))
+                    camera.target.sub(deltaTarget).add(deltaTarget2)
+                } else {
+                    // prevent getting too close when not updating target
+                    camera.position.copy(camera.target.clone().add(dir.clone().normalize().multiplyScalar(controls.minDistance)))
+                }
+            }
+            else {
+                // maxDistance
+                if (dir.length() + deltaPosition.length() > controls.maxDistance) {
+                    if (controls.autoPullTarget) {
+                        // camera.target.add(deltaPosition)
                     } else {
-                        // prevent getting too close when not updating target
-                        camera.position.copy(camera.target.clone().add(dir.clone().normalize().multiplyScalar(controls.minDistance)))
+                        // prevent getting too far when not updating target
+                        // camera.position.copy(camera.target.clone().add(dir.normalize().multiplyScalar(-this.maxDistance)))
                     }
                 }
-                else {
-                    // maxDistance
-                    if (dir.length() + deltaPosition.length() > controls.maxDistance) {
-                        if (controls.autoPullTarget) {
-                            // camera.target.add(deltaPosition)
-                        } else {
-                            // prevent getting too far when not updating target
-                            // camera.position.copy(camera.target.clone().add(dir.normalize().multiplyScalar(-this.maxDistance)))
-                        }
-                    }
-                }
-                // camera.lookAt(this.target)
-                ;(camera).setDirty && (camera).setDirty({change: 'transform'})
-
-                // Prevent browser scrolling and other default behaviors
-                // ev.preventDefault()
-
-                // Update the controls
-                // this.update()
-                // camera.refreshTarget && camera.refreshTarget()
             }
+            // camera.lookAt(this.target)
+            ;(camera).setDirty && (camera).setDirty({change: 'transform'})
+
+            // Prevent browser scrolling and other default behaviors
+            // ev.preventDefault()
+
+            // Update the controls
+            // this.update()
+            // camera.refreshTarget && camera.refreshTarget()
         }
     }
 
@@ -605,46 +676,131 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.setDirty()
         return next
     }
+
+    private _sceneOverrideMaterial: MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | null = null
+    private _sceneOverrideMaterialType: 'basic' | 'depth' | 'normal' | null = null
+
+    toggleSceneOverrideMaterial(materialType?: 'basic' | 'depth' | 'normal' | null){
+        if(!this._viewer) return
+        if(materialType){
+            if(this._sceneOverrideMaterialType !== materialType) {
+                this._sceneOverrideMaterialType = materialType
+
+                if(this._sceneOverrideMaterial) {
+                    this._sceneOverrideMaterial.dispose()
+                    this._sceneOverrideMaterial = null
+                }
+
+                // Create material based on type
+                if (materialType === 'depth') {
+                    this._sceneOverrideMaterial = new MeshDepthMaterialOverride({
+                        depthPacking: BasicDepthPacking,
+                        blending: NoBlending,
+                        transparent: true,
+                    })
+                } else if (materialType === 'normal') {
+                    this._sceneOverrideMaterial = new MeshNormalMaterialOverride({
+                        blending: NoBlending,
+                    })
+                } else {
+                    // default to basic - now using override version
+                    this._sceneOverrideMaterial = new MeshBasicMaterialOverride({
+                        color: new Color(0xaaaaaa),
+                    })
+                }
+            }
+
+            // Set the override material on the scene
+            this._viewer.scene.overrideMaterial = this._sceneOverrideMaterial
+        } else {
+            // Clear the override material
+            this._viewer.scene.overrideMaterial = null
+            this._sceneOverrideMaterialType = null
+            if(this._sceneOverrideMaterial) {
+                this._sceneOverrideMaterial.dispose()
+                this._sceneOverrideMaterial = null
+            }
+        }
+        this._viewer.scene.setDirty()
+    }
+
+
 }
 
-export class GridMaterial extends ShaderMaterial{
-    constructor() {
-        super({
-            uniforms: {
-                vSize: {value: new Vector2(100, 100)},
-                color: {value: new Vector4(1, 1, 1, 1)},
-                gridSize: {value: 1},
-            },
-            vertexShader: glsl`
-                varying vec3 vWorldPosition;
-                void main() {
-                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                    vWorldPosition = worldPosition.xyz;
-                    gl_Position = projectionMatrix * viewMatrix * worldPosition;
-                }
-            `,
-            // todo try this - https://discussions.unity.com/t/how-to-make-an-infinite-grid-that-becomes-transparent-as-its-getting-away-from-the-camera/683283/7
-            fragmentShader: glsl`
-                uniform vec4 color;
-                uniform float gridSize;
-                uniform vec2 vSize;
-                varying vec3 vWorldPosition;
-                void main() {
-                    vec2 gridPos = mod(vWorldPosition.xz, gridSize);
-                    float lineThickness = gridSize * 0.1;
+export class MeshBasicMaterialOverride extends MeshBasicMaterial {
 
-                    // Calculate if we are on a line
-                    float isLineX = 1. - step(0.0, mod(gridPos.x, gridSize) - lineThickness) - step(gridSize - lineThickness, mod(gridPos.x, gridSize));
-                    float isLineY = 1. - step(0.0, mod(gridPos.y, gridSize) - lineThickness) - step(gridSize - lineThickness, mod(gridPos.y, gridSize));
-                    float isLine = max(isLineX, isLineY);
+    constructor(parameters?: any) {
+        super(parameters)
+        this.reset()
+    }
 
-                    vec3 gridColor = mix(color.xyz, vec3(0.0), isLine);
-                    gl_FragColor = vec4(gridColor, isLine);
-                    #include <colorspace_fragment>
-                    
-                }
-            `,
-        })
-        this.transparent = true
+    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+        super.onBeforeRender(renderer, scene, camera, geometry, object, group)
+
+        if (!object.material || !(object as Mesh).isMesh) {
+            this.visible = false
+            return
+        }
+        this.visible = true
+        const material = object.material as IMaterial & Partial<PhysicalMaterial>
+
+        // Copy color properties
+        if (material.color !== undefined) this.color.copy(material.color)
+        if (material.opacity !== undefined) this.opacity = material.opacity
+        if (material.transparent !== undefined) this.transparent = material.transparent
+
+        // Copy maps
+        if (material.map !== undefined) this.map = material.map
+        if (material.alphaMap !== undefined) this.alphaMap = material.alphaMap
+        if (material.aoMap !== undefined) this.aoMap = material.aoMap
+        if (material.aoMapIntensity !== undefined) this.aoMapIntensity = material.aoMapIntensity
+        if (material.lightMap !== undefined) this.lightMap = material.lightMap
+        if (material.lightMapIntensity !== undefined) this.lightMapIntensity = material.lightMapIntensity
+        if (material.envMap !== undefined) this.envMap = material.envMap
+        if (material.reflectivity !== undefined) this.reflectivity = material.reflectivity
+
+        // Copy alpha test and hash
+        if (material.alphaTest !== undefined) this.alphaTest = material.alphaTest < 1e-4 ? 1e-4 : material.alphaTest
+        if (material.alphaHash !== undefined) this.alphaHash = material.alphaHash
+
+        // Copy side and wireframe
+        if (material.side !== undefined) this.side = material.side
+        if (material.wireframe !== undefined) this.wireframe = material.wireframe
+        if (material.wireframeLinewidth !== undefined) this.wireframeLinewidth = material.wireframeLinewidth
+
+        // this.needsUpdate = true
+        // this.id+=1 // to force update uniforms etc
+        // @ts-ignore todo add to type
+        renderer.resetCurrentMaterial && renderer.resetCurrentMaterial()
+    }
+
+    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+        super.onAfterRender(renderer, scene, camera, geometry, object, group)
+        this.reset()
+    }
+
+    reset() {
+        this.visible = true
+        this.color.setHex(0xffffff)
+        this.opacity = 1
+        this.transparent = false
+
+        this.map = null
+        this.alphaMap = null
+        this.aoMap = null
+        this.aoMapIntensity = 1
+        this.lightMap = null
+        this.lightMapIntensity = 1
+        this.envMap = null
+        this.reflectivity = 1
+
+        this.alphaTest = 0
+        // this.alphaHash = false
+
+        this.side = 0 // FrontSide
+        this.wireframe = false
+        this.wireframeLinewidth = 1
+
+        // this.combine = 0 // MultiplyOperation
     }
 }

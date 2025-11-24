@@ -52,6 +52,8 @@ export function cannonDebugger() {
         transparent: true,
         depthTest: true,
         depthWrite: false,
+
+        allowOverride: false,
     })
     _material.userData.renderToGBuffer = false
     _material.userData.renderToDepth = false

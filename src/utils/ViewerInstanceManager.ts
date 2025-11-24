@@ -234,7 +234,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             container,
             debug: true,
             rgbm: false,
-            msaa: false,
+            msaa: true,
             zPrepass: false,
             renderScale: "auto",
             ...props,
