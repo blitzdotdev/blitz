@@ -1,4 +1,13 @@
-import type {BufferGeometry, Camera, Group, IMaterial, PhysicalMaterial, Scene, WebGLRenderer} from "threepipe";
+import {
+    BufferGeometry,
+    Camera,
+    Group,
+    IMaterial,
+    PhysicalMaterial,
+    Scene,
+    shaderReplaceString,
+    WebGLRenderer
+} from "threepipe";
 import {
     AViewerPluginEventMap,
     AViewerPluginSync,
@@ -677,10 +686,10 @@ export class EditModePlugin extends AViewerPluginSync<{
         return next
     }
 
-    private _sceneOverrideMaterial: MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | null = null
-    private _sceneOverrideMaterialType: 'basic' | 'depth' | 'normal' | null = null
+    private _sceneOverrideMaterial: MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | null = null
+    private _sceneOverrideMaterialType: 'basic' | 'depth' | 'normal' | 'normalWorld' | null = null
 
-    toggleSceneOverrideMaterial(materialType?: 'basic' | 'depth' | 'normal' | null){
+    toggleSceneOverrideMaterial(materialType?: 'basic' | 'depth' | 'normal' | 'normalWorld' | null){
         if(!this._viewer) return
         if(materialType){
             if(this._sceneOverrideMaterialType !== materialType) {
@@ -700,6 +709,10 @@ export class EditModePlugin extends AViewerPluginSync<{
                     })
                 } else if (materialType === 'normal') {
                     this._sceneOverrideMaterial = new MeshNormalMaterialOverride({
+                        blending: NoBlending,
+                    })
+                } else if (materialType === 'normalWorld') {
+                    this._sceneOverrideMaterial = new MeshNormalMaterialWorldOverride({
                         blending: NoBlending,
                     })
                 } else {
@@ -802,5 +815,37 @@ export class MeshBasicMaterialOverride extends MeshBasicMaterial {
         this.wireframeLinewidth = 1
 
         // this.combine = 0 // MultiplyOperation
+    }
+}
+
+export class MeshNormalMaterialWorldOverride extends MeshNormalMaterialOverride {
+    constructor(parameters?: any) {
+        super(parameters)
+    }
+
+    onBeforeCompile(shader: any) {
+        // Add a varying to pass world-space normal from vertex to fragment shader
+        shader.vertexShader = shaderReplaceString(shader.vertexShader,
+            '#include <common>',
+            `\nvarying vec3 vWorldNormal;`, {append: true}
+        )
+
+        shader.vertexShader = shaderReplaceString(shader.vertexShader,
+            '#include <beginnormal_vertex>',
+            `\n// Transform normal to world space
+vec4 worldNormal = modelMatrix * vec4(objectNormal, 0.0);
+vWorldNormal = normalize(worldNormal.xyz);`, {append: true}
+        )
+
+        // Use world-space normal in fragment shader
+        shader.fragmentShader = shaderReplaceString(shader.fragmentShader,
+            'uniform float opacity;',
+            `\nvarying vec3 vWorldNormal;`, {append: true}
+        )
+
+        shader.fragmentShader = shaderReplaceString(shader.fragmentShader,
+            'gl_FragColor = vec4( packNormalToRGB( normal ), diffuseColor.a );',
+            'gl_FragColor = vec4( packNormalToRGB( normalize( vWorldNormal ) ), diffuseColor.a );'
+        )
     }
 }

@@ -27,7 +27,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     states['cameraMode'] = useReducer(editModePlugin.toggleCameraMode, false)
 
     // Track actual override material state, not just toggle
-    const [overrideMaterialActive, setOverrideMaterialActive] = useState<'basic' | 'depth' | 'normal' | null>(null);
+    const [overrideMaterialActive, setOverrideMaterialActive] = useState<'basic' | 'depth' | 'normal' | 'normalWorld' | null>(null);
 
     const transformControls = manager.get().getPlugin(TransformControlsPlugin)?.transformControls
     // transformControls.mode, space, size

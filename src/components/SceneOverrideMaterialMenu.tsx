@@ -5,8 +5,8 @@ import {useManager} from "../utils/ViewerInstanceManager.ts";
 
 interface SceneOverrideMaterialMenuProps {
     // onStateChange?: (isActive: boolean) => void;
-    currentMaterial: 'basic' | 'depth' | 'normal' | null;
-    setCurrentMaterial: (material: 'basic' | 'depth' | 'normal' | null) => void;
+    currentMaterial: 'basic' | 'depth' | 'normal' | 'normalWorld' | null;
+    setCurrentMaterial: (material: 'basic' | 'depth' | 'normal' | 'normalWorld' | null) => void;
 }
 
 export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({currentMaterial, setCurrentMaterial}) => {
@@ -19,7 +19,7 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({c
         forceUpdate(v => v + 1);
     }, [editModePlugin]);
 
-    const applyMaterial = (materialType: 'basic' | 'depth' | 'normal') => {
+    const applyMaterial = (materialType: 'basic' | 'depth' | 'normal' | 'normalWorld') => {
         // // Clear existing material first
         // if (editModePlugin['_sceneOverrideMaterial']) {
         //     editModePlugin.toggleSceneOverrideMaterial();
@@ -80,6 +80,16 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({c
                 onClick={(e) => {
                     e.stopPropagation();
                     applyMaterial('normal');
+                }}
+                shouldDismissPopover={false}
+            />
+            <MenuItem
+                text="Normal World"
+                icon="globe"
+                intent={isActive && currentMaterial === 'normalWorld' ? Intent.PRIMARY : Intent.NONE}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    applyMaterial('normalWorld');
                 }}
                 shouldDismissPopover={false}
             />
