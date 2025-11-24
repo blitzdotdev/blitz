@@ -1,12 +1,12 @@
 import {FC, useEffect, useState} from "react";
 import {Intent, Menu, MenuItem, MenuDivider} from "@blueprintjs/core";
-import {EditModePlugin} from "../utils/EditModePlugin.ts";
+import {EditModePlugin, OverrideMaterialType} from "../utils/EditModePlugin.ts";
 import {useManager} from "../utils/ViewerInstanceManager.ts";
 
 interface SceneOverrideMaterialMenuProps {
     // onStateChange?: (isActive: boolean) => void;
-    currentMaterial: 'basic' | 'depth' | 'normal' | 'normalWorld' | null;
-    setCurrentMaterial: (material: 'basic' | 'depth' | 'normal' | 'normalWorld' | null) => void;
+    currentMaterial: OverrideMaterialType | null;
+    setCurrentMaterial: (material: OverrideMaterialType | null) => void;
 }
 
 export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({currentMaterial, setCurrentMaterial}) => {
@@ -19,11 +19,7 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({c
         forceUpdate(v => v + 1);
     }, [editModePlugin]);
 
-    const applyMaterial = (materialType: 'basic' | 'depth' | 'normal' | 'normalWorld') => {
-        // // Clear existing material first
-        // if (editModePlugin['_sceneOverrideMaterial']) {
-        //     editModePlugin.toggleSceneOverrideMaterial();
-        // }
+    const applyMaterial = (materialType: OverrideMaterialType) => {
         // Apply new material
         editModePlugin.toggleSceneOverrideMaterial(materialType);
         setCurrentMaterial(materialType);
@@ -39,6 +35,11 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({c
     };
 
     const isActive = editModePlugin['_sceneOverrideMaterial'] !== null;
+
+    // Get current UV channel if UV material is active
+    const uvChannel = currentMaterial === 'uv' && editModePlugin['_sceneOverrideMaterial']
+        ? (editModePlugin['_sceneOverrideMaterial'] as any).uvChannel
+        : 0;
 
     return (
         <Menu>
@@ -90,6 +91,26 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({c
                 onClick={(e) => {
                     e.stopPropagation();
                     applyMaterial('normalWorld');
+                }}
+                shouldDismissPopover={false}
+            />
+            <MenuItem
+                text="Material ID"
+                icon="lightbulb"
+                intent={isActive && currentMaterial === 'materialId' ? Intent.PRIMARY : Intent.NONE}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    applyMaterial('materialId');
+                }}
+                shouldDismissPopover={false}
+            />
+            <MenuItem
+                text={currentMaterial === 'uv' ? `UV ${uvChannel}` : 'UV'}
+                icon="grid-view"
+                intent={isActive && currentMaterial === 'uv' ? Intent.PRIMARY : Intent.NONE}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    applyMaterial('uv');
                 }}
                 shouldDismissPopover={false}
             />

@@ -42,6 +42,9 @@ import {
     Vector3,
 } from "threepipe";
 
+// Type for override material types
+export type OverrideMaterialType = 'basic' | 'depth' | 'normal' | 'normalWorld' | 'materialId' | 'uv';
+
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
 export class EditModePlugin extends AViewerPluginSync<{
@@ -69,6 +72,9 @@ export class EditModePlugin extends AViewerPluginSync<{
 
     // grid = new Mesh(new PlaneGeometry(), new GridMaterial())
     grid = new GridHelper(100, 100, 0x62793a, 0x4e4f4f)
+
+    // Override materials - created once and reused
+    private _overrideMaterials: Record<OverrideMaterialType, MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | MeshMaterialIdOverride | MeshUVOverride>
 
     constructor() {
         super();
@@ -120,6 +126,26 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.cameraOrtho.autoNearFar = false
         this.cameraOrtho.autoAspect = true
         this.cameraOrtho.autoLookAtTarget = true
+
+        // Initialize override materials once
+        this._overrideMaterials = {
+            basic: new MeshBasicMaterialOverride({
+                color: new Color(0xaaaaaa),
+            }),
+            depth: new MeshDepthMaterialOverride({
+                depthPacking: BasicDepthPacking,
+                blending: NoBlending,
+                transparent: true,
+            }),
+            normal: new MeshNormalMaterialOverride({
+                blending: NoBlending,
+            }),
+            normalWorld: new MeshNormalMaterialWorldOverride({
+                blending: NoBlending,
+            }),
+            materialId: new MeshMaterialIdOverride({}),
+            uv: new MeshUVOverride({}),
+        }
     }
 
     dispose() {
@@ -131,6 +157,10 @@ export class EditModePlugin extends AViewerPluginSync<{
         } else {
             this.grid.material.dispose()
         }
+
+        // Dispose all override materials
+        Object.values(this._overrideMaterials).forEach(material => material.dispose())
+
         super.dispose();
     }
 
@@ -686,41 +716,27 @@ export class EditModePlugin extends AViewerPluginSync<{
         return next
     }
 
-    private _sceneOverrideMaterial: MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | null = null
-    private _sceneOverrideMaterialType: 'basic' | 'depth' | 'normal' | 'normalWorld' | null = null
+    private _sceneOverrideMaterial: MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | MeshMaterialIdOverride | MeshUVOverride | null = null
+    private _sceneOverrideMaterialType: OverrideMaterialType | null = null
 
-    toggleSceneOverrideMaterial(materialType?: 'basic' | 'depth' | 'normal' | 'normalWorld' | null){
+    toggleSceneOverrideMaterial(materialType?: OverrideMaterialType | null){
         if(!this._viewer) return
         if(materialType){
             if(this._sceneOverrideMaterialType !== materialType) {
                 this._sceneOverrideMaterialType = materialType
+                // Select the pre-created material based on type
+                this._sceneOverrideMaterial = this._overrideMaterials[materialType]
 
-                if(this._sceneOverrideMaterial) {
-                    this._sceneOverrideMaterial.dispose()
-                    this._sceneOverrideMaterial = null
+                // Reset UV channel to 0 when first switching to UV material
+                if(materialType === 'uv') {
+                    (this._sceneOverrideMaterial as MeshUVOverride).uvChannel = 0
                 }
-
-                // Create material based on type
-                if (materialType === 'depth') {
-                    this._sceneOverrideMaterial = new MeshDepthMaterialOverride({
-                        depthPacking: BasicDepthPacking,
-                        blending: NoBlending,
-                        transparent: true,
-                    })
-                } else if (materialType === 'normal') {
-                    this._sceneOverrideMaterial = new MeshNormalMaterialOverride({
-                        blending: NoBlending,
-                    })
-                } else if (materialType === 'normalWorld') {
-                    this._sceneOverrideMaterial = new MeshNormalMaterialWorldOverride({
-                        blending: NoBlending,
-                    })
-                } else {
-                    // default to basic - now using override version
-                    this._sceneOverrideMaterial = new MeshBasicMaterialOverride({
-                        color: new Color(0xaaaaaa),
-                    })
-                }
+            } else if(materialType === 'uv') {
+                // If already on UV material, cycle through channels 0-3
+                const uvMaterial = this._sceneOverrideMaterial as MeshUVOverride
+                uvMaterial.uvChannel = ((uvMaterial.uvChannel + 1) % 4) as 0|1|2|3
+                // Need to recompile shader for the channel change to take effect
+                uvMaterial.needsUpdate = true
             }
 
             // Set the override material on the scene
@@ -729,10 +745,7 @@ export class EditModePlugin extends AViewerPluginSync<{
             // Clear the override material
             this._viewer.scene.overrideMaterial = null
             this._sceneOverrideMaterialType = null
-            if(this._sceneOverrideMaterial) {
-                this._sceneOverrideMaterial.dispose()
-                this._sceneOverrideMaterial = null
-            }
+            this._sceneOverrideMaterial = null
         }
         this._viewer.scene.setDirty()
     }
@@ -847,5 +860,208 @@ vWorldNormal = normalize(worldNormal.xyz);`, {append: true}
             'gl_FragColor = vec4( packNormalToRGB( normal ), diffuseColor.a );',
             'gl_FragColor = vec4( packNormalToRGB( normalize( vWorldNormal ) ), diffuseColor.a );'
         )
+    }
+}
+
+export class MeshMaterialIdOverride extends MeshBasicMaterial {
+    private _colorCache: Map<number, Color> = new Map()
+
+    constructor(parameters?: any) {
+        super(parameters)
+        this.reset()
+    }
+
+    // Generate a consistent color based on material ID
+    private _getColorForId(id: number): Color {
+        if (!this._colorCache.has(id)) {
+            // Use golden ratio to get well-distributed hues
+            const goldenRatioConjugate = 0.618033988749895
+            const hue = (id * goldenRatioConjugate) % 1.0
+            const saturation = 1
+            const lightness = 0.5
+
+            const color = new Color()
+            color.setHSL(hue, saturation, lightness)
+            this._colorCache.set(id, color)
+        }
+        return this._colorCache.get(id)!
+    }
+
+    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+        super.onBeforeRender(renderer, scene, camera, geometry, object, group)
+
+        if (!object.material || !(object as Mesh).isMesh) {
+            this.visible = false
+            return
+        }
+        this.visible = true
+        const material = object.material as IMaterial & Partial<PhysicalMaterial>
+
+        // Set color based on material ID
+        const materialId = (material as any).id ?? 0
+        this.color.copy(this._getColorForId(materialId))
+
+        // Copy opacity and transparency
+        if (material.opacity !== undefined) this.opacity = material.opacity
+        if (material.transparent !== undefined) this.transparent = material.transparent
+
+        // Copy maps for alpha testing
+        if (material.alphaMap !== undefined) this.alphaMap = material.alphaMap
+        if (material.alphaTest !== undefined) this.alphaTest = material.alphaTest < 1e-4 ? 1e-4 : material.alphaTest
+        if (material.alphaHash !== undefined) this.alphaHash = material.alphaHash
+
+        // Copy side and wireframe
+        if (material.side !== undefined) this.side = material.side
+        if (material.wireframe !== undefined) this.wireframe = material.wireframe
+        if (material.wireframeLinewidth !== undefined) this.wireframeLinewidth = material.wireframeLinewidth
+
+        // @ts-ignore todo add to type
+        renderer.resetCurrentMaterial && renderer.resetCurrentMaterial()
+    }
+
+    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+        super.onAfterRender(renderer, scene, camera, geometry, object, group)
+        this.reset()
+    }
+
+    reset() {
+        this.visible = true
+        this.color.setHex(0xffffff)
+        this.opacity = 1
+        this.transparent = false
+
+        this.alphaMap = null
+        this.alphaTest = 0
+
+        this.side = 0 // FrontSide
+        this.wireframe = false
+        this.wireframeLinewidth = 1
+    }
+}
+
+export class MeshUVOverride extends MeshBasicMaterial {
+    uvChannel: 0|1|2|3 = 0
+
+    constructor(parameters?: any) {
+        super(parameters)
+        this.reset()
+    }
+
+    customProgramCacheKey() {
+        // Return different cache key for each UV channel to force shader recompilation
+        return `uv-channel-${this.uvChannel}`
+    }
+
+    onBeforeCompile(shader: any) {
+        if(!shader.defines) shader.defines = {}
+        shader.defines.USE_UV = ''
+        shader.vertexUv1s = true
+        shader.vertexUv2s = true
+        shader.vertexUv3s = true
+
+        // Add varying to pass UV coordinates from vertex to fragment shader
+        shader.vertexShader = shaderReplaceString(shader.vertexShader,
+            '#include <common>',
+            `\n#ifdef USE_UV1
+    varying vec2 vUv1;
+#endif
+#ifdef USE_UV2
+    varying vec2 vUv2;
+#endif
+#ifdef USE_UV3
+    varying vec2 vUv3;
+#endif
+            `, {append: true}
+        )
+
+        shader.vertexShader = shaderReplaceString(shader.vertexShader,
+            '#include <uv_vertex>',
+            `\n#ifdef USE_UV1
+    vUv1 = (uv1);
+#endif
+#ifdef USE_UV2
+    vUv2 = (uv2);
+#endif
+#ifdef USE_UV3
+    vUv3 = (uv3);
+#endif
+`, {append: true}
+        )
+
+        // Modify fragment shader to display UV coordinates as colors
+        shader.fragmentShader = shaderReplaceString(shader.fragmentShader,
+            'uniform float opacity;',
+            `
+#define vUv0 vUv
+#ifdef USE_UV1
+    varying vec2 vUv1;
+#endif
+#ifdef USE_UV2
+    varying vec2 vUv2;
+#endif
+#ifdef USE_UV3
+    varying vec2 vUv3;
+#endif
+            `, {append: true}
+        )
+
+        // Replace the final color output with UV visualization
+        shader.fragmentShader = shaderReplaceString(shader.fragmentShader,
+            '#include <opaque_fragment>',
+            `#ifdef USE_UV
+    // Display UV coordinates as colors: U->Red, V->Green
+    gl_FragColor = vec4( fract(vUv${this.uvChannel}.x), fract(vUv${this.uvChannel}.y), 0.0, diffuseColor.a );
+#else
+    // No UVs available, show magenta to indicate missing UVs
+    gl_FragColor = vec4( 1.0, 0.0, 1.0, diffuseColor.a );
+#endif`
+        )
+    }
+
+    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+        super.onBeforeRender(renderer, scene, camera, geometry, object, group)
+
+        if (!object.material || !(object as Mesh).isMesh) {
+            this.visible = false
+            return
+        }
+        this.visible = true
+        const material = object.material as IMaterial & Partial<PhysicalMaterial>
+
+        // Copy opacity and transparency
+        if (material.opacity !== undefined) this.opacity = material.opacity
+        if (material.transparent !== undefined) this.transparent = material.transparent
+
+        // Copy maps for alpha testing
+        if (material.alphaMap !== undefined) this.alphaMap = material.alphaMap
+        if (material.alphaTest !== undefined) this.alphaTest = material.alphaTest < 1e-4 ? 1e-4 : material.alphaTest
+        if (material.alphaHash !== undefined) this.alphaHash = material.alphaHash
+
+        // Copy side and wireframe
+        if (material.side !== undefined) this.side = material.side
+        if (material.wireframe !== undefined) this.wireframe = material.wireframe
+        if (material.wireframeLinewidth !== undefined) this.wireframeLinewidth = material.wireframeLinewidth
+
+        // @ts-ignore todo add to type
+        renderer.resetCurrentMaterial && renderer.resetCurrentMaterial()
+    }
+
+    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+        super.onAfterRender(renderer, scene, camera, geometry, object, group)
+        this.reset()
+    }
+
+    reset() {
+        this.visible = true
+        this.color.setHex(0xffffff)
+        this.opacity = 1
+        this.transparent = false
+
+        this.alphaMap = null
+        this.alphaTest = 0
+
+        this.side = 0 // FrontSide
+        this.wireframe = false
+        this.wireframeLinewidth = 1
     }
 }
