@@ -1,14 +1,4 @@
 import {
-    BufferGeometry,
-    Camera,
-    Group,
-    IMaterial,
-    PhysicalMaterial,
-    Scene,
-    shaderReplaceString,
-    WebGLRenderer
-} from "threepipe";
-import {
     AViewerPluginEventMap,
     AViewerPluginSync,
     BasicDepthPacking,
@@ -22,8 +12,6 @@ import {
     iObjectCommons,
     IViewerEvent,
     IViewerEventTypes,
-    Mesh,
-    MeshBasicMaterial,
     MeshDepthMaterialOverride,
     MeshNormalMaterialOverride,
     NoBlending,
@@ -39,11 +27,16 @@ import {
     uiNumber,
     uiToggle,
     UndoManagerPlugin,
-    Vector3,
+    Vector3
 } from "threepipe";
+import {MeshUVOverride} from "./materials/MeshUVOverride.ts";
+import {MeshMaterialIdOverride} from "./materials/MeshMaterialIdOverride.ts";
+import {MeshNormalMaterialWorldOverride} from "./materials/MeshNormalMaterialWorldOverride.ts";
+import {MeshBasicMaterialOverride} from "./materials/MeshBasicMaterialOverride.ts";
 
 // Type for override material types
 export type OverrideMaterialType = 'basic' | 'depth' | 'normal' | 'normalWorld' | 'materialId' | 'uv';
+export type SceneOverrideMaterial = MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | MeshMaterialIdOverride | MeshUVOverride
 
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
@@ -74,7 +67,7 @@ export class EditModePlugin extends AViewerPluginSync<{
     grid = new GridHelper(100, 100, 0x62793a, 0x4e4f4f)
 
     // Override materials - created once and reused
-    private _overrideMaterials: Record<OverrideMaterialType, MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | MeshMaterialIdOverride | MeshUVOverride>
+    private _overrideMaterials: Record<OverrideMaterialType, SceneOverrideMaterial>
 
     constructor() {
         super();
@@ -716,7 +709,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         return next
     }
 
-    private _sceneOverrideMaterial: MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | MeshMaterialIdOverride | MeshUVOverride | null = null
+    private _sceneOverrideMaterial: SceneOverrideMaterial | null = null
     private _sceneOverrideMaterialType: OverrideMaterialType | null = null
 
     toggleSceneOverrideMaterial(materialType?: OverrideMaterialType | null){
@@ -753,315 +746,3 @@ export class EditModePlugin extends AViewerPluginSync<{
 
 }
 
-export class MeshBasicMaterialOverride extends MeshBasicMaterial {
-
-    constructor(parameters?: any) {
-        super(parameters)
-        this.reset()
-    }
-
-    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
-        super.onBeforeRender(renderer, scene, camera, geometry, object, group)
-
-        if (!object.material || !(object as Mesh).isMesh) {
-            this.visible = false
-            return
-        }
-        this.visible = true
-        const material = object.material as IMaterial & Partial<PhysicalMaterial>
-
-        // Copy color properties
-        if (material.color !== undefined) this.color.copy(material.color)
-        if (material.opacity !== undefined) this.opacity = material.opacity
-        if (material.transparent !== undefined) this.transparent = material.transparent
-
-        // Copy maps
-        if (material.map !== undefined) this.map = material.map
-        if (material.alphaMap !== undefined) this.alphaMap = material.alphaMap
-        if (material.aoMap !== undefined) this.aoMap = material.aoMap
-        if (material.aoMapIntensity !== undefined) this.aoMapIntensity = material.aoMapIntensity
-        if (material.lightMap !== undefined) this.lightMap = material.lightMap
-        if (material.lightMapIntensity !== undefined) this.lightMapIntensity = material.lightMapIntensity
-        if (material.envMap !== undefined) this.envMap = material.envMap
-        if (material.reflectivity !== undefined) this.reflectivity = material.reflectivity
-
-        // Copy alpha test and hash
-        if (material.alphaTest !== undefined) this.alphaTest = material.alphaTest < 1e-4 ? 1e-4 : material.alphaTest
-        if (material.alphaHash !== undefined) this.alphaHash = material.alphaHash
-
-        // Copy side and wireframe
-        if (material.side !== undefined) this.side = material.side
-        if (material.wireframe !== undefined) this.wireframe = material.wireframe
-        if (material.wireframeLinewidth !== undefined) this.wireframeLinewidth = material.wireframeLinewidth
-
-        // this.needsUpdate = true
-        // this.id+=1 // to force update uniforms etc
-        // @ts-ignore todo add to type
-        renderer.resetCurrentMaterial && renderer.resetCurrentMaterial()
-    }
-
-    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
-        super.onAfterRender(renderer, scene, camera, geometry, object, group)
-        this.reset()
-    }
-
-    reset() {
-        this.visible = true
-        this.color.setHex(0xffffff)
-        this.opacity = 1
-        this.transparent = false
-
-        this.map = null
-        this.alphaMap = null
-        this.aoMap = null
-        this.aoMapIntensity = 1
-        this.lightMap = null
-        this.lightMapIntensity = 1
-        this.envMap = null
-        this.reflectivity = 1
-
-        this.alphaTest = 0
-        // this.alphaHash = false
-
-        this.side = 0 // FrontSide
-        this.wireframe = false
-        this.wireframeLinewidth = 1
-
-        // this.combine = 0 // MultiplyOperation
-    }
-}
-
-export class MeshNormalMaterialWorldOverride extends MeshNormalMaterialOverride {
-    constructor(parameters?: any) {
-        super(parameters)
-    }
-
-    onBeforeCompile(shader: any) {
-        // Add a varying to pass world-space normal from vertex to fragment shader
-        shader.vertexShader = shaderReplaceString(shader.vertexShader,
-            '#include <common>',
-            `\nvarying vec3 vWorldNormal;`, {append: true}
-        )
-
-        shader.vertexShader = shaderReplaceString(shader.vertexShader,
-            '#include <beginnormal_vertex>',
-            `\n// Transform normal to world space
-vec4 worldNormal = modelMatrix * vec4(objectNormal, 0.0);
-vWorldNormal = normalize(worldNormal.xyz);`, {append: true}
-        )
-
-        // Use world-space normal in fragment shader
-        shader.fragmentShader = shaderReplaceString(shader.fragmentShader,
-            'uniform float opacity;',
-            `\nvarying vec3 vWorldNormal;`, {append: true}
-        )
-
-        shader.fragmentShader = shaderReplaceString(shader.fragmentShader,
-            'gl_FragColor = vec4( packNormalToRGB( normal ), diffuseColor.a );',
-            'gl_FragColor = vec4( packNormalToRGB( normalize( vWorldNormal ) ), diffuseColor.a );'
-        )
-    }
-}
-
-export class MeshMaterialIdOverride extends MeshBasicMaterial {
-    private _colorCache: Map<number, Color> = new Map()
-
-    constructor(parameters?: any) {
-        super(parameters)
-        this.reset()
-    }
-
-    // Generate a consistent color based on material ID
-    private _getColorForId(id: number): Color {
-        if (!this._colorCache.has(id)) {
-            // Use golden ratio to get well-distributed hues
-            const goldenRatioConjugate = 0.618033988749895
-            const hue = (id * goldenRatioConjugate) % 1.0
-            const saturation = 1
-            const lightness = 0.5
-
-            const color = new Color()
-            color.setHSL(hue, saturation, lightness)
-            this._colorCache.set(id, color)
-        }
-        return this._colorCache.get(id)!
-    }
-
-    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
-        super.onBeforeRender(renderer, scene, camera, geometry, object, group)
-
-        if (!object.material || !(object as Mesh).isMesh) {
-            this.visible = false
-            return
-        }
-        this.visible = true
-        const material = object.material as IMaterial & Partial<PhysicalMaterial>
-
-        // Set color based on material ID
-        const materialId = (material as any).id ?? 0
-        this.color.copy(this._getColorForId(materialId))
-
-        // Copy opacity and transparency
-        if (material.opacity !== undefined) this.opacity = material.opacity
-        if (material.transparent !== undefined) this.transparent = material.transparent
-
-        // Copy maps for alpha testing
-        if (material.alphaMap !== undefined) this.alphaMap = material.alphaMap
-        if (material.alphaTest !== undefined) this.alphaTest = material.alphaTest < 1e-4 ? 1e-4 : material.alphaTest
-        if (material.alphaHash !== undefined) this.alphaHash = material.alphaHash
-
-        // Copy side and wireframe
-        if (material.side !== undefined) this.side = material.side
-        if (material.wireframe !== undefined) this.wireframe = material.wireframe
-        if (material.wireframeLinewidth !== undefined) this.wireframeLinewidth = material.wireframeLinewidth
-
-        // @ts-ignore todo add to type
-        renderer.resetCurrentMaterial && renderer.resetCurrentMaterial()
-    }
-
-    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
-        super.onAfterRender(renderer, scene, camera, geometry, object, group)
-        this.reset()
-    }
-
-    reset() {
-        this.visible = true
-        this.color.setHex(0xffffff)
-        this.opacity = 1
-        this.transparent = false
-
-        this.alphaMap = null
-        this.alphaTest = 0
-
-        this.side = 0 // FrontSide
-        this.wireframe = false
-        this.wireframeLinewidth = 1
-    }
-}
-
-export class MeshUVOverride extends MeshBasicMaterial {
-    uvChannel: 0|1|2|3 = 0
-
-    constructor(parameters?: any) {
-        super(parameters)
-        this.reset()
-    }
-
-    customProgramCacheKey() {
-        // Return different cache key for each UV channel to force shader recompilation
-        return `uv-channel-${this.uvChannel}`
-    }
-
-    onBeforeCompile(shader: any) {
-        if(!shader.defines) shader.defines = {}
-        shader.defines.USE_UV = ''
-        shader.vertexUv1s = true
-        shader.vertexUv2s = true
-        shader.vertexUv3s = true
-
-        // Add varying to pass UV coordinates from vertex to fragment shader
-        shader.vertexShader = shaderReplaceString(shader.vertexShader,
-            '#include <common>',
-            `\n#ifdef USE_UV1
-    varying vec2 vUv1;
-#endif
-#ifdef USE_UV2
-    varying vec2 vUv2;
-#endif
-#ifdef USE_UV3
-    varying vec2 vUv3;
-#endif
-            `, {append: true}
-        )
-
-        shader.vertexShader = shaderReplaceString(shader.vertexShader,
-            '#include <uv_vertex>',
-            `\n#ifdef USE_UV1
-    vUv1 = (uv1);
-#endif
-#ifdef USE_UV2
-    vUv2 = (uv2);
-#endif
-#ifdef USE_UV3
-    vUv3 = (uv3);
-#endif
-`, {append: true}
-        )
-
-        // Modify fragment shader to display UV coordinates as colors
-        shader.fragmentShader = shaderReplaceString(shader.fragmentShader,
-            'uniform float opacity;',
-            `
-#define vUv0 vUv
-#ifdef USE_UV1
-    varying vec2 vUv1;
-#endif
-#ifdef USE_UV2
-    varying vec2 vUv2;
-#endif
-#ifdef USE_UV3
-    varying vec2 vUv3;
-#endif
-            `, {append: true}
-        )
-
-        // Replace the final color output with UV visualization
-        shader.fragmentShader = shaderReplaceString(shader.fragmentShader,
-            '#include <opaque_fragment>',
-            `#ifdef USE_UV
-    // Display UV coordinates as colors: U->Red, V->Green
-    gl_FragColor = vec4( fract(vUv${this.uvChannel}.x), fract(vUv${this.uvChannel}.y), 0.0, diffuseColor.a );
-#else
-    // No UVs available, show magenta to indicate missing UVs
-    gl_FragColor = vec4( 1.0, 0.0, 1.0, diffuseColor.a );
-#endif`
-        )
-    }
-
-    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
-        super.onBeforeRender(renderer, scene, camera, geometry, object, group)
-
-        if (!object.material || !(object as Mesh).isMesh) {
-            this.visible = false
-            return
-        }
-        this.visible = true
-        const material = object.material as IMaterial & Partial<PhysicalMaterial>
-
-        // Copy opacity and transparency
-        if (material.opacity !== undefined) this.opacity = material.opacity
-        if (material.transparent !== undefined) this.transparent = material.transparent
-
-        // Copy maps for alpha testing
-        if (material.alphaMap !== undefined) this.alphaMap = material.alphaMap
-        if (material.alphaTest !== undefined) this.alphaTest = material.alphaTest < 1e-4 ? 1e-4 : material.alphaTest
-        if (material.alphaHash !== undefined) this.alphaHash = material.alphaHash
-
-        // Copy side and wireframe
-        if (material.side !== undefined) this.side = material.side
-        if (material.wireframe !== undefined) this.wireframe = material.wireframe
-        if (material.wireframeLinewidth !== undefined) this.wireframeLinewidth = material.wireframeLinewidth
-
-        // @ts-ignore todo add to type
-        renderer.resetCurrentMaterial && renderer.resetCurrentMaterial()
-    }
-
-    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
-        super.onAfterRender(renderer, scene, camera, geometry, object, group)
-        this.reset()
-    }
-
-    reset() {
-        this.visible = true
-        this.color.setHex(0xffffff)
-        this.opacity = 1
-        this.transparent = false
-
-        this.alphaMap = null
-        this.alphaTest = 0
-
-        this.side = 0 // FrontSide
-        this.wireframe = false
-        this.wireframeLinewidth = 1
-    }
-}
