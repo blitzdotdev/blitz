@@ -27,7 +27,11 @@ import {
     uiNumber,
     uiToggle,
     UndoManagerPlugin,
-    Vector3
+    Vector3,
+    DirectionalLight2,
+    HemisphereLight,
+    AmbientLight,
+    Object3D
 } from "threepipe";
 import {MeshUVOverride} from "./materials/MeshUVOverride.ts";
 import {MeshMaterialIdOverride} from "./materials/MeshMaterialIdOverride.ts";
@@ -37,6 +41,9 @@ import {MeshBasicMaterialOverride} from "./materials/MeshBasicMaterialOverride.t
 // Type for override material types
 export type OverrideMaterialType = 'basic' | 'depth' | 'normal' | 'normalWorld' | 'materialId' | 'uv';
 export type SceneOverrideMaterial = MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | MeshMaterialIdOverride | MeshUVOverride
+
+// Type for override lighting types
+export type OverrideLightingType = 'day' | 'night' | 'studio' | 'none';
 
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
@@ -68,6 +75,9 @@ export class EditModePlugin extends AViewerPluginSync<{
 
     // Override materials - created once and reused
     private _overrideMaterials: Record<OverrideMaterialType, SceneOverrideMaterial>
+
+    // Override lighting container
+    overrideLightsContainer = new Object3D()
 
     constructor() {
         super();
@@ -119,6 +129,10 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.cameraOrtho.autoNearFar = false
         this.cameraOrtho.autoAspect = true
         this.cameraOrtho.autoLookAtTarget = true
+
+        // Initialize override lights container
+        this.overrideLightsContainer.name = 'EditMode Override Lights'
+        this.overrideLightsContainer.visible = false
 
         // Initialize override materials once
         this._overrideMaterials = {
@@ -178,6 +192,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         // viewer.scene.addObject(this.cameraOrtho, {addToRoot: true})
         viewer.scene.add(this.cameraPerspective)
         viewer.scene.add(this.cameraOrtho)
+        viewer.scene.add(this.overrideLightsContainer)
 
         // todo fade the ground away from the camera.
 
@@ -207,6 +222,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.grid.removeFromParent()
         this.cameraPerspective.removeFromParent()
         this.cameraOrtho.removeFromParent()
+        this.overrideLightsContainer.removeFromParent()
 
         super.onRemove(viewer);
     }
@@ -709,40 +725,144 @@ export class EditModePlugin extends AViewerPluginSync<{
         return next
     }
 
-    private _sceneOverrideMaterial: SceneOverrideMaterial | null = null
+    sceneOverrideMaterial: SceneOverrideMaterial | null = null
     private _sceneOverrideMaterialType: OverrideMaterialType | null = null
 
-    toggleSceneOverrideMaterial(materialType?: OverrideMaterialType | null){
+    private _sceneOverrideLightingType: OverrideLightingType | null = null
+    private _originalLights: any[] = []
+
+    setSceneOverrideMaterial(materialType?: OverrideMaterialType | null){
         if(!this._viewer) return
         if(materialType){
             if(this._sceneOverrideMaterialType !== materialType) {
                 this._sceneOverrideMaterialType = materialType
                 // Select the pre-created material based on type
-                this._sceneOverrideMaterial = this._overrideMaterials[materialType]
+                this.sceneOverrideMaterial = this._overrideMaterials[materialType]
 
                 // Reset UV channel to 0 when first switching to UV material
                 if(materialType === 'uv') {
-                    (this._sceneOverrideMaterial as MeshUVOverride).uvChannel = 0
+                    (this.sceneOverrideMaterial as MeshUVOverride).uvChannel = 0
                 }
             } else if(materialType === 'uv') {
                 // If already on UV material, cycle through channels 0-3
-                const uvMaterial = this._sceneOverrideMaterial as MeshUVOverride
+                const uvMaterial = this.sceneOverrideMaterial as MeshUVOverride
                 uvMaterial.uvChannel = ((uvMaterial.uvChannel + 1) % 4) as 0|1|2|3
                 // Need to recompile shader for the channel change to take effect
                 uvMaterial.needsUpdate = true
             }
 
             // Set the override material on the scene
-            this._viewer.scene.overrideMaterial = this._sceneOverrideMaterial
+            this._viewer.scene.overrideMaterial = this.sceneOverrideMaterial
         } else {
             // Clear the override material
             this._viewer.scene.overrideMaterial = null
             this._sceneOverrideMaterialType = null
-            this._sceneOverrideMaterial = null
+            this.sceneOverrideMaterial = null
         }
         this._viewer.scene.setDirty()
     }
 
+    setSceneOverrideLighting(lightingType?: OverrideLightingType | null){
+        if(!this._viewer) return
+
+        if(lightingType){
+            // Clear any existing override lights from container
+            while(this.overrideLightsContainer.children.length > 0) {
+                const child = this.overrideLightsContainer.children[0]
+                this.overrideLightsContainer.remove(child)
+                if((child as any).dispose) (child as any).dispose()
+            }
+
+            // Save original lights state if not already saved
+            if(this._sceneOverrideLightingType === null) {
+                this._originalLights = []
+                this._viewer.scene.traverse((obj: any) => {
+                    if(obj.isLight) {
+                        this._originalLights.push({
+                            light: obj,
+                            visible: obj.visible
+                        })
+                        obj.visible = false
+                    }
+                })
+            }
+
+            this._sceneOverrideLightingType = lightingType
+
+            // Create lights based on type and add to container
+            switch(lightingType) {
+                case 'day': {
+                    // Bright outdoor daylight
+                    const sunLight = new DirectionalLight2(0xffffff, 1.5)
+                    sunLight.position.set(5, 10, 7.5)
+                    sunLight.castShadow = false
+                    this.overrideLightsContainer.add(sunLight)
+
+                    const skyLight = new HemisphereLight(0x87ceeb, 0x545454, 0.6)
+                    skyLight.position.set(0, 10, 0)
+                    this.overrideLightsContainer.add(skyLight)
+                    break
+                }
+                case 'night': {
+                    // Dim bluish night lighting
+                    const moonLight = new DirectionalLight2(0x6b8cba, 0.3)
+                    moonLight.position.set(-5, 10, -7.5)
+                    moonLight.castShadow = false
+                    this.overrideLightsContainer.add(moonLight)
+
+                    const ambient = new AmbientLight(0x1a2332, 0.2)
+                    this.overrideLightsContainer.add(ambient)
+                    break
+                }
+                case 'studio': {
+                    // Three-point studio lighting
+                    const keyLight = new DirectionalLight2(0xffffff, 1.0)
+                    keyLight.position.set(5, 10, 5)
+                    keyLight.castShadow = false
+                    this.overrideLightsContainer.add(keyLight)
+
+                    const fillLight = new DirectionalLight2(0xffffff, 0.4)
+                    fillLight.position.set(-5, 5, 5)
+                    fillLight.castShadow = false
+                    this.overrideLightsContainer.add(fillLight)
+
+                    const backLight = new DirectionalLight2(0xffffff, 0.5)
+                    backLight.position.set(0, 5, -10)
+                    backLight.castShadow = false
+                    this.overrideLightsContainer.add(backLight)
+
+                    const ambient = new AmbientLight(0xffffff, 0.3)
+                    this.overrideLightsContainer.add(ambient)
+                    break
+                }
+                case 'none': {
+                    // No lights at all
+                    break
+                }
+            }
+
+            // Show the container
+            this.overrideLightsContainer.visible = true
+        } else {
+            // Clear override lights from container
+            while(this.overrideLightsContainer.children.length > 0) {
+                const child = this.overrideLightsContainer.children[0]
+                this.overrideLightsContainer.remove(child)
+                if((child as any).dispose) (child as any).dispose()
+            }
+
+            // Hide the container
+            this.overrideLightsContainer.visible = false
+
+            // Restore original lights
+            this._originalLights.forEach(({light, visible}) => {
+                light.visible = visible
+            })
+            this._originalLights = []
+
+            this._sceneOverrideLightingType = null
+        }
+        this._viewer.scene.setDirty()
+    }
 
 }
-

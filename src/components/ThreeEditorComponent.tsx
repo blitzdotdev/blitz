@@ -30,6 +30,7 @@ import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
 import {BPTreeFolderComponent} from "./BPTreeFolderComponent.tsx";
 import {iconForSelectionObject} from "../utils/icons.tsx";
 import {MemoryTab} from "./MemoryTab.tsx";
+import {AIAgentTab} from "./AIAgentTab.tsx";
 import {objToSelectItemRef, RefSelectionObjectComponent, SelectItemRef} from "./RefSelectionObjectComponent.tsx";
 import {assetUrlPrefix} from "../utils/project.ts";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
@@ -289,6 +290,15 @@ export function ThreeEditorComponent() {
                                     flexDirection: "column",
                                 },
                                 content: <MemoryTab/>
+                            },
+                            {
+                                title: 'AI Agent',
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                },
+                                content: <AIAgentTab/>
                             },
                         ],
                     }}

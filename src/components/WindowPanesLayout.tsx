@@ -60,6 +60,8 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
+            const target = event.target as HTMLElement
+            if(target&&['INPUT','TEXTAREA','SELECT'].includes(target.tagName)) return
             if (event.shiftKey && event.code === 'Space') {
                 event.preventDefault();
                 toggleExpand();

@@ -3,7 +3,7 @@ import {FC, useCallback, useEffect, useReducer, useState} from 'react'
 import {useManager} from '../utils/ViewerInstanceManager.ts'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
 import {Object3DGenerationMenu} from './Object3DGenerationMenu.tsx'
-import {EditModePlugin, OverrideMaterialType} from "../utils/EditModePlugin.ts";
+import {EditModePlugin, OverrideMaterialType, OverrideLightingType} from "../utils/EditModePlugin.ts";
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
@@ -28,6 +28,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
 
     // Track actual override material state, not just toggle
     const [overrideMaterialActive, setOverrideMaterialActive] = useState<OverrideMaterialType | null>(null);
+    const [overrideLightingActive, setOverrideLightingActive] = useState<OverrideLightingType | null>(null);
 
     const transformControls = manager.get().getPlugin(TransformControlsPlugin)?.transformControls
     // transformControls.mode, space, size
@@ -40,6 +41,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
         states['backgroundColor'][1](editModePlugin.viewer?.renderManager.renderPass.renderBackground ?? false)
         states['cameraMode'][1](editModePlugin.cameraMode === 'orthographic')
         setOverrideMaterialActive(null)
+        setOverrideLightingActive(null)
 
         // on unmount
         return () => {
@@ -165,25 +167,27 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                         <SceneOverrideMaterialMenu
                             currentMaterial={overrideMaterialActive}
                             setCurrentMaterial={setOverrideMaterialActive}
+                            currentLighting={overrideLightingActive}
+                            setCurrentLighting={setOverrideLightingActive}
                         />
                     }
                 >
-                    <Tooltip
-                        content={(overrideMaterialActive ? 'Disable' : 'Enable') + ' Scene Override Material'}
-                        usePortal
-                        position={"bottom"}
-                    >
+                    {/*<Tooltip*/}
+                    {/*    content={(overrideMaterialActive || overrideLightingActive ? 'Disable' : 'Enable') + ' Scene Override'}*/}
+                    {/*    usePortal*/}
+                    {/*    position={"bottom"}*/}
+                    {/*>*/}
                         <InteractionIconButton
-                            intent={!overrideMaterialActive ? Intent.NONE : Intent.SUCCESS}
+                            intent={!overrideMaterialActive && !overrideLightingActive ? Intent.NONE : Intent.SUCCESS}
                             // to prevent focus away from canvas on click
                             onMouseDown={(e) => e.preventDefault()}
-                            icon={'tint'} active={!!overrideMaterialActive}
+                            icon={'tint'} active={!!overrideMaterialActive || !!overrideLightingActive}
                             onClick={() => {
                                 // Just open the popover, don't toggle the state
                                 // The state is controlled by the menu selections
                                 setOmPopoverOpen(true)
                             }}/>
-                    </Tooltip>
+                    {/*</Tooltip>*/}
                 </Popover>
                 {!!onObjectCreate && <Popover
                     targetTagName={"div"}

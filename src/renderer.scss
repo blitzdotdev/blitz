@@ -308,7 +308,9 @@ body{
 }
 .window-panes-separator{
   background-color: $pt-divider-black;
+  transition: background-color 0.2s ease;
 }
+
 .editorSplitContainer{
   border-top: 1px solid $pt-divider-black;
 }
@@ -324,6 +326,17 @@ body{
 .bp5-dark .bp5-menu-header:not(:first-of-type){
   border-top: 1px solid #ffffff1e;
 }
+// Hover state
+.window-panes-separator[data-resize-handle-state="hover"]{
+  background-color: var(--pt-intent-primary);
+}
+
+// Drag state
+.window-panes-separator[data-resize-handle-state="drag"],
+.window-panes-separator[data-resize-handle-active="pointer"]{
+  background-color: var(--pt-intent-primary);
+}
+
 
 .files-panel-grid {
   height: 100%;
