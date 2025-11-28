@@ -10,8 +10,11 @@ import {InteractionIconButton} from "./InteractionIconButton.tsx";
 import {TransformControlsPlugin} from "threepipe";
 import {TransformControlsSettingsMenu} from "./TransformControlsSettingsMenu.tsx";
 import {SceneOverrideMaterialMenu} from "./SceneOverrideMaterialMenu.tsx";
+import {CameraSelectionMenu} from "./CameraSelectionMenu.tsx";
 
 type SetKeys = 'transform-controls' | 'post-processing' | 'widgets' | 'grid' | 'backgroundColor' | 'cameraMode' | 'overrideMaterial'
+
+type CameraType = 'perspective' | 'orthographic' | 'default';
 
 export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     const manager = useManager()
@@ -30,6 +33,9 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     const [overrideMaterialActive, setOverrideMaterialActive] = useState<OverrideMaterialType | null>(null);
     const [overrideLightingActive, setOverrideLightingActive] = useState<OverrideLightingType | null>(null);
 
+    // Track camera selection
+    const [currentCamera, setCurrentCamera] = useState<CameraType>('perspective');
+
     const transformControls = manager.get().getPlugin(TransformControlsPlugin)?.transformControls
     // transformControls.mode, space, size
 
@@ -42,6 +48,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
         states['cameraMode'][1](editModePlugin.cameraMode === 'orthographic')
         setOverrideMaterialActive(null)
         setOverrideLightingActive(null)
+        setCurrentCamera(editModePlugin.cameraMode)
 
         // on unmount
         return () => {
@@ -59,6 +66,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     const onObjectCreate = useOnObjectCreate();
     const [tcPopoverOpen, setTcPopoverOpen] = useState(false);
     const [omPopoverOpen, setOmPopoverOpen] = useState(false);
+    const [cameraPopoverOpen, setCameraPopoverOpen] = useState(false);
 
     return !editEnabled ? null : (
         <div className="interactionControlsButtonContainer">
@@ -144,17 +152,38 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                         onMouseDown={(e) => e.preventDefault()}
                         icon={'layers'} active={states['backgroundColor'][0]} onClick={() => states['backgroundColor'][1](!states['backgroundColor'][0])}/>
                 </Tooltip>
-                <Tooltip
-                    content={(states['cameraMode'][0] ? 'Disable' : 'Enable') + ' Orthographic'}
-                    usePortal
+                <Popover
+                    targetTagName={"div"}
+                    interactionKind={'hover'}
                     position={"bottom"}
+                    hoverOpenDelay={150}
+                    hoverCloseDelay={300}
+                    isOpen={cameraPopoverOpen}
+                    onInteraction={setCameraPopoverOpen}
+                    content={
+                        <CameraSelectionMenu
+                            currentCamera={currentCamera}
+                            setCurrentCamera={setCurrentCamera}
+                        />
+                    }
                 >
-                    <InteractionIconButton
-                        intent={!states['cameraMode'][0] ? Intent.NONE : Intent.SUCCESS}
-                        // to prevent focus away from canvas on click
-                        onMouseDown={(e) => e.preventDefault()}
-                        icon={'camera'} active={states['cameraMode'][0]} onClick={() => states['cameraMode'][1](!states['cameraMode'][0])}/>
-                </Tooltip>
+                    {/*<Tooltip*/}
+                    {/*    content={'Select Camera'}*/}
+                    {/*    usePortal*/}
+                    {/*    position={"bottom"}*/}
+                    {/*>*/}
+                        <InteractionIconButton
+                            intent={Intent.NONE}
+                            // to prevent focus away from canvas on click
+                            onMouseDown={(e) => e.preventDefault()}
+                            icon={'camera'} active={true}
+                            onClick={() => {
+                                // Just open the popover, don't toggle the state
+                                // The state is controlled by the menu selections
+                                setCameraPopoverOpen(true)
+                            }}/>
+                    {/*</Tooltip>*/}
+                </Popover>
                 <Popover
                     targetTagName={"div"}
                     interactionKind={'hover'}
