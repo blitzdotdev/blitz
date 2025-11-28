@@ -1,7 +1,13 @@
 import {FC, useEffect, useState} from "react";
 import {Intent, Menu, MenuItem, MenuDivider} from "@blueprintjs/core";
-import {EditModePlugin, OverrideMaterialType, OverrideLightingType} from "../utils/EditModePlugin.ts";
+import {
+    EditModePlugin,
+    OverrideMaterialType,
+    OverrideLightingType
+} from "../utils/EditModePlugin.ts";
 import {useManager} from "../utils/ViewerInstanceManager.ts";
+import {useLoadingState} from 'uiconfig-blueprint/lib/esm/lib';
+import {overrideLightingPresets} from "../utils/OverrideLightingPresets.ts";
 
 interface SceneOverrideMaterialMenuProps {
     // onStateChange?: (isActive: boolean) => void;
@@ -20,6 +26,8 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({
     const [_, forceUpdate] = useState(0);
     const manager = useManager()
     const editModePlugin = manager.get().getPlugin(EditModePlugin)!
+    const lightingPresets = overrideLightingPresets
+    const {loadingState, updateLoading} = useLoadingState()
 
     useEffect(() => {
         // Initial state
@@ -51,16 +59,18 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({
         forceUpdate(v => v + 1);
     };
 
-    const applyLighting = (lightingType: OverrideLightingType) => {
+    const applyLighting = async (lightingType: OverrideLightingType) => {
         // Clear material first if active
         if (currentMaterial !== null) {
             editModePlugin.setSceneOverrideMaterial(null);
             setCurrentMaterial(null);
         }
-        // Apply new lighting
-        editModePlugin.setSceneOverrideLighting(lightingType);
         setCurrentLighting(lightingType);
         forceUpdate(v => v + 1);
+        // Apply new lighting with loading state using the key
+        await updateLoading(lightingType, (async () => {
+            await editModePlugin.setSceneOverrideLighting(lightingType);
+        })());
     };
 
     const isActive = editModePlugin.sceneOverrideMaterial !== null;
@@ -71,6 +81,10 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({
     const uvChannel = currentMaterial === 'uv' && editModePlugin.sceneOverrideMaterial
         ? (editModePlugin.sceneOverrideMaterial as any).uvChannel
         : 0;
+
+    // Group presets by category
+    const lightsPresets = Object.entries(lightingPresets).filter(([key]) => key.startsWith('lights-'))
+    const envPresets = Object.entries(lightingPresets).filter(([key]) => key.startsWith('env-'))
 
     return (
         <Menu>
@@ -84,47 +98,38 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({
                 }}
                 shouldDismissPopover={false}
             />
-            <MenuDivider title="Override Lighting" className={"context-menu-divider"} />
-            <MenuItem
-                text="Day"
-                icon="flash"
-                intent={isLightingActive && currentLighting === 'day' ? Intent.PRIMARY : Intent.NONE}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    applyLighting('day');
-                }}
-                shouldDismissPopover={false}
-            />
-            <MenuItem
-                text="Night"
-                icon="moon"
-                intent={isLightingActive && currentLighting === 'night' ? Intent.PRIMARY : Intent.NONE}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    applyLighting('night');
-                }}
-                shouldDismissPopover={false}
-            />
-            <MenuItem
-                text="Studio"
-                icon="camera"
-                intent={isLightingActive && currentLighting === 'studio' ? Intent.PRIMARY : Intent.NONE}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    applyLighting('studio');
-                }}
-                shouldDismissPopover={false}
-            />
-            <MenuItem
-                text="None"
-                icon="disable"
-                intent={isLightingActive && currentLighting === 'none' ? Intent.PRIMARY : Intent.NONE}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    applyLighting('none');
-                }}
-                shouldDismissPopover={false}
-            />
+            <MenuDivider title="Lights" className={"context-menu-divider"} />
+            {lightsPresets.map(([key, preset]) => (
+                <MenuItem
+                    key={key}
+                    text={preset.label}
+                    icon={loadingState[key] ? 'refresh' : preset.icon as any}
+                    intent={isLightingActive && currentLighting === key ? Intent.PRIMARY : Intent.NONE}
+                    onClick={(e) => {
+                        if(loadingState[key]) return;
+                        e.stopPropagation();
+                        applyLighting(key as OverrideLightingType);
+                    }}
+                    shouldDismissPopover={false}
+                    // disabled={loadingState[key]}
+                />
+            ))}
+            <MenuDivider title="Environment" className={"context-menu-divider"} />
+            {envPresets.map(([key, preset]) => (
+                <MenuItem
+                    key={key}
+                    text={preset.label}
+                    icon={loadingState[key] ? 'refresh' : preset.icon as any}
+                    intent={isLightingActive && currentLighting === key ? Intent.PRIMARY : Intent.NONE}
+                    onClick={(e) => {
+                        if(loadingState[key]) return;
+                        e.stopPropagation();
+                        applyLighting(key as OverrideLightingType);
+                    }}
+                    shouldDismissPopover={false}
+                    // disabled={loadingState[key]}
+                />
+            ))}
             <MenuDivider title="Override Material" className={"context-menu-divider"} />
             <MenuItem
                 text="Unlit"

@@ -15,6 +15,7 @@ import {
     MeshDepthMaterialOverride,
     MeshNormalMaterialOverride,
     NoBlending,
+    Object3D,
     onChange,
     OrbitControls3,
     OrthographicCamera2,
@@ -27,23 +28,22 @@ import {
     uiNumber,
     uiToggle,
     UndoManagerPlugin,
-    Vector3,
-    DirectionalLight2,
-    HemisphereLight,
-    AmbientLight,
-    Object3D
+    Vector3
 } from "threepipe";
 import {MeshUVOverride} from "./materials/MeshUVOverride.ts";
 import {MeshMaterialIdOverride} from "./materials/MeshMaterialIdOverride.ts";
 import {MeshNormalMaterialWorldOverride} from "./materials/MeshNormalMaterialWorldOverride.ts";
 import {MeshBasicMaterialOverride} from "./materials/MeshBasicMaterialOverride.ts";
+import {overrideLightingPresets} from "./OverrideLightingPresets.ts";
 
 // Type for override material types
 export type OverrideMaterialType = 'basic' | 'depth' | 'normal' | 'normalWorld' | 'materialId' | 'uv';
 export type SceneOverrideMaterial = MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | MeshMaterialIdOverride | MeshUVOverride
 
-// Type for override lighting types
-export type OverrideLightingType = 'day' | 'night' | 'studio' | 'none';
+// Type for override lighting types - includes both light-based and environment-based presets
+export type OverrideLightingType = OverrideLightingPreset
+
+export type OverrideLightingPreset = keyof typeof overrideLightingPresets
 
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
@@ -609,6 +609,17 @@ export class EditModePlugin extends AViewerPluginSync<{
     onEnable(){
         if(!this._viewer) return
         this._settingsSet = true
+
+        // Restore any previously saved override states
+        if (this._savedOverrideMaterialType) {
+            this.setSceneOverrideMaterial(this._savedOverrideMaterialType)
+            this._savedOverrideMaterialType = null
+        }
+        if (this._savedOverrideLightingType) {
+            this.setSceneOverrideLighting(this._savedOverrideLightingType)
+            this._savedOverrideLightingType = null
+        }
+
         // this._settings.sceneBackgroundColor = this._viewer.scene.backgroundColor?.clone() || null
         // this._viewer.scene.setBackgroundColor(this.backgroundColor)
         // this._settings.backgroundTonemap = this._viewer.scene.backgroundTonemap
@@ -660,6 +671,15 @@ export class EditModePlugin extends AViewerPluginSync<{
         if(!this._viewer) return
         if(!this._settingsSet) return
         this._settingsSet = false
+
+        // Save current override states before clearing
+        this._savedOverrideMaterialType = this._sceneOverrideMaterialType
+        this._savedOverrideLightingType = this._sceneOverrideLightingType
+
+        // Clear any override material and lighting when disabling
+        this.setSceneOverrideMaterial(null)
+        this.setSceneOverrideLighting(null)
+
         // this._viewer.scene.setBackgroundColor(this._settings.sceneBackgroundColor)
         // delete this._settings.sceneBackgroundColor
         // this._viewer.scene.backgroundTonemap = this._settings.backgroundTonemap
@@ -730,6 +750,11 @@ export class EditModePlugin extends AViewerPluginSync<{
 
     private _sceneOverrideLightingType: OverrideLightingType | null = null
     private _originalLights: any[] = []
+    private _originalEnvironment: any = null
+
+    // Saved override states when plugin is disabled
+    private _savedOverrideMaterialType: OverrideMaterialType | null = null
+    private _savedOverrideLightingType: OverrideLightingType | null = null
 
     setSceneOverrideMaterial(materialType?: OverrideMaterialType | null){
         if(!this._viewer) return
@@ -762,7 +787,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         this._viewer.scene.setDirty()
     }
 
-    setSceneOverrideLighting(lightingType?: OverrideLightingType | null){
+    async setSceneOverrideLighting(lightingType?: OverrideLightingType | null){
         if(!this._viewer) return
 
         if(lightingType){
@@ -773,8 +798,9 @@ export class EditModePlugin extends AViewerPluginSync<{
                 if((child as any).dispose) (child as any).dispose()
             }
 
-            // Save original lights state if not already saved
+            // Save original state if not already saved
             if(this._sceneOverrideLightingType === null) {
+                // Save original lights
                 this._originalLights = []
                 this._viewer.scene.traverse((obj: any) => {
                     if(obj.isLight) {
@@ -785,63 +811,35 @@ export class EditModePlugin extends AViewerPluginSync<{
                         obj.visible = false
                     }
                 })
+
+                // Save original environment
+                this._originalEnvironment = this._viewer.scene.overrideRenderEnvironment
             }
 
             this._sceneOverrideLightingType = lightingType
 
-            // Create lights based on type and add to container
-            switch(lightingType) {
-                case 'day': {
-                    // Bright outdoor daylight
-                    const sunLight = new DirectionalLight2(0xffffff, 1.5)
-                    sunLight.position.set(5, 10, 7.5)
-                    sunLight.castShadow = false
-                    this.overrideLightsContainer.add(sunLight)
+            // Use the preset to create lights/environment
+            const preset = overrideLightingPresets[lightingType]
+            if (preset) {
+                const result = await preset.create(this)
 
-                    const skyLight = new HemisphereLight(0x87ceeb, 0x545454, 0.6)
-                    skyLight.position.set(0, 10, 0)
-                    this.overrideLightsContainer.add(skyLight)
-                    break
+                // Set environment if provided
+                if ('environment' in result) {
+                    this._viewer.scene.overrideRenderEnvironment = result.environment
+                } else {
+                    // Clear any override environment if no environment in result
+                    this._viewer.scene.overrideRenderEnvironment = null
                 }
-                case 'night': {
-                    // Dim bluish night lighting
-                    const moonLight = new DirectionalLight2(0x6b8cba, 0.3)
-                    moonLight.position.set(-5, 10, -7.5)
-                    moonLight.castShadow = false
-                    this.overrideLightsContainer.add(moonLight)
 
-                    const ambient = new AmbientLight(0x1a2332, 0.2)
-                    this.overrideLightsContainer.add(ambient)
-                    break
-                }
-                case 'studio': {
-                    // Three-point studio lighting
-                    const keyLight = new DirectionalLight2(0xffffff, 1.0)
-                    keyLight.position.set(5, 10, 5)
-                    keyLight.castShadow = false
-                    this.overrideLightsContainer.add(keyLight)
-
-                    const fillLight = new DirectionalLight2(0xffffff, 0.4)
-                    fillLight.position.set(-5, 5, 5)
-                    fillLight.castShadow = false
-                    this.overrideLightsContainer.add(fillLight)
-
-                    const backLight = new DirectionalLight2(0xffffff, 0.5)
-                    backLight.position.set(0, 5, -10)
-                    backLight.castShadow = false
-                    this.overrideLightsContainer.add(backLight)
-
-                    const ambient = new AmbientLight(0xffffff, 0.3)
-                    this.overrideLightsContainer.add(ambient)
-                    break
-                }
-                case 'none': {
-                    // No lights at all
-                    break
+                // Add lights to container if provided
+                if ('lights' in result && result.lights) {
+                    result.lights.forEach(light => {
+                        this.overrideLightsContainer.add(light)
+                    })
                 }
             }
 
-            // Show the container
+            // Show the lights container
             this.overrideLightsContainer.visible = true
         } else {
             // Clear override lights from container
@@ -859,6 +857,12 @@ export class EditModePlugin extends AViewerPluginSync<{
                 light.visible = visible
             })
             this._originalLights = []
+
+            // Restore original environment
+            if(this._originalEnvironment !== null) {
+                this._viewer.scene.overrideRenderEnvironment = this._originalEnvironment
+                this._originalEnvironment = null
+            }
 
             this._sceneOverrideLightingType = null
         }
