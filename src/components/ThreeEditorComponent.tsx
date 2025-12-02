@@ -190,10 +190,11 @@ export function ThreeEditorComponent() {
             <div
                  // style={{backgroundColor: Colors.DARK_GRAY2, height: "100vh"}}>
                  style={{
-                     height: "100vh",
-                     display: "flex",
-                    flexDirection: "column",
-                    gap: 0,
+                     height: "100%",
+                     position: "relative",
+                     // display: "flex", // flex is creating issues with panes and page layout.
+                    // flexDirection: "column",
+                    // gap: 0,
                  }}
             >
                 <Navbar key={project?.path ?? 'navbar'}>

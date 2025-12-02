@@ -100,7 +100,7 @@ export function AIAgentTab({
 
         history.messages.push(userMessage)
         await historyManager.saveHistory(history)
-        setCurrentHistory({...history})
+        setCurrentHistory({...history, messages: [...history.messages]})
         setInputValue('')
         setIsLoading(true)
 
@@ -117,7 +117,7 @@ export function AIAgentTab({
 
             history.messages.push(assistantMessage)
             await historyManager.saveHistory(history)
-            setCurrentHistory({...history})
+            setCurrentHistory({...history, messages: [...history.messages]})
         } catch (error) {
             console.error('Error sending message:', error)
         } finally {
@@ -256,7 +256,7 @@ export function AIAgentTab({
                     <Tag minimal intent="none">AI Agent is typing...</Tag>
                 </div>
             )}
-            <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} style={{ height: '1px', visibility:'hidden' }}></div>
         </div>
 
         <div style={{

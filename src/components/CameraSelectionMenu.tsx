@@ -25,6 +25,7 @@ export const CameraSelectionMenu: FC<CameraSelectionMenuProps> = ({
     }, [editModePlugin]);
 
     const selectCamera = (cameraType: CameraType) => {
+        // todo use toggleCameraMode, add scene cameras also to cameraMode, by merging cameraType and cameraMode thing
         if (cameraType === 'default') {
             // Switch to default camera (scene camera)
             const defaultCamera = viewer.scene.defaultCamera;

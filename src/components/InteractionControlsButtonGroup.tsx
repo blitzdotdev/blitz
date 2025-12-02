@@ -173,10 +173,11 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                     {/*    position={"bottom"}*/}
                     {/*>*/}
                         <InteractionIconButton
+                            // todo active and intent based on selected camera mode
                             intent={Intent.NONE}
                             // to prevent focus away from canvas on click
                             onMouseDown={(e) => e.preventDefault()}
-                            icon={'camera'} active={true}
+                            icon={'camera'} active={false}
                             onClick={() => {
                                 // Just open the popover, don't toggle the state
                                 // The state is controlled by the menu selections
