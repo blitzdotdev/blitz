@@ -8,7 +8,7 @@ import {
     PhysicalMaterial,
     Scene,
     WebGLRenderer
-} from "../../../../threepipe/lib";
+} from "threepipe";
 
 export class MeshBasicMaterialOverride extends MeshBasicMaterial {
 

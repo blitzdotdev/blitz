@@ -655,6 +655,8 @@ export function ObjectInspectorUI({
     const objectIsExternal = object ? isExternalObject(object) : false
     // console.log({objectIsExternal}, object)
 
+    // console.log(isAssetInstance, objectIsExternal)
+
     if(object?.uiConfig) {
         object.uiConfig.expanded = true
     }

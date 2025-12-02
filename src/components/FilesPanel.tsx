@@ -9,23 +9,31 @@ import {
     IconName,
     MaybeElement,
     MenuItem,
-    Slider, Tab, Tabs
+    Slider,
+    Tab,
+    Tabs
 } from "@blueprintjs/core";
 import React, {FC, useEffect, useRef, useState} from "react";
 import {useProjectActions} from "../utils/projectActions.tsx";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
-import {MenuItem2, MenuItemAction} from "./ContextMenuUtils.tsx";
+import {MenuItem2, MenuItemAction} from "../utils/ContextMenuUtils.tsx";
 import {FileManifestEntry, getFileByPath, manifestEntryToFile, useAssets} from "../utils/AssetsProvider.ts";
 import {useSaveBeforeClose} from "./UseSaveFile.tsx";
 import {useDialogPrompt, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
-import {IObject3D, PhysicalMaterial, PickingPlugin, ThreeSerialization, TypeSystem, UnlitMaterial} from "threepipe";
+import {
+    IObject3D,
+    PhysicalMaterial,
+    PickingPlugin,
+    ThreeSerialization,
+    TypedClass,
+    TypeSystem,
+    UnlitMaterial
+} from "threepipe";
 import {ErrorRes, showSuccessErrorToast} from "../utils/Toaster.tsx";
 import {fileToIcon} from "../utils/icons.tsx";
 import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.ts";
 import {PopupMenuButton} from "./PopupMenuButton.tsx";
-import {CannonMaterial2, CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
-import {assetUrlPrefix} from "../utils/project.ts";
-import {TypedClass} from "threepipe";
+import {externalFiles} from "../data/ExternalFiles.tsx";
 
 export function FilesPanelBreadCrumbs({}: {}){
     const {project} = useProject()
@@ -736,33 +744,6 @@ export function FilesPanel({}: {
 }
 
 export type TExternalFile = Omit<FileManifestEntry, 'handle'|'isFSEntry'|'children'>&{children: TExternalFile[]}
-const externalFiles: TExternalFile[] = [{
-    name: '3D Models',
-    path: 'models-3d/',
-    type: 'directory',
-    children: [{
-        name: 'Iridescent Dish With Olives',
-        path: 'https://threejs.org/examples/models/gltf/IridescentDishWithOlives.glb',
-        type: 'file',
-        children: [],
-    }],
-}, {
-    name: 'Materials',
-    path: 'materials/',
-    type: 'directory',
-    children: [],
-}, {
-    name: 'Environment Maps',
-    path: 'env-maps/',
-    type: 'directory',
-    children: [],
-}, {
-    name: 'Textures',
-    path: 'textures/',
-    type: 'directory',
-    children: [],
-},
-]
 
 export function ExternalFilesGrid({group}: {
     group: TExternalFile
@@ -851,13 +832,11 @@ export function ExternalFilesPanel({}: {
     </div>
 }
 
-export const FileButton: FC<ButtonProps & {fileEntry: {
-    path: string,
-}}> = ({fileEntry, ...props}) => {
-    // const {loadingState, updateLoading} = useLoadingState()
-
-    const {fileManifest} = useAssets()
-    const iconFile = getFileByPath(thumbPath(fileEntry.path), fileManifest)
+function useIconUrl(fileEntry: FileManifestEntry | {
+    icon?: string | IconName | MaybeElement;
+    path: string
+}, fileManifest: FileManifestEntry[]) {
+    const iconFile = fileEntry.icon ? null : getFileByPath(thumbPath(fileEntry.path), fileManifest)
     // const iconFileBlob = useMemo(()=>{
     //     if(!iconFile || (iconFile.handle as FileSystemFileHandle).kind !== 'file') return null
     //     return (iconFile.handle as FileSystemFileHandle).getFile().catch(e=>{
@@ -866,33 +845,45 @@ export const FileButton: FC<ButtonProps & {fileEntry: {
     //     })
     // }, [iconFile])
     const [iconUrl, setIconUrl] = useState<string>()
-    useEffect(()=>{
-        if(!iconFile || (iconFile.handle as FileSystemFileHandle).kind !== 'file') {
+    useEffect(() => {
+        if (!iconFile || (iconFile.handle as FileSystemFileHandle).kind !== 'file') {
             setIconUrl(undefined)
             return
         }
         let cancelled = false
         let url: string | undefined
-        ;(iconFile.handle as FileSystemFileHandle).getFile().then(f=>{
-            if(cancelled) return
+        ;(iconFile.handle as FileSystemFileHandle).getFile().then(f => {
+            if (cancelled) return
             url = URL.createObjectURL(f)
             setIconUrl(url)
-        }).catch(e=>{
+        }).catch(e => {
             console.error('Error loading icon file:', e)
         })
-        return ()=>{
+        return () => {
             cancelled = true
-            if(url) URL.revokeObjectURL(url)
+            if (url) URL.revokeObjectURL(url)
         } // revoke on change or unmount
     }, [iconFile])
+    return fileEntry.icon ? fileEntry.icon : iconUrl;
+}
 
-    const icon = fileToIcon(fileEntry);
+export const FileButton: FC<ButtonProps & {fileEntry: FileManifestEntry | {
+    icon?: string | IconName | MaybeElement,
+    path: string,
+}}> = ({fileEntry, ...props}) => {
+    // const {loadingState, updateLoading} = useLoadingState()
+
+    const {fileManifest} = useAssets()
+    const iconUrl = useIconUrl(fileEntry, fileManifest);
+    const icon = iconUrl ?
+        typeof iconUrl === 'string' ? <img src={iconUrl} className={"bp5-icon"}/> : iconUrl
+        : <Icon style={{padding: "5px"}} icon={fileToIcon(fileEntry)}/>
 
     return <Button
         className={"file-item-button"}
         key={fileEntry.path}
         // icon={<img src={typeof f.preview=== 'string' ? project.preview : URL.createObjectURL(f.preview as File)}/>}
-        icon={iconUrl ? <img src={iconUrl} className={"bp5-icon"}/> : <Icon style={{padding: "5px"}} icon={icon}/>}
+        icon={icon}
         text={<span className={"file-item-button-text"}>
             {fileEntry.path.replace(/\/$/, '').split('/').pop()}
         </span>}

@@ -2,6 +2,7 @@ import {useSafeContext} from "./useSafeContext.ts";
 import {createContext, createElement, useEffect, useMemo, useState} from "react";
 import {PickingPlugin, SelectionObject, UiObjectConfig} from "threepipe";
 import {useManager, useProject} from "./ViewerInstanceManager.ts";
+import {IconName} from "@blueprintjs/core";
 
 export type SelectedInspectorItem = (Exclude<SelectionObject, null> | {
     name: string
@@ -18,6 +19,7 @@ export type FileManifestEntry = {
     type: 'file' | 'directory'
     children?: FileManifestEntry[]
     isFSEntry: true
+    icon?: string | IconName // string url
 }
 
 export async function manifestEntryToFile(f: FileManifestEntry): Promise<File | null>{

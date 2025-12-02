@@ -16,7 +16,7 @@ import {
     editorModesInspectorConfig
 } from './EditorModes.tsx'
 import {Alignment, Button, Card, IconName, Navbar, Panel, PanelStack2, Popover} from '@blueprintjs/core'
-import {BPHierarchyComponent, ObjectHierarchyComponent} from './BPHierarchyComponent.tsx'
+import {BPHierarchyComponent} from './BPHierarchyComponent.tsx'
 import {SaveFileButton, SaveProjectButton, useFileNeedsSave} from './SaveFileButton.tsx'
 import {InteractionControlsButtonGroup} from './InteractionControlsButtonGroup.tsx'
 import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
@@ -35,6 +35,7 @@ import {objToSelectItemRef, RefSelectionObjectComponent, SelectItemRef} from "./
 import {assetUrlPrefix} from "../utils/project.ts";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
 import {EditPreviewButtonGroup} from "./EditPreviewButtonGroup.tsx";
+import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){

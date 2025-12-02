@@ -1,4 +1,4 @@
-import {AmbientLight, DirectionalLight2, HemisphereLight} from "../../../threepipe/lib";
+import {AmbientLight, DirectionalLight2, HemisphereLight} from "threepipe";
 import {EditModePlugin} from "./EditModePlugin.ts";
 
 

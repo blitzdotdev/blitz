@@ -15,7 +15,7 @@ import {
 import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
 import React, {useMemo} from "react";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
-import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
+import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.tsx";
 import {canMakeAsset, useMakeAsset, useManager} from "../utils/ViewerInstanceManager.ts";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";

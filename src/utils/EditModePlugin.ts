@@ -35,6 +35,7 @@ import {MeshMaterialIdOverride} from "./materials/MeshMaterialIdOverride.ts";
 import {MeshNormalMaterialWorldOverride} from "./materials/MeshNormalMaterialWorldOverride.ts";
 import {MeshBasicMaterialOverride} from "./materials/MeshBasicMaterialOverride.ts";
 import {overrideLightingPresets} from "./OverrideLightingPresets.ts";
+import {isExternalObject} from "./ViewerInstanceManager.ts";
 
 // Type for override material types
 export type OverrideMaterialType = 'basic' | 'depth' | 'normal' | 'normalWorld' | 'materialId' | 'uv';
@@ -441,6 +442,10 @@ export class EditModePlugin extends AViewerPluginSync<{
                 if (!picking) return
                 const selected = picking.getSelectedObject()
                 if (selected && (selected as IObject3D).isObject3D) {
+                    if(!isExternalObject(selected as IObject3D)){
+                        console.warn('Not allowed editing external object') // todo toast
+                        return
+                    }
                     event.preventDefault()
                     // await iObjectCommons.deleteObject((selected as IObject3D), event)
                     const undoMan = this._viewer?.getPlugin(UndoManagerPlugin)
@@ -478,6 +483,10 @@ export class EditModePlugin extends AViewerPluginSync<{
                 if (!picking) return
                 const selected = picking.getSelectedObject()
                 if (selected && (selected as IObject3D).isObject3D) {
+                    if(!isExternalObject(selected as IObject3D)){
+                        console.warn('Not allowed editing external object') // todo toast
+                        return
+                    }
                     event.preventDefault()
                     const undoMan = this._viewer?.getPlugin(UndoManagerPlugin)
                     if(!undoMan) {

@@ -1,4 +1,4 @@
-import {MeshNormalMaterialOverride, shaderReplaceString} from "../../../../threepipe/lib";
+import {MeshNormalMaterialOverride, shaderReplaceString} from "threepipe";
 
 export class MeshNormalMaterialWorldOverride extends MeshNormalMaterialOverride {
     constructor(parameters?: any) {

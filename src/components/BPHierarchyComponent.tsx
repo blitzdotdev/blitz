@@ -1,28 +1,22 @@
 import {
-    Box3B,
-    Event2, getOrCall,
-    Group,
+    Event2,
     IObject3D,
     ISceneEventMap,
-    JSUndoManagerCommand1,
     ObjectPickerEventMap,
-    PickingPlugin, RootScene,
-    ThreeViewer,
-    UiObjectConfig,
-    UndoManagerPlugin
+    PickingPlugin,
+    RootScene,
+    ThreeViewer
 } from "threepipe";
-import {AppToaster, bpUiConfigIcons, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
+import {bpUiConfigIcons, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {VisibilityIcon} from "./VisibilityIcon";
-import React, {FC, useMemo} from "react";
-import {canMakeAsset, isExternalObject, logAsset, useMakeAsset, useManager} from "../utils/ViewerInstanceManager.ts";
-import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
-import {Button, Icon, Intent, MenuDivider} from "@blueprintjs/core";
+import React from "react";
+import {canMakeAsset, isExternalObject} from "../utils/ViewerInstanceManager.ts";
+import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.tsx";
+import {Intent} from "@blueprintjs/core";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
-import {Object3DGenerationMenu} from "./Object3DGenerationMenu.tsx";
-import {useContextMenu} from "./ContextMenuProvider.tsx";
 import {CanvasFileDropHandler, isDraggableDroppableNode} from "../utils/CanvasFileDropHandler.ts";
-import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
+import {uiConfigToMenuItem} from "../utils/uiConfigToMenuItem.ts";
 
 interface BPHierarchyComponentPropsExtras extends HandleContextMenuCallback<IObject3D>{
 }
@@ -148,44 +142,31 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         if(!node) return
         const obj = node.nodeData!
 
-        if(canMakeAsset(obj)){
-            items.push({
-                props: {
-                    text: 'Make Asset',
-                },
-                key: 'makeAsset',
-                action: 'makeAsset',
-                data: {obj}
-            })
-        }
+        // todo disable only editable options for external objects(using some uiconfig tags.), right now its all.
+        const isExternal = isExternalObject(obj)
 
-        // todo use uiconfig methods to find buttons
-        obj.uiConfig?.children?.filter(c=>typeof c === 'object' && c.tags?.includes('context-menu')).map(btn=>{
-            if (!btn || typeof btn !== 'object') return;
-            const label = this.context.methods.getLabel(btn)
-            const getProps = ()=>{ // todo use UiConfigMethods.getBaseProps
-                const hidden = getOrCall(btn.hidden) ?? false
-                const disabled = getOrCall(btn.disabled) ?? false
-                const readOnly = getOrCall(btn.readOnly) ?? false
-                return { hidden, disabled, readOnly }
+        if(!isExternal) {
+
+            if (canMakeAsset(obj)) {
+                items.push({
+                    props: {
+                        text: 'Make Asset',
+                    },
+                    key: 'makeAsset',
+                    action: 'makeAsset',
+                    data: {obj}
+                })
             }
-            const props = getProps()
-            items.push({
-                props: {
-                    text: this.context.methods.getLabel(btn),
-                    disabled: props.disabled || props.readOnly,
-                    hidden: props.hidden,
-                    // icon: this.context.methods.getIcon(btn),
-                },
-                key: btn.key  || label,
-                action: (data, obj, e) => {
-                    const {hidden, disabled, readOnly} = getProps()
-                    if(hidden || disabled || readOnly) return
-                    this.context.methods.clickButton(btn, {args: [e]})
-                },
-                data: {}
-            })
-        })
+
+            // todo use uiconfig methods to find buttons
+            obj.uiConfig?.children
+                ?.filter(c => typeof c === 'object' && c.tags?.includes('context-menu'))
+                .map(btn => uiConfigToMenuItem(btn, this.context))
+                .forEach(menuItem => {
+                    if (menuItem) items.push(menuItem)
+                })
+
+        }
 
         this.props.handleContextMenu?.(_e, items, obj)
 
@@ -320,68 +301,4 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         super.componentWillUnmount();
     }
 
-}
-
-function ExtraMenuItems(props: {
-    event: React.MouseEvent<HTMLElement>,
-    object: IObject3D
-}) {
-    const obj = props.object
-    const onObjectCreate = useOnObjectCreate();
-    // todo after onObjectCreate is done, expand the current object if a child is added
-
-    if(!obj?.isObject3D) return null
-    const isComponent = obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
-    const isExternal = isExternalObject(obj)
-    const isGroup = !obj.isMesh && !obj.material && !obj.isLine && !obj.isPoints && !obj.isCamera // groups, lights, cameras, helpers, etc
-    const canCreate = !isExternal && !isComponent && isGroup
-    return canCreate && onObjectCreate ? <>
-        <MenuDivider title="Create" className={"context-menu-divider"} />
-        <Object3DGenerationMenu onGenerate={(child)=>onObjectCreate(child, obj)}/>
-    </> : null
-}
-
-export function ObjectHierarchyComponent({className}: {className: string}){
-    const manager = useManager()
-    const viewer = manager.get()
-
-    const {makeAsset} = useMakeAsset()
-    const actions = {makeAsset}
-
-    // const {handleContextMenu} = useObjContextMenu(actions, (ev)=>{
-    //     return onObjectCreate ? <>
-    //         <MenuDivider title="Create" className={"context-menu-divider"} />
-    //         <Object3DGenerationMenu onGenerate={(obj)=>onObjectCreate(obj, ev.object)}/>
-    //     </> : null
-    // })
-
-    const contextMenu = useContextMenu()
-
-    const config: UiObjectConfig = useMemo(()=>({
-        type: 'hierarchy',
-        uuid: Math.random().toString(36).substring(2, 15),
-        value: viewer.scene.modelRoot,
-    }), [viewer])
-
-    // const children = [...manager?.get().scene.modelRoot.children]
-
-    return <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-    }}>
-        <BPHierarchyComponent
-         config={config}
-         key={viewer.scene.modelRoot.uuid} // this is required because viewer can be destroyed and recreated
-         handleContextMenu={(e, items, obj)=>{
-             contextMenu.handleContextMenu({
-                 event: e,
-                 actionItems: items,
-                 actions: actions,
-                 obj: obj,
-                 Items: ExtraMenuItems,
-             })
-         }}
-         className={className}/>
-    </div>
 }

@@ -9,7 +9,7 @@ import {
     Scene,
     shaderReplaceString,
     WebGLRenderer
-} from "../../../../threepipe/lib";
+} from "threepipe";
 
 export class MeshUVOverride extends MeshBasicMaterial {
     uvChannel: 0 | 1 | 2 | 3 = 0

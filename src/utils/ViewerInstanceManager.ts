@@ -357,6 +357,10 @@ export class ViewerInstanceManager extends EventDispatcher<{
         ])
         viewer.getPlugin(PickingPlugin)!.widgetEnabled = false
         viewer.getPlugin(EditorViewWidgetPlugin)!.enabled = false
+        viewer.getPlugin(TransformControlsPlugin)!.selectionFilterTest = (obj)=>{
+            // todo return the first parent that is not external
+            return isExternalObject(obj) ? null : obj
+        }
 
         viewer.addPluginSync(EditModePlugin)
         viewer.assetManager.importer.cacheImportedAssets = false

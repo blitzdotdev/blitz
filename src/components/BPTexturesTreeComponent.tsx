@@ -13,7 +13,7 @@ import { UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
 import React, {useMemo} from "react";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
-import {HandleContextMenuCallback, MenuItem2} from "./ContextMenuUtils.tsx";
+import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.tsx";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
 import {useManager} from "../utils/ViewerInstanceManager.ts";
