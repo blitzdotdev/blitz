@@ -14,11 +14,14 @@ import {
 import {ItemPredicate, ItemRenderer, Select} from "@blueprintjs/select";
 import {Button, ButtonGroup, Icon, IconName, MaybeElement, MenuItem} from "@blueprintjs/core";
 import {CSSProperties, ReactNode, useMemo, useRef} from "react";
-import {SelectFileRef, SelObjectType, useManager, useProject} from "../utils/ViewerInstanceManager.ts";
+import {SelectFileRef, SelObjectType} from "../utils/ViewerInstanceManager.ts";
 import {FileComponentProps, FormGroupComponent, InputGroup2} from "uiconfig-blueprint/lib/esm/lib";
 import {FileManifestEntry, SelectedInspectorItem, traverseFiles, useAssets} from "../utils/AssetsProvider.ts";
 import {assetUrlPrefix, settingsKey} from "../utils/project.ts";
 import {iconForSelectionObject, iconForSelectionObjectType} from "../utils/icons.tsx";
+import {useProject} from "../utils/UseProject.ts";
+import {useManager} from "../utils/UseManager.ts";
+import { typesExts } from "../data/fileTypes.ts";
 
 type FilterItem = SelectedInspectorItem|SelectFileRef
 
@@ -119,15 +122,6 @@ export function RefSelectionObjectComponentInput(props: RefSelectionObjectCompon
         selectItems.push(...props.extraItems)
     }
 
-    const typesExts: Partial<Record<SelObjectType|'image'|'script', string[]>> = {
-        'plugin': ['.plugin.js', '.plugin.ts'],
-        'script': ['.script.js', '.script.ts'],
-        'material': ['.mat', '.mat.json'],
-        'image': ['.png', '.jpeg', '.jpg', '.gif', '.bmp', '.tiff', '.webp', '.hdr', '.exr'],
-        // 'texture': ['.png', '.jpeg', '.jpg', '.gif', '.bmp', '.tiff', '.webp', '.tex.json'],
-        // 'geometry': ['.glb', '.gltf', '.obj', '.fbx', '.ply', '.stl', '.geom.json'],
-        // 'object': ['.glb', '.gltf', '.obj', '.fbx', '.ply', '.stl', '.geom.json'],
-    }
     function pathToSelectFileRef(e: FileManifestEntry, type: SelectFileRef['type']){
         return {
             name: (e.path.split('/').pop() || e.path),

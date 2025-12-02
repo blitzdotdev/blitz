@@ -12,13 +12,15 @@ import {
     bpUiConfigIcons,
     UiConfigRendererContextType
 } from 'uiconfig-blueprint/lib/esm/lib'
-import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
+import {filterObjectsInSceneRoot} from "../utils/three/filterObjectsInSceneRoot.ts";
 import React, {useMemo} from "react";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
-import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.tsx";
-import {canMakeAsset, useMakeAsset, useManager} from "../utils/ViewerInstanceManager.ts";
+import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.ts";
+import {canMakeAsset} from "../utils/ViewerInstanceManager.ts";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
+import {useManager} from "../utils/UseManager.ts";
+import {useMakeAsset} from "../utils/UseMakeAsset.ts";
 
 interface BPMaterialsTreeComponentPropsExtras extends HandleContextMenuCallback<IMaterial>{
 

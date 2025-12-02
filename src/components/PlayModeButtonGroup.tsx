@@ -1,8 +1,8 @@
 import {FC, useCallback, useState} from "react";
-import {useManager} from "../utils/ViewerInstanceManager.ts";
 import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
 import {useListenProperty} from "./UseListenProperty.tsx";
+import {useManager} from "../utils/UseManager.ts";
 
 export const PlayModeButtonGroup: FC<{}> = ({}) => {
     const manager = useManager()

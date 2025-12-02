@@ -1,57 +1,12 @@
-import {
-    isPackageProject,
-    useManager,
-    useProject,
-    ViewerInstanceManager
-} from './ViewerInstanceManager.ts'
+import {isPackageProject, ViewerInstanceManager} from './ViewerInstanceManager.ts'
 import {useCallback} from 'react'
 import {uploadFile} from 'threepipe'
 import {ErrorRes, showSuccessErrorToast} from "./Toaster.tsx";
 import {getMeta, LoadedProject, SavedSceneFile} from "./project.ts";
-
-export async function resolveNameConflict(newName: string, manager: ViewerInstanceManager) {
-    let conflict = true
-    while (conflict) {
-        const parts = newName.split('-')
-        const last = parts[parts.length - 1]
-        if (!isNaN(Number(last))) {
-            parts[parts.length - 1] = (Number(last) + 1).toString()
-        } else {
-            parts.push('1')
-        }
-        newName = parts.join('-')
-        const meta2 = await getMeta(newName)
-        conflict = !!meta2
-    }
-    return newName
-}
-
-export function refreshQueryState(data: {project: string|null, file: string|null, model?: string}, reload = false) {
-    const params = new URLSearchParams(location.search)
-    const current = {
-        project: params.get('project') || params.get('p') || null,
-        file: params.get('file') || params.get('f') || null,
-        model: params.get('model') || params.get('m') || null,
-    }
-    if (reload || JSON.stringify(current) !== JSON.stringify(data)) {
-        if (params.has('project')) params.delete('project')
-        if (params.has('p')) params.delete('p')
-        if (params.has('file')) params.delete('file')
-        if (params.has('f')) params.delete('f')
-        if( params.has('model')) params.delete('model')
-        if( params.has('m')) params.delete('m')
-
-        if (data.project) params.set('p', data.project)
-        if (data.file) params.set('f', data.file)
-        if(data.model) params.set('m', data.model)
-        window.history.pushState({}, '', '?' + params.toString())
-        if(reload || (!data.project && current.project)) {
-            // force reload to reset state and import maps
-            window.location.reload()
-        }
-
-    }
-}
+import {useProject} from "./UseProject.ts";
+import {useManager} from "./UseManager.ts";
+import {resolveNameConflict} from "./resolveNameConflict.ts";
+import {refreshProjectQueryState} from "./refreshProjectQueryState.ts";
 
 export function useProjectActions() {
     const manager = useManager()
@@ -185,7 +140,7 @@ export function useProjectActions() {
                 isSameEntry = isSameEntry || await fileHandle2?.isSameEntry(fileHandle) || false
                 if(!isSameEntry){
                     meta = undefined
-                    newName = await resolveNameConflict(newName, manager)
+                    newName = await resolveNameConflict(newName)
                 }
             }
             if(meta){
@@ -195,7 +150,7 @@ export function useProjectActions() {
                     return
                 }
                 // return await loadProject(meta1)
-                refreshQueryState({project: meta.path, file: null}, true)
+                refreshProjectQueryState({project: meta.path, file: null}, true)
             }
             else {
                 return await loadFile({
@@ -218,7 +173,7 @@ export function useProjectActions() {
             const meta = await getMeta(newName)
             if(!!meta){
                 // conflict
-                newName = await resolveNameConflict(newName, manager)
+                newName = await resolveNameConflict(newName)
             }
             return await loadFile({
                 path: newName,

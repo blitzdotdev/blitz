@@ -1,8 +1,9 @@
 import {useSafeContext} from "./useSafeContext.ts";
 import {createContext, createElement, useEffect, useMemo, useState} from "react";
 import {PickingPlugin, SelectionObject, UiObjectConfig} from "threepipe";
-import {useManager, useProject} from "./ViewerInstanceManager.ts";
 import {IconName} from "@blueprintjs/core";
+import {useProject} from "./UseProject.ts";
+import {useManager} from "./UseManager.ts";
 
 export type SelectedInspectorItem = (Exclude<SelectionObject, null> | {
     name: string

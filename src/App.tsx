@@ -1,10 +1,11 @@
 import {ThreeEditorComponent} from './components/ThreeEditorComponent.tsx'
-import {ManagerProvider, ProjectProvider} from './utils/ViewerInstanceManager.ts'
 import {AppToasterOverlay, DialogComponent, DialogProvider, VisualStyleProvider} from 'uiconfig-blueprint/lib/esm/lib'
 import {WelcomeScreenDialog} from './components/WelcomeScreenDialog.tsx'
 import {BlueprintProvider} from "@blueprintjs/core";
 import {AssetsProvider} from "./utils/AssetsProvider.ts";
 import {ContextMenuProvider} from "./components/ContextMenuProvider.tsx";
+import {ProjectProvider} from "./utils/UseProject.ts";
+import {ManagerProvider} from "./utils/UseManager.ts";
 // import Split from "react-split";
 // import {InspectorStackComponent} from 'uiconfig-blueprint/lib/esm/lib'
 

@@ -3,10 +3,12 @@ import React, {useEffect} from 'react'
 import {IconName} from '@blueprintjs/icons'
 import {MaybeElement} from '@blueprintjs/core/src/common/props'
 import {WelcomeDialogProjectsTab} from './WelcomeDialogProjectsTab'
-import {queryHandlePerm, useManager, useProject} from '../utils/ViewerInstanceManager.ts'
+import {queryHandlePerm} from '../utils/ViewerInstanceManager.ts'
 import {DropzonePlugin, getUrlQueryParam, ThreeViewer} from 'threepipe';
 import {useProjectActions} from "../utils/projectActions.tsx";
 import {getMeta} from "../utils/project.ts";
+import {useProject} from "../utils/UseProject.ts";
+import {useManager} from "../utils/UseManager.ts";
 
 const tabs = {
     'projects': {

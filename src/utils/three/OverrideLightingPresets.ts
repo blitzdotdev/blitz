@@ -1,6 +1,4 @@
-import {AmbientLight, DirectionalLight2, HemisphereLight} from "threepipe";
-import {EditModePlugin} from "./EditModePlugin.ts";
-
+import {AmbientLight, DirectionalLight2, HemisphereLight, ThreeViewer} from "threepipe";
 
 // todo use this to remove repeated code
 // private _envPaths: Record<string, string> = {
@@ -15,7 +13,7 @@ export const overrideLightingPresets = {
     'lights-day': {
         label: 'Day',
         icon: 'flash',
-        create: async (plugin: EditModePlugin) => {
+        create: async (viewer: ThreeViewer) => {
             // Bright outdoor daylight
             const sunLight = new DirectionalLight2(0xffffff, 1.5)
             sunLight.position.set(5, 10, 7.5)
@@ -32,7 +30,7 @@ export const overrideLightingPresets = {
     'lights-night': {
         label: 'Night',
         icon: 'moon',
-        create: async (plugin: EditModePlugin) => {
+        create: async (viewer: ThreeViewer) => {
             // Dim bluish night lighting
             const moonLight = new DirectionalLight2(0x6b8cba, 0.3)
             moonLight.position.set(-5, 10, -7.5)
@@ -48,7 +46,7 @@ export const overrideLightingPresets = {
     'lights-studio': {
         label: 'Studio',
         icon: 'camera',
-        create: async (plugin: EditModePlugin) => {
+        create: async (viewer: ThreeViewer) => {
             // Three-point studio lighting
             const keyLight = new DirectionalLight2(0xffffff, 1.0)
             keyLight.position.set(5, 10, 5)
@@ -72,7 +70,7 @@ export const overrideLightingPresets = {
     'lights-none': {
         label: 'None',
         icon: 'disable',
-        create: async (plugin: EditModePlugin) => {
+        create: async (viewer: ThreeViewer) => {
             // No lights at all
             return {
                 lights: [],
@@ -82,10 +80,10 @@ export const overrideLightingPresets = {
     'env-day': {
         label: 'Day',
         icon: 'globe',
-        create: async (plugin: EditModePlugin) => {
+        create: async (viewer: ThreeViewer) => {
             const envPath = 'https://threejs.org/examples/textures/equirectangular/quarry_01_1k.hdr'
             try {
-                const env: any = await plugin.viewer!.load(envPath)
+                const env: any = await viewer.load(envPath)
                 return {
                     environment: env,
                 }
@@ -98,10 +96,10 @@ export const overrideLightingPresets = {
     'env-night': {
         label: 'Night',
         icon: 'moon',
-        create: async (plugin: EditModePlugin) => {
+        create: async (viewer: ThreeViewer) => {
             const envPath = 'https://threejs.org/examples/textures/equirectangular/moonless_golf_1k.hdr'
             try {
-                const env: any = await plugin.viewer!.load(envPath)
+                const env: any = await viewer.load(envPath)
                 return {
                     environment: env,
                 }
@@ -114,10 +112,10 @@ export const overrideLightingPresets = {
     'env-studio': {
         label: 'Studio',
         icon: 'camera',
-        create: async (plugin: EditModePlugin) => {
+        create: async (viewer: ThreeViewer) => {
             const envPath = 'https://threejs.org/examples/textures/equirectangular/royal_esplanade_1k.hdr'
             try {
-                const env: any = await plugin.viewer!.load(envPath)
+                const env: any = await viewer.load(envPath)
                 return {
                     environment: env,
                 }
@@ -130,10 +128,10 @@ export const overrideLightingPresets = {
     'env-indoors': {
         label: 'Indoors',
         icon: 'home',
-        create: async (plugin: EditModePlugin) => {
+        create: async (viewer: ThreeViewer) => {
             const envPath = 'https://samples.threepipe.org/minimal/empty_warehouse_01_1k.hdr'
             try {
-                const env: any = await plugin.viewer!.load(envPath)
+                const env: any = await viewer.load(envPath)
                 return {
                     environment: env,
                 }
@@ -146,10 +144,10 @@ export const overrideLightingPresets = {
     'env-outdoors': {
         label: 'Outdoors',
         icon: 'outdated',
-        create: async (plugin: EditModePlugin) => {
+        create: async (viewer: ThreeViewer) => {
             const envPath = 'https://samples.threepipe.org/minimal/venice_sunset_1k.hdr'
             try {
-                const env: any = await plugin.viewer!.load(envPath)
+                const env: any = await viewer.load(envPath)
                 return {
                     environment: env,
                 }

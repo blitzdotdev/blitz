@@ -1,7 +1,8 @@
 import {FC, useEffect, useState} from "react";
 import {Intent, Menu, MenuItem, MenuDivider} from "@blueprintjs/core";
 import {EditModePlugin} from "../utils/EditModePlugin.ts";
-import {useManager} from "../utils/ViewerInstanceManager.ts";
+
+import {useManager} from "../utils/UseManager.ts";
 
 type CameraType = 'perspective' | 'orthographic' | 'default';
 

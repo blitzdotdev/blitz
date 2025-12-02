@@ -7,6 +7,8 @@ export interface FileTrackItem{
     path: string
     onUpdate: Set<() => void>
 }
+
+// in memory cache for file blobs, maintains object urls and last used times to allow cleanup and refresh
 export class FileTracker extends EventDispatcher<{
     fileAdd: { path: string, item: FileTrackItem },
     fileRemove: { path: string, item: FileTrackItem }

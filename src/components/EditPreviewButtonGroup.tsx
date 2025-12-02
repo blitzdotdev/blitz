@@ -1,7 +1,7 @@
 import {FC, useCallback, useEffect, useState} from "react";
-import {useManager} from "../utils/ViewerInstanceManager.ts";
 import {ButtonGroup, Icon, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
+import {useManager} from "../utils/UseManager.ts";
 
 export const EditPreviewButtonGroup: FC<{
     isExpanded?: boolean;

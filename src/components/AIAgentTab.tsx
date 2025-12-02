@@ -1,7 +1,8 @@
 import React, {useEffect, useState, useRef, useMemo} from "react";
 import {Button, Card, TextArea, Tag, Menu, MenuItem, InputGroup, Dialog, Classes} from "@blueprintjs/core";
-import {InsSectionHeader, InsSectionItem} from "./InspectorPanelComponent.tsx";
-import {ChatHistoryManager, ChatHistory, ChatMessage} from "../utils/ChatHistoryManager.ts";
+import {ChatHistoryManager, ChatHistory, ChatMessage} from "../utils/ai/ChatHistoryManager.ts";
+import {InsSectionItem} from "./InsSectionItem.tsx";
+import {InsSectionHeader} from "./InsSectionHeader.tsx";
 
 export function AIAgentTab({
     className,

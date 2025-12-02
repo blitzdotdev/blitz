@@ -18,12 +18,14 @@ export async function getDirHandle(base: FileSystemDirectoryHandle, parts: strin
 }
 
 // path should not start with / here and should be clean
-export async function getFileHandle(base: FileSystemDirectoryHandle, path: string, create = true) {
+export async function getFileHandle(base: FileSystemDirectoryHandle, path: string, create = true, warn404 = true) {
     const parts = decodeURIComponent(path).split('/')
     const dirHandle = await getDirHandle(base, parts.slice(0, -1), create).catch(e=>{
         // (e) => {
         // todo handle if there is dir with same name
-        // if(e.name === "NotFoundError") return null
+        if(e.name === "NotFoundError") {
+            if(!warn404) return undefined
+        }
         // if(e.name === "TypeMismatchError") return true
         // return undefined
         // }
@@ -34,7 +36,9 @@ export async function getFileHandle(base: FileSystemDirectoryHandle, path: strin
     const fileHandle = await dirHandle?.getFileHandle(parts[parts.length - 1], {create}).catch(e=>{
         // (e) => {
         // todo handle if there is dir with same name
-        // if(e.name === "NotFoundError") return null
+        if(e.name === "NotFoundError") {
+            if(!warn404) return undefined
+        }
         // if(e.name === "TypeMismatchError") return true
         // return undefined
         // }

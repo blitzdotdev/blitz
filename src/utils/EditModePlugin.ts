@@ -1,10 +1,7 @@
 import {
     AViewerPluginEventMap,
     AViewerPluginSync,
-    BasicDepthPacking,
     Box3B,
-    CameraViewPlugin,
-    Color,
     EditorViewWidgetPlugin,
     getFittingDistance,
     GridHelper,
@@ -12,10 +9,6 @@ import {
     iObjectCommons,
     IViewerEvent,
     IViewerEventTypes,
-    MeshDepthMaterialOverride,
-    MeshNormalMaterialOverride,
-    NoBlending,
-    Object3D,
     onChange,
     OrbitControls3,
     OrthographicCamera2,
@@ -30,21 +23,9 @@ import {
     UndoManagerPlugin,
     Vector3
 } from "threepipe";
-import {MeshUVOverride} from "./materials/MeshUVOverride.ts";
-import {MeshMaterialIdOverride} from "./materials/MeshMaterialIdOverride.ts";
-import {MeshNormalMaterialWorldOverride} from "./materials/MeshNormalMaterialWorldOverride.ts";
-import {MeshBasicMaterialOverride} from "./materials/MeshBasicMaterialOverride.ts";
-import {overrideLightingPresets} from "./OverrideLightingPresets.ts";
 import {isExternalObject} from "./ViewerInstanceManager.ts";
-
-// Type for override material types
-export type OverrideMaterialType = 'basic' | 'depth' | 'normal' | 'normalWorld' | 'materialId' | 'uv';
-export type SceneOverrideMaterial = MeshBasicMaterialOverride | MeshDepthMaterialOverride | MeshNormalMaterialOverride | MeshNormalMaterialWorldOverride | MeshMaterialIdOverride | MeshUVOverride
-
-// Type for override lighting types - includes both light-based and environment-based presets
-export type OverrideLightingType = OverrideLightingPreset
-
-export type OverrideLightingPreset = keyof typeof overrideLightingPresets
+import {editorCameraController} from "./three/EditorCameraController.ts";
+import {LightMaterialOverrider} from "./three/LightMaterialOverrider.ts";
 
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
@@ -74,11 +55,7 @@ export class EditModePlugin extends AViewerPluginSync<{
     // grid = new Mesh(new PlaneGeometry(), new GridMaterial())
     grid = new GridHelper(100, 100, 0x62793a, 0x4e4f4f)
 
-    // Override materials - created once and reused
-    private _overrideMaterials: Record<OverrideMaterialType, SceneOverrideMaterial>
-
-    // Override lighting container
-    overrideLightsContainer = new Object3D()
+    lightOverrider = new LightMaterialOverrider()
 
     constructor() {
         super();
@@ -131,29 +108,6 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.cameraOrtho.autoAspect = true
         this.cameraOrtho.autoLookAtTarget = true
 
-        // Initialize override lights container
-        this.overrideLightsContainer.name = 'EditMode Override Lights'
-        this.overrideLightsContainer.visible = false
-
-        // Initialize override materials once
-        this._overrideMaterials = {
-            basic: new MeshBasicMaterialOverride({
-                color: new Color(0xaaaaaa),
-            }),
-            depth: new MeshDepthMaterialOverride({
-                depthPacking: BasicDepthPacking,
-                blending: NoBlending,
-                transparent: true,
-            }),
-            normal: new MeshNormalMaterialOverride({
-                blending: NoBlending,
-            }),
-            normalWorld: new MeshNormalMaterialWorldOverride({
-                blending: NoBlending,
-            }),
-            materialId: new MeshMaterialIdOverride({}),
-            uv: new MeshUVOverride({}),
-        }
     }
 
     dispose() {
@@ -166,8 +120,7 @@ export class EditModePlugin extends AViewerPluginSync<{
             this.grid.material.dispose()
         }
 
-        // Dispose all override materials
-        Object.values(this._overrideMaterials).forEach(material => material.dispose())
+        this.lightOverrider.dispose()
 
         super.dispose();
     }
@@ -193,7 +146,8 @@ export class EditModePlugin extends AViewerPluginSync<{
         // viewer.scene.addObject(this.cameraOrtho, {addToRoot: true})
         viewer.scene.add(this.cameraPerspective)
         viewer.scene.add(this.cameraOrtho)
-        viewer.scene.add(this.overrideLightsContainer)
+
+        this.lightOverrider.viewer = viewer
 
         // todo fade the ground away from the camera.
 
@@ -223,7 +177,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.grid.removeFromParent()
         this.cameraPerspective.removeFromParent()
         this.cameraOrtho.removeFromParent()
-        this.overrideLightsContainer.removeFromParent()
+        this.lightOverrider.viewer = null
 
         super.onRemove(viewer);
     }
@@ -246,179 +200,10 @@ export class EditModePlugin extends AViewerPluginSync<{
     _viewerListeners: PartialRecord<IViewerEventTypes, (e: IViewerEvent) => void> = {
         preFrame: (e)=> {
             if(this.isDisabled() || !this._viewer) return
-            this.movementUpdate()
-            if(this._sceneOverrideMaterialType === 'depth'){
-                const bounds = new Box3B().expandByObject(this._viewer.scene.modelRoot, false, true)
-                if (!bounds.isEmpty()) {
-                    const camera = this.cameraPerspective
-                    // const cameraPos = camera.position
-                    //
-                    // // Get camera forward direction (view direction)
-                    // const viewDir = new Vector3()
-                    // camera.getWorldDirection(viewDir)
-                    // viewDir.normalize()
-                    //
-                    // // Get all 8 corners of the bounding box
-                    // const corners = [
-                    //     new Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
-                    //     new Vector3(bounds.min.x, bounds.min.y, bounds.max.z),
-                    //     new Vector3(bounds.min.x, bounds.max.y, bounds.min.z),
-                    //     new Vector3(bounds.min.x, bounds.max.y, bounds.max.z),
-                    //     new Vector3(bounds.max.x, bounds.min.y, bounds.min.z),
-                    //     new Vector3(bounds.max.x, bounds.min.y, bounds.max.z),
-                    //     new Vector3(bounds.max.x, bounds.max.y, bounds.min.z),
-                    //     new Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
-                    // ]
-                    //
-                    // // Project each corner onto the camera's view axis to get depth
-                    // let minDepth = Infinity
-                    // let maxDepth = -Infinity
-                    // for (const corner of corners) {
-                    //     const toCorner = corner.clone().sub(cameraPos)
-                    //     // Project onto view direction to get depth along camera axis
-                    //     const depth = toCorner.dot(viewDir)
-                    //     minDepth = Math.min(minDepth, depth)
-                    //     maxDepth = Math.max(maxDepth, depth)
-                    // }
-                    //
-                    // // Handle edge cases when camera is inside or at edge of bounds
-                    // // If minDepth is negative, camera is inside/behind some geometry
-                    // const nearPlane = minDepth > 0. ? minDepth * 0.5 : 0.01
-                    // // If maxDepth is negative, all geometry is behind camera - use fallback
-                    // const farPlane = maxDepth > 0.1 ? maxDepth * 1.5 : Math.max(nearPlane * 2, 100)
+            editorCameraController(this)
 
-                    camera.near = 1
-                    camera.far = bounds.getSize(new Vector3()).length() * 1.5
-                    // console.log('Adjusted near/far:', nearPlane, farPlane)
-                    camera.updateProjectionMatrix()
-                }
-            }else{
-                // reset to defaults
-                const camera = this.cameraPerspective
-                camera.near = 0.1
-                camera.far = 1000
-                camera.updateProjectionMatrix()
-            }
-        }
-    }
+            this.lightOverrider.preFrame(this)
 
-    movementUpdate(){
-        if (!this.enableWASDMovement) return
-        // if()
-        const camView = this._viewer!.getPlugin(CameraViewPlugin)!
-        if(camView.animating) return
-        const picking = this._viewer!.getPlugin(PickingPlugin)!
-        const selected = picking.getSelectedObject()
-        // if(this.keyMap['f'] && (selected as IObject3D)?.isObject3D){
-        //     picking.focusObject((selected as IObject3D))
-        // }
-        if (selected && !this.keyMap['mouse0']) return
-
-        let needsUpdate = false
-        let movementSpeed = this.wasdMovementSpeed
-        // if (ev.shiftKey) movementSpeed *= 4
-        // if (ev.ctrlKey) movementSpeed *= 0.25
-        if(this.keyMap['shift']) movementSpeed *= 4
-        if(this.keyMap['control']) movementSpeed *= 0.25
-
-        // Get camera's local coordinate system
-        const camera = this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho
-        const controls = camera.controls as OrbitControls3
-        if(!controls || !controls.enablePan || !controls.enabled) return
-
-        const forward = new Vector3()
-        const right = new Vector3()
-        const up = new Vector3(0, 1, 0)
-
-        // Calculate forward direction (camera looking direction)
-        camera.getWorldDirection(forward)
-        forward.normalize()
-
-        // Calculate right direction (cross product of up and forward)
-        right.crossVectors(up, forward)
-        right.normalize()
-
-        // Recalculate up to ensure orthogonal coordinate system
-        up.crossVectors(forward, right)
-        up.normalize()
-
-        const deltaPosition = new Vector3()
-        const deltaTarget = new Vector3()
-        const deltaTarget2 = new Vector3()
-
-        if (this.keyMap['w']) {// Move forward
-            deltaPosition.add(forward.clone().multiplyScalar(1))
-            deltaTarget2.add(forward.clone().multiplyScalar(1))
-            needsUpdate = true
-        }
-        if (this.keyMap['s']) {// Move backward
-            deltaPosition.add(forward.clone().multiplyScalar(-1))
-            // deltaTarget2.add(forward.clone().multiplyScalar(-1))
-            needsUpdate = true
-        }
-        if (this.keyMap['d']) {// Move left
-            deltaPosition.add(right.clone().multiplyScalar(-1))
-            deltaTarget.add(right.clone().multiplyScalar(-1))
-            needsUpdate = true
-        }
-        if (this.keyMap['a']) {// Move right
-            deltaPosition.add(right.clone().multiplyScalar(1))
-            deltaTarget.add(right.clone().multiplyScalar(1))
-            needsUpdate = true
-        }
-        if (this.keyMap['q']) {// Move down
-            deltaPosition.add(up.clone().multiplyScalar(-1))
-            deltaTarget.add(up.clone().multiplyScalar(-1))
-            needsUpdate = true
-        }
-        if (this.keyMap['e']) {// Move up
-            deltaPosition.add(up.clone().multiplyScalar(1))
-            deltaTarget.add(up.clone().multiplyScalar(1))
-            needsUpdate = true
-        }
-
-        if (needsUpdate) {
-            deltaPosition.normalize().multiplyScalar(movementSpeed)
-            deltaTarget2.add(deltaTarget).normalize().multiplyScalar(movementSpeed)
-            deltaTarget.normalize().multiplyScalar(movementSpeed)
-            // Move both camera and target to maintain relative positioning
-            camera.position.add(deltaPosition)
-            camera.target.add(deltaTarget)
-            // (camera as ICamera).target?.add(deltaPosition)
-            // if (updateTarget) camera.target.add(deltaPosition)
-
-            const dir = camera.position.clone().sub(camera.target)
-            const neg = dir.dot(forward) > 0
-            // minDistance
-            if (neg || dir.length() - deltaTarget.length() < controls.minDistance) {
-                if (controls.autoPushTarget) {
-                    // camera.target.copy(camera.position).add(dir.clone().normalize().multiplyScalar(controls.minDistance))
-                    camera.target.sub(deltaTarget).add(deltaTarget2)
-                } else {
-                    // prevent getting too close when not updating target
-                    camera.position.copy(camera.target.clone().add(dir.clone().normalize().multiplyScalar(controls.minDistance)))
-                }
-            }
-            else {
-                // maxDistance
-                if (dir.length() + deltaPosition.length() > controls.maxDistance) {
-                    if (controls.autoPullTarget) {
-                        // camera.target.add(deltaPosition)
-                    } else {
-                        // prevent getting too far when not updating target
-                        // camera.position.copy(camera.target.clone().add(dir.normalize().multiplyScalar(-this.maxDistance)))
-                    }
-                }
-            }
-            // camera.lookAt(this.target)
-            ;(camera).setDirty && (camera).setDirty({change: 'transform'})
-
-            // Prevent browser scrolling and other default behaviors
-            // ev.preventDefault()
-
-            // Update the controls
-            // this.update()
-            // camera.refreshTarget && camera.refreshTarget()
         }
     }
 
@@ -619,15 +404,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         if(!this._viewer) return
         this._settingsSet = true
 
-        // Restore any previously saved override states
-        if (this._savedOverrideMaterialType) {
-            this.setSceneOverrideMaterial(this._savedOverrideMaterialType)
-            this._savedOverrideMaterialType = null
-        }
-        if (this._savedOverrideLightingType) {
-            this.setSceneOverrideLighting(this._savedOverrideLightingType)
-            this._savedOverrideLightingType = null
-        }
+        this.lightOverrider.onEnable()
 
         // this._settings.sceneBackgroundColor = this._viewer.scene.backgroundColor?.clone() || null
         // this._viewer.scene.setBackgroundColor(this.backgroundColor)
@@ -681,13 +458,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         if(!this._settingsSet) return
         this._settingsSet = false
 
-        // Save current override states before clearing
-        this._savedOverrideMaterialType = this._sceneOverrideMaterialType
-        this._savedOverrideLightingType = this._sceneOverrideLightingType
-
-        // Clear any override material and lighting when disabling
-        this.setSceneOverrideMaterial(null)
-        this.setSceneOverrideLighting(null)
+        this.lightOverrider.onDisable()
 
         // this._viewer.scene.setBackgroundColor(this._settings.sceneBackgroundColor)
         // delete this._settings.sceneBackgroundColor
@@ -754,128 +525,5 @@ export class EditModePlugin extends AViewerPluginSync<{
         return next
     }
 
-    sceneOverrideMaterial: SceneOverrideMaterial | null = null
-    private _sceneOverrideMaterialType: OverrideMaterialType | null = null
-
-    private _sceneOverrideLightingType: OverrideLightingType | null = null
-    private _originalLights: any[] = []
-    private _originalEnvironment: any = null
-
-    // Saved override states when plugin is disabled
-    private _savedOverrideMaterialType: OverrideMaterialType | null = null
-    private _savedOverrideLightingType: OverrideLightingType | null = null
-
-    setSceneOverrideMaterial(materialType?: OverrideMaterialType | null){
-        if(!this._viewer) return
-        if(materialType){
-            if(this._sceneOverrideMaterialType !== materialType) {
-                this._sceneOverrideMaterialType = materialType
-                // Select the pre-created material based on type
-                this.sceneOverrideMaterial = this._overrideMaterials[materialType]
-
-                // Reset UV channel to 0 when first switching to UV material
-                if(materialType === 'uv') {
-                    (this.sceneOverrideMaterial as MeshUVOverride).uvChannel = 0
-                }
-            } else if(materialType === 'uv') {
-                // If already on UV material, cycle through channels 0-3
-                const uvMaterial = this.sceneOverrideMaterial as MeshUVOverride
-                uvMaterial.uvChannel = ((uvMaterial.uvChannel + 1) % 4) as 0|1|2|3
-                // Need to recompile shader for the channel change to take effect
-                uvMaterial.needsUpdate = true
-            }
-
-            // Set the override material on the scene
-            this._viewer.scene.overrideMaterial = this.sceneOverrideMaterial
-        } else {
-            // Clear the override material
-            this._viewer.scene.overrideMaterial = null
-            this._sceneOverrideMaterialType = null
-            this.sceneOverrideMaterial = null
-        }
-        this._viewer.scene.setDirty()
-    }
-
-    async setSceneOverrideLighting(lightingType?: OverrideLightingType | null){
-        if(!this._viewer) return
-
-        if(lightingType){
-            // Clear any existing override lights from container
-            while(this.overrideLightsContainer.children.length > 0) {
-                const child = this.overrideLightsContainer.children[0]
-                this.overrideLightsContainer.remove(child)
-                if((child as any).dispose) (child as any).dispose()
-            }
-
-            // Save original state if not already saved
-            if(this._sceneOverrideLightingType === null) {
-                // Save original lights
-                this._originalLights = []
-                this._viewer.scene.traverse((obj: any) => {
-                    if(obj.isLight) {
-                        this._originalLights.push({
-                            light: obj,
-                            visible: obj.visible
-                        })
-                        obj.visible = false
-                    }
-                })
-
-                // Save original environment
-                this._originalEnvironment = this._viewer.scene.overrideRenderEnvironment
-            }
-
-            this._sceneOverrideLightingType = lightingType
-
-            // Use the preset to create lights/environment
-            const preset = overrideLightingPresets[lightingType]
-            if (preset) {
-                const result = await preset.create(this)
-
-                // Set environment if provided
-                if ('environment' in result) {
-                    this._viewer.scene.overrideRenderEnvironment = result.environment
-                } else {
-                    // Clear any override environment if no environment in result
-                    this._viewer.scene.overrideRenderEnvironment = null
-                }
-
-                // Add lights to container if provided
-                if ('lights' in result && result.lights) {
-                    result.lights.forEach(light => {
-                        this.overrideLightsContainer.add(light)
-                    })
-                }
-            }
-
-            // Show the lights container
-            this.overrideLightsContainer.visible = true
-        } else {
-            // Clear override lights from container
-            while(this.overrideLightsContainer.children.length > 0) {
-                const child = this.overrideLightsContainer.children[0]
-                this.overrideLightsContainer.remove(child)
-                if((child as any).dispose) (child as any).dispose()
-            }
-
-            // Hide the container
-            this.overrideLightsContainer.visible = false
-
-            // Restore original lights
-            this._originalLights.forEach(({light, visible}) => {
-                light.visible = visible
-            })
-            this._originalLights = []
-
-            // Restore original environment
-            if(this._originalEnvironment !== null) {
-                this._viewer.scene.overrideRenderEnvironment = this._originalEnvironment
-                this._originalEnvironment = null
-            }
-
-            this._sceneOverrideLightingType = null
-        }
-        this._viewer.scene.setDirty()
-    }
-
 }
+

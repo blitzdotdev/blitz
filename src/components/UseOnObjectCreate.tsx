@@ -1,7 +1,7 @@
-import {useManager} from "../utils/ViewerInstanceManager.ts";
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {IObject3D} from "threepipe";
 import {AppToaster} from "uiconfig-blueprint/lib/esm/lib";
+import {useManager} from "../utils/UseManager.ts";
 
 export function useOnObjectCreate() {
     const manager = useManager()

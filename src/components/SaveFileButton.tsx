@@ -1,9 +1,10 @@
 import {useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
 import {Button, Classes, Menu, MenuItem, Popover} from '@blueprintjs/core'
 import {useCloseWithoutSave, useSaveFile} from "./UseSaveFile.tsx";
-import {useManager, useProject} from "../utils/ViewerInstanceManager.ts";
 import {useProjectActions} from "../utils/projectActions.tsx";
 import {useEffect, useState} from "react";
+import {useProject} from "../utils/UseProject.ts";
+import {useManager} from "../utils/UseManager.ts";
 
 export function SaveFileButton() {
     const {loadingState, updateLoading} = useLoadingState()

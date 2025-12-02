@@ -1,4 +1,4 @@
-import {isLoadableFile, thumbPath, useManager, useProject} from "../utils/ViewerInstanceManager.ts";
+import {isLoadableFile, thumbPath} from "../utils/ViewerInstanceManager.ts";
 import type {BreadcrumbProps} from "@blueprintjs/core/src/components/breadcrumbs/breadcrumb.tsx";
 import {
     Breadcrumbs,
@@ -16,7 +16,7 @@ import {
 import React, {FC, useEffect, useRef, useState} from "react";
 import {useProjectActions} from "../utils/projectActions.tsx";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
-import {MenuItem2, MenuItemAction} from "../utils/ContextMenuUtils.tsx";
+import {MenuItem2, MenuItemAction} from "../utils/ContextMenuUtils.ts";
 import {FileManifestEntry, getFileByPath, manifestEntryToFile, useAssets} from "../utils/AssetsProvider.ts";
 import {useSaveBeforeClose} from "./UseSaveFile.tsx";
 import {useDialogPrompt, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
@@ -34,6 +34,8 @@ import {fileToIcon} from "../utils/icons.tsx";
 import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.ts";
 import {PopupMenuButton} from "./PopupMenuButton.tsx";
 import {externalFiles} from "../data/ExternalFiles.tsx";
+import {useProject} from "../utils/UseProject.ts";
+import {useManager} from "../utils/UseManager.ts";
 
 export function FilesPanelBreadCrumbs({}: {}){
     const {project} = useProject()
@@ -525,7 +527,8 @@ export class MyComponent extends Object3DComponent {
             const f = files[0]
             if(f.path === 'package.json') return
             if(f.path === 'kite.json') return
-            if(f.path === (project?.assets ?? 'assets.json')) return
+            if(f.path === 'assets.json') return
+            // if(!f.path.startsWith(project?.assets ?? 'assets/')) return
             if(!isLoadableFile(f.path)) return
             let cancelled = false
             const picking  = manager.get().getPlugin(PickingPlugin)
@@ -567,7 +570,7 @@ export class MyComponent extends Object3DComponent {
         onClick={e=>{
             e.preventDefault()
             e.stopPropagation()
-            console.log('click out')
+            // console.log('click out')
             setSelectedFiles([])
         }}
         onKeyDown={(e)=>{

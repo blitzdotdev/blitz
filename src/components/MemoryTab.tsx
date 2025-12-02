@@ -1,10 +1,13 @@
-import {useManager} from "../utils/ViewerInstanceManager.ts";
 import {useEffect, useState} from "react";
 import {Card} from "@blueprintjs/core";
-import {ButtonWithTooltip, InsSectionHeader, InsSectionItem, InsSectionTitle} from "./InspectorPanelComponent.tsx";
+import {InsSectionTitle} from "./InspectorPanelComponent.tsx";
 import {AssetRefItem, AssetRegistryItem} from "../utils/AssetTracker.ts";
 import {assetUrlPrefix} from "../utils/project.ts";
 import {iconForSelectionObject} from "../utils/icons.tsx";
+import {useManager} from "../utils/UseManager.ts";
+import {ButtonWithTooltip} from "./ButtonWithTooltip.tsx";
+import {InsSectionItem} from "./InsSectionItem.tsx";
+import {InsSectionHeader} from "./InsSectionHeader.tsx";
 
 function bytesToString(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;

@@ -1,4 +1,4 @@
-import {BrowserFileStoreIdb} from './BrowserFileStore.ts'
+import {BrowserFileStoreIdb} from '../BrowserFileStore.ts'
 
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'system';

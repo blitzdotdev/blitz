@@ -11,12 +11,12 @@ import {bpUiConfigIcons, UiConfigRendererContextType} from 'uiconfig-blueprint/l
 import {VisibilityIcon} from "./VisibilityIcon";
 import React from "react";
 import {canMakeAsset, isExternalObject} from "../utils/ViewerInstanceManager.ts";
-import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.tsx";
+import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.ts";
 import {Intent} from "@blueprintjs/core";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
 import {CanvasFileDropHandler, isDraggableDroppableNode} from "../utils/CanvasFileDropHandler.ts";
-import {uiConfigToMenuItem} from "../utils/uiConfigToMenuItem.ts";
+import {uiConfigToMenuItem} from "../utils/ContextMenuUtils.ts";
 
 interface BPHierarchyComponentPropsExtras extends HandleContextMenuCallback<IObject3D>{
 }

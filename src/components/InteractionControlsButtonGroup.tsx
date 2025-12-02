@@ -1,9 +1,8 @@
 import {ButtonGroup, Intent, Menu, Popover, Tooltip} from "@blueprintjs/core";
 import {FC, useCallback, useEffect, useReducer, useState} from 'react'
-import {useManager} from '../utils/ViewerInstanceManager.ts'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
 import {Object3DGenerationMenu} from './Object3DGenerationMenu.tsx'
-import {EditModePlugin, OverrideMaterialType, OverrideLightingType} from "../utils/EditModePlugin.ts";
+import {EditModePlugin} from "../utils/EditModePlugin.ts";
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
@@ -11,6 +10,8 @@ import {TransformControlsPlugin} from "threepipe";
 import {TransformControlsSettingsMenu} from "./TransformControlsSettingsMenu.tsx";
 import {SceneOverrideMaterialMenu} from "./SceneOverrideMaterialMenu.tsx";
 import {CameraSelectionMenu} from "./CameraSelectionMenu.tsx";
+import {useManager} from "../utils/UseManager.ts";
+import {OverrideLightingType, OverrideMaterialType} from "../utils/three/LightMaterialOverrider.ts";
 
 type SetKeys = 'transform-controls' | 'post-processing' | 'widgets' | 'grid' | 'backgroundColor' | 'cameraMode' | 'overrideMaterial'
 

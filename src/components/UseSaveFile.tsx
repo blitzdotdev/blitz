@@ -1,9 +1,10 @@
 import {AppToaster, useDialogPrompt} from "uiconfig-blueprint/lib/esm/lib";
-import {useManager, useProject} from "../utils/ViewerInstanceManager.ts";
 import {useProjectActions} from "../utils/projectActions.tsx";
 import {useCallback} from "react";
 import {Button, Intent} from "@blueprintjs/core";
 import {getMeta, SavedSceneFile} from "../utils/project.ts";
+import {useProject} from "../utils/UseProject.ts";
+import {useManager} from "../utils/UseManager.ts";
 
 export function useSaveFile() {
     const {prompt} = useDialogPrompt()

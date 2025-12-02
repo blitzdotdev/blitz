@@ -1,6 +1,20 @@
-import {getOrCall, UiObjectConfig} from "threepipe";
-import {UiConfigRendererBase} from "uiconfig.js";
-import {MenuItem2} from "./ContextMenuUtils.tsx";
+import {MenuItemProps} from "@blueprintjs/core";
+import React from "react";
+import {getOrCall, UiConfigRendererBase, UiObjectConfig} from "threepipe";
+
+export type MenuItemAction = ((data?: any, obj?: any, e?: React.MouseEvent<HTMLElement, MouseEvent>, m?: MenuItem2) => any)
+export interface MenuItem2{
+    props: MenuItemProps
+    action?: string | MenuItemAction
+    data?: any
+    key: string
+    tags?: string[],
+    children?: MenuItem2[],
+    hidden?: boolean,
+}
+export interface HandleContextMenuCallback<T = any>{
+    handleContextMenu?: (e: React.MouseEvent<HTMLElement, MouseEvent>, menu: MenuItem2[], obj: T) => void
+}
 
 export function uiConfigToMenuItem(btn: UiObjectConfig, context: UiConfigRendererBase) {
     if (!btn || typeof btn !== 'object') return;

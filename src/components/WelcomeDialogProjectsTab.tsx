@@ -3,9 +3,10 @@ import {WelcomeDialogCreateProjectActions} from './WelcomeDialogCreateProjectAct
 import {WelcomeDialogEmptyProjectState} from './WelcomeDialogEmptyProjectState'
 import {useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
 import {useEffect, useState} from 'react'
-import {useManager} from '../utils/ViewerInstanceManager.ts'
-import {refreshQueryState, useProjectActions} from '../utils/projectActions.tsx'
+import {useProjectActions} from '../utils/projectActions.tsx'
 import {SavedSceneFileMeta} from "../utils/project.ts";
+import {useManager} from "../utils/UseManager.ts";
+import {refreshProjectQueryState} from "../utils/refreshProjectQueryState.ts";
 
 export function WelcomeDialogProjectsTab() {
     const [projects, setProjects] = useState<SavedSceneFileMeta[]>([])
@@ -37,7 +38,7 @@ export function WelcomeDialogProjectsTab() {
                                 variant={"minimal"}
                                 alignText={'center'}
                                 loading={loadingState[project.path]}
-                                onClick={() => updateLoading(project.path, refreshQueryState({project: project.path, file: null}, true))}
+                                onClick={() => updateLoading(project.path, refreshProjectQueryState({project: project.path, file: null}, true))}
                             // onClick={() => updateLoading('create-new', actions.createFile())}
                         />
                     ))}

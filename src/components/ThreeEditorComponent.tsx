@@ -1,5 +1,5 @@
 import {useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState} from 'react';
-import {isPackageProject, useManager, useProject, ViewerProps} from '../utils/ViewerInstanceManager.ts'
+import {isPackageProject, ViewerProps} from '../utils/ViewerInstanceManager.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {
     BPComponentProps,
@@ -36,6 +36,8 @@ import {assetUrlPrefix} from "../utils/project.ts";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
 import {EditPreviewButtonGroup} from "./EditPreviewButtonGroup.tsx";
 import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
+import {useProject} from "../utils/UseProject.ts";
+import {useManager} from "../utils/UseManager.ts";
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){

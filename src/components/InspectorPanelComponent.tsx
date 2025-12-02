@@ -1,134 +1,42 @@
 import {PanelActions} from "@blueprintjs/core/lib/esnext/components/panel-stack2/panelTypes";
-import {getFileByPath, SelectedInspectorItem, useAssets} from "../utils/AssetsProvider.ts";
+import {getFileByPath, useAssets} from "../utils/AssetsProvider.ts";
 import {
-    EntityComponentPlugin,
     generateUUID,
     getOrCall,
     IGeometry,
     IMaterial,
     IObject3D,
-    ITexture, IViewerPlugin, LineMaterial2,
-    Object3DComponent, PhysicalMaterial,
+    ITexture,
     PickingPlugin,
-    TObject3DComponent,
-    UiObjectConfig,
-    UndoManagerPlugin, UnlitMaterial,
-    Class, RootScene
+    UiObjectConfig
 } from "threepipe";
 import {
     isExternalGeometry,
     isExternalMaterial,
-    isExternalObject,
     isExternalTexture,
-    isGeomEditable,
-    isMatEditable,
-    isTexEditable, PluginRef,
     SelectFileRef,
-    useManager,
-    useProject,
-    ViewerInstanceManager,
 } from "../utils/ViewerInstanceManager.ts";
-import {AppToaster, ConfigObject, FolderHeadCard, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
-import {
-    Button,
-    ButtonGroup,
-    ButtonProps,
-    Divider,
-    Icon,
-    Intent,
-    MenuDivider,
-    MenuItem,
-    Tooltip
-} from "@blueprintjs/core";
+import {ConfigObject, FolderHeadCard, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
+import {Button, Divider, Icon, Intent} from "@blueprintjs/core";
 import {RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import type {IconName} from "@blueprintjs/icons";
 import {MaybeElement} from "@blueprintjs/core/src/common/props.ts";
-import React, {FC, ReactElement, useCallback, useEffect, useMemo, useRef, useState} from "react";
-import {refreshTexturePreview, TexturePreview} from "./BPTextureFileComponent.tsx";
+import React, {ReactElement, useCallback, useEffect, useRef, useState} from "react";
+import {TexturePreview} from "./BPTextureFileComponent.tsx";
 import {showSuccessErrorToast} from "../utils/Toaster.tsx";
 import {assetUrlPrefix, ExternalPlugin, ExternalScript} from "../utils/project.ts";
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {useAsyncMemo} from "./UseAsyncMemo.tsx";
-import { iconForSelectionObject } from "../utils/icons.tsx";
-import {ContextMenuItemsProps, useContextMenu} from "./ContextMenuProvider.tsx";
-
-export function UnkObjComponent({obj, ...props}: {obj: any,
-    onClick?: (event: React.MouseEvent) => void,
-    open?: boolean,
-    label?: string,
-    minimal?: boolean,
-    level?: number,
-    disabled?: boolean,
-    icon?: IconName | MaybeElement
-}){
-    return <Button
-        className={"folder-trigger-button folder-trigger-text " + (props.open ? "folder-trigger-button-expanded" : "")}
-        // fill={!props.minimal}
-        fill={true}
-        onClick={props.onClick}
-        variant={"minimal"}
-        disabled={props.disabled}
-        size={props.minimal ? 'small':"medium"}
-        style={props.level ? {marginLeft: "6px"} : {fontSize: "0.95rem", paddingTop: "8px", paddingBottom: "8px"}}
-        // intent={props.open ? Intent.PRIMARY : Intent.NONE}
-        intent={Intent.NONE}
-        // icon={props.enabled !== undefined  && <span style={{minWidth: '20px'}}></span>} // adding a span here will center the text in the button
-        icon={props.icon ?? iconForSelectionObject(obj) ?? (
-            <Icon icon="caret-right" style={{
-                rotate: props.open ? "90deg" : "0deg",
-                transition: "rotate 0.25s ease-in-out"
-            }}/>
-        )}
-    >{(props.label ?? obj?.name) || "Unnamed Object"}
-    </Button>
-}
-
-function filterTopLevelPropUiConfig(obj: IObject3D|IMaterial, sProps: string[], disabledProps: string[]) {
-    const config = useMemo(() => {
-        if (!obj.uiConfig?.children) return null
-        const children: UiObjectConfig[] = obj.uiConfig.children.filter(c => {
-            if (typeof c !== 'object') return
-            const prop = Array.isArray(c.property) ? c.property : null
-            return prop && prop[0] === obj && (sProps.includes(prop[1] as string) ||
-                (disabledProps.includes(prop[1] as string) && (c.readOnly === true || c.disabled === true)) // todo use uiconfig methods or getOrCall to check for readonly or disabled?
-            )
-        }) || []
-        return {
-            ...obj.uiConfig,
-            children,
-        }
-    }, [obj.uiConfig])
-    return config;
-}
-
-// for material instances - materials that are cloned from an asset. only overridden properties are editable
-function MaterialInstanceIns({obj, ...props}: {obj: IMaterial} & PanelActions & InspectorPanelProps){
-    // todo only show editable properties  (that are in userData.sProperties and ways to add and remove them and deep prop access
-
-    const sProps = [...obj.userData.sProperties||[]]
-    const extraProps = ['uuid']
-    const config = filterTopLevelPropUiConfig(obj, sProps, extraProps);
-
-    if(!config) return null
-
-    return <ConfigObject {...props} config={config} icon={iconForSelectionObject(obj)}/>
-}
-
-// for root asset object instances - i.e objects that are clone of object assets. only sProperties are editable (right now fixed to name, visible and transform)
-function AssetObjRootInstanceIns({obj, ...props}: {obj: IObject3D} & PanelActions & InspectorPanelProps){
-    // todo only show editable properties  (that are in userData.sProperties and ways to add and remove them and deep prop access
-
-    const sProps = [...obj.userData.sProperties||[]]
-    if(sProps.includes('quaternion') && !sProps.includes('rotation'))
-        sProps.push('rotation')
-    const extraProps = ['uuid']
-
-    const config = filterTopLevelPropUiConfig(obj, sProps, extraProps);
-    if(!config) return null
-
-    return <ConfigObject {...props} config={config} icon={iconForSelectionObject(obj)}/>
-}
-
+import {iconForSelectionObject} from "../utils/icons.tsx";
+import {refreshTexturePreview} from "../utils/three/refreshTexturePreview.ts";
+import {isGeomEditable, isTexEditable} from "../utils/three/assetEditorChecks.ts";
+import {useProject} from "../utils/UseProject.ts";
+import {useManager} from "../utils/UseManager.ts";
+import {MaterialInstanceIns, ObjectInspectorUI} from "./ObjectInspectorUI.tsx";
+import {InsSectionItem} from "./InsSectionItem.tsx";
+import {UnkObjComponent} from "./UnkObjComponent.tsx";
+import {InsSectionHeader} from "./InsSectionHeader.tsx";
+import {addProjectScript} from "./AddProjectScript.tsx";
 
 export type InspectorPanelProps = {}
 
@@ -152,27 +60,6 @@ export function InsSectionTitle({title, icon}: { title: string, icon?: IconName 
         {title}
     </div>;
 }
-export function InsSectionHeader({
- children, title, icon, className, style,
-}: { title: string,
-    icon?: IconName | MaybeElement,
-    className?: string,
-    style?: React.CSSProperties,
-    children?: ReactElement|ReactElement[]
-}) {
-    return <ButtonGroup className={className} style={{
-        height: "30px",
-        padding: "3px",
-        width: "100%",
-        ...style,
-    }}>
-        {/*<div>File</div>*/}
-        <InsSectionTitle title={title||'Selection'} icon={icon} />
-        {/*{selFile.uiConfig && (<ConfigObject {...props} config={selFile.uiConfig}/>)}*/}
-        {children}
-    </ButtonGroup>
-}
-
 
 /**
  * Helps tracking the props changes made in a react functional component.
@@ -331,7 +218,9 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     const isAssetInstance = instanceRootPath && selObject?.userData?.rootPath?.startsWith(assetUrlPrefix)
 
     const assetRootPathFull  = assetRootPath1_ && !assetRootPath1_.startsWith(assetUrlPrefix) ? null : assetRootPath1_
-    const assetRootPath = assetRootPathFull ? assetRootPathFull.replace(assetUrlPrefix, '') : assetRootPathFull
+    const assetRootPath2 = assetRootPathFull ? assetRootPathFull.replace(assetUrlPrefix, '') : assetRootPathFull
+
+    const assetRootPath1 = manager.resolveAssetIdPath(assetRootPath2)
 
     const assetRootPathAsset = useAsyncMemo(async ()=>assetRootPathFull ? manager.getAssetFromPath(assetRootPathFull) : null, [manager, assetRootPathFull])
     const instanceRootPathAsset = useAsyncMemo(async ()=>instanceRootPath ? manager.getAssetFromPath(instanceRootPath) : null, [manager, instanceRootPath])
@@ -343,24 +232,24 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
 
     if(selObject && assetRootPathAsset && assetRootPathCanEdit) {
         const resetAsset = async ()=>{
-            if(!assetRootPath || !project || !assetRootPathAsset) return
-            const entry = getFileByPath(assetRootPath, fileManifest)
+            if(!assetRootPath1 || !project || !assetRootPathAsset) return
+            const entry = getFileByPath(assetRootPath1, fileManifest)
             if(!entry) {
-                console.error('Could not find file in manifest: ' + assetRootPath, fileManifest)
+                console.error('Could not find file in manifest: ' + assetRootPath1, fileManifest)
                 return
             }
             return await manager.loadAsset(entry, project) // this will refresh the same loaded asset
         }
 
         const saveAsset = async ()=>{
-            if(!selObject || !project || !assetRootPathAsset || !assetRootPathCanEdit || !assetRootPath) return
+            if(!selObject || !project || !assetRootPathAsset || !assetRootPathCanEdit || !assetRootPath1) return
 
             if(!assetRootPathAsset.isObject3D && !assetRootPathAsset.isMaterial){
-                console.error('Asset is not an object3D or material', assetRootPathAsset, assetRootPath)
+                console.error('Asset is not an object3D or material', assetRootPathAsset, assetRootPath1)
                 return
             }
-            const res = await manager.saveProjectAsset(project, manager.loadedProjectFile, assetRootPathAsset as IObject3D|IMaterial, assetRootPath)
-            const r = showSuccessErrorToast(res ? `Saved ${project.path}${assetRootPath} successfully` : 'Unknown Error', 'Unable to save asset', res)
+            const res = await manager.saveProjectAsset(project, manager.loadedProjectFile, assetRootPathAsset as IObject3D|IMaterial, assetRootPath1)
+            const r = showSuccessErrorToast(res ? `Saved ${project.path}${assetRootPath1} successfully` : 'Unknown Error', 'Unable to save asset', res)
             if(r)
                 setNeedsSave(false) // todo get needs save based on object
             return res
@@ -399,10 +288,10 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     // if its a child of an asset component, show edit to go to the source, and reset to reset the source asset(everything)
     if(selObject && assetRootPathAsset && assetRootUid) {
         const editAsset = async ()=>{
-            if(!selObject || !project || !assetRootPathAsset || assetRootPathCanEdit || !assetRootPath) return
+            if(!selObject || !project || !assetRootPathAsset || assetRootPathCanEdit || !assetRootPath1) return
 
             if(!assetRootPathAsset.isObject3D && !assetRootPathAsset.isMaterial){
-                console.error('Asset is not an object3D or material', assetRootPathAsset, assetRootPath)
+                console.error('Asset is not an object3D or material', assetRootPathAsset, assetRootPath1)
                 return
             }
             let obj: IObject3D | IMaterial | undefined
@@ -479,21 +368,9 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
         icon = 'document'
     }
     else if(inspectingScene) title = 'Global Settings'
-    else if(assetRootPathAsset && assetRootPath) {
+    else if(assetRootPathAsset && assetRootPath1) {
         const editing = assetRootPathCanEdit ? 'Editing: ' : ''
-        let p = assetRootPath
-        if(assetRootPath.startsWith('@')){
-            // its an id path
-            const assetId = assetRootPath.slice(1).split('/')[0]
-            const assetManifest = manager.loadedProject?.assetsManifest
-            if(!assetManifest?.files[assetId]){
-                // debugger
-                console.error('Asset id not found in manifest', assetRootPath)
-            }else {
-                p = assetManifest.files[assetId].path
-            }
-        }
-        title = editing + p + (selObject !== assetRootPathAsset ? ' ⮕ ' + selObject!.name : '')
+        title = editing + assetRootPath1 + (selObject !== assetRootPathAsset ? ' ⮕ ' + selObject!.name : '')
         icon = iconForSelectionObject(assetRootPathAsset)
     }else if(isAssetInstance){
         title = 'Instance: ' + instanceRootPath.replace(assetUrlPrefix, '')
@@ -595,7 +472,7 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
         {(selObject as IObject3D)?.isObject3D && <ObjectInspectorUI
             object={(selObject as IObject3D)}
             isAssetInstance={isAssetInstance}
-            assetRootPath={assetRootPath}
+            assetRootPath={assetRootPath2}
             assetRootPathCanEdit={assetRootPathCanEdit}
             {...props}
         />}
@@ -618,199 +495,6 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
 
 }
 
-export function ObjectInspectorUI({
-    object,
-    isAssetInstance,
-    assetRootPath,
-    assetRootPathCanEdit,
-    ...props
-}: {object: IObject3D,
-    isAssetInstance: boolean,
-    assetRootPath: string | null,
-    assetRootPathCanEdit: boolean,
-} & PanelActions){
-
-    const manager = useManager()
-    const {project} = useProject()
-
-    // for reacting to changes in object, because we are accessing object.material etc
-    const [objectChangeId, setObjectChangeId] = useState(0)
-    useEffect(()=>{
-        if(!object) return
-        const l = ()=>{
-            setObjectChangeId(id=>id+1)
-            // console.log('object changed, updating inspector', object)
-        }
-        object.addEventListener('objectUpdate', l)
-        object.addEventListener('materialChanged', l)
-        return ()=>{
-            object.removeEventListener('objectUpdate', l)
-            object.removeEventListener('materialChanged', l)
-        }
-    }, [object])
-
-    const objectMaterials = object && object.material ? (Array.isArray(object.material) ? object.material : [object.material]) : []
-    const objectGeometry = object?.geometry?.isBufferGeometry ? object.geometry : null
-
-    const objectIsExternal = object ? isExternalObject(object) : false
-    // console.log({objectIsExternal}, object)
-
-    // console.log(isAssetInstance, objectIsExternal)
-
-    if(object?.uiConfig) {
-        object.uiConfig.expanded = true
-    }
-    const contextMenu = useContextMenu()
-
-    const isRootScene = (object as RootScene).isRootScene as boolean
-
-    return <>
-        {!!object && <>
-            {/*<div>Object</div>*/}
-            <Divider style={{margin: 0}}/>
-            {
-                // object.userData.tpAssetId ? <UnkObjComponent label={`Asset: ${object.name || 'Unnamed'}`} disabled={true} obj={object}/> :
-                objectIsExternal ? <UnkObjComponent key={'object'} label={`Object: ${object.name || 'Unnamed'}`} disabled={true} obj={object}/> :
-                    object.uiConfig ?
-                        isAssetInstance ? <AssetObjRootInstanceIns key={'objectins'} {...props} obj={object}/> :
-                            <ConfigObject key={'objectc'} {...props}
-                                          config={object.uiConfig}
-                                          filter={isRootScene ? (c)=>{
-                                              return c.type !== 'folder'// todo temp, remove this line and use propertyKey check after uiconfig.js update
-                                              return c?.propertyKey !== 'defaultCamera'
-                                          } : undefined}
-                                          icon={iconForSelectionObject(object)} /> :
-                        null}
-            {/*{!!objectSelUiConfig?.length && objectSelUiConfig.map((c, i)=><ConfigObject key={i} {...props} config={c}/>)}*/}
-            <Divider style={{margin: 0}}/>
-
-            {/*todo show object children to select them easily*/}
-
-            {!!objectGeometry && <>
-                {/*<div>Geometry</div>*/}
-                {!!objectGeometry.uiConfig && !objectIsExternal && isGeomEditable(objectGeometry, manager) ?
-                    <ConfigObject key={'geometryc'} {...props} config={objectGeometry.uiConfig} icon={iconForSelectionObject(objectGeometry)}/> :
-                    <UnkObjComponent key={'geometry'} label={`Asset: ${objectGeometry.name || 'Unnamed'}`} disabled={true} obj={objectGeometry}/>
-                }
-
-                <Divider style={{margin: 0}}/>
-            </>}
-
-            {/*Components*/}
-            <CompsSectionComp object={object} openPanel={props.openPanel} closePanel={props.closePanel}/>
-
-            {/*{!!objectMatManageUiConfig?.length && objectMatManageUiConfig.map((c, i)=><ConfigObject key={i} {...props} config={c}/>)}*/}
-            <Divider style={{margin: 0}}/>
-
-            {objectMaterials.map((material, materialI)=> //material && (material.userData.tpAssetId || material._tpAssetId) ? null :
-                // todo send a filter into RefSelectionObjectComponent so that user cannot select any material outside the asset
-                <RefSelectionObjectComponent
-                    key={'objmats'+materialI}
-                    objectType={"material"}
-                    disabled={objectIsExternal}
-                    allowNone={true} object={material}
-                    onChange={async (_selected, _e) => {
-                        //todo loading while await
-                        showSuccessErrorToast('', '', await manager.changeMaterialForObject(object, material, _selected, project))
-                    }}
-                >
-                    {!!material.userData.isPlaceholder ?
-                    <ButtonWithTooltip tooltip={'New Material'} text={""} icon={"plus"} onClick={(e)=>{
-                        contextMenu.handleContextMenu({
-                            event: e,
-                            obj: object,
-                            Items: (p)=>(<NewMaterialContextMenu {...p} onClick={async (newm)=>{
-                                //todo loading while await
-                                showSuccessErrorToast('', '', await manager.changeMaterialForObject(object, material, newm, project))
-                            }}/>),
-                            actions: {},
-                        })
-                    }}/> :
-                    <ButtonWithTooltip tooltip={'Remove Material'} text={""} icon={"cross"} onClick={async ()=>{
-                        //todo loading while await
-                        showSuccessErrorToast('', '', await manager.changeMaterialForObject(object, material, null, project))
-                    }}/>
-                    }
-                </RefSelectionObjectComponent>
-            )}
-
-            {objectMaterials.map((material,i)=>
-                material?.uiConfig &&  // material has a UI
-                !objectIsExternal &&  // object is not external (i.e we can edit the current object and it will be saved)
-                isMatEditable(material, manager) && // material is not an asset or placeholder itselft
-                (!material._tpRootPath || // not part of an asset, or part of the asset we are editing in inspector
-                    (assetRootPathCanEdit && (material._tpRootPath === assetUrlPrefix + assetRootPath))
-                ) ? (<ConfigObject key={'mats' + material.uuid + i} {...props} config={material.uiConfig}
-                                   icon={iconForSelectionObject(material)}/>) :
-                    material.userData.isPlaceholder ? null : <UnkObjComponent key={'matsunk' + material.uuid + i}
-                                                                              label={`Material: ${material.name || 'Unnamed'}`} disabled={true} obj={material}/>
-            )}
-
-            {/*{!!objectMatManageUiConfig?.length && objectMatManageUiConfig.map((c, i)=><ConfigObject key={i} {...props} config={c}/>)}*/}
-            <Divider style={{margin: 0}}/>
-
-        </>}
-    </>
-}
-
-export function ButtonWithTooltip({tooltip, ...props}: ButtonProps & {tooltip: string}) {
-    return <Tooltip
-        content={tooltip}
-        hoverOpenDelay={150}
-        hoverCloseDelay={300}
-    >
-        <Button
-            variant={"minimal"} size={"small"}
-            title={tooltip}
-            {...props}
-        />
-    </Tooltip>
-}
-
-export function InsSectionItem(props: {
-    text: string,
-    icon?: IconName | MaybeElement,
-    info?: {text: string, icon: IconName|MaybeElement}
-    buttons?: ({key: string, text: string, showText?: boolean} & ButtonProps)[]
-}) {
-    return <div
-        className={"xPaddedContent folderContent folder-trigger-text"}
-        style={{
-            marginLeft: 0, height: "30px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "10px"
-        }}
-    >
-        {props.icon && (typeof props.icon === 'string' ? <Icon icon={props.icon} style={{marginRight: "0"}} size={12}/> : props.icon)}
-        <div style={{
-            maxWidth: "100%",
-            overflow: "scroll",
-            flexGrow: "1",
-            scrollbarWidth: "none",
-        }}>
-            {props.text}
-        </div>
-        {props.info && <Tooltip
-            content={props.info.text}
-            // position={"top"}
-            hoverOpenDelay={150}
-            hoverCloseDelay={300}
-        >
-            {typeof props.info.icon === 'string' ? <Icon icon={props.info.icon} style={{marginLeft: "6px"}} size={12}/> : props.info.icon}
-        </Tooltip>}
-        {props.buttons?.map(({key, text, showText, ...b})=><ButtonWithTooltip
-            key={key}
-            tooltip={text}
-            // icon="trash"
-            title={text}
-            {...b}
-            text={showText ? text : undefined}
-        />)}
-    </div>
-}
-
 export function PluginsSectionComp(){
     const manager = useManager()
     // const viewer = manager.get()
@@ -829,17 +513,7 @@ export function PluginsSectionComp(){
         return r
     }
 
-    // const [extPlugins, setExtPlugins] = useState<ExternalPlugin[]>(manager.extPlugins)
-    // useEffect(()=>{
-    //     const l = ()=>{
-    //         setExtPlugins([...manager.extPlugins||[]])
-    //     }
-    //     manager.addEventListener('extPluginsChange', l)
-    //     return ()=>{
-    //         manager.removeEventListener('extPluginsChange', l)
-    //     }
-    // }, [manager.extPlugins])
-    let extPlugins = useListenProperty(manager, 'extPlugins', 'extPluginsChange', (v)=>([...v||[]]))
+    let extPlugins = useListenProperty(manager.scriptUtil, 'extPlugins', 'extPluginsChange', (v)=>([...v||[]]))
 
     extPlugins = extPlugins.sort((a, b)=>{
         const i1 = a.import.toLowerCase().replace(/^\@/, '')
@@ -897,7 +571,7 @@ export function AddPluginComp(){
         return r
     }
 
-    const extraPlugins = useListenProperty(manager, 'extraViewerPlugins', 'extraPluginsChange', (v)=>({...v||{}}))
+    const extraPlugins = useListenProperty(manager.scriptUtil, 'extraViewerPlugins', 'extraPluginsChange', (v)=>({...v||{}}))
     // todo usememo?
     const extraItems = Object.values(extraPlugins)
         .filter(p=>!manager.get().getPlugin(p.exp.PluginType) && p.def && p.exp)
@@ -947,7 +621,7 @@ export function ScriptsSectionComp(){
         return r
     }
 
-    const extScripts = useListenProperty(manager, 'extScripts', 'extScriptsChange', (v)=>([...v||[]]))
+    const extScripts = useListenProperty(manager.scriptUtil, 'extScripts', 'extScriptsChange', (v)=>([...v||[]]))
 
     return <FolderHeadCard open={true} label={"Scripts"} minimal={true} level={0} onClick={()=>{}} icon={"stacked-chart"}>
         {/*todo listen to extScripts change*/}
@@ -996,195 +670,3 @@ export function AddScriptComp(){
     </RefSelectionObjectComponent>
 }
 
-export function CompsSectionComp({object, ...panelProps}: {object: IObject3D} & PanelActions){
-    const manager = useManager()
-
-    const ecs = manager.get().getPlugin(EntityComponentPlugin)
-    const [comps, setComps] = useState<Object3DComponent[]>([...EntityComponentPlugin.ObjectToComponents.get(object) || []])
-
-    // for reacting to changes in object, because we are accessing object.material etc
-    // const [objectChangeId, setObjectChangeId] = useState(0)
-    // useEffect(()=>{
-    //     if(!object) return
-    //     const l = (e: any)=>{
-    //         if(!e.refreshUi) return
-    //         setObjectChangeId(id=>id+1)
-    //     }
-    //     object.addEventListener('objectUpdate', l)
-    //     return ()=>{
-    //         object.removeEventListener('objectUpdate', l)
-    //     }
-    // }, [object])
-
-    useEffect(()=>{
-        if(!ecs) return
-        const l = (ev: {object: IObject3D})=>{
-            if(ev.object !== object) return
-            setComps([...EntityComponentPlugin.ObjectToComponents.get(object) || []])
-        }
-        setComps([...EntityComponentPlugin.ObjectToComponents.get(object) || []])
-        ecs.addEventListener('registerComponent', l)
-        ecs.addEventListener('unregisterComponent', l)
-        return ()=>{
-            if(!ecs) return
-            ecs.removeEventListener('registerComponent', l)
-            ecs.removeEventListener('unregisterComponent', l)
-        }
-    }, [ecs, object])
-
-    // const viewer = manager.get()
-    // const picking = viewer?.getPlugin(PickingPlugin)
-    // const availablePlugins = picking?.availablePlugins() || []
-    const {loadingState, updateLoading} = useLoadingState()
-
-    const {project} = useProject()
-    // const removeProjectComp = async (p: ExternalComp)=>{
-    //     if(!project) return false
-    //     // todo confirm dialog
-    //     const res = await manager.removeProjectComp(p).then(()=>({error: null})).catch(e=>{
-    //         return {error: e?.message ?? 'Unknown error'}
-    //     })
-    //     const r = showSuccessErrorToast(res ? `Removed ${project.path}${p.import} successfully` : 'Unknown Error', 'Unable to remove plugin', res)
-    //     return r
-    // }
-
-    // const extComps = useListenProperty(manager, 'extComps', 'extCompsChange', (v)=>([...v||[]]))
-
-    return <FolderHeadCard open={true} label={"Components"} minimal={true} level={0} onClick={()=>{}} icon={"stacked-chart"}>
-        {/*todo listen to extComps change*/}
-        {comps.map(comp=>{
-            if(!comp.uiConfig) return null
-            return [
-            <ConfigObject key={comp.uuid} config={comp.uiConfig} icon={"package"} {...panelProps}/>,
-            <Divider key={comp.uuid+'div'} style={{margin: 0}}/>
-            ]
-        }).flat()}
-
-        <AddCompComp object={object} {...panelProps}/>
-    </FolderHeadCard>
-
-}
-
-export function AddCompComp({object, ...panelProps}: {object: IObject3D} & PanelActions){
-    const [selectedScript, setSelectedScript] = useState<SelectFileRef|SelectedInspectorItem|null>(null)
-    const manager = useManager()
-    const {loadingState, updateLoading} = useLoadingState()
-    const ecs = manager.get().getPlugin(EntityComponentPlugin)
-    const [compTypes, setCompTypes] = useState<TObject3DComponent[]>([...ecs?.componentTypes.values()||[]])
-
-    useEffect(()=>{
-        if(!ecs) return
-        const l = ()=>{
-            setCompTypes([...ecs.componentTypes.values() || []])
-        }
-        ecs.addEventListener('addComponentType', l)
-        ecs.addEventListener('removeComponentType', l)
-        return ()=>{
-            if(!ecs) return
-            ecs.removeEventListener('addComponentType', l)
-            ecs.removeEventListener('removeComponentType', l)
-        }
-    }, [ecs])
-
-    const addComp = (c: TObject3DComponent)=>{
-        const type = c.ComponentType
-        if(!ecs) return
-        const undoMan = manager.get().getPlugin(UndoManagerPlugin)
-        if(!undoMan) {
-            console.error('Undo manager not found')
-            return
-        }
-        undoMan.performAction(ecs, ecs.addComponent, [object, type], 'addComponent')
-    }
-    const addComponent = async ()=>{
-        const c = (selectedScript as any)?.ocomponent as TObject3DComponent
-        if(c) {
-            addComp(c)
-        }else {
-            const path = (selectedScript as SelectFileRef)?.entry.path
-            if (!path) return
-            const comps = await addProjectScript(path, manager)
-            if (!comps) return
-            if (!ecs) return
-            if(!comps.length) {
-                AppToaster().show({
-                    message: `No components found in script`,
-                    intent: 'warning',
-                    icon: 'warning-sign',
-                    timeout: 2000,
-                    isCloseButtonShown: true,
-                });
-                return
-            }
-            if(comps.length > 1) {
-                AppToaster().show({
-                    message: `Multiple components found in script, adding first one: ${comps[0].exp.ComponentType}`,
-                    intent: 'warning',
-                    icon: 'warning-sign',
-                    timeout: 4000,
-                    isCloseButtonShown: true,
-                });
-            }
-            addComp(comps[0].exp)
-        }
-    }
-    return <RefSelectionObjectComponent
-        label={"Add Comp"}
-        objectType={"script"}
-        object={selectedScript}
-        disabled={false}
-        extraItems={compTypes.map(c=>({name: c.ComponentType, uuid: c.ComponentType, ocomponent: c}))}
-        allowNone={true} onChange={(v)=>{
-        setSelectedScript(v)
-    }}>
-        <Button variant={"minimal"} title={"Add Component"} icon={<Icon size={12} icon={"plus"}/>}
-                disabled={!selectedScript}
-                loading={loadingState['addComp']}
-            // onClick={() => updateLoading(onChange({value: null}))}
-                onClick={()=>updateLoading('addComp', addComponent())}
-        ></Button>
-    </RefSelectionObjectComponent>
-}
-
-export const addProjectScript = async (path: string, manager: ViewerInstanceManager)=>{
-    if(!manager.loadedProject) return false
-    const res = await manager.addProjectScript({import: './'+path}, true).then(()=>({error: null})).catch(e=>{
-        return {error: e?.message ?? 'Unknown error'}
-    })
-    const r = showSuccessErrorToast(res ? `Loaded ${manager.loadedProject.path}${path} successfully` : 'Unknown Error', 'Unable to load plugin', res)
-    const mod = manager.scriptModules.get('./'+path)
-    if(!mod){
-        return false
-    }
-    // todo mod.module.__tpModuleError show in toast
-    if((mod.module as any)?.__tpModuleError)
-        console.error((mod.module as any).__tpModuleError)
-    return mod.components
-}
-
-export const NewMaterialContextMenu: FC<ContextMenuItemsProps<IObject3D>&{
-    onClick?: (mat: IMaterial)=>void
-}> = (props)=>{
-    const manager = useManager()
-    const picking = manager.get().getPlugin(PickingPlugin)
-    const obj = props.object
-    const types = picking?.materialTypes.map(matType=>({
-        label: `New ${matType.name} Material`,
-        type: 'button',
-        hidden: matType.line ?
-            // ()=>(!obj.isLineSegments2 && !obj.isLine && !obj.isLineSegments) || !(!obj.materials?.length || obj.materials.length === 1 && obj.materials[0].userData?.isPlaceholder) :
-            !obj.isLineSegments2 && !obj.isLine && !obj.isLineSegments && !obj.isWireframe || !(!obj.materials?.length || obj.materials.length === 1 && obj.materials[0] === matType.def) :
-            !(!obj.materials?.length || obj.materials.length === 1 && obj.materials[0].userData?.isPlaceholder) || !obj.isMesh,
-        value: ()=>{
-            return new matType.cls() as any
-        },
-    })) || []
-    return <>
-        <MenuDivider title="Create a Material" className={"context-menu-divider"} />
-        {types.map((t, i)=>!t.hidden && <MenuItem key={i} text={t.label} onClick={()=>{
-            const mat = t.value() as IMaterial
-            props.onClick?.(mat)
-        }}/>)}
-    </>
-
-}

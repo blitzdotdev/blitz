@@ -1,4 +1,4 @@
-import {mainScenePath, settingsKey} from "./project.ts";
+import {mainScenePath, settingsKey} from "../utils/project.ts";
 
 export const mainJsTemplate = `
 export async function main({ viewer }){

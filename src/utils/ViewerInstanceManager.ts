@@ -1,43 +1,36 @@
 import {
     BoxGeometry,
     CanvasSnapshotPlugin,
-    Class,
     DepthBufferPlugin,
     DirectionalLight2,
-    DropzonePlugin,
     EditorViewWidgetPlugin,
     EntityComponentPlugin,
-    Euler,
     EventDispatcher,
     FrameFadePlugin,
     GBufferPlugin,
     generateUUID,
     getEmptyMeta,
+    GLTFAnimationPlugin,
+    GLTFLoader2,
     GLTFMeshOptDecodePlugin,
     HalfFloatType,
-    HemisphereLight,
     HemisphereLight2,
     htmlDialogWrapper,
     IGeometry,
     IMaterial,
-    iMaterialCommons,
     ImportResult,
     ImportResultExtras,
     IObject3D,
-    iObjectCommons,
     ISerializedViewerConfig,
     ITexture,
-    IViewerPlugin,
     JSONMaterialLoader,
     KTX2LoadPlugin,
     KTXLoadPlugin,
     LoadingScreenPlugin,
-    MaterialPreviewGenerator,
     mergeResources,
     Mesh2,
     metaToResources,
     NormalBufferPlugin,
-    Object3DComponent,
     Object3DGeneratorPlugin,
     Object3DWidgetsPlugin,
     OrbitControls3,
@@ -47,34 +40,20 @@ import {
     PopmotionPlugin,
     RenderTargetPreviewPlugin,
     Rhino3dmLoadPlugin,
-    Scene,
     STLLoadPlugin,
     ThreeViewer,
-    TObject3DComponent,
     TransformControlsPlugin,
-    UnlitMaterial,
-    USDZLoadPlugin,
-    GLTFLoader2,
-    ILight,
-    RootScene,
-    IScene,
-    PhysicalMaterial,
-    UndoManagerPlugin,
     TypedClass,
-    GLTFAnimationPlugin,
-    onChangeDispatchEvent
+    UndoManagerPlugin,
+    UnlitMaterial,
+    USDZLoadPlugin
 } from 'threepipe'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {GeometryGeneratorPlugin} from '@threepipe/plugin-geometry-generator'
-import {createContext, createElement, useState} from 'react'
-import {useSafeContext} from './useSafeContext.ts'
 import {browserFileStore} from './BrowserFileStore.ts'
 import {EditorFeatures} from './EditorFeatures.ts'
 import {EditModePlugin} from "./EditModePlugin.ts";
 import {ImportMapsManager} from "./importMaps.ts";
-import {SupPluginModule} from "./SandboxPlugin.ts";
-import {showSuccessErrorToast} from "./Toaster.tsx";
-import {getFileChanged, loadModule, loadModules} from './modules.ts'
 import {FileManifestEntry, manifestEntryToFile, SelectedInspectorItem} from "./AssetsProvider.ts";
 import {parse} from 'jsonc-parser';
 import {
@@ -88,9 +67,11 @@ import {
     getMeta,
     getMetaWithPreview,
     initProjectHandles,
-    LoadedProject, parseAssetsJSONManifest,
+    LoadedProject,
+    parseAssetsJSONManifest,
     parsePackageJsonSettings,
-    ProjectConfigSettings, ProjectConfigSettingsJSON,
+    ProjectConfigSettings,
+    ProjectConfigSettingsJSON,
     resolveFile,
     SavedSceneFile,
     SavedSceneFileMeta,
@@ -103,16 +84,19 @@ import {
     defaultIconTemplateSvg,
     mainJsTemplate,
     packageJsonTemplate
-} from './projectTemplates.ts'
+} from '../data/projectTemplates.ts'
 import {getDirHandle, getFileHandle} from "./fsApi.ts";
 import {FetchProxy} from "./FetchProxy.ts";
-import {refreshTexturePreview, staticData} from "../components/BPTextureFileComponent.tsx";
-import {refreshQueryState} from "./projectActions.tsx";
 import {AssetTracker, cloneAssetItem, defSPropsMat, defSPropsObj} from "./AssetTracker.ts";
 import {CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
 import {CanvasFileDropHandler} from "./CanvasFileDropHandler.ts";
 import {FileTracker} from "./FileTracker.ts";
 import {HtmlUiComponent} from "../plugins/HtmlUiComponent.ts";
+import {generatePreview} from "./three/GeneratePreview.ts";
+import {emptyProjectSettings} from "../data/EmptyProjectSettings.ts";
+import {mimeToExt, typesExts} from '../data/fileTypes.ts'
+import {comparePlugins, ScriptUtil} from "./ScriptUtil.ts";
+import {refreshProjectQueryState} from "./refreshProjectQueryState.ts";
 
 export interface ViewerProps {
     msaa: boolean,
@@ -148,7 +132,7 @@ export function isLoadableFile(file: string) {
     let loadable = true
     // const loadableFiles = ['.mat', '.glb']
     const loadableFiles = [...assetableFileTypes]
-    loadableFiles.push(...['.png', '.jpeg', '.jpg', '.gif', '.webp', '.bmp', '.tga', '.tiff', '.hdr', '.ktx', '.dds'])
+    loadableFiles.push(...typesExts.image!)
     if (!loadableFiles.some(ext => file.endsWith(ext))) loadable = false
 
     // const notLoadableFiles = ['.scene.glb']
@@ -158,9 +142,6 @@ export function isLoadableFile(file: string) {
 
 export class ViewerInstanceManager extends EventDispatcher<{
     loadedNeedsSaveChange: {},
-    extPluginsChange: {},
-    extScriptsChange: {},
-    extraPluginsChange: {},
     loadedProjectFileChange: {},
     editPreviewChange: {},
     runModePauseChange: {},
@@ -169,6 +150,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
     private _viewers = new Map<string, ThreeViewer>()
     features = new EditorFeatures(this)
     fileTracker = new FileTracker()
+    scriptUtil = new ScriptUtil()
 
     static {
     }
@@ -181,7 +163,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
         this.broadcastChannel.onmessageerror = (e)=>{
             console.error('Broadcast message error', e)
         }
-        this.initFsObserver()
+        this.scriptUtil.onObserveFileChange = this.onObserveFileChange
+        this.scriptUtil.initFsObserver()
     }
 
     private receiveBroadcastMessage = (e: { data: BroadcastDataTypes[keyof BroadcastDataTypes] & {type: keyof BroadcastDataTypes, editorId: string} })=>{
@@ -196,7 +179,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
                 if(this.editorId !== data.editorId){
                     // todo use the File object from data instead of reading again from disk
-                    this._changedFilesQ.push(data.path)
+                    this.scriptUtil.changedFilesQ.push(data.path)
                 }
             }
         }
@@ -249,11 +232,27 @@ export class ViewerInstanceManager extends EventDispatcher<{
             plugins: []
             // todo: add more options
         })
+        this.scriptUtil.viewer = viewer
+
+        // override autoSetName logic to account for asset id paths
+        viewer.assetManager.importer.autoSetName = false
+        viewer.assetManager.importer.addEventListener('processRaw', (event) => {
+            const res = event.data
+            const rootPath = res.__rootPath
+            // const rootPathOptions = res.__rootPathOptions
+            const rootBlob = res.__rootBlob
+            if (res?.name === '') {
+                res.name = this.resolveAssetIdPath(rootBlob?.filePath || rootBlob?.name || rootPath || '')
+                    .replace(/^\/|\/$/, '')
+                    .split('/').pop()!
+            }
+        })
 
         const tracker = new AssetTracker(viewer)
         tracker.isEditor = true
         viewer.assetManager.tracker = tracker
         tracker.addEventListener('replaceItem', this._trackerReplaceItem)
+        tracker.addEventListener('registryChanged', this.handlePreviewRefresh)
 
         // viewer.getPlugin(DropzonePlugin)!.enabled = false
 
@@ -461,7 +460,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
         this._viewers.clear()
         this.browserStore.dispose()
     }
-
 
     // static readonly STORE_NAME = STORE_NAME
     // static readonly FILE_META_KEY = FILE_META_KEY
@@ -689,7 +687,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
                     const d = meta.preview.endsWith('.svg') ?
                         defaultIconTemplateSvg :
                         Uint8Array.from(defaultIconTemplatePng, c => c.charCodeAt(0))
-                    await this._writeFileHandle(iconFileHandle, d).catch(e=>{
+                    await _writeFileHandle(iconFileHandle, d).catch(e=>{
                         console.error('ThreeEditor - cannot write default icon file', e)
                         // ignore error
                     })
@@ -1055,7 +1053,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         if(!handle){
             return false
         }
-        await this._writeFileHandle(handle, file)
+        await _writeFileHandle(handle, file)
         if(path.startsWith('.')) return true
         // notify to other tabs
         try {
@@ -1070,12 +1068,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }
         return true
     }
-    private async _writeFileHandle(fileHandle: FileSystemFileHandle, file: FileSystemWriteChunkType){
-        const writer = await fileHandle.createWritable()
-        await writer.write(file)
-        await writer.close()
-    }
-
 
     async writeAssetFile(project: string, obj: IObject3D|IMaterial, assetId: string, handle: FileSystemDirectoryHandle, assetPath: string, res: {file: File, preview?: string | File}) {
         const res1 = await this.writeFile(handle, assetPath, res.file, project).catch(e => {
@@ -1163,15 +1155,10 @@ export class ViewerInstanceManager extends EventDispatcher<{
     //     return resolveFile(file, meta.path, meta.handle)
     // }
 
-    fetchProjectAsset = async (url: string, project?: LoadedProject|null) => {
-        if(!url.startsWith(assetUrlPrefix)) return url
-        const url1 = url.slice(assetUrlPrefix.length)
+    resolveAssetIdPath(url: string, project?: LoadedProject|null){
         project = project ?? this.loadedProject
-        if(!project){
-            console.error('No project loaded, cannot import asset')
-            return url
-        }
-
+        if(!project || !url) return url
+        const url1 = url.startsWith(assetUrlPrefix) ? url.slice(assetUrlPrefix.length) : url
         let filePath
         if(url1.startsWith('@')){
             const assetId = url1.slice(1).split('/')[0]
@@ -1185,6 +1172,20 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }else {
             filePath = url1
         }
+        console.log('Resolved asset url', url, 'to path', filePath)
+        return filePath
+    }
+
+    fetchProjectAsset = async (url: string, project?: LoadedProject|null) => {
+        if(!url.startsWith(assetUrlPrefix)) return url
+        project = project ?? this.loadedProject
+        if(!project){
+            console.error('No project loaded, cannot import asset')
+            return url
+        }
+
+        const filePath = this.resolveAssetIdPath(url, project)
+
         const ex = this.fileTracker.getFile(project.path + filePath)
         if(ex) {
             ex.lastUsed = Date.now()
@@ -1336,15 +1337,18 @@ export class ViewerInstanceManager extends EventDispatcher<{
             // })))
             // ImportMapsManager.addDependency(...dependencies)
             this.loadedProject = meta
+            this.scriptUtil.project = meta
 
-            await this.loadProjectExtScript({import: "threepipe"})
+            await this.scriptUtil.loadProjectExtScript({import: "threepipe"})
             // todo promise?
             await this.onProjectSettingsChange(config, null)
         }else {
             v = this.reset(props)
             this.loadedProject = meta
+            // this.scriptUtil.project = meta
+
             // console.time('settings load')
-            await this.loadProjectExtScript({import: "threepipe"})
+            await this.scriptUtil.loadProjectExtScript({import: "threepipe"})
             // todo promise?
             await this.onProjectSettingsChange(emptyProjectSettings, null)
             // console.timeEnd('settings load')
@@ -1375,6 +1379,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
         await this.onProjectSettingsChange(settings, current)
     }
+
     async onProjectSettingsChange(settings: ProjectConfigSettings, lastSettings: ProjectConfigSettings|null){
         const vprops1 = lastSettings?.viewer || {}
         const vprops2 = settings.viewer || {}
@@ -1385,7 +1390,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
             // todo change props/show toast to reload viewer
             // this.reset({...this.getProps(), ...vprops2})
         }
-
         const deps1 = lastSettings?.dependencies || []
         const deps2 = settings.dependencies || []
         const addedDeps = []
@@ -1419,62 +1423,46 @@ export class ViewerInstanceManager extends EventDispatcher<{
             if(removedDeps.length || changedDeps.length){
                 // todo show toast to reload page/project
             }
-            // notify import maps change
+            // todo notify import maps change
             // this.dispatchEvent({type: 'importMapsChange'})
         }
 
-        // todo if imports change, prompt to reload
-        const plugins1 = lastSettings?.plugins || []
-        const plugins2  = settings.plugins || []
-        // const addedPlugins = []
-        const removedPlugins = []
-
-        // for (const p of plugins2) {
-        //     if(!plugins1.find(p1=>comparePlugins(p1, p))){
-        //         addedPlugins.push(p)
-        //     }
-        // }
-        for (const p of plugins1) {
-            if(!plugins2.find(p2=>comparePlugins(p2, p))){
-                removedPlugins.push(p)
-            }
-        }
-
-        const scripts1 = lastSettings?.scripts || []
-        const scripts2  = settings.scripts || []
-        // const addedScripts = []
-        const removedScripts = []
-
-        // for (const s of scripts2) {
-        //     if(!scripts1.find(s1=>comparePlugins(s1, s))){
-        //         addedScripts.push(s)
-        //     }
-        // }
-        for (const s of scripts1) {
-            if(!scripts2.find(s2=>s2.import === s.import)){
-                removedScripts.push(s)
-            }
-        }
-
-        // reloading all plugins, components (they wont be reloaded if not changed)
-        const plugins = [...plugins2, ...removedPlugins.map(p=>({...p, active: false}))]
-        const scripts = [...scripts2, ...removedScripts.map(p=>({...p, active: false}))]
-        if(plugins.length > 0 || scripts.length > 0) {
-            this._pluginsRefreshing = new Promise<void>(async (res)=>{
-                const mods = await this.loadProjectPlugins(plugins, false)
-                const mods2 = await this.loadProjectExtScripts(scripts, false)
-                const modules = new Set([...mods, ...mods2])
-                for (const module of modules) {
-                    await this.refLoadModule(module)
-                }
-                res()
-            })
-            await this._pluginsRefreshing
-            this._pluginsRefreshing = undefined
-        }
+        await this.scriptUtil.onProjectSettingsChange(settings, lastSettings)
     }
 
-    private _pluginsRefreshing: Promise<any>|undefined
+    onObserveFileChange = async (path: string, project1: LoadedProject)=>{
+        const project = this.loadedProject
+        if(!project?.handle || !project?.settings) return
+        if(project !== project1) {
+            console.error('Project file change for another project?', project1.path, project.path)
+            return
+        }
+        if(path === 'package.json'){
+            const file: File = await resolveFile(path, project.path, project.handle)
+            const project2 = await parsePackageJsonSettings(file, project)
+            project.file = project2.file
+            project.lastModified = project2.lastModified
+            project.handle = project2.handle
+            if(project.settings && project2.settings) {
+                project.settings.json = project2.settings.json
+                project.settings.mainScene = project2.settings.mainScene
+                if (JSON.stringify(project2.settings.config) !== JSON.stringify(project.settings.config)) {
+                    await this.setSettings(project2.settings.config, false)
+                }
+            }
+        }
+        if(path === 'assets.json'){
+            try {
+                const file: File = await resolveFile(path, project.path, project.handle)
+                const text = await file.text()
+                const json = parseAssetsJSONManifest(text)
+                project.assetsManifest = json
+            }catch (e) {
+                console.error('Unable to refresh assets.json after change')
+                console.error(e)
+            }
+        }
+    }
 
     async addProjectPlugin(plugin: ExternalPlugin){
         const settings = this.loadedProject?.settings?.config
@@ -1522,749 +1510,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
     }
 
     // pluginsLoading = false
-    extPlugins: ExternalPlugin[] = [] // todo make public readonly
-    extScripts: ExternalScript[] = [] // todo make public readonly
-    _extPluginsAdd(p: ExternalPlugin){
-        if(!this.extPlugins.includes(p)){
-            this.extPlugins.push(p)
-            this.dispatchEvent({type: 'extPluginsChange'})
-        }
-    }
-    _extPluginsRemove(p: ExternalPlugin|number){
-        const i = typeof p === 'number' ? p : this.extPlugins.indexOf(p)
-        if(i >= 0 && i < this.extPlugins.length){
-            this.extPlugins.splice(i, 1)
-            this.dispatchEvent({type: 'extPluginsChange'})
-        }
-    }
-
-    _extScriptsAdd(p: ExternalScript){
-        if(!this.extScripts.includes(p)){
-            this.extScripts.push(p)
-            this.dispatchEvent({type: 'extScriptsChange'})
-        }
-    }
-    _extScriptsRemove(p: ExternalScript|number){
-        const i = typeof p === 'number' ? p : this.extScripts.indexOf(p)
-        if(i >= 0 && i < this.extScripts.length){
-            this.extScripts.splice(i, 1)
-            this.dispatchEvent({type: 'extScriptsChange'})
-        }
-    }
-
-    findExtPlugin(className: string|undefined, importPath: string){
-        const ps = this.extPlugins.filter(p=>p.import === importPath)
-        if(ps.length === 1){
-            const p = ps[0]
-            if(!p.className || p.className === className || className === 'default') return p
-        }else if(ps.length > 1){
-            const p = ps.find(p=>p.className === className || (!p.className && className === 'default'))
-            if(p) return p
-        }
-        return null
-    }
-
-    findExtScript(importPath: string){
-        const ps = this.extScripts.filter(p=>p.import === importPath)
-        if(ps.length === 1){
-            return ps[0]
-        }
-        if(ps.length > 1) {
-            console.error('Multiple scripts with same import path found', ps)
-        }else {
-            console.warn('Script not found', importPath)
-        }
-        return null
-    }
-
-    addedViewerPlugins: IViewerPlugin[] = []
-    async addPlugin(p: PluginRef){
-        const v = this.get()
-        const pt = p.exp.PluginType
-        if(!pt){
-            console.error('Plugin does not have a PluginType static property', p.exp)
-            return false
-        }
-        if(v.getPlugin(pt)){
-            // plugin already added
-            return false
-        }
-        // console.log('Adding plugin', pt, p.def.params || [])
-        const plugin = await v.addPlugin(p.exp, ...p.def.params || [])
-        this.addedViewerPlugins.push(plugin)
-        // v.getPlugin(BlueprintJsUiPlugin2)?.setupPluginUi(plugin)
-        return true
-    }
-    async removePlugin(p: PluginRef){
-        const v = this.get()
-        const plugin = v.getPlugin(p.exp)
-        if(plugin) {
-            const i = this.addedViewerPlugins.indexOf(plugin)
-            if(i >= 0) {
-                this.addedViewerPlugins.splice(i, 1)
-                // console.log('Removing plugin', p.exp)
-                // v.getPlugin(BlueprintJsUiPlugin2)?.removePluginUi(plugin)
-                await v.removePlugin(plugin)
-            }else {
-                // it could be a default plugin added by editor
-            }
-            return true
-        }
-        return false
-    }
-
-    addedComponents: ComponentRef['exp'][] = []
-    async addComponent(p: ComponentRef){
-        const v = this.get()
-        const pt = p.exp.ComponentType
-        if(!pt){
-            console.error('Component does not have a ComponentType static property', p.exp)
-            return false
-        }
-        const plugin = v.getPlugin(EntityComponentPlugin)!
-        if(plugin.hasComponentType(pt)){
-            // plugin already added
-            return false
-        }
-        console.log('Adding Component', pt)
-        const res = await plugin.addComponentType(p.exp)
-        if(res) this.addedComponents.push(p.exp)
-        return true
-    }
-    async removeComponent(p: ComponentRef){
-        const v = this.get()
-        const plugin = v.getPlugin(EntityComponentPlugin)!
-        const exists = plugin.hasComponentType(p.exp.ComponentType)
-        if(exists) {
-            const i = this.addedComponents.indexOf(p.exp)
-            if(i >= 0) {
-                this.addedComponents.splice(i, 1)
-                console.log('Removing component', p.exp.ComponentType)
-                // v.getComponent(BlueprintJsUiComponent2)?.removeComponentUi(plugin)
-                // await v.removeComponent(plugin)
-                await plugin.removeComponentType(p.exp)
-            }else {
-                // it could be a default plugin added by editor
-            }
-            return true
-        }
-        return false
-    }
-
-    // for this.loadedProject
-    // async loadProjectPlugin2(plugin: ExternalPlugin){
-    //     const path = plugin.import
-    //
-    //     const scriptModules = [...this.scriptModules.values()]
-    //     const module0 = scriptModules.find(m=>m.plugins.find(p=>comparePlugins(p, plugin)))
-    //     if(module0) {
-    //         if(plugin.active === false){
-    //             const lastPluginI = module0.plugins.findIndex(p=>comparePlugins(p, plugin))
-    //             const lastPlugin = module0.plugins[lastPluginI]
-    //             this.pluginsLoading = true
-    //             // remove plugin
-    //             const res = await this.removePlugin(lastPlugin).catch(e=>{
-    //                 console.error('Error unloading module for plugin: ', path, e)
-    //                 return false
-    //             })
-    //             if(res) {
-    //                 if(module0.plugins.length === 1 || lastPluginI < 0)
-    //                     this.scriptModules.delete(path)
-    //                 else {
-    //                     module0.plugins.splice(lastPluginI, 1)
-    //                 }
-    //             }
-    //             this.pluginsLoading = false
-    //         }else {
-    //             // Plugin already loaded
-    //         }
-    //         return
-    //     }
-    //     if(plugin.active === false) {
-    //         return
-    //     }
-    //     this.pluginsLoading = true
-    //     try {
-    //         const module1 = this.scriptModules.get(path)
-    //         if(module1) {
-    //             let mod
-    //             if(typeof (module1.module as Promise<SupPluginModule>).then === 'function'){
-    //                 mod = await module1.module
-    //             }else mod = module1.module as SupPluginModule
-    //             const res = await this.addPlugin(plugin, mod).catch(e=>{
-    //                 console.error('Error loading module for plugin: ', path, e)
-    //                 return null
-    //             })
-    //             if(res) {
-    //                 // todo setup ui config
-    //                 module1.plugins.push(plugin)
-    //             }else {
-    //                 // todo failed to load
-    //             }
-    //         }else {
-    //             const pms = loadModule(path)
-    //             const mod = {plugins: [plugin], module: pms as SupPluginModule|Promise<SupPluginModule>}
-    //             this.scriptModules.set(path, mod)
-    //             // todo test
-    //             // const path1 = path.match(/^[a-z]+:\/\//) ? path : await this.fetchProjectAsset('asset://'+path)
-    //             // const module: SupPluginModule = await import(/* @vite-ignore */ path1)
-    //             // const module = await ImportMapsManager.dynamicImport(path)
-    //             const module = await pms
-    //             if (!module) {
-    //                 throw new Error('Failed to import plugin: ' + path)
-    //             }
-    //             mod.module = module
-    //             const res = await this.addPlugin(plugin, module).catch(e => {
-    //                 console.error('Error loading module for plugin: ', path, e)
-    //                 return null
-    //             })
-    //             if (res) {
-    //                 // this.scriptModules.set(path, {module, plugins: [plugin]})
-    //             } else {
-    //                 // todo failed to load
-    //                 if(mod.plugins.length === 1 && mod.plugins[0] === plugin)
-    //                    this.scriptModules.delete(path)
-    //                 else {
-    //                     const i = mod.plugins.indexOf(plugin)
-    //                     if(i >= 0) mod.plugins.splice(i, 1)
-    //                 }
-    //             }
-    //         }
-    //     }catch (e) {
-    //         console.error('Error loading plugin: ', path, e)
-    //     }
-    //     this.pluginsLoading = false
-    // }
-
-    async loadProjectPlugin(plugin: ExternalPlugin, refLoad = true){
-        const path = plugin.import
-        const existing = this.extPlugins.findIndex(e=>comparePlugins(e, plugin))
-        const lastPlugin = existing >=0 ? this.extPlugins[existing] : null
-
-        const mod = lastPlugin ? [...this.scriptModules.values()].find(m=>m.plugins.find(p=>p.def===lastPlugin)) : null
-        if(mod && lastPlugin) {
-            if(plugin.active === false){
-                // this.pluginsLoading = true
-                const ref = mod.plugins.find(p=>p.def === lastPlugin)
-                if(ref) await this.refRemovePlugin(mod.plugins, ref, path);
-                this._extPluginsRemove(existing)
-                // this.pluginsLoading = false
-            }
-            return
-        }
-        if(plugin.active === false) {
-            if(existing >= 0) {
-                this._extPluginsRemove(existing)
-            }
-            return
-        }
-        if(existing >= 0) {
-            // already loaded, cant update
-        }else {
-            this._extPluginsAdd(plugin)
-            const module = await this.loadProjectScript(path, refLoad)
-            if(refLoad && !this.scriptModules.get(path)?.plugins.some(r=>r.def===plugin)){
-                console.warn('Unable to find/add plugin, probably a plugin with the same type already exists or the plugin belongs to a different file or package.', plugin)
-            }
-            return module
-        }
-    }
-
-    // right now external scripts can only have components, anything else, add it here
-    async loadProjectExtScript(component: ExternalScript, refLoad = true){
-        const path = component.import
-        const existing = this.extScripts.findIndex(e=>e.import === component.import)
-        const lastScript = existing >=0 ? this.extScripts[existing] : null
-
-        const mod = lastScript ? [...this.scriptModules.values()].find(m=>m.path === path) : null
-        if(mod && lastScript) {
-            if(component.active === false){
-                // this.componentsLoading = true
-                const refs = mod.components.filter(p=>p.def === lastScript)
-                // if(ref) await this.refRemoveComponent(mod.components, ref, path);
-                for (const ref of refs) {
-                    await this.refRemoveComponent(mod.components, ref, path);
-                }
-                this._extScriptsRemove(existing)
-                // this.componentsLoading = false
-            }
-            return
-        }
-        if(component.active === false) {
-            if(existing >= 0) {
-                this._extScriptsRemove(existing)
-            }
-            return
-        }
-        if(existing >= 0) {
-            // already loaded, cant update
-        }else {
-            this._extScriptsAdd(component)
-            const module = await this.loadProjectScript(path, refLoad)
-            // if(refLoad && !this.scriptModules.get(path)?.components.some(r=>r.def===component)){
-            //     console.warn('Unable to find/add component, probably a plugin with the same type already exists or the plugin belongs to a different file or package.', plugin)
-            // }
-            return module
-        }
-    }
-
-    private async refRemovePlugin(refs: PluginRef[], plugin: PluginRef, path: string) {
-        // remove plugin
-        if (plugin) {
-            const res = await this.removePlugin(plugin).catch(e => {
-                console.error('Error unloading plugin: ', plugin, path, e)
-                return false
-            })
-            if (res) {
-                // if(refs.length === 1 && refs[0].def === lastPlugin)
-                //     this.scriptModules.delete(path)
-                // else {
-                const i = refs.indexOf(plugin)
-                if (i >= 0) refs.splice(i, 1)
-                // }
-            }else {
-                console.error('Failed to unload plugin: ', path)
-            }
-        }
-    }
-    private async refRemoveComponent(refs: ComponentRef[], component: ComponentRef, path: string) {
-        // remove component
-        if (component) {
-            const res = await this.removeComponent(component).catch(e => {
-                console.error('Error unloading component: ', component, path)
-                console.error(e)
-                return false
-            })
-            if (res) {
-                // if(refs.length === 1 && refs[0].def === lastComponent)
-                //     this.scriptModules.delete(path)
-                // else {
-                const i = refs.indexOf(component)
-                if (i >= 0) refs.splice(i, 1)
-                // }
-            }else {
-                console.error('Failed to unload component: ', path)
-            }
-        }
-    }
-
-    extraViewerPlugins: Record<string, PluginRef> = {}
-    async refLoadModule(mod: ScriptModule){
-        // this.pluginsLoading = true
-        const {module, plugins, path, components} = mod
-        const newRefs: PluginRef[] = []
-        const newComp: ComponentRef[] = []
-        Object.entries(module).forEach(([key, exp])=>{
-            if((exp as PluginRef['exp']).PluginType){
-                const pluginCons = exp as PluginRef['exp']
-                const e = this.findExtPlugin(key, path)
-                if (e && !plugins.find(r => r.def === e) && !newRefs.find(r => r.def === e)) {
-                    // if(this.extraViewerPlugins.includes(pluginCons)){
-                    //     this.extraViewerPlugins = this.extraViewerPlugins.filter(p=>p!==pluginCons)
-                    //     this.dispatchEvent({type: 'extraPluginsChange'})
-                    // }
-                    if(this.extraViewerPlugins[pluginCons.PluginType]?.def !== e) {
-                        this.extraViewerPlugins[pluginCons.PluginType] = {
-                            exp: pluginCons,
-                            def: e,
-                        }
-                        this.dispatchEvent({type: 'extraPluginsChange'})
-                    }
-                    newRefs.push({
-                        exp: pluginCons,
-                        def: e,
-                    })
-                }else {
-                    const ignored = ['AssetManager', 'AViewerPlugin']
-                    // if(!ignored.includes(pluginCons.PluginType) && !this.extraViewerPlugins.includes(pluginCons)){
-                    //     this.extraViewerPlugins.push(pluginCons)
-                    //     this.dispatchEvent({type: 'extraPluginsChange'})
-                    // }
-                    if(!ignored.includes(pluginCons.PluginType) && this.extraViewerPlugins[pluginCons.PluginType]?.def !== e) {
-                        this.extraViewerPlugins[pluginCons.PluginType] = {
-                            exp: pluginCons,
-                            def: {
-                                import: path,
-                                className: key,
-                                params: [],
-                            },
-                        }
-                        this.dispatchEvent({type: 'extraPluginsChange'})
-                    }
-                }
-            }
-            if((exp as ComponentRef['exp']).ComponentType){
-                const componentCons = exp as ComponentRef['exp']
-                const e = this.findExtScript(path)
-                if(e && !components.find(r=>r.def === e) && !newComp.find(r=>r.def === e)) {
-                    newComp.push({
-                        exp: componentCons,
-                        def: e,
-                    })
-                }
-            }
-        })
-        plugins.push(...newRefs)
-        components.push(...newComp)
-
-        const pluginsPms = newRefs.map(async (p)=>{
-            const res = await this.addPlugin(p).catch(e => {
-                console.error('Error adding plugin to the viewer: ', p, path, e)
-                return null
-            })
-            if (res) {
-                // refs.push(p)
-                // this.scriptModules.set(path, {module, plugins: [plugin]})
-            } else {
-                // todo failed to load
-                // if(refs.length === 1 && refs[0] === p)
-                //     this.scriptModules.delete(path)
-                // else {
-                const i = plugins.indexOf(p)
-                if(i >= 0) plugins.splice(i, 1)
-                // }
-            }
-            return res || false
-        })
-
-        const componentsPms = newComp.map(async (c)=>{
-            const res = await this.addComponent(c).catch(e => {
-                console.error('Error adding component to the viewer: ', c, path, e)
-                return null
-            })
-            if (res) {
-                // refs.push(p)
-                // this.scriptModules.set(path, {module, plugins: [plugin]})
-            } else {
-                // todo failed to load
-                // if(refs.length === 1 && refs[0] === p)
-                //     this.scriptModules.delete(path)
-                // else {
-                const i = components.indexOf(c)
-                if(i >= 0) components.splice(i, 1)
-                // }
-            }
-            return res || false
-        })
-
-        const r = await Promise.allSettled([...pluginsPms, ...componentsPms])
-        // this.pluginsLoading = false
-        return r
-    }
-
-    _readScript = async (path: string)=>{
-        if(!this.loadedProject) throw new Error('No project loaded, cannot load script')
-        const file = await resolveFile(path, this.loadedProject.path, this.loadedProject.handle)
-        if(!file || typeof file === 'string') throw new Error('Failed to load script: ' + path)
-        const text = await (file as File).text()
-        return text
-    }
-
-    fsObserver: any | undefined
-
-    // @ts-ignore
-    fsObserverCallback = (records, observer, ...rest)=>{
-        // console.log('fs observer', records, observer, rest)
-
-        for (const record of records) {
-            console.log("Change detected:", record);
-            // const reportContent = `Change observed to ${record.changedHandle.kind} ${record.changedHandle.name}. Type: ${record.type}.`;
-            // sendReport(reportContent); // Some kind of user-defined reporting function
-            this._changedFilesQ.push(record.changedHandle)
-        }
-        // if(paths.length > 0){
-        // this.scriptFilesChanged(paths).catch(e=>{
-        //     console.error('Error handling changed plugin scripts: ', paths, e)
-        // })
-        // }
-        // this._changedFilesQ.push(...paths)
-
-    }
-    async initFsObserver(){
-        // @ts-ignore
-        this.fsObserver = window.FileSystemObserver ? new window.FileSystemObserver(this.fsObserverCallback) : undefined;
-        while (this.fsObserver){
-            await new Promise(res=>setTimeout(res, 2000))
-            await this.refreshChangedFilesQ()
-        }
-    }
-
-    private _changedFilesQ: (FileSystemDirectoryHandle|FileSystemFileHandle|string)[] = []
-    private _refreshingChangedFiles: Promise<void>|null = null
-    async refreshChangedFilesQ(){
-        if(this._changedFilesQ.length === 0) return
-        if(!this.loadedProject?.handle || !this.loadedProject?.settings) return
-        const project = this.loadedProject
-
-        if(this._refreshingChangedFiles){
-            await this._refreshingChangedFiles
-        }
-
-        const hh = this._changedFilesQ
-        this._changedFilesQ = []
-        const processed = new Set<FileSystemDirectoryHandle|FileSystemFileHandle|string>()
-        const paths = new Set<string>()
-        let handles = [...this.observedFiles.keys()]
-        for (const changedHandle of hh) {
-            if(processed.has(changedHandle)) continue
-            processed.add(changedHandle)
-            if(typeof changedHandle === 'string') {
-                paths.add(changedHandle)
-                continue
-            }
-            let handle
-            for (const handle1 of handles) {
-                if(await handle1.isSameEntry(changedHandle)){
-                    handle = handle1
-                    break
-                }
-            }
-            const path = handle ? this.observedFiles.get(handle) : null
-            if(path) paths.add(path)
-        }
-
-        const pms = (async ()=>{
-            // todo
-            //  file could be
-            //     package.json - done
-            //     asset manifest
-            //     current loaded scene/asset/file
-            //     any loaded embedded assets
-            //     loaded script file - done
-            //     what else?
-
-            for (const path of paths) {
-                if(path === 'package.json'){
-                    const file: File = await resolveFile(path, project.path, project.handle)
-                    const project2 = await parsePackageJsonSettings(file, project)
-                    project.file = project2.file
-                    project.lastModified = project2.lastModified
-                    project.handle = project2.handle
-                    if(project.settings && project2.settings) {
-                        project.settings.json = project2.settings.json
-                        project.settings.mainScene = project2.settings.mainScene
-                        if (JSON.stringify(project2.settings.config) !== JSON.stringify(project.settings.config)) {
-                            await this.setSettings(project2.settings.config, false)
-                        }
-                    }
-                }
-                if(path === 'assets.json'){
-                    try {
-                        const file: File = await resolveFile(path, project.path, project.handle)
-                        const text = await file.text()
-                        const json = parseAssetsJSONManifest(text)
-                        project.assetsManifest = json
-                    }catch (e) {
-                        console.error('Unable to refresh assets.json after change')
-                        console.error(e)
-                    }
-                }
-            }
-
-            await this.scriptFilesChanged(paths)
-        })().catch(e=>{
-            console.error('Error handling changed plugin scripts: ', paths, e)
-        })
-        this._refreshingChangedFiles = pms
-        await this._refreshingChangedFiles
-        if(this._refreshingChangedFiles === pms) this._refreshingChangedFiles = null
-    }
-
-    // todo clear on close project
-    observedFiles = new Map<FileSystemFileHandle|FileSystemDirectoryHandle, string>() // map to path
-    async observeProjectFile(path: string){
-        if(!this.loadedProject?.handle){
-            // throw new Error('No project loaded, cannot observe plugin script')
-            console.error('No project loaded, cannot observe plugin script: ', path)
-            return
-        }
-        if([...this.observedFiles.values()].includes(path)) return // already observed
-        const handles = await getFileHandle(this.loadedProject.handle, path, false)
-        if(!handles.fileHandle || !handles.dirHandle){
-            // throw new Error('No such plugin script file: ' + path)
-            console.error('No such plugin script file: ' + path)
-            return
-        }
-        try {
-            // const perm = await handles.fileHandle.queryPermission({ mode: 'readwrite' });
-            // if (perm !== 'granted') {
-            //     const newPerm = await handles.fileHandle.requestPermission({ mode: 'readwrite' });
-            //     if (newPerm !== 'granted') {
-            //         console.warn('User denied permission.');
-            //         return;
-            //     }
-            // }
-            this.fsObserver?.observe(handles.fileHandle, {recursive: false})
-        }catch (e) {
-            console.warn(e)
-        }
-        this.observedFiles.set(handles.fileHandle, path)
-    }
-
-    async loadProjectScript(path: string, refLoad = true): Promise<ScriptModule>{
-        // todo
-        //  path can be local project path - ./src/file.js, src/file.js
-        //  path can be package name - threepipe, @threepipe/plugin-xyz
-        //  or an absolute url to a js file
-        //  or an absolute url to a tgz file
-        // this.pluginsLoading = true
-        let mod: ScriptModule | undefined
-        try {
-            mod = this.scriptModules.get(path)
-            if(mod) {
-                // let module
-                // if(typeof (mod.module as Promise<SupPluginModule>).then === 'function'){
-                //     module = await mod.module
-                // }else module = mod.module as SupPluginModule
-                await mod.module
-
-                // already loaded
-
-            }else {
-                console.log('Loading project script: ', path)
-                if(path.startsWith('./') || path.startsWith('.././'))
-                    await this.observeProjectFile(path).catch(e=>{
-                        console.error('Error observing project script file: ', path, e)
-
-                    })
-                mod = {
-                    plugins: [],
-                    components: [],
-                    module: null as any,
-                    path,
-                }
-                this.scriptModules.set(path, mod)
-                mod.module = loadModule(path, this._readScript).then(async module => {
-                    if (!module) {
-                        throw new Error('Failed to import module: ' + path)
-                    }
-                    if (mod) {
-                        mod.module = module
-                    }
-                    return module
-                })
-
-                const module = await mod.module
-
-                // const path1 = path.match(/^[a-z]+:\/\//) ? path : await this.fetchProjectAsset('asset://'+path)
-                // const module: SupPluginModule = await import(/* @vite-ignore */ path1)
-                // const module = await ImportMapsManager.dynamicImport(path)
-            }
-        }catch (e) {
-            console.error('Error loading module: ', path, e)
-            // this.pluginsLoading = false
-            throw e
-        }
-        // this.pluginsLoading = false
-
-        if(refLoad) await this.refLoadModule(mod)
-
-        return mod
-    }
-
-    async scriptFilesChanged(paths: string[]|Set<string>){
-        console.log('[Files Changed]', paths)
-        const ps: string[] = getFileChanged(paths)
-        if(ps.length === 0) return
-        // this.pluginsLoading = true
-        // unload modules
-        const ps2 = []
-        const mods = []
-        // const modulePlugins = new Map<string, PluginRef[]>()
-        for (const p of ps) {
-            const mod = this.scriptModules.get(p)
-            if(mod?.module) {
-                // let module3
-                // if(typeof (mod.module as Promise<SupPluginModule>).then === 'function'){
-                //     module3 = await mod.module
-                // }else module3 = mod.module as SupPluginModule
-                await mod.module
-
-                // await viewer.getPlugin(SandboxPlugin)!.unloadPlugin(p).catch(e=>{
-                //     console.error('Error unloading module for plugin: ', p, e)
-                // })
-                // const p2: PluginRef[] = []
-                // todo what if plugins/components are being added, need another promise for refLoad...
-                for (const plugin of [...mod.plugins]) {
-                    await this.refRemovePlugin(mod.plugins, plugin, p);
-                }
-                for (const component of [...mod.components]) {
-                    await this.refRemoveComponent(mod.components, component, p);
-                }
-                // modulePlugins.set(p, p2)
-            }
-            if(mod) {
-                ps2.push(p)
-                mods.push(mod)
-            }
-        }
-        try {
-            // load modules again
-            const pms = loadModules(ps2, this._readScript)
-            // modules1 = await loadModules(ps2)
-            const pp = []
-            for (let i = 0; i < ps2.length; i++){
-                const path = ps2[i];
-                const mod = mods[i]
-                const pms2 = pms.then(p=>p[i])
-                // const plugins = modulePlugins.get(path) || []
-                mod.module = pms2.then(async (module)=>{
-                    if(!module.__tpModuleError) {
-                        mod.module = module
-                    }else {
-                        // error in module, keep the last loaded module and show error to user
-                    }
-                    return mod.module
-                })
-
-                // mod.plugins.push(...plugins)
-                pp.push(mod.module.then(async ()=>{
-                    await this.refLoadModule(mod)
-                }))
-            }
-            await Promise.allSettled(pp)
-        }catch (e) {
-            console.error('Error reloading changed script modules: ', ps2, e)
-            // this.pluginsLoading = false
-            return
-        }
-        // this.pluginsLoading = false
-    }
-
-    // for this.loadedProject
-    async loadProjectPlugins(plugins: ExternalPlugin[], refLoad = true){
-        if(!plugins || plugins.length === 0) return []
-        let modules = new Set<ScriptModule>()
-        // todo parallel?
-        for (const id of plugins) {
-            const module = await this.loadProjectPlugin(id, false)
-            if(module) modules.add(module)
-        }
-        if(refLoad){
-            for (const module of modules) {
-                await this.refLoadModule(module)
-            }
-        }
-        return modules
-    }
-    async loadProjectExtScripts(components: ExternalScript[], refLoad = true){
-        if(!components || components.length === 0) return []
-        let modules = new Set<ScriptModule>()
-        // todo parallel?
-        for (const id of components) {
-            const module = await this.loadProjectExtScript(id, false)
-            if(module) modules.add(module)
-        }
-        if(refLoad){
-            for (const module of modules) {
-                await this.refLoadModule(module)
-            }
-        }
-        return modules
-    }
-
-    // for this.loadedProject
-    scriptModules: Map<string, ScriptModule> = new Map()
 
     // assetManifest = {
     //     files: {} as Record<string, { // id to files meta
@@ -2310,7 +1555,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             (file === project ?
             await resolveFile(project.file, project.path, project.handle) :
             await resolveFile(file.path, project.path, project.handle))
-        await this._pluginsRefreshing
+        await this.scriptUtil.scriptsRefreshing
         const isValidFile = !!sceneFile && !!(sceneFile).name && (sceneFile).name.includes('.')
         if (isValidFile) { // empty files when new scene is created
             const v = this.get()
@@ -2398,7 +1643,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return fileRootPath;
     }
 
-// this will load the asset again even if in memory
+    // this will load the asset again even if in memory
     async loadAsset (file: FileManifestEntry|null, project: LoadedProject){
         if(!file) return null
         if(!project) return null
@@ -2421,77 +1666,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
             console.error('Cannot load a scene model root as an asset')
             return null
         }
-
-        const previewRefresh = async ()=>{
-            if(!project.handle) return
-            const previewPath = thumbPath(file.path)
-            // check if file exists
-            // const exists = !!(await getFileHandle(project.handle, previewPath, false)).fileHandle
-            // if(exists) return
-
-            let prev
-            const viewer = this.get()
-            if(res.isTexture) {
-                prev = await new Promise<string>(async (resolve) => {
-                    const preview = refreshTexturePreview(res as ITexture, viewer, (p) => {
-                        if (preview === staticData.loadingImage) resolve(p)
-                    })
-                    if (preview !== staticData.loadingImage) resolve(preview)
-                })
-            }else if(res.isMaterial){
-                const gen = new MaterialPreviewGenerator()
-                await viewer.doOnce('preFrame')
-                viewer.setDirty()
-                prev = gen.generate(res as IMaterial, viewer.renderManager.renderer)
-                gen.dispose()
-            }else if(res.isObject3D){
-                let root
-                const channel = 7
-                // console.log(res, res.parent)
-                if(res.parent){ // todo this should not be the case actually
-                    // check if in scene
-                    // root = viewer.scene
-                    // viewer.scene.children.push(res)
-                }else{
-                    root = new Scene()
-                    // todo why is so big intensity req?
-                    const hemisphericLight = new HemisphereLight(0xffffff, 0x444444, 4)
-                    hemisphericLight.layers.set(channel)
-                    hemisphericLight.position.set(0, 10, 0)
-                    root.add(hemisphericLight)
-                    root.add(res as IObject3D)
-                    console.log(root)
-                }
-                // viewer.setDirty()
-                // await viewer.doOnce('preFrame')
-                // todo use a render target in snapObject
-                // prev = snapObject(viewer.renderManager.renderer, res as IObject3D, root, channel, new Vector3(1,1,1).multiplyScalar(1.25))
-
-                if(root && root !== viewer.scene){
-                    root.remove(res as IObject3D)
-                    root.children.forEach((c: any)=>c.dispose && c.dispose())
-                    ;(root as any).dispose && (root as any).dispose()
-                }
-
-            }
-
-            if(prev) {
-                const blob = await (await fetch(prev)).blob()
-                const f = new File([blob], previewPath, {type: blob.type, lastModified: Date.now()})
-                await this.writeFile(project.handle, previewPath, f, project.path).catch(e => {
-                    console.error('Error writing texture preview: ', previewPath, e)
-                    return false
-                })
-            }
-        }
-        previewRefresh() // not awaiting
-
-        if(res.isTexture){
-            const t = res as ITexture
-            // todo srgb?
-        }
-
-        // todo if asset id/hash is not set in res, create it and set needs save
 
         return res
     }
@@ -2874,7 +2048,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             await this._unloadProjectFile()
         }
 
-        refreshQueryState({project: unloadingProject ? null : project?.path||null, file: file?.path??null})
+        refreshProjectQueryState({project: unloadingProject ? null : project?.path||null, file: file?.path??null})
 
         if(project && !file && !isPackageProject(project)){
             file = project
@@ -3368,35 +2542,53 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return scene && saveScene ? this.saveProjectSceneOrAsset(project, scene) : {error: null}
     }
 
-    async getAssetIdFromPath(path: string): Promise<string|null> {
-        // todo
-        //  import asset from path
-        //  get asset id from object
-        //  if 404, return null
-        console.error('getAssetIdFromPath not implemented yet')
-        return null
+    // only for this session to avoid checking for file exists
+    private _previewGeneratedCache = new Set<string>()
+    private handlePreviewRefresh(e: {path: string, action: string}) {
+        if (e.action !== 'load') return
+
+        const tracker = this.get().assetManager.tracker
+
+        const res = tracker.registry[e.path]?.object
+        if (!res) return
+
+        const project = this.loadedProject
+        if (!project) return
+
+        const path = this.resolveAssetIdPath(e.path, project)
+        const previewPath = thumbPath(path)
+
+        const previewRefresh = async () => {
+            if (!project.handle) return
+            // check if file exists
+
+            const e1 = this._previewGeneratedCache.has(previewPath)
+            const exists = e1 || !!(await getFileHandle(project.handle, previewPath, false, false)).fileHandle
+            if (exists) {
+                if(!e1) {
+                    this._previewGeneratedCache.add(previewPath)
+                }
+                return
+            }
+            this._previewGeneratedCache.add(previewPath)
+
+            const viewer = this.get()
+            let prev = await generatePreview(res, viewer);
+
+            if (prev) {
+                const blob = await (await fetch(prev)).blob()
+                const f = new File([blob], previewPath, {type: blob.type, lastModified: Date.now()})
+                await this.writeFile(project.handle, previewPath, f, project.path).catch(e => {
+                    console.error('Error writing texture preview: ', previewPath, e)
+                    return false
+                })
+            }
+        }
+        previewRefresh() // not awaiting
     }
 
 }
-export interface PluginRef{
-    exp: (Class<IViewerPlugin> & IViewerPlugin['constructor'])
-    def: ExternalPlugin
-}
 
-export interface ComponentRef{
-    exp: /*(Class<Object3DComponent> & Object3DComponent['constructor'])*/ TObject3DComponent
-    def: ExternalScript
-}
-
-export function comparePlugins(a: ExternalPlugin, b: ExternalPlugin){
-    if(a === b) return true
-    if(a.import === b.import){
-        if(a.className === b.className) return true
-        if(!a.className || !b.className) return true
-        return false
-    }
-    return false
-}
 export type SelObjectType = 'object' | 'material' | 'texture' | 'geometry' | 'unknown' | 'none' | 'plugin'
 
 export interface SelectFileRef{
@@ -3420,81 +2612,6 @@ export interface SelectFileRef{
     //  * @default true
     //  */
     // editor?: boolean
-}
-
-function useSetupProject() {
-    const [project, setProject] = useState<SavedSceneFile|null>(null)
-    // const [file, setFile] = useState<SavedSceneFile|null>(null)
-    // const [scene, setScene] = useState<null | string>(null)
-    const [path, setPath] = useState<null | string>(null)
-    const [welcomeOpen, setWelcomeOpen] = useState(true)
-
-    // Custom setProject that also updates URL immediately
-    // const setProject = useCallback((newProject: string) => {
-    //     // if (newProject) {
-    //     //     console.log('Project changed:', newProject)
-    //     // }
-    //     // const params = new URLSearchParams(location.search)
-    //     // const current = params.get('project') || params.get('p') || ''
-    //     // if(current !== newProject) {
-    //     //     if (params.has('project')) params.delete('project')
-    //     //     if (params.has('p')) params.delete('p')
-    //     //     params.set('p', newProject)
-    //     //     window.history.replaceState({}, '', '?' + params.toString())
-    //     // }
-    //     _setProject(newProject)
-    // }, [_setProject])
-
-    // log file whenever it changes
-    // useEffect(() => {
-    //     if (file) {
-    //         console.log('File changed:', file.name)
-    //     }
-    // }, [file])
-    // // log path whenever it changes
-    // useEffect(() => {
-    //     if (path) {
-    //         console.log('Path changed:', path)
-    //     }
-    // }, [path])
-    return {
-        project, setProject,
-        // projectFile: file, setPFile: setFile,
-        path, setPath,
-        // scene, setScene,
-        welcomeOpen, setWelcomeOpen: (v: any)=>{
-            // console.warn('welcome open', v)
-            setWelcomeOpen(v)
-        },
-    }
-}
-
-const ProjectContext = createContext<ReturnType<typeof useSetupProject>|undefined>(undefined)
-export const useProject = () => useSafeContext(ProjectContext)
-
-export function ProjectProvider({children}: { children: any }) {
-    const value = useSetupProject()
-    return createElement(ProjectContext.Provider, {value}, children)
-}
-
-export const ManagerContext = createContext<ViewerInstanceManager | undefined>(undefined)
-export const useManager = () => useSafeContext(ManagerContext)
-
-export function ManagerProvider({children}: { children: any }) {
-    const [value] = useState(new ViewerInstanceManager())
-    return createElement(ManagerContext.Provider, {value}, children)
-}
-
-const mimeToExt: any = {
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/svg+xml': 'svg',
-    'image/webp': 'webp',
-    'image/x-exr': 'exr',
-    'image/x-hdr': 'hdr',
-    'model/gltf+binary': 'glb',
-    'model/gltf+json': 'gltf',
-    'model/gltf': 'gltf',
 }
 
 async function fileFromDataUrl(dataUrl: string, name: string = 'file') {
@@ -3528,26 +2645,6 @@ export const canSaveAsset = (obj: IObject3D|IMaterial)=>{
         // && obj.userData.tpAssetId
         && obj.userData.rootPath && obj.userData.rootPath.startsWith(assetUrlPrefix+'@')
         // && obj._tpAssetId
-}
-
-export function useMakeAsset(){
-    const {project} = useProject()
-    const manager = useManager()
-    const [isMaking, setIsMaking] = useState(false)
-
-    const makeAsset = async (data: { obj: IObject3D|IMaterial })=>{
-        if(!project || !manager.loadedProjectFile) return false
-        if(isMaking) return
-        setIsMaking(true)
-
-        const res = await manager.saveNewProjectAsset(project, manager.loadedProjectFile, data.obj)
-        setIsMaking(false)
-        // @ts-ignore
-        const r = showSuccessErrorToast(res.path ? `Created ${project.path}${res.path} successfully` : 'Unknown Error', 'Unable to create asset', res)
-        return (res as any).result ?? null
-
-    }
-    return {makeAsset}
 }
 
 export function logAsset(data: any, obj: IObject3D|IMaterial|ITexture|IGeometry){
@@ -3605,38 +2702,6 @@ export function isExternalTexture(tex: ITexture){
     }
 }
 
-export function isMatEditable(obj: IMaterial, manager: ViewerInstanceManager){
-    return obj
-        // && !obj.userData.tpAssetId  // not an asset itself
-        && (!obj.userData.rootPath || !obj.userData.rootPath.startsWith(assetUrlPrefix))  // not an asset itself
-        // && (!obj._tpAssetId || obj._tpAssetId === manager.loadedAssetId) // part of an asset, but not the current loaded asset
-        // && (!obj._tpRootPath /*|| !obj._tpRootUid*/) // part of an asset, but not the current loaded asset
-        && !obj.userData.isPlaceholder
-}
-export function isGeomEditable(obj: IGeometry, manager: ViewerInstanceManager){
-    return obj
-        // && !obj.userData.tpAssetId  // not an asset itself
-        && (!obj.userData.rootPath || !obj.userData.rootPath.startsWith(assetUrlPrefix))  // not an asset itself
-        // && (!obj._tpAssetId || obj._tpAssetId === manager.loadedAssetId) // part of an asset, but not the current loaded asset
-        // && (!obj._tpRootPath /*|| !obj._tpRootUid*/) // part of an asset, but not the current loaded asset
-        && !obj.userData.isPlaceholder
-}
-export function isTexEditable(obj: ITexture, manager: ViewerInstanceManager){
-    return obj
-        // && !obj.userData.tpAssetId  // not an asset itself
-        && (!obj.userData.rootPath || !obj.userData.rootPath.startsWith(assetUrlPrefix))  // not an asset itself
-        && (!obj._tpRootPath /*|| !obj._tpRootUid*/) // part of an asset, but not the current loaded asset
-        && !obj.userData.isPlaceholder
-}
-
-
-type ScriptModule ={
-    plugins: PluginRef[],
-    module: SupPluginModule|Promise<SupPluginModule>,
-    path: string,
-    components: ComponentRef[],
-}
-
 export function thumbPath(path: string){
     return `.${settingsKey}/thumbs/${path}.png`
 }
@@ -3650,278 +2715,8 @@ declare module 'threepipe'{
     }
 }
 
-const emptyProjectSettings = {
-    plugins: [
-        {
-            "import": "threepipe",
-            "className": "SSAAPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "AssetExporterPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "TransformAnimationPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "DepthBufferPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "NormalBufferPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "FullScreenPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "ObjectConstraintsPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "TransformControlsPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "AssetExporterPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "ClearcoatTintPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "FragmentClippingExtensionPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "NoiseBumpMaterialPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "CustomBumpMapPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "ParallaxMappingPlugin",
-            "params": [
-                false
-            ]
-        },
-        {
-            "import": "threepipe",
-            "className": "GLTFKHRMaterialVariantsPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "VirtualCamerasPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "RenderTargetPreviewPlugin",
-            "params": [
-                false
-            ]
-        },
-        {
-            "import": "threepipe",
-            "className": "HDRiGroundPlugin",
-            "params": [
-                false,
-                true
-            ]
-        },
-        {
-            "import": "threepipe",
-            "className": "VignettePlugin",
-            "params": [
-                false
-            ]
-        },
-        {
-            "import": "threepipe",
-            "className": "ChromaticAberrationPlugin",
-            "params": [
-                false
-            ]
-        },
-        {
-            "import": "threepipe",
-            "className": "FilmicGrainPlugin",
-            "params": [
-                false
-            ]
-        },
-        {
-            "import": "threepipe",
-            "className": "SSAOPlugin",
-            "params": [
-                1009,
-                1
-            ]
-        },
-        {
-            "import": "threepipe",
-            "className": "ContactShadowGroundPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "DeviceOrientationControlsPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "PointerLockControlsPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "ThreeFirstPersonControlsPlugin"
-        },
-        {
-            "import": "threepipe",
-            "className": "MeshOptSimplifyModifierPlugin",
-            "params": [
-                false
-            ]
-        },
-        {
-            "import": "@threepipe/webgi-plugins",
-            "className": "AnisotropyPlugin",
-        },
-        {
-            "import": "@threepipe/webgi-plugins",
-            "className": "BloomPlugin",
-        },
-        {
-            "import": "@threepipe/webgi-plugins",
-            "className": "SSReflectionPlugin",
-        },
-        {
-            "import": "@threepipe/webgi-plugins",
-            "className": "TemporalAAPlugin",
-        },
-        {
-            "import": "@threepipe/webgi-plugins",
-            "className": "VelocityBufferPlugin",
-            params: [1009, false],
-        },
-        {
-            "import": "@threepipe/webgi-plugins",
-            "className": "DepthOfFieldPlugin",
-            params: [false],
-        },
-        {
-            "import": "@threepipe/webgi-plugins",
-            "className": "SSContactShadowsPlugin",
-            params: [false],
-        },
-        {
-            "import": "@threepipe/webgi-plugins",
-            "className": "OutlinePlugin",
-            params: [false],
-        },
-        {
-            "import": "@threepipe/webgi-plugins",
-            "className": "SSGIPlugin",
-            params: [undefined, 1, false],
-        },
-        // GLTFDracoExportPlugin, GLTFSpecGlossinessConverterPlugin
-        {
-            "import": "@threepipe/plugin-gltf-transform",
-            "className": "GLTFDracoExportPlugin",
-        },
-        {
-            "import": "@threepipe/plugin-gltf-transform",
-            "className": "GLTFSpecGlossinessConverterPlugin",
-        },
-        // MaterialConfiguratorPlugin, SwitchNodePlugin
-        {
-            "import": "@threepipe/plugin-configurator",
-            "className": "MaterialConfiguratorPlugin",
-        },
-        {
-            "import": "@threepipe/plugin-configurator",
-            "className": "SwitchNodePlugin",
-        },
-        ...['B3DMLoadPlugin', 'CMPTLoadPlugin', 'DeepZoomImageLoadPlugin', 'EnvironmentControlsPlugin', 'GlobeControlsPlugin', 'I3DMLoadPlugin', 'PNTSLoadPlugin', 'TilesRendererPlugin'].map(className=>({
-            import: '@threepipe/plugin-3d-tiles-renderer',
-            className,
-        })),
-        {
-            import: '@threepipe/plugin-assimpjs',
-            className: 'AssimpJsPlugin',
-            params: [false],
-        },
-        {
-            import: '@threepipe/plugin-path-tracing',
-            className: 'ThreeGpuPathTracerPlugin',
-            params: [false],
-        },
-        {
-            import: '@threepipe/plugin-blend-importer',
-            className: 'BlendLoadPlugin',
-        },
-        {
-            import: '@threepipe/plugin-network',
-            className: 'TransfrSharePlugin',
-        },
-        {
-            import: '@threepipe/plugin-troika-text',
-            className: 'TroikaTextPlugin',
-        },
-        ...[
-            'TDSLoadPlugin',
-            'ThreeMFLoadPlugin',
-            'ColladaLoadPlugin',
-            'AMFLoadPlugin',
-            'GCodeLoadPlugin',
-            'BVHLoadPlugin',
-            'VOXLoadPlugin',
-            'MDDLoadPlugin',
-            'PCDLoadPlugin',
-            'TiltLoadPlugin',
-            'VRMLLoadPlugin',
-            'LDrawLoadPlugin',
-            'VTKLoadPlugin',
-            'XYZLoadPlugin',
-        ].map(className=>({
-            import: '@threepipe/plugins-extra-importers',
-            className,
-        })),
-    ],
-    dependencies: [{
-        key: '@threepipe/webgi-plugins',
-        version: '0.6.1',
-    }, {
-        key: '@threepipe/plugin-gltf-transform',
-        version: 'latest',
-    },{
-        key: '@threepipe/plugin-configurator',
-        version: 'latest',
-    },{
-        key: '@threepipe/plugin-3d-tiles-renderer',
-        version: 'latest',
-    },{
-        key: '@threepipe/plugin-assimpjs',
-        version: 'latest',
-    },{
-        key: '@threepipe/plugin-path-tracing',
-        version: 'latest',
-    },{
-        key: '@threepipe/plugin-blend-importer',
-        version: 'latest',
-    },{
-        key: '@threepipe/plugin-network',
-        version: 'latest',
-    },{
-        key: '@threepipe/plugin-troika-text',
-        version: 'latest',
-    },{
-        key: '@threepipe/plugins-extra-importers',
-        version: 'latest',
-    }],
-    scripts: [],
-    viewer: {},
-} as ProjectConfigSettings
+export async function _writeFileHandle(fileHandle: FileSystemFileHandle, file: FileSystemWriteChunkType){
+    const writer = await fileHandle.createWritable()
+    await writer.write(file)
+    await writer.close()
+}

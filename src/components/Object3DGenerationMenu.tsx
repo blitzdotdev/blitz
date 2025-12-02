@@ -1,8 +1,8 @@
 import {bpUiConfigIcons, UiConfigRendererContext} from 'uiconfig-blueprint/lib/esm/lib'
-import {useManager} from '../utils/ViewerInstanceManager.ts'
 import {IObject3D, Object3DGeneratorPlugin} from 'threepipe'
 import React, {useCallback, useContext, useMemo} from 'react'
 import {IconName, MenuItem} from '@blueprintjs/core'
+import {useManager} from "../utils/UseManager.ts";
 
 const extraUiData: {
     [key: string]: {

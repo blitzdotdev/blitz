@@ -1,12 +1,13 @@
 import {Event2, IGeometry, IObject3D, ISceneEventMap, PickingPlugin, ThreeViewer, UiObjectConfig} from "threepipe";
 import {UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
-import {filterObjectsInSceneRoot} from "../utils/tp-utils.ts";
+import {filterObjectsInSceneRoot} from "../utils/three/filterObjectsInSceneRoot.ts";
 import React, {useMemo} from "react";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
-import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.tsx";
+import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.ts";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
-import {useManager} from "../utils/ViewerInstanceManager.ts";
+
+import {useManager} from "../utils/UseManager.ts";
 
 interface BPGeometriesTreeComponentPropsExtras extends HandleContextMenuCallback<IGeometry>{
 }

@@ -1,11 +1,15 @@
 import {Alignment, Button, Colors, Icon} from '@blueprintjs/core'
 import {useDialogPrompt, useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
-import {refreshQueryState, resolveNameConflict, useProjectActions} from '../utils/projectActions.tsx'
-import {queryHandlePerm, useManager, useProject, ViewerInstanceManager} from '../utils/ViewerInstanceManager.ts'
+import {useProjectActions} from '../utils/projectActions.tsx'
+import {queryHandlePerm, ViewerInstanceManager} from '../utils/ViewerInstanceManager.ts'
 import {useCallback} from 'react'
 import {useSaveFile} from "./UseSaveFile.tsx";
 import {getMeta} from "../utils/project.ts";
 import {ThreeViewer} from "threepipe";
+import {useProject} from "../utils/UseProject.ts";
+import {useManager} from "../utils/UseManager.ts";
+import {resolveNameConflict} from "../utils/resolveNameConflict.ts";
+import {refreshProjectQueryState} from "../utils/refreshProjectQueryState.ts";
 
 export function useProjectFolderActions(){
     const manager = useManager()
@@ -50,7 +54,7 @@ export function useProjectFolderActions(){
             //     return {error: 'Cannot load project from meta'}
             // }
             // return await loadProject(meta1)
-            refreshQueryState({project: meta.path, file: null}, true)
+            refreshProjectQueryState({project: meta.path, file: null}, true)
         }
         else {
             const handle = folderHandle
@@ -62,7 +66,7 @@ export function useProjectFolderActions(){
                 }
             }
             const meta2 = await manager.createNewProjectMeta(projectName, handle)
-            refreshQueryState({project: meta2.path, file: null}, true)
+            refreshProjectQueryState({project: meta2.path, file: null}, true)
             // const m = await loadProject(meta2)
             // if(!m){
             //     return {error: 'Unable to load project'}
@@ -188,10 +192,10 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
         let meta = await getMeta(newName)
         if(!!meta){
             // conflict
-            newName = await resolveNameConflict(newName, manager)
+            newName = await resolveNameConflict(newName)
         }
         // await saveFile({name: newName, isNewName: true, saveTempOnly: false, closeProject: false})
-        refreshQueryState({project: newName, file: null, model: url}, true)
+        refreshProjectQueryState({project: newName, file: null, model: url}, true)
         // setWelcomeOpen(false)
     }, [saveFile, manager, fileUrlPrompt])
 

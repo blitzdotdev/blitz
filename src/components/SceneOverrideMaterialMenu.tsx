@@ -2,12 +2,11 @@ import {FC, useEffect, useState} from "react";
 import {Intent, Menu, MenuItem, MenuDivider} from "@blueprintjs/core";
 import {
     EditModePlugin,
-    OverrideMaterialType,
-    OverrideLightingType
 } from "../utils/EditModePlugin.ts";
-import {useManager} from "../utils/ViewerInstanceManager.ts";
 import {useLoadingState} from 'uiconfig-blueprint/lib/esm/lib';
-import {overrideLightingPresets} from "../utils/OverrideLightingPresets.ts";
+import {overrideLightingPresets} from "../utils/three/OverrideLightingPresets.ts";
+import {useManager} from "../utils/UseManager.ts";
+import {OverrideLightingType, OverrideMaterialType} from "../utils/three/LightMaterialOverrider.ts";
 
 interface SceneOverrideMaterialMenuProps {
     // onStateChange?: (isActive: boolean) => void;
@@ -25,34 +24,36 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({
 }) => {
     const [_, forceUpdate] = useState(0);
     const manager = useManager()
-    const editModePlugin = manager.get().getPlugin(EditModePlugin)!
+    const overrider = manager.get().getPlugin(EditModePlugin)?.lightOverrider
     const lightingPresets = overrideLightingPresets
     const {loadingState, updateLoading} = useLoadingState()
 
     useEffect(() => {
         // Initial state
         forceUpdate(v => v + 1);
-    }, [editModePlugin]);
+    }, [overrider]);
 
     const applyMaterial = (materialType: OverrideMaterialType) => {
+        if(!overrider) return
         // Clear lighting first if active
         if (currentLighting !== null) {
-            editModePlugin.setSceneOverrideLighting(null);
+            overrider.setSceneOverrideLighting(null);
             setCurrentLighting(null);
         }
         // Apply new material
-        editModePlugin.setSceneOverrideMaterial(materialType);
+        overrider.setSceneOverrideMaterial(materialType);
         setCurrentMaterial(materialType);
         forceUpdate(v => v + 1);
     };
 
     const clearAll = () => {
+        if(!overrider) return
         // Clear both material and lighting
-        if (editModePlugin.sceneOverrideMaterial) {
-            editModePlugin.setSceneOverrideMaterial();
+        if (overrider.sceneOverrideMaterial) {
+            overrider.setSceneOverrideMaterial();
         }
         if (currentLighting !== null) {
-            editModePlugin.setSceneOverrideLighting(null);
+            overrider.setSceneOverrideLighting(null);
         }
         setCurrentMaterial(null);
         setCurrentLighting(null);
@@ -60,26 +61,27 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({
     };
 
     const applyLighting = async (lightingType: OverrideLightingType) => {
+        if(!overrider) return
         // Clear material first if active
         if (currentMaterial !== null) {
-            editModePlugin.setSceneOverrideMaterial(null);
+            overrider.setSceneOverrideMaterial(null);
             setCurrentMaterial(null);
         }
         setCurrentLighting(lightingType);
         forceUpdate(v => v + 1);
         // Apply new lighting with loading state using the key
         await updateLoading(lightingType, (async () => {
-            await editModePlugin.setSceneOverrideLighting(lightingType);
+            await overrider.setSceneOverrideLighting(lightingType);
         })());
     };
 
-    const isActive = editModePlugin.sceneOverrideMaterial !== null;
+    const isActive = overrider?.sceneOverrideMaterial !== null;
     const isLightingActive = currentLighting !== null;
     const isAnyActive = isActive || isLightingActive;
 
     // Get current UV channel if UV material is active
-    const uvChannel = currentMaterial === 'uv' && editModePlugin.sceneOverrideMaterial
-        ? (editModePlugin.sceneOverrideMaterial as any).uvChannel
+    const uvChannel = currentMaterial === 'uv' && overrider?.sceneOverrideMaterial
+        ? (overrider.sceneOverrideMaterial as any).uvChannel
         : 0;
 
     // Group presets by category
@@ -98,7 +100,7 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({
                 }}
                 shouldDismissPopover={false}
             />
-            <MenuDivider title="Lights" className={"context-menu-divider"} />
+            <MenuDivider title="Override Lights" className={"context-menu-divider"} />
             {lightsPresets.map(([key, preset]) => (
                 <MenuItem
                     key={key}
@@ -114,7 +116,7 @@ export const SceneOverrideMaterialMenu: FC<SceneOverrideMaterialMenuProps> = ({
                     // disabled={loadingState[key]}
                 />
             ))}
-            <MenuDivider title="Environment" className={"context-menu-divider"} />
+            <MenuDivider title="Override Environment" className={"context-menu-divider"} />
             {envPresets.map(([key, preset]) => (
                 <MenuItem
                     key={key}
