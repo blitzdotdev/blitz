@@ -120,7 +120,7 @@ function useSetupAssets() {
         let lastCall = 0;
         let last = undefined as FileManifestEntry[] | undefined
         return async (force = false) => {
-            console.log('refresh manifest', force)
+            // console.log('refresh manifest', force)
             const now = Date.now();
             if (project?.handle?.kind === "directory" && (force || (now - lastCall >= 3000))) {
                 lastCall = now;

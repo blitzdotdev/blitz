@@ -10,11 +10,11 @@ export function showSuccessErrorToast(message: string, errMessage: string, res?:
             timeout: 2000,
             isCloseButtonShown: true,
         });
-        console.error(errMessage)
-        console.error(res)
+        errMessage && console.error(errMessage)
+        res && console.error(res)
         return false
     } else {
-        console.warn(res)
+        res && console.warn(res)
         AppToaster().show({
             message,
             intent: 'success',
