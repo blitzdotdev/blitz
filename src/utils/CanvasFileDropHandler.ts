@@ -3,7 +3,7 @@ import {
     Box3B,
     IMaterial,
     Intersection,
-    IObject3D,
+    IObject3D, ITexture,
     JSUndoManagerCommand1,
     Mesh,
     Raycaster,
@@ -22,7 +22,7 @@ import React from "react";
 import {assetUrlPrefix} from "./project.ts";
 import {FileManifestEntry} from "./AssetsProvider.ts";
 
-type DraggedItem = IMaterial | IObject3D
+type DraggedItem = IMaterial | IObject3D | ITexture
 
 function objectCommand(source: IObject3D, target: IObject3D, newIndex = -1) {
     const cmd = {
@@ -65,6 +65,66 @@ function materialCommand(material: IMaterial, target: IObject3D, index?: number)
     } satisfies JSUndoManagerCommand1 & {lastMaterial: IMaterial|IMaterial[] | null | undefined}
     return cmd;
 }
+
+function textureCommand(texture: ITexture, target: IObject3D, textureSlot: string = 'map') {
+    const cmd = {
+        lastTexture: null as ITexture | null | undefined,
+        redo: () => {
+            const mat = Array.isArray(target.material) ? target.material[0] : target.material as IMaterial;
+            if (!mat) return;
+            cmd.lastTexture = (mat as any)[textureSlot];
+            (mat as any)[textureSlot] = texture;
+            mat.setDirty && mat.setDirty();
+        },
+        undo: () => {
+            const mat = Array.isArray(target.material) ? target.material[0] : target.material as IMaterial;
+            if (!mat) return;
+            const lastTexture = cmd.lastTexture;
+            cmd.lastTexture = (mat as any)[textureSlot];
+            (mat as any)[textureSlot] = lastTexture;
+            mat.setDirty && mat.setDirty();
+        }
+    } satisfies JSUndoManagerCommand1 & {lastTexture: ITexture | null | undefined}
+    return cmd;
+}
+
+function environmentCommand(texture: ITexture, viewer: ThreeViewer) {
+    const cmd = {
+        lastEnvironment: null as ITexture | null | undefined,
+        redo: () => {
+            cmd.lastEnvironment = viewer.scene.environment as ITexture;
+            viewer.scene.environment = texture;
+        },
+        undo: () => {
+            const lastEnv = cmd.lastEnvironment;
+            cmd.lastEnvironment = viewer.scene.environment as ITexture;
+            viewer.scene.environment = lastEnv ?? null;
+        }
+    } satisfies JSUndoManagerCommand1 & {lastEnvironment: ITexture | null | undefined}
+    return cmd;
+}
+
+function isEnvironmentTexture(texture: ITexture): boolean {
+    // Check if it's a data texture with appropriate type and aspect ratio
+    const tex = texture as any;
+
+    // Check if it's a data texture
+    if (!tex.isDataTexture) return false;
+
+    // Check for half float or float type
+    const isFloatType = tex.type === 1015 || tex.type === 1016; // HalfFloatType or FloatType
+    if (!isFloatType) return false;
+
+    // Check for 2:1 aspect ratio (environment map characteristic)
+    const image = tex.image;
+    if (!image || !image.width || !image.height) return false;
+
+    const aspectRatio = image.width / image.height;
+    const is2to1 = Math.abs(aspectRatio - 2.0) < 0.1; // Allow small tolerance
+
+    return is2to1;
+}
+
 const draggingSpinner = document.createElement('div');
 draggingSpinner.style.display = 'none'
 // Create a transparent pixel
@@ -83,7 +143,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
     private raycaster: Raycaster;
     private draggedItemSrc: DraggedItem | null = null;
     private draggedItem: DraggedItem | null = null;
-    dropTarget: IObject3D | null = null;
+    dropTarget: IObject3D | null | undefined = undefined; // undefined means not set yet, null means empty space
     // private previousMaterial: Material | null = null; // Store previous material for revert
     private previousCommand: JSUndoManagerCommand1 | null = null
 
@@ -156,7 +216,10 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
                 clone = this.manager.cloneAssetMaterial(item as IMaterial)
             } else if ((item as IObject3D).isObject3D) {
                 clone = this.manager.cloneAssetObject(item as IObject3D)
+            } else if ((item as ITexture).isTexture) {
+                clone = this.manager.cloneAssetTexture(item as ITexture)
             } else {
+                console.error('CanvasFileDropHandler: Unsupported dragged item type:', item);
                 clone = null
             }
         }
@@ -169,6 +232,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         if(source && source !== this.draggedItemSrc) return // not the source we are dragging
 
         this.clearDropTarget()
+        this.dropTarget = undefined
         if(!used && this.draggedItem){
 
             if(this.draggedItem !== this.draggedItemSrc) { // if not cloned, we dont need to dispose here
@@ -178,7 +242,12 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
                     (this.draggedItem as IMaterial).dispose(true)
                 } else if ((this.draggedItem as IObject3D).isObject3D) {
                     this.draggedItem.dispose && this.draggedItem.dispose!(true)
+                } else if ((this.draggedItem as ITexture).isTexture) {
+                    (this.draggedItem as ITexture).dispose && (this.draggedItem as ITexture).dispose!()
+                } else {
+                    console.error('CanvasFileDropHandler: Unsupported dragged item type for dispose:', this.draggedItem);
                 }
+
             }
         }
         if(this.draggedItemSrc){
@@ -260,7 +329,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         const mesh = intersects?.[0]?.object as IObject3D;
         const draggedItem = this.draggedItem as IObject3D
 
-        const res = this.setDropTarget(mesh, true, {intersects: intersects as any});
+        const res = this.setDropTarget(mesh||null, true, {intersects: intersects as any});
 
         if(res && draggedItem?.isObject3D) {
             this.updatePosition(draggedItem)
@@ -271,6 +340,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
 
     private handleDragLeave(): void {
         this.clearDropTarget();
+        this.dropTarget = undefined;
     }
 
     private updatePosition(draggedItem: IObject3D & {_bounds?: Box3B}) {
@@ -301,6 +371,13 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         draggedItem.setDirty && draggedItem.setDirty({change: 'position'})
 
         // this.draggedItem.lookAt(normalWorld.add(positionWorld)) // looks weird most of the time
+    }
+
+    execCommand(cmd: JSUndoManagerCommand1, final: boolean) {
+        const undoManager = this._viewer?.getPlugin(UndoManagerPlugin)?.undoManager
+        undoManager?.record(cmd)
+        cmd.redo() // apply the command immediately
+        this.previousCommand = !final ? cmd : null
     }
 
     private lastIntersects?: Array<Intersection<IObject3D>>
@@ -345,25 +422,15 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             // Dragging a material
             // this.previousMaterial = mesh ? mesh.material : null;
             // mesh.material = this.draggedItem;
-            if(!final) {
-                // root.add(draggedItem);
-                if(mesh) {
-                    const cmd = materialCommand(draggedItem, mesh)
-                    const undoManager = this._viewer.getPlugin(UndoManagerPlugin)?.undoManager
-                    undoManager?.record(cmd)
-                    cmd.redo() // apply the command immediately
-                    this.previousCommand = cmd
-                }else {
-                    this.previousCommand = null
-                }
+
+            if(mesh) {
+                const cmd = materialCommand(draggedItem, mesh)
+                this.execCommand(cmd, final)
             } else {
-                if(mesh) {
-                    const cmd = materialCommand(draggedItem, mesh)
-                    const undoManager = this._viewer.getPlugin(UndoManagerPlugin)?.undoManager
-                    undoManager?.record(cmd)
-                    cmd.redo() // apply the command immediately
-                }
                 this.previousCommand = null
+            }
+
+            if(final) {
                 this.clearDraggedItem(true);
             }
             // console.log('Hovering over (material):', {
@@ -371,6 +438,47 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             //     objectId: mesh.userData.id,
             //     distance: intersects[0].distance.toFixed(2),
             //     draggedMaterial: this.draggedItem,
+            // });
+        } else if ((this.draggedItem as ITexture).isTexture) {
+            const draggedItem = this.draggedItem as ITexture
+            const isEnvMap = isEnvironmentTexture(draggedItem);
+
+            // For environment maps, ignore mesh and apply to scene
+            if (isEnvMap) {
+                const canDrop = true // todo check for isAsset, rootPath etc
+                if(!canDrop) return false
+
+                // Dragging an environment texture
+                const cmd = environmentCommand(draggedItem, this._viewer)
+                this.execCommand(cmd, final)
+                if(final) {
+                    this.clearDraggedItem(true);
+                }
+
+            } else {
+                // Regular texture - apply to mesh material
+                if(mesh && !mesh.material) return false // can't apply texture, not a mesh or line
+                if(!inModelRoot) return false // only allow dropping texture on model root children
+
+                const canDrop = true // todo check for isAsset, rootPath etc
+                if(!canDrop) return false
+
+                if(mesh) {
+                    const cmd = textureCommand(draggedItem, mesh, 'map')
+                    this.execCommand(cmd, final)
+                } else {
+                    this.previousCommand = null
+                }
+                if(final) {
+                    this.clearDraggedItem(true);
+                }
+
+            }
+            // console.log('Hovering over (texture):', {
+            //     object: mesh.userData.name,
+            //     objectId: mesh.userData.id,
+            //     distance: intersects[0].distance.toFixed(2),
+            //     draggedTexture: this.draggedItem,
             // });
         } else if ((this.draggedItem as IObject3D).isObject3D) {
             const parent = !mesh
@@ -388,18 +496,13 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
                 if (draggedItem.parent !== root && draggedItem.parent !== parent) {
                     // root.add(draggedItem);
                     const cmd = objectCommand(draggedItem, root, -1)
-                    const undoManager = this._viewer.getPlugin(UndoManagerPlugin)?.undoManager
-                    undoManager?.record(cmd)
-                    cmd.redo() // apply the command immediately
-                    this.previousCommand = cmd
+                    this.execCommand(cmd, false)
                 }
             }else {
                 if (draggedItem.parent !== parent || options.index !== undefined) {
                     const cmd = objectCommand(draggedItem, parent, options.index)
-                    const undoManager = this._viewer.getPlugin(UndoManagerPlugin)?.undoManager
-                    undoManager?.record(cmd)
-                    cmd.redo() // apply the command immediately
-                    this.previousCommand = null
+                    this.execCommand(cmd, true)
+
                     this.clearDraggedItem(true);
                 }
             }

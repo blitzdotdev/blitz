@@ -23,7 +23,6 @@ export function ExtraMenuItems(props: {
     const isGroup = !obj.isMesh && !obj.material && !obj.isLine && !obj.isPoints && !obj.isCamera // groups, lights, cameras, helpers, etc
     const canCreate = !isExternal && !isComponent && isGroup
     return canCreate && onObjectCreate ? <>
-        <MenuDivider title="Create" className={"context-menu-divider"} />
         <Object3DGenerationMenu onGenerate={(child)=>onObjectCreate(child, obj)}/>
     </> : null
 }

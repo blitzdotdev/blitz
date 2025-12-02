@@ -1,7 +1,7 @@
 import {bpUiConfigIcons, UiConfigRendererContext} from 'uiconfig-blueprint/lib/esm/lib'
 import {IObject3D, Object3DGeneratorPlugin} from 'threepipe'
 import React, {useCallback, useContext, useMemo} from 'react'
-import {IconName, MenuItem} from '@blueprintjs/core'
+import {IconName, MenuDivider, MenuItem} from '@blueprintjs/core'
 import {useManager} from "../utils/UseManager.ts";
 
 const extraUiData: {
@@ -33,6 +33,10 @@ const extraUiData: {
     'object-empty': {
         label: 'Empty Object',
         icon: 'new-object',
+    },
+    'object-group': {
+        label: 'Empty Group',
+        icon: 'group-objects',
     },
     'camera-perspective': {
         label: 'Perspective',
@@ -138,6 +142,7 @@ export function Object3DGenerationMenu({onGenerate}: {onGenerate?: (obj: IObject
         if(obj && onGenerate) onGenerate(obj)
     }, [generator])
     return <>
+        <MenuDivider title="Create" className={"context-menu-divider"} />
         {items.map((v) => <MenuItem
             key={v.uuid}
             text={v.label || '(unknown)'}

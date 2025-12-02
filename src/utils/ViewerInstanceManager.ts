@@ -1710,6 +1710,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }
         return this.cloneAssetObject(res as IObject3D);
     }
+
     cloneAssetObject(res: IObject3D) {
         const clone = cloneAssetItem(res as IObject3D)
         // if(clone._tpAssetId) delete clone._tpAssetId // note that asset id needs to be set later when saving or assigning the object
@@ -1719,6 +1720,10 @@ export class ViewerInstanceManager extends EventDispatcher<{
         if(!clone._sChildren) clone._sChildren = []
         this.get().assetManager.tracker.subsToAsset(clone)
         return clone
+    }
+    cloneAssetTexture(res: ITexture) {
+        // todo returning the same now, change when supported
+        return res
     }
 
     async changeMaterialForObject(object: IObject3D, material: IMaterial, _selected: SelectedInspectorItem|SelectFileRef|null, project?: LoadedProject|null){
@@ -1815,6 +1820,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         this.isEditorPreviewing = true
         this.dispatchEvent({type: 'editPreviewChange'})
     }
+
     async stopEditPreview(){
         this.features.enable('widgets', 'EditPreview')
         this.features.enable('transform-controls', 'EditPreview')
@@ -2465,7 +2471,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return (reg?.pms || null) as any
     }
 
-    async getAssetFromEntry(entry: FileManifestEntry|{path: string, isFSEntry: false}): Promise<((IObject3D | IMaterial) & ImportResultExtras) | null>{
+    async getAssetFromEntry(entry: FileManifestEntry|{path: string, isFSEntry: false}): Promise<((IObject3D | IMaterial | ITexture) & ImportResultExtras) | null>{
         if(!entry.isFSEntry) return this.getAssetFromPath(entry.path)
         let path = entry.path
         if(!entry.path.startsWith('@')) {
@@ -2544,8 +2550,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
     // only for this session to avoid checking for file exists
     private _previewGeneratedCache = new Set<string>()
-    private handlePreviewRefresh(e: {path: string, action: string}) {
-        if (e.action !== 'load') return
+    private handlePreviewRefresh = (e: {path: string, action: string}) => {
+        if (e.action !== 'load' || !e.path.startsWith(assetUrlPrefix)) return
 
         const tracker = this.get().assetManager.tracker
 
