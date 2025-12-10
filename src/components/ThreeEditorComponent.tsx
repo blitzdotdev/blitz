@@ -23,7 +23,7 @@ import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
 import {BPMaterialsTreeComponent, MaterialHierarchyComponent} from "./BPMaterialsTreeComponent.tsx";
 import {BPTexturesTreeComponent, TextureHierarchyComponent} from "./BPTexturesTreeComponent.tsx";
 import {GeometryHierarchyComponent} from "./BPGeometriesTreeComponent.tsx";
-import {ExternalFilesPanel, FilesPanel} from "./FilesPanel.tsx";
+import {FilesPanel} from "./FilesPanel.tsx";
 import {InspectorPanelComponent, InspectorPanelProps} from "./InspectorPanelComponent.tsx";
 import {MaybeElement} from "@blueprintjs/core/src/common/props";
 import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
@@ -38,6 +38,7 @@ import {EditPreviewButtonGroup} from "./EditPreviewButtonGroup.tsx";
 import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
 import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
+import {ExternalFilesPanel} from "./ExternalFilesPanel.tsx";
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){

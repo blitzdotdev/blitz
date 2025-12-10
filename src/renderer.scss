@@ -348,6 +348,7 @@ body{
   width: 100%;
   flex: 1 1;
   overflow-y: auto;
+  --file-item-button-text-height: 14px;
 }
 .file-item-button-group{
     height: max-content;
@@ -401,6 +402,7 @@ body{
     overflow-x: auto;
     -ms-overflow-style: none;  /* Internet Explorer 10+ */
     scrollbar-width: none;  /* Firefox, Safari 18.2+, Chromium 121+ */
+    height: var(--file-item-button-text-height, auto);
   }
   .bp5-button-text::-webkit-scrollbar {
     display: none;  /* Older Safari and Chromium */

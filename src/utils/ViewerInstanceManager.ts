@@ -354,6 +354,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             // new CascadedShadowsPlugin(false),
 
         ])
+        viewer.timeline.endTime = 0 // infinite
         viewer.getPlugin(PickingPlugin)!.widgetEnabled = false
         viewer.getPlugin(EditorViewWidgetPlugin)!.enabled = false
         viewer.getPlugin(TransformControlsPlugin)!.selectionFilterTest = (obj)=>{

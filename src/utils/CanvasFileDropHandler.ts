@@ -197,16 +197,10 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         viewer.canvas.addEventListener('dragleave', this.handleDragLeave);
     }
 
-    public setDraggedItem(item: DraggedItem): void {
-        if(this.draggedItemSrc === item) return // already dragging this item
-        if(this.draggedItemSrc){
-            this.clearDraggedItem()
-        }
-        this.draggedItemSrc = item;
+    cloneItem(item: DraggedItem): DraggedItem | null {
         let clone: DraggedItem|null = this.itemCloneMap.get(item) || null
         if(clone) {
-            this.draggedItem = clone
-            return
+            return clone
         }
         const isAsset = !!(item.userData?.rootPath && item._tpRootPath && item._tpRootPath === item.userData.rootPath)
         if(!isAsset) {
@@ -225,6 +219,16 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         }
         // if(!clone) return
         if(clone) this.itemCloneMap.set(item, clone)
+        return clone
+    }
+
+    public setDraggedItem(item: DraggedItem): void {
+        if(this.draggedItemSrc === item) return // already dragging this item
+        if(this.draggedItemSrc){
+            this.clearDraggedItem()
+        }
+        this.draggedItemSrc = item;
+        const clone = this.cloneItem(item)
         this.draggedItem = clone || null
     }
 
@@ -259,6 +263,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
     }
 
     private draggingEntry: {path: string, isFSEntry: boolean} | null = null
+
     handleDragStart = async (e: React.DragEvent, f: FileManifestEntry | {path: string, isFSEntry: false}) => {
         if(this.draggingEntry) return // already dragging something
         this.draggingEntry = f
@@ -267,9 +272,9 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         e.dataTransfer!.setDragImage(transparentPixelCanvas, 16, 16);
         // e.preventDefault();
         const r = await this.manager.getAssetFromEntry(f)
-        if(!r) return
         if(!this.draggingEntry) return // drag was cancelled in the meantime
         draggingSpinner.style.display = 'none'
+        if(!r) return
         // e.stopPropagation();
         // e.dataTransfer.setDragImage(img, xOffset, yOffset); // optional: set a custom drag image
 
@@ -382,6 +387,142 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
 
     private lastIntersects?: Array<Intersection<IObject3D>>
 
+    dropAction(
+        item: DraggedItem,
+        mesh: IObject3D|null, final = false,
+        options: {index?: number, intersects?: Array<Intersection<IObject3D>>}
+    ){
+        const assetRoot = this.manager.loadedScene ? this._viewer?.scene.modelRoot : this.manager.loadedAssetObj as IObject3D
+        if(!this._viewer) return false // for types
+
+        if(!assetRoot) return false
+        if(!assetRoot.isObject3D) return false // it can be a loaded material or texture
+
+        let inModelRoot = false
+        let par = mesh
+        while(par && !inModelRoot){
+            if(par === assetRoot) inModelRoot = true
+            par = par.parent as IObject3D
+        }
+
+        let usedItem = false;
+        let cmd: JSUndoManagerCommand1 | null = null;
+        let clearPrev = false
+
+        // if(this.previousCommand) {
+        //     this.undoPrevCommand()
+        // }
+
+        if ((item as IMaterial).isMaterial) {
+            const draggedItem = item as IMaterial
+
+            // if(this.previousMaterial) return false // already dragging over something else
+            if(mesh && !mesh.material) return false // can't apply material, not a mesh or line
+            if(!inModelRoot) return false // only allow dropping material on model root children
+
+            const canDrop = true // todo check for isAsset, rootPath etc
+            if(!canDrop) return false
+
+            // Dragging a material
+            // this.previousMaterial = mesh ? mesh.material : null;
+            // mesh.material = draggedItem;
+
+            if(mesh) {
+                cmd = materialCommand(draggedItem, mesh)
+                // this.execCommand(cmd, final)
+            } else {
+                // this.previousCommand = null
+                clearPrev = true
+            }
+
+            if(final) {
+                usedItem = true
+            }
+            // console.log('Hovering over (material):', {
+            //     object: mesh.userData.name,
+            //     objectId: mesh.userData.id,
+            //     distance: intersects[0].distance.toFixed(2),
+            //     draggedMaterial: draggedItem,
+            // });
+        } else if ((item as ITexture).isTexture) {
+            const draggedItem = item as ITexture
+            const isEnvMap = isEnvironmentTexture(draggedItem);
+
+            // For environment maps, ignore mesh and apply to scene
+            if (isEnvMap) {
+                const canDrop = true // todo check for isAsset, rootPath etc
+                if(!canDrop) return false
+
+                // Dragging an environment texture
+                cmd = environmentCommand(draggedItem, this._viewer)
+                // this.execCommand(cmd, final)
+
+            } else {
+                // Regular texture - apply to mesh material
+                if(mesh && !mesh.material) return false // can't apply texture, not a mesh or line
+                if(!inModelRoot) return false // only allow dropping texture on model root children
+
+                const canDrop = true // todo check for isAsset, rootPath etc
+                if(!canDrop) return false
+
+                if(mesh) {
+                    cmd = textureCommand(draggedItem, mesh, 'map')
+                    // this.execCommand(cmd, final)
+                } else {
+                    // this.previousCommand = null
+                    clearPrev = true
+                }
+
+            }
+
+            if(final) {
+                usedItem = true
+            }
+
+            // console.log('Hovering over (texture):', {
+            //     object: mesh.userData.name,
+            //     objectId: mesh.userData.id,
+            //     distance: intersects[0].distance.toFixed(2),
+            //     draggedTexture: draggedItem,
+            // });
+        } else if ((item as IObject3D).isObject3D) {
+            const parent = !mesh
+            || !inModelRoot
+            || !isDraggableDroppableNode(mesh).droppable // todo this will always be false since we are passing a mesh
+                ? assetRoot : mesh
+            const draggedItem = item as IObject3D
+
+            const canDrop = CanvasFileDropHandler.canDropNode(draggedItem, parent) // todo check for isAsset, rootPath etc
+            if(!canDrop) return false
+
+            const root = draggedItem.parent ?? this._viewer.scene as IObject3D
+
+            if(!final) {
+                if (draggedItem.parent !== root && draggedItem.parent !== parent) {
+                    // root.add(draggedItem);
+                    const cmd = objectCommand(draggedItem, root, -1)
+                    // this.execCommand(cmd, false)
+                }
+            }else {
+                if (draggedItem.parent !== parent || options.index !== undefined) {
+                    const cmd = objectCommand(draggedItem, parent, options.index)
+                    // this.execCommand(cmd, true)
+
+                    usedItem = true
+                }
+            }
+            // console.log('Hovering over (object):', {
+            //     object: mesh.userData.name,
+            //     objectId: mesh.userData.id,
+            //     distance: intersects[0].distance.toFixed(2),
+            //     draggedObject: draggedItem,
+            // });
+        }
+
+        return {usedItem, clearPrev, cmd}
+
+    }
+
     setDropTarget(mesh: IObject3D|null, final = false, options: {index?: number, intersects?: Array<Intersection<IObject3D>>}) {
         this.lastIntersects = options.intersects || undefined
 
@@ -393,129 +534,25 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             this.clearDropTarget();
         }
 
-        const assetRoot = this.manager.loadedScene ? this._viewer?.scene.modelRoot : this.manager.loadedAssetObj as IObject3D
-        if(!this._viewer) return false // for types
-        if(!assetRoot) return false
-        if(!assetRoot.isObject3D) return false // it can be a loaded material or texture
-
-        let inModelRoot = false
-        let par = mesh
-        while(par && !inModelRoot){
-            if(par === assetRoot) inModelRoot = true
-            par = par.parent as IObject3D
-        }
-
-        if(this.previousCommand) {
-            this.undoPrevCommand()
-        }
-
-        if ((this.draggedItem as IMaterial).isMaterial) {
-            const draggedItem = this.draggedItem as IMaterial
-
-            // if(this.previousMaterial) return false // already dragging over something else
-            if(mesh && !mesh.material) return false // can't apply material, not a mesh or line
-            if(!inModelRoot) return false // only allow dropping material on model root children
-
-            const canDrop = true // todo check for isAsset, rootPath etc
-            if(!canDrop) return false
-
-            // Dragging a material
-            // this.previousMaterial = mesh ? mesh.material : null;
-            // mesh.material = this.draggedItem;
-
-            if(mesh) {
-                const cmd = materialCommand(draggedItem, mesh)
+        const r = this.dropAction(this.draggedItem, mesh, final, options)
+        if(r){
+            const {usedItem, clearPrev, cmd} = r
+            if(this.previousCommand) {
+                this.undoPrevCommand()
+            }
+            if(cmd) {
                 this.execCommand(cmd, final)
-            } else {
+            }
+            if(clearPrev) {
                 this.previousCommand = null
             }
-
-            if(final) {
+            if(usedItem) {
                 this.clearDraggedItem(true);
             }
-            // console.log('Hovering over (material):', {
-            //     object: mesh.userData.name,
-            //     objectId: mesh.userData.id,
-            //     distance: intersects[0].distance.toFixed(2),
-            //     draggedMaterial: this.draggedItem,
-            // });
-        } else if ((this.draggedItem as ITexture).isTexture) {
-            const draggedItem = this.draggedItem as ITexture
-            const isEnvMap = isEnvironmentTexture(draggedItem);
-
-            // For environment maps, ignore mesh and apply to scene
-            if (isEnvMap) {
-                const canDrop = true // todo check for isAsset, rootPath etc
-                if(!canDrop) return false
-
-                // Dragging an environment texture
-                const cmd = environmentCommand(draggedItem, this._viewer)
-                this.execCommand(cmd, final)
-                if(final) {
-                    this.clearDraggedItem(true);
-                }
-
-            } else {
-                // Regular texture - apply to mesh material
-                if(mesh && !mesh.material) return false // can't apply texture, not a mesh or line
-                if(!inModelRoot) return false // only allow dropping texture on model root children
-
-                const canDrop = true // todo check for isAsset, rootPath etc
-                if(!canDrop) return false
-
-                if(mesh) {
-                    const cmd = textureCommand(draggedItem, mesh, 'map')
-                    this.execCommand(cmd, final)
-                } else {
-                    this.previousCommand = null
-                }
-                if(final) {
-                    this.clearDraggedItem(true);
-                }
-
-            }
-            // console.log('Hovering over (texture):', {
-            //     object: mesh.userData.name,
-            //     objectId: mesh.userData.id,
-            //     distance: intersects[0].distance.toFixed(2),
-            //     draggedTexture: this.draggedItem,
-            // });
-        } else if ((this.draggedItem as IObject3D).isObject3D) {
-            const parent = !mesh
-            || !inModelRoot
-            || !isDraggableDroppableNode(mesh).droppable // todo this will always be false since we are passing a mesh
-                ? assetRoot : mesh
-            const draggedItem = this.draggedItem as IObject3D
-
-            const canDrop = this.canDropNode(draggedItem, parent) // todo check for isAsset, rootPath etc
-            if(!canDrop) return false
-
-            const root = draggedItem.parent ?? this._viewer.scene as IObject3D
-
-            if(!final) {
-                if (draggedItem.parent !== root && draggedItem.parent !== parent) {
-                    // root.add(draggedItem);
-                    const cmd = objectCommand(draggedItem, root, -1)
-                    this.execCommand(cmd, false)
-                }
-            }else {
-                if (draggedItem.parent !== parent || options.index !== undefined) {
-                    const cmd = objectCommand(draggedItem, parent, options.index)
-                    this.execCommand(cmd, true)
-
-                    this.clearDraggedItem(true);
-                }
-            }
-            // console.log('Hovering over (object):', {
-            //     object: mesh.userData.name,
-            //     objectId: mesh.userData.id,
-            //     distance: intersects[0].distance.toFixed(2),
-            //     draggedObject: this.draggedItem,
-            // });
+            this.dropTarget = mesh;
+            return true
         }
-        this.dropTarget = mesh;
-        return true
-
+        return false
     }
 
     private getIntersects(e: DragEvent) {
@@ -563,7 +600,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             && assetableFileTypes.some(e=>f.path.endsWith(e)) // its a model, material, etc
     }
 
-    canDropNode(source: IObject3D, target: IObject3D, index?: number) {
+    static canDropNode(source: IObject3D, target: IObject3D, index?: number) {
         const noTypes = [ 'Mesh', 'Line', 'Points' ]
         if (noTypes.includes(target.type)) return false
         let compatible = true

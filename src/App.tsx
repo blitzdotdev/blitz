@@ -8,12 +8,18 @@ import {ProjectProvider} from "./utils/UseProject.ts";
 import {ManagerProvider} from "./utils/UseManager.ts";
 // import Split from "react-split";
 // import {InspectorStackComponent} from 'uiconfig-blueprint/lib/esm/lib'
-
+import {
+    QueryClient,
+    QueryClientProvider,
+    useQuery,
+} from '@tanstack/react-query'
+import {queryClient} from "./tsdb/client.ts";
 
 // console.log(InspectorStackComponent, Split)
 
 function App() {
     return (
+        <QueryClientProvider client={queryClient}>
         <BlueprintProvider>
         <VisualStyleProvider>
         <DialogProvider>
@@ -34,6 +40,7 @@ function App() {
         </DialogProvider>
         </VisualStyleProvider>
         </BlueprintProvider>
+        </QueryClientProvider>
     )
 }
 

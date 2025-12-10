@@ -9,9 +9,7 @@ import {
     IconName,
     MaybeElement,
     MenuItem,
-    Slider,
-    Tab,
-    Tabs
+    Slider
 } from "@blueprintjs/core";
 import React, {FC, useEffect, useRef, useState} from "react";
 import {useProjectActions} from "../utils/projectActions.tsx";
@@ -33,7 +31,6 @@ import {ErrorRes, showSuccessErrorToast} from "../utils/Toaster.tsx";
 import {fileToIcon} from "../utils/icons.tsx";
 import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.ts";
 import {PopupMenuButton} from "./PopupMenuButton.tsx";
-import {externalFiles} from "../data/ExternalFiles.tsx";
 import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 
@@ -746,94 +743,49 @@ export function FilesPanel({}: {
         </div>
 }
 
-export type TExternalFile = Omit<FileManifestEntry, 'handle'|'isFSEntry'|'children'>&{children: TExternalFile[]}
-
-export function ExternalFilesGrid({group}: {
-    group: TExternalFile
-}){
-    const manager = useManager()
-    const dragger = manager.get().getPlugin(CanvasFileDropHandler)
-
-    // clear dragged on unmount
-    useEffect(() => {
-        return () => {
-            dragger?.handleDragEnd()
-        };
-    }, [dragger]);
-
-    const items = group.children || []
-    const onClick = (f: TExternalFile, e: React.MouseEvent)=>{
-
-    }
-
-
-    return <div className={"files-panel-grid"}>
-        <ButtonGroup
-            className="file-item-button-group"
-        >
-            {items.map(f=>{
-                return <FileButton
-                    fileEntry={f}
-                    key={f.path}
-                    disabled={f.type === 'directory'}
-                    onClick={(e)=>onClick(f, e)}
-                    draggable={dragger?.canDragFile(f)}
-                    onDragStart={(e) => dragger?.handleDragStart(e, {path: f.path, isFSEntry: false})}
-                    onDragEnd={dragger?.handleDragEnd}
-                />
-            })}
-        </ButtonGroup>
-    </div>
-}
-
-export function ExternalFilesPanel({}: {
-}){
-    // const {project} = useProject()
-    const manager = useManager()
-
-    const files = externalFiles
-    // const {refreshManifest} = useExternalAssets()
-    //
-    // // console.log(fileManifest)
-    // useEffect(()=>{
-    //     refreshManifest()
-    // }, [refreshManifest]) // refreshManifest changes on project change
-
-    const [thumbSize, setThumbSize] = useState(32);
-
-    return !manager.loadedProject ? null : <div style={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        // @ts-ignore
-        '--file-item-button-size': `${thumbSize}px`,
-    }}>
-        {/*<PanelHeader>*/}
-        {/*    /!*<FilesPanelBreadCrumbs/>*!/*/}
-        {/*    <div style={{flexGrow: 1}}></div>*/}
-        {/*</PanelHeader>*/}
-        <PopupMenuButton icon={"cog"} text={""} style={{
-            position: 'absolute',
-            right: 0, top: 0,
-            zIndex: 1,
-        }}>
-            <SliderMenuItem setThumbSize={setThumbSize} thumbSize={thumbSize}/>
-        </PopupMenuButton>
-        <Tabs
-            animate={false}
-            renderActiveTabPanelOnly={true}
-            size={"medium"}
-            vertical={false}
-            defaultSelectedTabId={"a"}
-            // style={{zIndex: 0}}
-        >
-            {files.map((f, i)=><Tab key={f.path} id={f.path} title={f.name} panel={<ExternalFilesGrid group={f}/>}/>)}
-        </Tabs>
-
-        <div className={"files-panel-grid"}>
-        </div>
-    </div>
-}
+// const fetchAssets = async (url: string): Promise<TExternalFile[]> => {
+//     const response = await fetch(url);
+//     if (!response.ok) {
+//         throw new Error(`HTTP error! status: ${response.status}`);
+//     }
+//     const data = await response.json();
+//     if (!data.assets || !Array.isArray(data.assets)) {
+//         console.error('Invalid asset list format:', data);
+//         throw new Error('Invalid asset list format');
+//     }
+//     return data.assets as TExternalFile[];
+// }
+//
+// export function useGetAssetList(url: string){
+//     const [assets, setAssets] = useState<any[]>([])
+//
+//     useEffect(() => {
+//         let cancelled = false;
+//         fetchAssets(url).then(data => {
+//             if (cancelled) return;
+//             setAssets(data);
+//         }).catch(error => {
+//             console.error('Error fetching assets:', error);
+//             setAssets([]); // Set to empty array on error
+//         })
+//         return () => {
+//             cancelled = true;
+//             // setAssets([])
+//         }
+//     }, [url]);
+//
+//     return {
+//         assets,
+//         refresh: () => {
+//             fetchAssets(url).then(data => {
+//                 setAssets(data);
+//             }).catch(error => {
+//                 console.error('Error fetching assets:', error);
+//                 setAssets([]); // Set to empty array on error
+//             })
+//         },
+//     }
+// }
 
 function useIconUrl(fileEntry: FileManifestEntry | {
     icon?: string | IconName | MaybeElement;
