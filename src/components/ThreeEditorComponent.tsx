@@ -1,5 +1,5 @@
-import {useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState} from 'react';
-import {isPackageProject, ViewerProps} from '../utils/ViewerInstanceManager.ts'
+import React, {useContext, useEffect, useMemo, useReducer, useRef, useState} from 'react';
+import {isPackageProject} from '../utils/ViewerInstanceManager.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {
     BPComponentProps,
@@ -9,32 +9,30 @@ import {
     UiConfigRendererContext,
     useConfigToStackItem,
 } from 'uiconfig-blueprint/lib/esm/lib'
-import {getOrCall, ThreeViewer, TypedClass, TypedType, TypeSystem, UiObjectConfig} from 'threepipe';
-import {
-    EditorModes,
-    EditorModesButtonGroup,
-    editorModesInspectorConfig
-} from './EditorModes.tsx'
-import {Alignment, Button, Card, IconName, Navbar, Panel, PanelStack2, Popover} from '@blueprintjs/core'
+import {getOrCall, ThreeViewer, TypedClass, TypeSystem, UiObjectConfig} from 'threepipe';
+import {EditorModes, EditorModesButtonGroup, editorModesInspectorConfig} from './EditorModes.tsx'
+import {Alignment, Button, Card, Divider, IconName, Navbar, Panel, PanelStack2, Popover} from '@blueprintjs/core'
 import {BPHierarchyComponent} from './BPHierarchyComponent.tsx'
 import {SaveFileButton, SaveProjectButton, useFileNeedsSave} from './SaveFileButton.tsx'
-import {InteractionControlsButtonGroup} from './InteractionControlsButtonGroup.tsx'
 import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
 import {BPMaterialsTreeComponent, MaterialHierarchyComponent} from "./BPMaterialsTreeComponent.tsx";
 import {BPTexturesTreeComponent, TextureHierarchyComponent} from "./BPTexturesTreeComponent.tsx";
 import {GeometryHierarchyComponent} from "./BPGeometriesTreeComponent.tsx";
 import {FilesPanel} from "./FilesPanel.tsx";
-import {InspectorPanelComponent, InspectorPanelProps} from "./InspectorPanelComponent.tsx";
+import {
+    InspectorPanelComponent,
+    InspectorPanelProps,
+    PluginsSectionComp,
+    ScriptsSectionComp
+} from "./InspectorPanelComponent.tsx";
 import {MaybeElement} from "@blueprintjs/core/src/common/props";
 import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
 import {BPTreeFolderComponent} from "./BPTreeFolderComponent.tsx";
 import {iconForSelectionObject} from "../utils/icons.tsx";
 import {MemoryTab} from "./MemoryTab.tsx";
 import {AIAgentTab} from "./AIAgentTab.tsx";
-import {objToSelectItemRef, RefSelectionObjectComponent, SelectItemRef} from "./RefSelectionObjectComponent.tsx";
-import {assetUrlPrefix} from "../utils/project.ts";
+import {objToSelectItemRef, RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
-import {EditPreviewButtonGroup} from "./EditPreviewButtonGroup.tsx";
 import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
 import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
@@ -285,6 +283,22 @@ export function ThreeEditorComponent() {
                                 content: <>
                                     <EditorModesButtonGroup key="modes" {...{editorMode, setEditorMode}} />
                                     <ModesInspector config={insConfig} className={'inspector-stack'}/>
+                                </>
+                            },
+                            {
+                                title: 'Project',
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                },
+                                content:
+                                <>
+                                {/*<Card className={"bpInspectorCard "} style={{borderRadius: 0}}>*/}
+                                    <ScriptsSectionComp/>
+                                    <Divider style={{margin: 0}}/>
+                                    <PluginsSectionComp/>
+                                {/*</Card>*/}
                                 </>
                             },
                             {

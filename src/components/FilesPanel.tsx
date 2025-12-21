@@ -29,7 +29,7 @@ import {
 } from "threepipe";
 import {ErrorRes, showSuccessErrorToast} from "../utils/Toaster.tsx";
 import {fileToIcon} from "../utils/icons.tsx";
-import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.ts";
+import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.tsx";
 import {PopupMenuButton} from "./PopupMenuButton.tsx";
 import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";

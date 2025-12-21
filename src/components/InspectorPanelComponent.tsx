@@ -476,11 +476,11 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
             assetRootPathCanEdit={assetRootPathCanEdit}
             {...props}
         />}
-        {isPackageJson && <>
-            <PluginsSectionComp/>
-            <Divider style={{margin: 0}}/>
-            <ScriptsSectionComp/>
-        </>}
+        {/*{isPackageJson && <>*/}
+        {/*    <PluginsSectionComp/>*/}
+        {/*    <Divider style={{margin: 0}}/>*/}
+        {/*    <ScriptsSectionComp/>*/}
+        {/*</>}*/}
         {inspectingScene && <>
             {viewer.uiConfig.children?.map((c, i)=>{
                 const uiConfig: UiObjectConfig|undefined = getOrCall(c) // todo use uiconfigmethods

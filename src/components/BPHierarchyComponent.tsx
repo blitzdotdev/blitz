@@ -15,7 +15,7 @@ import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.ts
 import {Intent} from "@blueprintjs/core";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
-import {CanvasFileDropHandler, isDraggableDroppableNode} from "../utils/CanvasFileDropHandler.ts";
+import {canDropNode, CanvasFileDropHandler, isDraggableDroppableNode} from "../utils/CanvasFileDropHandler.tsx";
 import {uiConfigToMenuItem} from "../utils/ContextMenuUtils.ts";
 
 interface BPHierarchyComponentPropsExtras extends HandleContextMenuCallback<IObject3D>{
@@ -158,6 +158,22 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
                 })
             }
 
+            items.push({
+                props: {
+                    text: 'Move Up',
+                },
+                key: 'moveUp',
+                action: 'moveInParent',
+                data: {obj, delta: -1}
+            }, {
+                props: {
+                    text: 'Move Down',
+                },
+                key: 'moveDown',
+                action: 'moveInParent',
+                data: {obj, delta: 1}
+            })
+
             // todo use uiconfig methods to find buttons
             obj.uiConfig?.children
                 ?.filter(c => typeof c === 'object' && c.tags?.includes('context-menu'))
@@ -179,8 +195,8 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         if (!target || !source) return false
         if (sourceNode.id === targetNode.id) return false
 
-        const drop = this.context.viewer?.getPlugin(CanvasFileDropHandler)
-        return drop?.canDropNode(source, target, index) ?? false
+        // const drop = this.context.viewer?.getPlugin(CanvasFileDropHandler)
+        return canDropNode(source, target, index) ?? false
     }
 
     protected _onDropNode(sourceNode: TreeNodeInfo<T>, _sourcePath: number[], targetNode: TreeNodeInfo<T>, _targetPath: number[], _e?: React.DragEvent, index?: number) {
@@ -270,7 +286,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
     }
     private objectUpdate = (e: Event2<'objectUpdate', ISceneEventMap, IObject3D>) => {
         // private objectUpdate = (e: any) => {
-        if (e.refreshUi !== false && (e.change === 'name' || e.key === 'name')) {
+        if (e.refreshUi !== false && (e.change === 'name' || e.key === 'name' || e.change === 'indexInParent')) {
             this.props.config.uiRefresh?.(true, 'postFrame')
             // @ts-ignore
             // hierarchyConfig.children![0]!.uiRefresh?.()

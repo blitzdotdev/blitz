@@ -1,6 +1,6 @@
 import {isExternalObject} from "../utils/ViewerInstanceManager.ts";
 import {useContextMenu} from "./ContextMenuProvider.tsx";
-import {IObject3D, UiObjectConfig} from "threepipe";
+import {IMaterial, IObject3D, UiObjectConfig} from "threepipe";
 import React, {useMemo} from "react";
 import {BPHierarchyComponent} from "./BPHierarchyComponent.tsx";
 import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
@@ -33,7 +33,19 @@ export function ObjectHierarchyComponent({className}: { className: string }) {
     const viewer = manager.get()
 
     const {makeAsset} = useMakeAsset()
-    const actions = {makeAsset}
+    const actions = {makeAsset,
+        moveInParent: (data: { obj: IObject3D, delta: number }) => {
+            const parent = data.obj.parent
+            if (!parent) return
+            const index = parent.children.indexOf(data.obj)
+            if (index === -1) return
+            let newIndex = index + data.delta
+            newIndex = Math.max(0, Math.min(parent.children.length - 1, newIndex))
+            if (newIndex === index) return
+            parent.children.splice(index, 1)
+            parent.children.splice(newIndex, 0, data.obj)
+            data.obj?.setDirty && data.obj?.setDirty({change: 'indexInParent'})
+    }}
 
     // const {handleContextMenu} = useObjContextMenu(actions, (ev)=>{
     //     return onObjectCreate ? <>

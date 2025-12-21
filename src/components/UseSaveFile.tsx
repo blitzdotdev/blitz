@@ -101,7 +101,9 @@ export function useSaveFile() {
                 isCloseButtonShown: true,
             });
 
-            await loadProject1(closeProject ? null : meta1)
+            // console.log(meta1)
+
+            // await loadProject1(closeProject ? null : meta1)
         }
     }, [project, loadProject1, manager, fileNamePrompt])
     return {fileNamePrompt, saveFile}

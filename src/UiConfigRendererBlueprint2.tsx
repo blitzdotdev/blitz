@@ -56,7 +56,7 @@ export class UiConfigRendererBlueprint2 extends UiConfigRenderer {
     }
 
     protected _refreshUiConfigObject(config: UiObjectConfig): void {
-        (config.uiRef as BPComponent<any, any>)?.refreshConfigState()
+        ;(config.uiRef as BPComponent<any, any>)?.refreshConfigState()
     }
 
     renderUiConfig(_: UiObjectConfig): void {
@@ -104,6 +104,7 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
             if (this._lastManager) Object.assign(manager.presets, this._lastManager.presets)
         }
     }
+
     onRemove(viewer: ThreeViewer): void {
         this._viewer = undefined
         viewer.removeEventListener('preRender', this._preRender)
@@ -119,6 +120,11 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
         this.undoManager?.dispose()
         this.unmount()
     }
+
+    // addToRefreshQueue(mode: TUiRefreshModes | "immediate", uiConfig: UiObjectConfig, deep: boolean, delay: number) {
+    //     // console.warn('addToRefreshQueue', mode, uiConfig, deep, delay);
+    //     super.addToRefreshQueue(mode, uiConfig, deep, delay);
+    // }
 
     private _plugins: IViewerPlugin[] = []
 

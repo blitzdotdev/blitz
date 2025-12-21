@@ -9,7 +9,12 @@ import {ExternalFilesGrid} from "./ExternalFilesGrid.tsx";
 import {SliderMenuItem} from "./FilesPanel.tsx";
 import {FileManifestEntry} from "../utils/AssetsProvider.ts";
 
-export type TExternalFile = Omit<FileManifestEntry, 'handle'|'isFSEntry'|'children'>&{children: TExternalFile[], assetType?: string}
+export type TExternalFile = Omit<FileManifestEntry, 'handle'|'isFSEntry'|'children'>& {
+    children: TExternalFile[],
+    assetType?: string,
+    libFileId?: string // if this file is linked to a lib asset, store its id here}
+    isFSEntry?: false,
+}
 
 export function ExternalFilesPanel({}: {}) {
     // const {project} = useProject()
@@ -30,11 +35,13 @@ export function ExternalFilesPanel({}: {}) {
             type: 'file',
             path: f.fileUrl || '',
             icon: f.thumbnailUrl.replace('width=256&height=256', 'width=64&height=64'), // use smaller thumbnail
+            // variants: f.files || {},
+            libFileId: f.id,
             children: []
         } as TExternalFile
         const group = files.find(f2 => f2.assetType === f.type)
         if (!f1.path) {
-            console.log('No fileUrl for asset:', f)
+            console.log('No fileUrl for asset:', f, f.type)
         } else if (group) {
             group.children.push(f1)
         } else {

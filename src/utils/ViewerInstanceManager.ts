@@ -1,4 +1,5 @@
 import {
+    AssetExporterPlugin,
     BoxGeometry,
     CanvasSnapshotPlugin,
     DepthBufferPlugin,
@@ -89,7 +90,7 @@ import {getDirHandle, getFileHandle} from "./fsApi.ts";
 import {FetchProxy} from "./FetchProxy.ts";
 import {AssetTracker, cloneAssetItem, defSPropsMat, defSPropsObj} from "./AssetTracker.ts";
 import {CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
-import {CanvasFileDropHandler} from "./CanvasFileDropHandler.ts";
+import {CanvasFileDropHandler} from "./CanvasFileDropHandler.tsx";
 import {FileTracker} from "./FileTracker.ts";
 import {HtmlUiComponent} from "../plugins/HtmlUiComponent.ts";
 import {generatePreview} from "./three/GeneratePreview.ts";
@@ -97,6 +98,10 @@ import {emptyProjectSettings} from "../data/EmptyProjectSettings.ts";
 import {mimeToExt, typesExts} from '../data/fileTypes.ts'
 import {comparePlugins, ScriptUtil} from "./ScriptUtil.ts";
 import {refreshProjectQueryState} from "./refreshProjectQueryState.ts";
+import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
+import {queryClient} from "../tsdb/client.ts";
+import {fetchQueryFunc, libAssetEndpoints} from "../tsdb/libAsset.ts";
+import z from "zod";
 
 export interface ViewerProps {
     msaa: boolean,
@@ -352,6 +357,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             // new TimelineUiPlugin(false, document.body), // todo
             // TroikaTextPlugin,
             // new CascadedShadowsPlugin(false),
+            new AssetExporterPlugin()
 
         ])
         viewer.timeline.endTime = 0 // infinite
@@ -476,7 +482,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         const meta = await getMeta(scene.path)
         let isNewHandle = false
         let handle = meta?.handle
-        let name = scene.path.split('/').pop() || 'scene'
+        let name = scene.path.replace(/\/$/, '').split('/').pop() || 'scene'
         let file: File/* | string*/ = scene.file
         let filePath: string|null = typeof file === 'string' ? file : null
         const preview = scene.preview
@@ -488,7 +494,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             if ((!meta?.handle || props.isNewName) && 'showDirectoryPicker' in window) {
                 const handle1 = await window.showDirectoryPicker({
                     id: ViewerInstanceManager.SAVE_DIR_PICKER_ID,
-                    mode: "readwrite",
+                    mode: 'readwrite',
                     // startIn: 'documents',
                     startIn: meta?.handle,
                 }).catch(e => {
@@ -586,6 +592,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         if (filePath !== meta1.file) await this.browserStore.put(file, meta1.path + fileKey)
         if (preview !== meta1.preview) await this.browserStore.put(preview, meta1.path + previewKey)
 
+        this.loadedNeedsSave = false
         return (await this.getFileFromMeta(meta1)) ?? {error: 'Failed to get saved file'}
     }
 
@@ -1173,7 +1180,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }else {
             filePath = url1
         }
-        console.log('Resolved asset url', url, 'to path', filePath)
+        // console.log('Resolved asset url', url, 'to path', filePath)
         return filePath
     }
 
@@ -1354,6 +1361,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
             await this.onProjectSettingsChange(emptyProjectSettings, null)
             // console.timeEnd('settings load')
         }
+        this._loadedNeedsSave = false
+
         return v
     }
 
@@ -1626,7 +1635,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
             return entry.path
         }
         if(!this.loadedProject?.assetsManifest){
-            console.error('No assets manifest loaded in project, cannot get asset id for file: ', entry.path)
+            if(this.loadedProject && isPackageProject(this.loadedProject))
+                console.error('No assets manifest loaded in project, cannot get asset id for file: ', entry.path)
             return entry.path
         }
         let assetId = Object.entries(this.loadedProject.assetsManifest.files).find(([id, f]) => f.path === entry.path)?.[0] || null
@@ -2462,7 +2472,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return {error: null, path: assetPath, result}
     }
 
-    async getAssetFromPath(path: string): Promise<((IObject3D | IMaterial) & ImportResultExtras) | null>{
+    async getAssetFromPath(path: string): Promise<((IObject3D | IMaterial | ITexture) & ImportResultExtras) | null>{
         // path = path.replace(assetUrlPrefix, '')
         const reg = this.get()?.assetManager.tracker.getFromRegistry(path, {
             // processRaw: true,
@@ -2472,8 +2482,37 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return (reg?.pms || null) as any
     }
 
-    async getAssetFromEntry(entry: FileManifestEntry|{path: string, isFSEntry: false}): Promise<((IObject3D | IMaterial | ITexture) & ImportResultExtras) | null>{
-        if(!entry.isFSEntry) return this.getAssetFromPath(entry.path)
+    async getAssetFromEntry(entry: FileManifestEntry|TExternalFile|{path: string, isFSEntry: false}): Promise<((IObject3D | IMaterial | ITexture) & ImportResultExtras) | null>{
+        if(!entry.isFSEntry) {
+            const libFileId = 'libFileId' in entry ? entry.libFileId : undefined
+            let fileInfo
+            if(libFileId) {
+                fileInfo = await queryClient.fetchQuery({
+                    queryKey: [libAssetEndpoints.info.key, libFileId],
+                    queryFn: async ({signal, queryKey}) => {
+                        const r = await fetchQueryFunc(libAssetEndpoints.info.url + queryKey[1], {signal, queryKey});
+                        return libAssetEndpoints.info.schema.parse(r.asset);
+                    }
+                }).catch(e=>{
+                    console.error('Error fetching lib asset info for asset load: ', libFileId, e)
+                    return undefined
+                })
+            }
+            let asset = this.getAssetFromPath(entry.path)
+            if(libFileId && fileInfo && asset){
+                asset = asset.then(async (r)=>{
+                    if(!r) return r
+                    if(r.isObject3D && r.name === 'Scene' &&
+                        libFileId.startsWith('@polyhaven/')) {
+                        r.name = fileInfo.name || libFileId.replace('@polyhaven/', '')
+                    }
+                    r._libFileInfo = fileInfo
+                    // r._libFileId = libFileId
+                    return r
+                })
+            }
+            return asset
+        }
         let path = entry.path
         if(!entry.path.startsWith('@')) {
             path = await this.toAssetIdPath(entry)
@@ -2719,6 +2758,9 @@ export function backupPath(path: string){
 declare module 'threepipe'{
     interface AssetManager{
         tracker: AssetTracker
+    }
+    interface ImportResultExtras{
+        _libFileInfo?: z.infer<typeof libAssetEndpoints.info.schema>
     }
 }
 

@@ -3,9 +3,11 @@ import {
     ComponentJSON,
     IObject3D,
     IObject3DEventMap,
+    ISceneEventMap,
     literalStrings,
     Object3DComponent,
-    Vector3
+    Vector3,
+    ViewerEventMap
 } from "threepipe"
 
 export const uiPositionMode = ['world', 'screen', 'viewport'] as const
@@ -14,7 +16,15 @@ export type UiPositionMode = typeof uiPositionMode[number]
 export class HtmlUiComponent extends Object3DComponent {
     static ComponentType = 'HtmlUiComponent'
     static StateProperties: ComponentDefn['StateProperties'] = [
-        'htmlData',
+        {
+            key: 'htmlData',
+            type: 'string',
+            uiConfig: {
+                multiline: true,
+                rows: 5,
+                autoResize: true,
+            }
+        },
         'width',
         'height',
         'scrollable',
@@ -130,10 +140,10 @@ export class HtmlUiComponent extends Object3DComponent {
         })
     }
 
-    private _objectUpdate = (e: IObject3DEventMap['objectUpdate']) => {
+    private _objectUpdate = (e: IObject3DEventMap['objectUpdate'] | ISceneEventMap['mainCameraUpdate']) => {
         if (e.source === 'HtmlUiComponent') return
         const changeKey = e?.change ?? e?.key
-        const update = !changeKey || changeKey === 'position' || changeKey === 'transform' || changeKey === 'quaternion' || changeKey === 'visible'
+        const update = !changeKey || changeKey === 'position' || changeKey === 'transform' || changeKey === 'quaternion' || changeKey === 'visible' || changeKey === 'controls'
         if (update && this.positionMode === 'world') {
             this._updateElementPosition()
         }
@@ -165,6 +175,7 @@ export class HtmlUiComponent extends Object3DComponent {
 
         // Listen for object updates
         object.addEventListener('objectUpdate', this._objectUpdate)
+        this.ctx.viewer.scene.addEventListener('mainCameraUpdate', this._objectUpdate)
 
         // Start position tracking for world-positioned elements
         this._updateElementPosition()
@@ -176,6 +187,7 @@ export class HtmlUiComponent extends Object3DComponent {
 
         // Remove event listener
         this.object.removeEventListener('objectUpdate', this._objectUpdate)
+        this.ctx.viewer.scene.removeEventListener('mainCameraUpdate', this._objectUpdate)
 
         // Remove element from DOM
         if (this.element && this.element.parentNode) {
@@ -191,6 +203,17 @@ export class HtmlUiComponent extends Object3DComponent {
             cancelAnimationFrame(this._animationFrameId)
             this._animationFrameId = undefined
         }
+    }
+
+    preFrame({resized}: ViewerEventMap["preFrame"]): boolean | void {
+        if(!this.element || !this.enabled) return
+        //   world - on camera change, canvas size change, object transform change
+        //   screen - no change
+        //   viewport - on canvas size change
+        if(this.positionMode === 'screen') return
+        if(!resized && this.positionMode === 'viewport') return
+        if(!resized && this.positionMode === 'world') return // todo: tracked separately
+        this._updateElementPosition()
     }
 
     private _updateElementPosition() {

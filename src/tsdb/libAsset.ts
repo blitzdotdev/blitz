@@ -9,24 +9,47 @@ export const libAssetSchema = z.object({
     fileUrl: z.url(),
     thumbnailUrl: z.url(),
     type: z.string(),
+    // files: z.record(z.string(), z.any()).optional(),
 })
+export const libAssetInfoSchema = z.object({
+    id: z.string(),
+    // name: z.string(),
+    fileUrl: z.url(),
+    // thumbnailUrl: z.url(),
+    type: z.string(),
+    polyhavenFiles: z.record(z.string(), z.any()).optional(),
+}).loose();
 
 // Define a collection that loads data using TanStack Query
+
+export async function fetchQueryFunc(queryUrl: string, {
+    signal, queryKey,
+}: {signal: AbortSignal, queryKey: string[]}) {
+    const response = await fetch(queryUrl, {
+        signal
+    })
+    if (!response.ok) {
+        console.error(`Error fetching ${queryKey}:`, response.statusText, await response.text());
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const json = await response.json()
+    return json
+}
+
+// const queryKey = 'libAssets'
+// const queryUrl = 'http://localhost:8787/assets/v1/list'
+const basePath = 'https://asset-cdn.threepipe.org'
+export const libAssetEndpoints = {
+    list: {key: 'libAssets', url: 'https://asset-cdn.threepipe.org/assets/v1/list', schema: libAssetSchema},
+    info: {key: 'libAssetInfo', url: 'https://asset-cdn.threepipe.org/assets/v1/info/', schema: libAssetInfoSchema},
+}
 export const libAssetCollection = createCollection(
     queryCollectionOptions({
         queryClient,
-        schema: libAssetSchema,
-        queryKey: ['libAssets'],
-        queryFn: async ({signal}) => {
-            const response = await fetch('http://localhost:8787/assets/v1/list', {
-                signal
-            })
-            if(!response.ok){
-                console.error('Error fetching HDRI list:', response.statusText, await response.text());
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const {assets} = await response.json()
-            return assets
+        schema: libAssetEndpoints.list.schema,
+        queryKey: [libAssetEndpoints.list.key],
+        queryFn: async ({queryKey, signal}) => {
+            return (await fetchQueryFunc(libAssetEndpoints.list.url, {signal, queryKey})).assets;
         },
         getKey: (item) => item.id,
         // onUpdate: async ({ transaction }) => {

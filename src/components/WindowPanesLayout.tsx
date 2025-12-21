@@ -5,6 +5,7 @@ import {toTitleCase} from "threepipe";
 import {EditPreviewButtonGroup} from "./EditPreviewButtonGroup.tsx";
 import {InteractionControlsButtonGroup} from "./InteractionControlsButtonGroup.tsx";
 import {WindowPanelFlap} from "./WindowPanelFlap.tsx";
+import {PopupDialogCard} from "./PopupDialogCard.tsx";
 
 export interface WindowPanel{
     title: string
@@ -102,6 +103,7 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
             return renderPanel(p[0])
         }
     }
+
     return  <PanelGroup className={"editorSplitContainer"} direction="horizontal" autoSaveId={"tpEditorWindowPanelsRoot"}>
         <Panel
             ref={panelRefs.left}
@@ -130,6 +132,7 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
                         {renderPanels(panels.center)}
                         <InteractionControlsButtonGroup key="interaction-controls" />
                         <EditPreviewButtonGroup key="editpreview" isExpanded={isExpanded} toggleExpand={toggleExpand} />
+                        <PopupDialogCard/>
                         <WindowPanelFlap
                             isCollapsed={panelRefs.left.current?.isCollapsed() ?? false}
                             onClick={() => togglePanel('left')}

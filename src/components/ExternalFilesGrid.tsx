@@ -1,5 +1,5 @@
 import {useManager} from "../utils/UseManager.ts";
-import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.ts";
+import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.tsx";
 import React, {useEffect, useRef} from "react";
 import {ButtonGroup} from "@blueprintjs/core";
 import {FileButton} from "./FilesPanel.tsx";
@@ -24,10 +24,10 @@ export function ExternalFilesGrid({group}: {
     }, [dragger]);
 
     const items = group.children || []
-    const onClick = (f: TExternalFile, e: React.MouseEvent) => {
+    const onClick = (f: FileManifestEntry | TExternalFile, e: React.MouseEvent) => {
 
     }
-    const onDoubleClick = async (f: FileManifestEntry | {path: string, isFSEntry: false}, e: React.MouseEvent) => {
+    const onDoubleClick = async (f: FileManifestEntry | TExternalFile, e: React.MouseEvent) => {
         if(!dragger) return
         const item = await manager.getAssetFromEntry(f)
         if(!item) return
@@ -128,9 +128,9 @@ export function ExternalFilesGrid({group}: {
                             fileEntry={f}
                             disabled={f.type === 'directory'}
                             onClick={(e) => onClick(f, e)}
-                            onDoubleClick={(e) => onDoubleClick({path: f.path, isFSEntry: false}, e)}
+                            onDoubleClick={(e) => onDoubleClick(f, e)}
                             draggable={dragger?.canDragFile(f)}
-                            onDragStart={(e) => dragger?.handleDragStart(e, {path: f.path, isFSEntry: false})}
+                            onDragStart={(e) => dragger?.handleDragStart(e, f)}
                             onDragEnd={dragger?.handleDragEnd}
                         />
                     ))}

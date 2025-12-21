@@ -21,6 +21,18 @@ body{
   display: none;
 }
 
+.bp5-vars, :root {
+  // define custom properties for light and dark themes
+  --main-app-background-hsl: var(--light-gray4-hsl);
+  --main-app-background: hsl(var(--main-app-background-hsl));
+}
+
+.bp5-dark {
+  --main-app-background-hsl: var(--dark-gray1-hsl);
+  --main-app-background: hsl(var(--main-app-background-hsl));
+}
+
+
 .editorSplitContainer {
   display: flex;
   height: calc(100% - var(--pt-navbar-height) + 1px) !important;
@@ -45,7 +57,7 @@ body{
   //}
 
   transition: var(--background-color-transition);
-  background: var(--light-gray4);
+  background: var(--main-app-background);
   //.bp5-card{
   //  background: transparent;
   //}
@@ -59,7 +71,7 @@ body{
     //}
     //.bp5-card{
     //}
-    background: var(--dark-gray1);
+    //background: var(--dark-gray1);
   }
 
   .bpInspectorCard{
@@ -70,12 +82,12 @@ body{
 .bp5-navbar {
   border: none;
   box-shadow: none !important;
-  background: var(--light-gray4);
+  background: var(--main-app-background);
   transition: var(--background-color-transition);
 
-  .bp5-dark & {
-    background: var(--dark-gray1);
-  }
+  //.bp5-dark & {
+  //  background: var(--dark-gray1);
+  //}
 }
 
 .main-nav-logo{

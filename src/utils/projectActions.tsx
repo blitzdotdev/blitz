@@ -21,7 +21,10 @@ export function useProjectActions() {
             return {error: e?.message ?? 'Unknown error'}
         })
         // console.log(res)
-        if(meta.path) showSuccessErrorToast(`Loaded ${meta.path}${file?.path||''}`, 'Unable to load project file', res as ErrorRes)
+        if(meta.path) {
+            const path = isPackageProject(meta) ? meta.path : meta.file.name
+            showSuccessErrorToast(`Loaded ${path}${file?.path||''}`, 'Unable to load project file', res as ErrorRes)
+        }
         // setPFile(file)
         setProject(meta)
     }, [setProject, manager])

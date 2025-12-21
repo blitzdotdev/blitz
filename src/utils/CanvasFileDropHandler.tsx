@@ -3,7 +3,8 @@ import {
     Box3B,
     IMaterial,
     Intersection,
-    IObject3D, ITexture,
+    IObject3D,
+    ITexture,
     JSUndoManagerCommand1,
     Mesh,
     Raycaster,
@@ -19,90 +20,11 @@ import {
     ViewerInstanceManager
 } from "./ViewerInstanceManager.ts";
 import React from "react";
-import {assetUrlPrefix} from "./project.ts";
 import {FileManifestEntry} from "./AssetsProvider.ts";
+import {environmentCommand, materialCommand, objectCommand, textureCommand} from "./objectApplyCommands.tsx";
+import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
 
 type DraggedItem = IMaterial | IObject3D | ITexture
-
-function objectCommand(source: IObject3D, target: IObject3D, newIndex = -1) {
-    const cmd = {
-        lastParent: target as IObject3D | null,
-        lastIndex: newIndex as any,
-        redo: () => {
-            const lastParent = cmd.lastParent
-            const lastIndex = cmd.lastIndex
-            cmd.lastParent = source.parent
-            cmd.lastIndex = source.parent?.children.indexOf(source) ?? -1
-            // todo use attach if e?.shiftKey
-            addAtIndex(source, lastParent, lastIndex);
-            source.dispatchEvent({type: 'select', value: source, object: source, ui: true, bubbleToParent: true, trackUndo: false})
-        },
-        undo: () => {
-            console.log('undo', {...cmd})
-            const {lastParent, lastIndex} = cmd
-            cmd.lastParent = source.parent
-            cmd.lastIndex = source.parent?.children.indexOf(source) ?? -1
-            addAtIndex(source, lastParent, lastIndex);
-            source.dispatchEvent({type: 'select', value: source, object: source, ui: true, bubbleToParent: true, trackUndo: false})
-        },
-    } satisfies JSUndoManagerCommand1 & {lastParent: IObject3D | null, lastIndex: number}
-    return cmd;
-}
-
-function materialCommand(material: IMaterial, target: IObject3D, index?: number) {
-    const cmd = {
-        lastMaterial: material as IMaterial | IMaterial[] | null| undefined,
-        redo: () => {
-            const lastMaterial = material
-            cmd.lastMaterial = target.material
-            target.material = lastMaterial
-        },
-        undo: () => {
-            const lastMaterial = cmd.lastMaterial
-            cmd.lastMaterial = target.material
-            if(lastMaterial) target.material = lastMaterial
-        }
-    } satisfies JSUndoManagerCommand1 & {lastMaterial: IMaterial|IMaterial[] | null | undefined}
-    return cmd;
-}
-
-function textureCommand(texture: ITexture, target: IObject3D, textureSlot: string = 'map') {
-    const cmd = {
-        lastTexture: null as ITexture | null | undefined,
-        redo: () => {
-            const mat = Array.isArray(target.material) ? target.material[0] : target.material as IMaterial;
-            if (!mat) return;
-            cmd.lastTexture = (mat as any)[textureSlot];
-            (mat as any)[textureSlot] = texture;
-            mat.setDirty && mat.setDirty();
-        },
-        undo: () => {
-            const mat = Array.isArray(target.material) ? target.material[0] : target.material as IMaterial;
-            if (!mat) return;
-            const lastTexture = cmd.lastTexture;
-            cmd.lastTexture = (mat as any)[textureSlot];
-            (mat as any)[textureSlot] = lastTexture;
-            mat.setDirty && mat.setDirty();
-        }
-    } satisfies JSUndoManagerCommand1 & {lastTexture: ITexture | null | undefined}
-    return cmd;
-}
-
-function environmentCommand(texture: ITexture, viewer: ThreeViewer) {
-    const cmd = {
-        lastEnvironment: null as ITexture | null | undefined,
-        redo: () => {
-            cmd.lastEnvironment = viewer.scene.environment as ITexture;
-            viewer.scene.environment = texture;
-        },
-        undo: () => {
-            const lastEnv = cmd.lastEnvironment;
-            cmd.lastEnvironment = viewer.scene.environment as ITexture;
-            viewer.scene.environment = lastEnv ?? null;
-        }
-    } satisfies JSUndoManagerCommand1 & {lastEnvironment: ITexture | null | undefined}
-    return cmd;
-}
 
 function isEnvironmentTexture(texture: ITexture): boolean {
     // Check if it's a data texture with appropriate type and aspect ratio
@@ -262,9 +184,9 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         this.draggedItem = null;
     }
 
-    private draggingEntry: {path: string, isFSEntry: boolean} | null = null
+    private draggingEntry: {path: string, isFSEntry: boolean} | TExternalFile | null = null
 
-    handleDragStart = async (e: React.DragEvent, f: FileManifestEntry | {path: string, isFSEntry: false}) => {
+    handleDragStart = async (e: React.DragEvent, f: FileManifestEntry | TExternalFile | {path: string, isFSEntry: false}) => {
         if(this.draggingEntry) return // already dragging something
         this.draggingEntry = f
         draggingSpinner.style.display = 'block'
@@ -454,7 +376,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
                 if(!canDrop) return false
 
                 // Dragging an environment texture
-                cmd = environmentCommand(draggedItem, this._viewer)
+                cmd = environmentCommand(draggedItem, this._viewer, final, this.manager)
                 // this.execCommand(cmd, final)
 
             } else {
@@ -492,7 +414,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
                 ? assetRoot : mesh
             const draggedItem = item as IObject3D
 
-            const canDrop = CanvasFileDropHandler.canDropNode(draggedItem, parent) // todo check for isAsset, rootPath etc
+            const canDrop = canDropNode(draggedItem, parent) // todo check for isAsset, rootPath etc
             if(!canDrop) return false
 
             const root = draggedItem.parent ?? this._viewer.scene as IObject3D
@@ -500,12 +422,12 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             if(!final) {
                 if (draggedItem.parent !== root && draggedItem.parent !== parent) {
                     // root.add(draggedItem);
-                    const cmd = objectCommand(draggedItem, root, -1)
+                    cmd = objectCommand(draggedItem, root, -1)
                     // this.execCommand(cmd, false)
                 }
             }else {
                 if (draggedItem.parent !== parent || options.index !== undefined) {
-                    const cmd = objectCommand(draggedItem, parent, options.index)
+                    cmd = objectCommand(draggedItem, parent, options.index)
                     // this.execCommand(cmd, true)
 
                     usedItem = true
@@ -600,28 +522,6 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             && assetableFileTypes.some(e=>f.path.endsWith(e)) // its a model, material, etc
     }
 
-    static canDropNode(source: IObject3D, target: IObject3D, index?: number) {
-        const noTypes = [ 'Mesh', 'Line', 'Points' ]
-        if (noTypes.includes(target.type)) return false
-        let compatible = true
-        target.traverseAncestors(c=>c.id === source!.id && (compatible = false))
-        if(!compatible) return false // source is an ancestor of target
-
-        if(!isDraggableDroppableNode(target).droppable) return false
-        if(!isDraggableDroppableNode(source).draggable) return false
-
-        // target ancestor of source
-        // source.traverseAncestors(c=>c.id === target!.id && (compatible = false))
-        if(source.parent === target){
-            if(index !== undefined && target.children.indexOf(source) !== index) return true
-            else return true // still return true evem if indx is the same
-        }else if(index === undefined) {
-            // if no index is given, we can drop it anywhere
-            return true
-        }
-        return true
-    }
-
     private getMousePosition(event: DragEvent): Vector2 {
         if(!this._viewer?.canvas) return new Vector2()
         const rect = this._viewer.canvas.getBoundingClientRect();
@@ -632,33 +532,6 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
 
 }
 
-function addAtIndex(source: IObject3D, target: IObject3D|null, newIndex: number = -1) {
-    // todo check if target is parent of source, in case only reordering (but that wont fire events like setDirty?)
-    console.log('add ', source.name, 'to', target?.name, 'at', newIndex)
-    if(source.parent !== target) {
-        if(target)
-            target.add(source)
-        else {
-            source.parent?.remove(source)
-            // todo dispose?
-        }
-        // if(source.parent){
-        //     const ind = source.parent.children.indexOf(source)
-        //     if(ind >= 0) source.parent.children.splice(ind, 1) // remove from old parent
-        // }
-        // target.children.push(source)
-        // source.parent = target
-    }
-    if(!target) return -1
-    const newIndex2 = target.children.indexOf(source)
-    if (newIndex >= 0 && newIndex2 >= 0 && newIndex !== newIndex2) {
-        target.children.splice(newIndex2, 1)
-        target.children.splice(newIndex, 0, source) // add at new index
-        return newIndex
-    }
-    return newIndex2;
-}
-
 export function isDraggableDroppableNode(obj: IObject3D){
     // isComponent means isComponentInstance
     const isComponent = obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
@@ -667,4 +540,26 @@ export function isDraggableDroppableNode(obj: IObject3D){
     const droppable = !isExternal && !isComponent && isGroup
     const draggable = !isExternal
     return {isComponent, isExternal, isGroup, droppable, draggable}
+}
+
+export function canDropNode(source: IObject3D, target: IObject3D, index?: number) {
+    const noTypes = [ 'Mesh', 'Line', 'Points' ]
+    if (noTypes.includes(target.type)) return false
+    let compatible = true
+    target.traverseAncestors(c=>c.id === source!.id && (compatible = false))
+    if(!compatible) return false // source is an ancestor of target
+
+    if(!isDraggableDroppableNode(target).droppable) return false
+    if(!isDraggableDroppableNode(source).draggable) return false
+
+    // target ancestor of source
+    // source.traverseAncestors(c=>c.id === target!.id && (compatible = false))
+    if(source.parent === target){
+        if(index !== undefined && target.children.indexOf(source) !== index) return true
+        else return true // still return true evem if indx is the same
+    }else if(index === undefined) {
+        // if no index is given, we can drop it anywhere
+        return true
+    }
+    return true
 }
