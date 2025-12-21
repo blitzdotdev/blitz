@@ -14,7 +14,7 @@
 	},
 	"routes": [
 		{
-			"pattern": "asset-proxy.threepipe.org",
+			"pattern": "asset-cdn.threepipe.org",
 			"custom_domain": true
 		}
 	],

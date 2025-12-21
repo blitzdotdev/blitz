@@ -1,4 +1,4 @@
-import {Hono} from "hono";
+import {Context, Hono} from "hono";
 import {cors} from "hono/cors";
 import {AssetType, AssetTypeName, types} from "./types";
 
@@ -18,22 +18,27 @@ app.get("/message", (c) => {
 // todo https://3dassets.one/about-site
 // https://ambientcg.com/
 
+const basePath = 'https://asset-cdn.threepipe.org'
+
 const assets = {
     polyhaven: {
-        assetInfo: (dat: any, key: string, type: string)=> {
+        assetInfo: (dat: any, key: string, type: string, c: Context)=> {
+            const origin = (new URL(c.req.url)).origin;
             const re = {
                 ...dat,
                 name: dat.name || ('Unnamed ' + type),
                 id: '@polyhaven/' + key,
                 type: type,
                 thumbnailUrl: dat.thumbnail_url || null,
-                fileUrl: type === 'hdri' ? 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/' + key + '_1k.hdr' :
-                    type === 'texture' ? null :
-                    type === 'model' ? null : null
+                // fileUrl: type === 'hdri' ? 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/' + key + '_1k.hdr' :
+                fileUrl: type === 'hdri' ? `${origin}/assets/v1/file/@polyhaven/${key}/hdri/1k/hdr/${key}_1k.hdr` :
+                    type === 'material' ? `${origin}/assets/v1/file/@polyhaven/${key}/gltf/1k/gltf/${key}_1k.phmatgltf` :
+                    type === 'model' ? `${origin}/assets/v1/file/@polyhaven/${key}/gltf/1k/gltf/${key}_1k.gltf` :
+                        null
             } as AssetType
             return re;
         },
-        list: async (type: string) => {
+        list: async (type: string, c: Context) => {
             if(type === 'material') type = 'texture'
             const allowed = ['hdri', 'texture', 'model'];
             if (!allowed.includes(type)) {
@@ -50,13 +55,13 @@ const assets = {
             const data = await res.json();
             const results = [];
             for (const [key, dat] of Object.entries(data as Record<string, any>)) {
-                const re = assets.polyhaven.assetInfo(dat, key, type === 'texture' ? 'material' : type);
+                const re = assets.polyhaven.assetInfo(dat, key, type === 'texture' ? 'material' : type, c);
                 results.push(re);
             }
             return results;
         },
-        
-        info: async (id: string) => {
+
+        info: async (id: string, c: Context) => {
             const url = `https://api.polyhaven.com/info/${id}`;
             const res = await fetch(url);
             if (!res.ok) {
@@ -67,15 +72,13 @@ const assets = {
             if(!data || typeof data.type !== 'number') throw new Error('Invalid asset data from Polyhaven');
             const type = ['hdri', 'texture', 'model'][data.type];
             if(!type) throw new Error('Unknown asset type from Polyhaven');
-            const assetInfo = assets.polyhaven.assetInfo(data, id, type);
+            const assetInfo = assets.polyhaven.assetInfo(data, id, type === 'texture' ? 'material' : type, c);
 
             const url2 = `https://api.polyhaven.com/files/${id}`; // to get download links
             const res2 = await fetch(url2);
             if (res2.ok) {
                 const data2 = await res2.json() as any;
-                if(data2.hdri){
-                }
-                assetInfo.files = data2;
+                assetInfo.polyhavenFiles = data2;
             }
             return assetInfo;
         },
@@ -83,11 +86,7 @@ const assets = {
 
         }
     }
-} as Record<string, {
-    list: (type: AssetTypeName) => Promise<AssetType[]>
-    info: (id: string) => Promise<any>
-    assetInfo: (dat: any, key: string, type: string) => AssetType
-}>
+} as const
 
 app.get("/assets/v1/list/:type?", async (c) => {
     const {type} = c.req.param();
@@ -97,12 +96,12 @@ app.get("/assets/v1/list/:type?", async (c) => {
     const sources = Object.keys(assets);
     const promises: Promise<AssetType[]>[] = [];
     for (const source of sources) {
-        const assetSource = assets[source];
+        const assetSource = assets[source as keyof typeof assets];
         if(type) {
-            promises.push(assetSource.list(type as AssetTypeName));
+            promises.push(assetSource.list(type as AssetTypeName, c));
         }else {
             for (const t of types) {
-                promises.push(assetSource.list(t));
+                promises.push(assetSource.list(t, c));
             }
         }
     }
@@ -127,8 +126,71 @@ app.get("/assets/v1/info/:id{.*}", async (c) => {
 
     if(id.startsWith('@polyhaven/')) {
         const assetId = id.substring('@polyhaven/'.length);
-        const info = await assets.polyhaven.info(assetId).catch(e=>null)
+        const info = await assets.polyhaven.info(assetId, c).catch(e=>null)
         return info ? c.json({asset: info}) : c.json({error: "Not found"}, 400);
+    }
+
+    return c.json({error: "Not found"}, 404);
+});
+
+// /assets/v1/file/@polyhaven/cobblestone_pavement/gltf/1k/gltf/cobblestone_pavement_1k.gltf
+// /assets/v1/file/@polyhaven/cobblestone_pavement/gltf/1k/gltf/textures/cobblestone_pavement_nor_gl_1k.jpg
+
+app.get("/assets/v1/file/:path{.*}", async (c) => {
+    const {path} = c.req.param();
+    const parts = path.split('/');
+    if(parts.length < 2) {
+        return c.json({error: "Invalid asset id"}, 400);
+    }
+
+    const id = parts[0] + '/' + parts[1];
+
+    if(typeof id !== 'string' || id.length === 0) {
+        return c.json({error: "Invalid asset id"}, 400);
+    }
+
+    if(id.startsWith('@polyhaven/')) {
+        const assetId = id.substring('@polyhaven/'.length);
+        const info = await assets.polyhaven.info(assetId, c).catch(e=>null)
+
+        if(parts.length < 4) {
+            return c.json({error: "Invalid file path"}, 400);
+        }
+        let next = 2
+        const format = parts[next++];
+        const size = parts[next++];
+        let type = parts[next++]
+        let filename = parts.slice(next).join('/');
+        filename = filename.replace(/phmatgltf$/, 'gltf') // fix for polyhaven typo
+
+        // const assetType = ['hdri', 'texture', 'model'][info.type] || null;
+
+        if(!info ||
+            !info.polyhavenFiles ||
+            !info.polyhavenFiles[format] ||
+            !info.polyhavenFiles[format][size] ||
+            !info.polyhavenFiles[format][size][type]
+        ) {
+            return c.json({error: "Not found"}, 400);
+        }
+
+        const data = info.polyhavenFiles[format][size][type]
+
+        let urlData: {
+            url: string
+            md5?: string
+            size?: number
+        } | null = null
+        if(filename === `${assetId}_${size}.${type}`){
+            urlData = data
+        }else if(data.include && data.include[filename]){
+            urlData = data.include[filename]
+        }
+
+        return urlData && urlData.url ?
+            // todo cors, headers etc
+            fetch(urlData.url) :
+            c.json({error: "Not found"}, 400);
     }
 
     return c.json({error: "Not found"}, 404);
