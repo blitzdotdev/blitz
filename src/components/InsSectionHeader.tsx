@@ -2,7 +2,8 @@ import type {IconName} from "@blueprintjs/icons";
 import {MaybeElement} from "@blueprintjs/core/src/common/props.ts";
 import React, {ReactElement} from "react";
 import {ButtonGroup} from "@blueprintjs/core";
-import {InsSectionTitle} from "./InspectorPanelComponent.tsx";
+
+import {InsSectionTitle} from "./InsSectionTitle.tsx";
 
 export function InsSectionHeader({
     children, title, icon, className, style,

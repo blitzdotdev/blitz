@@ -22,8 +22,6 @@ import {FilesPanel} from "./FilesPanel.tsx";
 import {
     InspectorPanelComponent,
     InspectorPanelProps,
-    PluginsSectionComp,
-    ScriptsSectionComp
 } from "./InspectorPanelComponent.tsx";
 import {MaybeElement} from "@blueprintjs/core/src/common/props";
 import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
@@ -37,6 +35,7 @@ import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
 import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 import {ExternalFilesPanel} from "./ExternalFilesPanel.tsx";
+import {PluginsSectionComp, ScriptsSectionComp } from './ProjectSettingsComponents.tsx';
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){

@@ -1,6 +1,5 @@
 import {useEffect, useState} from "react";
 import {Card} from "@blueprintjs/core";
-import {InsSectionTitle} from "./InspectorPanelComponent.tsx";
 import {AssetRefItem, AssetRegistryItem} from "../utils/AssetTracker.ts";
 import {assetUrlPrefix} from "../utils/project.ts";
 import {iconForSelectionObject} from "../utils/icons.tsx";
