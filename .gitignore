@@ -24,3 +24,12 @@ dist-ssr
 *.sw?
 .env
 *.env
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Keep snapshots - they should be committed to track changes
+# /tests/__snapshots__/

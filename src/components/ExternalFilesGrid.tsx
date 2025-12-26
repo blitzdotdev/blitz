@@ -112,12 +112,15 @@ export function ExternalFilesGrid({group}: {
                 return <ButtonGroup
                     className="file-item-button-group"
                     key={virtualItem.key}
+                    data-index={virtualItem.index}
+                    ref={rowVirtualizer.measureElement}
                     style={{
                         position: 'absolute',
                         top: 0,
                         left: 0,
                         width: '100%',
-                        height: `${virtualItem.size}px`,
+                        // height: `${virtualItem.size}px`,
+                        height: `${buttonHeight}px`,
                         transform: `translateY(${virtualItem.start}px)`,
                         minHeight: 'unset',
                     }}

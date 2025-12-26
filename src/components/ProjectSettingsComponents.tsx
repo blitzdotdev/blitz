@@ -10,8 +10,9 @@ import React, {useState} from "react";
 import {SelectFileRef} from "../utils/ViewerInstanceManager.ts";
 import {generateUUID} from "../../../threepipe/lib";
 import {RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
-import {Button, Icon} from "@blueprintjs/core";
+import {Button, Icon, InputGroup} from "@blueprintjs/core";
 import {addProjectScript} from "./AddProjectScript.tsx";
+import {PackageDependency} from "../utils/importMaps.ts";
 
 export function PluginsSectionComp(){
     const manager = useManager()
@@ -186,4 +187,102 @@ export function AddScriptComp(){
                 }}
         ></Button>
     </RefSelectionObjectComponent>
+}
+
+export function DependenciesSectionComp(){
+    const manager = useManager()
+    const {loadingState, updateLoading} = useLoadingState()
+
+    const {project} = useProject()
+    const removeProjectDependency = async (p: PackageDependency)=>{
+        if(!project) return false
+        // todo confirm dialog
+        const res = await manager.removeProjectDependency(p).then(()=>({error: null})).catch(e=>{
+            return {error: e?.message ?? 'Unknown error'}
+        })
+        const r = showSuccessErrorToast(res ? `Removed ${p.key}@${p.version} from project, reload the page to clear it.` : 'Unknown Error', 'Unable to remove dependency', res)
+        return r
+    }
+
+    const dependencies = manager.loadedProject?.settings?.config?.dependencies || []
+
+    return <FolderHeadCard open={true} label={"Dependencies"} minimal={true} level={0} onClick={()=>{}} icon={"cube"}>
+        {dependencies?.map((c: PackageDependency, i: number)=>{
+            return <InsSectionItem
+                key={i}
+                icon={"package"}
+                text={`${c.key}@${c.version}`}
+                info={c.url ? {text: c.url, icon: "link"} : undefined}
+                buttons={[{
+                    key: 'remove', text: 'Remove Dependency', icon: "trash",
+                    intent: "warning",
+                    loading: loadingState['remove-dependency'],
+                    onClick: () => updateLoading('remove-dependency', removeProjectDependency(c))
+                }]}
+            />
+        })}
+
+        <AddDependencyComp/>
+
+    </FolderHeadCard>
+
+}
+
+export function AddDependencyComp(){
+    const [packageKey, setPackageKey] = useState<string>('')
+    const [packageVersion, setPackageVersion] = useState<string>('')
+    const [packageUrl, setPackageUrl] = useState<string>('')
+    const manager = useManager()
+    const {loadingState, updateLoading} = useLoadingState()
+
+    const {project} = useProject()
+    const addProjectDependency = async (dep: PackageDependency)=>{
+        if(!project) return false
+        const res = await manager.addProjectDependency(dep).then(()=>({error: null})).catch(e=>{
+            return {error: e?.message ?? 'Unknown error'}
+        })
+        const r = showSuccessErrorToast(res ? `Added ${dep.key}@${dep.version} successfully` : 'Unknown Error', 'Unable to add dependency', res)
+        if(r){
+            setPackageKey('')
+            setPackageVersion('')
+            setPackageUrl('')
+        }
+        return r
+    }
+
+    return <div style={{padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: '4px'}}>
+        <InputGroup
+            placeholder="Package (e.g., three)"
+            value={packageKey}
+            onChange={(e) => setPackageKey(e.target.value)}
+            fill
+        />
+        <InputGroup
+            placeholder="Version (optional, e.g., 0.150.0)"
+            value={packageVersion}
+            onChange={(e) => setPackageVersion(e.target.value)}
+            fill
+        />
+        <InputGroup
+            placeholder="URL (optional, uses esm.sh by default)"
+            value={packageUrl}
+            onChange={(e) => setPackageUrl(e.target.value)}
+            fill
+        />
+        <Button
+            variant={"outlined"}
+            text="Add Dependency"
+            icon={<Icon size={12} icon={"plus"}/>}
+            disabled={!packageKey.trim()}
+            loading={loadingState['addDependency']}
+            onClick={()=>{
+                const dep: PackageDependency = {
+                    key: packageKey.trim(),
+                    version: packageVersion ? packageVersion.trim() : 'latest',
+                    url: packageUrl.trim() || undefined
+                }
+                updateLoading('addDependency', addProjectDependency(dep))
+            }}
+        />
+    </div>
 }

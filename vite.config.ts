@@ -32,9 +32,8 @@ export default defineConfig({
     }
   },
   server: {
-    // @ts-ignore
-    // https: true,
-  }, // Not needed for Vite 5+
+    host: '0.0.0.0', // Listen on all network interfaces
+  },
   plugins: [
       react(),
       replace({

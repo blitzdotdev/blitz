@@ -452,11 +452,12 @@ export class ScriptUtil extends EventDispatcher<{
     }
 
     extraViewerPlugins: Record<string, PluginRef> = {}
-    async refLoadModule(mod: ScriptModule){
+    private async refLoadModule(mod: ScriptModule){
         // this.pluginsLoading = true
         const {module, plugins, path, components} = mod
         const newRefs: PluginRef[] = []
         const newComp: ComponentRef[] = []
+        console.warn('Load Module', mod)
         Object.entries(module).forEach(([key, exp])=>{
             if((exp as PluginRef['exp']).PluginType){
                 const pluginCons = exp as PluginRef['exp']
@@ -466,6 +467,7 @@ export class ScriptUtil extends EventDispatcher<{
                     //     this.extraViewerPlugins = this.extraViewerPlugins.filter(p=>p!==pluginCons)
                     //     this.dispatchEvent({type: 'extraPluginsChange'})
                     // }
+                    // console.log('new plugin', pluginCons.PluginType)
                     if(this.extraViewerPlugins[pluginCons.PluginType]?.def !== e) {
                         this.extraViewerPlugins[pluginCons.PluginType] = {
                             exp: pluginCons,
@@ -484,6 +486,7 @@ export class ScriptUtil extends EventDispatcher<{
                     //     this.dispatchEvent({type: 'extraPluginsChange'})
                     // }
                     if(!ignored.includes(pluginCons.PluginType) && this.extraViewerPlugins[pluginCons.PluginType]?.def !== e) {
+                        // console.log('new plugin', pluginCons.PluginType)
                         this.extraViewerPlugins[pluginCons.PluginType] = {
                             exp: pluginCons,
                             def: {

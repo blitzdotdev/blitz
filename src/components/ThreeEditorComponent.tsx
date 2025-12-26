@@ -35,7 +35,7 @@ import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
 import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 import {ExternalFilesPanel} from "./ExternalFilesPanel.tsx";
-import {PluginsSectionComp, ScriptsSectionComp } from './ProjectSettingsComponents.tsx';
+import {DependenciesSectionComp, PluginsSectionComp, ScriptsSectionComp } from './ProjectSettingsComponents.tsx';
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){
@@ -297,6 +297,8 @@ export function ThreeEditorComponent() {
                                     <ScriptsSectionComp/>
                                     <Divider style={{margin: 0}}/>
                                     <PluginsSectionComp/>
+                                    <Divider style={{margin: 0}}/>
+                                    <DependenciesSectionComp/>
                                 {/*</Card>*/}
                                 </>
                             },

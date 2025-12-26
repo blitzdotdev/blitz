@@ -54,7 +54,7 @@ import {GeometryGeneratorPlugin} from '@threepipe/plugin-geometry-generator'
 import {browserFileStore} from './BrowserFileStore.ts'
 import {EditorFeatures} from './EditorFeatures.ts'
 import {EditModePlugin} from "./EditModePlugin.ts";
-import {ImportMapsManager} from "./importMaps.ts";
+import {ImportMapsManager, PackageDependency} from "./importMaps.ts";
 import {FileManifestEntry, manifestEntryToFile, SelectedInspectorItem} from "./AssetsProvider.ts";
 import {parse} from 'jsonc-parser';
 import {
@@ -1517,6 +1517,32 @@ export class ViewerInstanceManager extends EventDispatcher<{
             ...settings,
             scripts: settings.scripts?.filter(p=>p!==existing)
         })
+    }
+
+    async addProjectDependency(dependency: PackageDependency){
+        const settings = this.loadedProject?.settings?.config
+        if(!settings) throw new Error('No project loaded, cannot add dependency')
+        const existing = settings.dependencies?.find(d=>d.key === dependency.key)
+        if(existing) throw new Error('Dependency already exists in project settings')
+        await this.setSettings({
+            ...settings,
+            dependencies: [...settings.dependencies||[], dependency]
+        })
+        if(dependency.key.startsWith('@threepipe/'))
+            await this.addProjectScript({import: dependency.key}, true)
+    }
+    async removeProjectDependency(dependency: PackageDependency){
+        const settings = this.loadedProject?.settings?.config
+        if(!settings) throw new Error('No project loaded, cannot remove dependency')
+        const existing = settings.dependencies?.find(d=>d.key === dependency.key)
+        if(!existing) return
+        await this.setSettings({
+            ...settings,
+            dependencies: settings.dependencies?.filter(d=>d!==existing)
+        })
+        if(dependency.key.startsWith('@threepipe/'))
+            await this.removeProjectScript({import: dependency.key})
+
     }
 
     // pluginsLoading = false

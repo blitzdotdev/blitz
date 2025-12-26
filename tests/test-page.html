@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThreePipe EditorStructure Test Page</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #mcanvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #test-output {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-width: 400px;
+            max-height: 90vh;
+            overflow: auto;
+            z-index: 1000;
+        }
+        .test-result {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #4CAF50;
+        }
+        .test-result.error {
+            border-color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="mcanvas"></canvas>
+    <div id="test-output"></div>
+
+    <script type="module">
+        import {
+            ThreeViewer,
+            SSAAPlugin,
+            EntityComponentPlugin,
+            Object3D,
+        } from 'threepipe'
+
+        // Import the function to test
+        import { getSceneStructureMd } from '../src/utils/three/EditorStructure.ts'
+
+        const outputDiv = document.getElementById('test-output')
+
+        function logTest(message, isError = false) {
+            const div = document.createElement('div')
+            div.className = `test-result ${isError ? 'error' : ''}`
+            div.textContent = message
+            outputDiv.appendChild(div)
+            console.log(message)
+        }
+
+        async function init() {
+            try {
+                logTest('Starting ThreeViewer initialization...')
+
+                const viewer = new ThreeViewer({
+                    canvas: document.getElementById('mcanvas'),
+                    debug: true,
+                    msaa: true,
+                    rgbm: true,
+                    renderScale: 1,
+                    plugins: [EntityComponentPlugin],
+                })
+
+                viewer.addPluginSync(new SSAAPlugin())
+
+                // Store viewer globally for tests
+                window.testViewer = viewer
+                window.getSceneStructureMd = getSceneStructureMd
+                window.Object3D = Object3D
+
+                logTest('ThreeViewer created successfully')
+
+                await viewer.setEnvironmentMap('https://samples.threepipe.org/minimal/venice_sunset_1k.hdr')
+                logTest('Environment map loaded')
+
+                await viewer.load('https://threejs.org/examples/models/gltf/LittlestTokyo.glb', {
+                    autoCenter: true,
+                    autoScale: true,
+                })
+                logTest('Model loaded successfully')
+
+                // Test all formats
+                logTest('Testing format: markdown-v2')
+                const markdownV2 = getSceneStructureMd(viewer, 'markdown-v2')
+                window.testResults = { markdownV2 }
+
+                logTest('Testing format: json')
+                const json = getSceneStructureMd(viewer, 'json')
+                window.testResults.json = json
+
+                logTest('Testing format: xml')
+                const xml = getSceneStructureMd(viewer, 'xml')
+                window.testResults.xml = xml
+
+                logTest('Testing format: compact')
+                const compact = getSceneStructureMd(viewer, 'compact')
+                window.testResults.compact = compact
+
+                logTest('Testing format: markdown (legacy)')
+                const markdown = getSceneStructureMd(viewer, 'markdown')
+                window.testResults.markdown = markdown
+
+                logTest('All formats generated successfully')
+                logTest('Ready for Playwright tests')
+
+                // Signal that initialization is complete
+                window.testInitComplete = true
+
+            } catch (error) {
+                logTest(`Error: ${error.message}`, true)
+                console.error(error)
+                window.testInitError = error
+            }
+        }
+
+        init()
+    </script>
+</body>
+</html>
+

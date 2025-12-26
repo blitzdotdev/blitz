@@ -25,6 +25,8 @@ export class ImportMapsManager{
 
     }
 
+    static onAdd = new Set<(dep: PackageDependency&{url: string})=>void>()
+
     static addDependency(...deps: PackageDependency[]) {
         const imports = {} as Record<string, string>
         for (const dep of deps) {
@@ -42,6 +44,7 @@ export class ImportMapsManager{
             if(externals.length) url += `?external=${externals.join(',')}`
             imports[dep.key] = url
             this.addedImports[dep.key] = {...dep, url}
+            this.onAdd.forEach((cb) => cb(this.addedImports[dep.key]))
         }
         addImportMap({imports})
     }
