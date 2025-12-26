@@ -102,6 +102,8 @@ import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
 import {queryClient} from "../tsdb/client.ts";
 import {fetchQueryFunc, libAssetEndpoints} from "../tsdb/libAsset.ts";
 import z from "zod";
+import {PlayModeHelper} from "./PlayModeHelper.ts";
+import {EditPreviewHelper} from "./EditPreviewHelper.ts";
 
 export interface ViewerProps {
     msaa: boolean,
@@ -148,14 +150,14 @@ export function isLoadableFile(file: string) {
 export class ViewerInstanceManager extends EventDispatcher<{
     loadedNeedsSaveChange: {},
     loadedProjectFileChange: {},
-    editPreviewChange: {},
-    runModePauseChange: {},
     // assetRegistryChange: {},
 }>{
     private _viewers = new Map<string, ThreeViewer>()
     features = new EditorFeatures(this)
     fileTracker = new FileTracker()
     scriptUtil = new ScriptUtil()
+    playMode = new PlayModeHelper(this)
+    editPreview = new EditPreviewHelper(this.features)
 
     static {
     }
@@ -911,7 +913,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             }
         }
 
-        if(this.isRunningMode){
+        if(this.playMode.isRunningMode){
             return {
                 error: 'cannot export scene while running/playing'
             }
@@ -986,7 +988,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             }
         }
 
-        if(this.isRunningMode){
+        if(this.playMode.isRunningMode){
             return {
                 error: 'cannot export object while running/playing'
             }
@@ -1570,23 +1572,20 @@ export class ViewerInstanceManager extends EventDispatcher<{
         this.dispatchEvent({type: 'loadedProjectFileChange'})
     }
 
-    // todo make public readonly
-    isRunningMode = false
-
     _loadedNeedsSave = false
     get loadedNeedsSave() {
-        if(this.isRunningMode) return false
+        if(this.playMode.isRunningMode) return false
         return this._loadedNeedsSave
     }
     set loadedNeedsSave(v) {
-        if(this.isRunningMode) return
+        if(this.playMode.isRunningMode) return
         if(this._loadedNeedsSave === v) return
         this._loadedNeedsSave = v
         this.dispatchEvent({type: 'loadedNeedsSaveChange'})
     }
 
     // this will refresh file in the asset registry, i.e load it again.
-    private async loadImport(file: SavedSceneFile | {path: string, file?: File}, project: LoadedProject, isMain = false) {
+    async loadImport(file: SavedSceneFile | {path: string, file?: File}, project: LoadedProject, isMain = false) {
         const sceneFile: File | undefined = file.file ??
             (file === project ?
             await resolveFile(project.file, project.path, project.handle) :
@@ -1847,192 +1846,9 @@ export class ViewerInstanceManager extends EventDispatcher<{
     editorId = generateUUID()
     _runningSceneFile: File|null = null
 
-    isEditorPreviewing = false
-
-    async startEditPreview(){
-        this.features.disable('widgets', 'EditPreview')
-        this.features.disable('transform-controls', 'EditPreview')
-        // this.features.disable('picking', 'EditPreview')
-        this.features.disable('edit-mode', 'EditPreview')
-        this.isEditorPreviewing = true
-        this.dispatchEvent({type: 'editPreviewChange'})
-    }
-
-    async stopEditPreview(){
-        this.features.enable('widgets', 'EditPreview')
-        this.features.enable('transform-controls', 'EditPreview')
-        // this.features.enable('picking', 'EditPreview')
-        this.features.enable('edit-mode', 'EditPreview')
-        this.isEditorPreviewing = false
-        this.dispatchEvent({type: 'editPreviewChange'})
-    }
-
-    async startRunMode(){
-        // check if scene is loaded
-        // save current scene to running.glb
-        // load running.glb in play mode
-        // set loadedNeedsSave = false
-        if(!this.loadedScene) return false
-        if(!this.loadedProjectFile) return false
-
-        if(this.isRunningMode){
-            if(this.isPausedRunning){
-                this.unpauseRunMode(true)
-                return true
-            }
-            return true
-        }
-
-        const project = this.loadedProject
-        const isPackage = isPackageProject(project)
-        if(!project || (isPackage && !project.handle)) return false
-
-        await this.startEditPreview()
-
-        let load
-
-        if(isPackage) {
-            const filePath = `.${settingsKey}/running/${this.editorId}.scene.glb` // todo delete file after run mode closed?
-
-            try {
-                const v = this.get()
-                const gltfMeta = v.scene.modelRoot.userData.gltfExtras?.resourcePath
-                if (gltfMeta) delete v.scene.modelRoot.userData.gltfExtras.resourcePath
-
-                const picking = v.getPlugin(PickingPlugin)
-                const selected = picking?.getSelectedObject()?.uuid
-
-                const res = await this.exportScene('running', false, 'gltf')
-                if (!res.file) {
-                    // todo
-                    throw new Error('Failed to export scene for run mode: ' + (res.error || 'Unknown error'))
-                }
-
-                const text = await (res.file as File).text()
-                const gltfJson = JSON.parse(text)
-                console.log('[Running Scene GLTF]', gltfJson)
-
-                if(v.scene.modelRoot.userData.gltfExtras)
-                    v.scene.modelRoot.userData.gltfExtras.resourcePath = gltfMeta
-
-                this._runningSceneFile = res.file
-
-                // todo async write file and delete on stop (handle user stopping before write complete)
-                // const saved = await this.writeFile(project.handle, filePath, this._runningSceneFile, project.path).catch(e => {
-                //     console.error(e)
-                //     return false
-                // })
-                // if (!saved) {
-                //     // return {error: 'Failed to save scene file.'}
-                //     throw new Error('Failed to save scene file for run mode')
-                // }
-
-                this.unloadScene() // todo why do we need to unload and load the same thing again?
-                load = async ()=>{
-                    await this.loadImport({
-                        file: res.file, path: filePath,
-                    }, project, true).catch(e => {
-                        return {error: e.message}
-                    })
-                    if(picking && selected){
-                        const obj = v.object3dManager.getObject(selected)
-                        if(obj) picking.setSelectedObject(obj)
-                    }
-                }
-            } catch (e) {
-                await this.stopEditPreview()
-                throw e
-            }
-        }
-
-        console.clear && console.clear()
-        this.isRunningMode = true
-        this.features.enable('physics', 'PlayingMode')
-        this.get().timeline.reset()
-
-        if(load) await load()
-
-        this.get().timeline.start()
-        this.get().getPlugin(EntityComponentPlugin)!.start()
-        return true
-    }
-
-    isPausedRunning = false
-
-    async pauseRunMode(){
-        if(this.isPausedRunning) return
-        this.isPausedRunning = true
-        this.get().timeline.stop()
-        this.dispatchEvent({type: 'runModePauseChange'})
-    }
-    async unpauseRunMode(startTime = true){
-        if(!this.isPausedRunning) return
-        this.isPausedRunning = false
-        if(startTime) this.get().timeline.start()
-        this.dispatchEvent({type: 'runModePauseChange'})
-    }
-
-    async stopRunMode(){
-        if(!this.isRunningMode) return false
-        this.isRunningMode = false
-
-        await this.unpauseRunMode(false)
-
-        const project = this.loadedProject
-        const isPackage = isPackageProject(project)
-        if(!project || (isPackage && !project.handle)) return false
-
-        if(!this.loadedProjectFile || !this.loadedScene) return
-
-        const v = this.get()
-        const picking = v.getPlugin(PickingPlugin)
-        const selected = picking?.getSelectedObject()?.uuid
-
-        v.getPlugin(EntityComponentPlugin)!.stop()
-
-        if(isPackage) {
-            this.unloadScene()
-        }
-
-        this.features.disable('physics', 'PlayingMode')
-
-        await this.stopEditPreview()
-
-        v.timeline.stop()
-        v.timeline.reset()
-
-        if(isPackage) {
-            const filePath = `.${settingsKey}/running/${this.editorId}.scene.glb` // todo delete file after run mode closed?
-
-            let tempFile = this._runningSceneFile
-            if (!tempFile) {
-                // try to load from disk
-                const file = await resolveFile(filePath, project.path, project.handle)
-                if (file) tempFile = file as File
-            }
-            if (!tempFile) {
-                console.error('No running scene file found, cannot reload scene.')
-                return
-            }
-            // todo delete tempFile
-
-            const res2 = await this.loadImport({
-                file: tempFile, path: filePath,
-            }, project, true).catch(e => {
-                return {error: e.message}
-            })
-
-            if (picking && selected) {
-                const obj = v.object3dManager.getObject(selected)
-                if (obj) picking.setSelectedObject(obj)
-            }
-        }
-
-    }
-
     // todo expose for scripts
     async loadRunningScene(path: string){
-        if(!this.isRunningMode || !this.loadedProject || !isPackageProject(this.loadedProject)) return
+        if(!this.playMode.isRunningMode || !this.loadedProject || !isPackageProject(this.loadedProject)) return
 
         this.get().timeline.stop()
         this.get().timeline.reset()

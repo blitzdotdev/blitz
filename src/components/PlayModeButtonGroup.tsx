@@ -6,33 +6,33 @@ import {useManager} from "../utils/UseManager.ts";
 
 let changingPlayState = false
 export const PlayModeButtonGroup: FC<{}> = ({}) => {
-    const manager = useManager()
-    const [isPlaying, setIsPlaying1] = useState(manager.isRunningMode)
-    const isPausedRunning = useListenProperty(manager, 'isPausedRunning', 'runModePauseChange')
+    const {playMode} = useManager()
+    const [isPlaying, setIsPlaying1] = useState(playMode.isRunningMode)
+    const isPausedRunning = useListenProperty(playMode, 'isPausedRunning', 'runModePauseChange')
 
     // todo listed to isRunningMode change from outside?
     const setIsPlaying = useCallback(async (val: boolean) => {
         if (changingPlayState) return
         changingPlayState = true
-        if (val === manager.isRunningMode && !manager.isPausedRunning) {
+        if (val === playMode.isRunningMode && !playMode.isPausedRunning) {
             setIsPlaying1(val)
         }
         else {
             if (val) {
-                await manager.startRunMode().catch(e => {
+                await playMode.startRunMode().catch(e => {
                     console.error('Could not start run mode:', e) // todo show toast
                     return false
                 })
             } else {
-                await manager.stopRunMode().catch(e => {
+                await playMode.stopRunMode().catch(e => {
                     console.error('Could not stop run mode:', e) // todo show toast
                     return false
                 })
             }
-            setIsPlaying1(manager.isRunningMode)
+            setIsPlaying1(playMode.isRunningMode)
         }
         changingPlayState = false
-    }, [manager])
+    }, [playMode])
 
     // todo on playing change
     //  set picking enabled
@@ -80,7 +80,7 @@ export const PlayModeButtonGroup: FC<{}> = ({}) => {
                                 endIcon={v.icon}
                                 active={active}
                                 onClick={() => {
-                                    typeof v.value === 'boolean' ? setIsPlaying(v.value) : manager.isPausedRunning ? manager.unpauseRunMode() : manager.pauseRunMode()
+                                    typeof v.value === 'boolean' ? setIsPlaying(v.value) : playMode.isPausedRunning ? playMode.unpauseRunMode() : playMode.pauseRunMode()
                                 }}/>
                         </Tooltip>
 

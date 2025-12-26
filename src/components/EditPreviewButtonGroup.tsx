@@ -8,33 +8,34 @@ export const EditPreviewButtonGroup: FC<{
     toggleExpand?: () => void;
 }> = ({isExpanded, toggleExpand}) => {
     const manager = useManager()
-    const [isPlaying, setIsPlaying1] = useState(manager.isEditorPreviewing)
+    const {editPreview} = manager
+    const [isPlaying, setIsPlaying1] = useState(editPreview.enabled)
     useEffect(()=>{
-        const l = ()=> setIsPlaying1(manager.isEditorPreviewing)
-        manager.addEventListener('editPreviewChange', l)
+        const l = ()=> setIsPlaying1(editPreview.enabled)
+        editPreview.addEventListener('editPreviewChange', l)
         return () => {
-            manager.removeEventListener('editPreviewChange', l)
+            editPreview.removeEventListener('editPreviewChange', l)
         }
     })
 
     const setIsPlaying = useCallback(async (val: boolean) => {
-        if (val === manager.isEditorPreviewing) setIsPlaying1(val)
+        if (val === editPreview.enabled) setIsPlaying1(val)
         else {
             if (val) {
-                await manager.startEditPreview().catch(e => {
+                await editPreview.start().catch(e => {
                     console.error('Could not start editor preview:', e) // todo show toast
                     return false
                 })
             } else {
-                await manager.stopEditPreview().catch(e => {
+                await editPreview.stop().catch(e => {
                     console.error('Could not stop editor preview:', e) // todo show toast
                     return false
                 })
             }
         }
-    }, [manager])
+    }, [editPreview])
 
-    return /*manager.isRunningMode ? null : */(
+    return /*editPreview.isRunningMode ? null : */(
         <div className="interactionControlsButtonContainer" style={{right: 'var(--pt-grid-size)', left: 'unset'}}>
             <ButtonGroup
                 onContextMenu={e=> e.preventDefault()}
