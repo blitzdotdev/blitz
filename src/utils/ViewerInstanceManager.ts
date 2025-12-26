@@ -2317,7 +2317,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             const res = await this.exportScene(scene ? 'scene' : 'asset', true)
             if (!res.file) return res
             const filePath = scene
-            const backupFilePath = backupPath(scene)
+            const backupFilePath = backupPath(scene, Date.now().toFixed()) // todo clear old backups?
             const previewFilePath = thumbPath(scene)
 
             let handles = await getFileHandle(handle, filePath, false)
@@ -2777,8 +2777,8 @@ export function isExternalTexture(tex: ITexture){
 export function thumbPath(path: string){
     return `.${settingsKey}/thumbs/${path}.png`
 }
-export function backupPath(path: string){
-    return `.${settingsKey}/backups/${path}`
+export function backupPath(path: string, time: string){
+    return `.${settingsKey}/backups/${path}/${time}/${path.split('/').pop()}`
 }
 
 declare module 'threepipe'{

@@ -4,6 +4,7 @@ import {InteractionIconButton} from "./InteractionIconButton.tsx";
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {useManager} from "../utils/UseManager.ts";
 
+let changingPlayState = false
 export const PlayModeButtonGroup: FC<{}> = ({}) => {
     const manager = useManager()
     const [isPlaying, setIsPlaying1] = useState(manager.isRunningMode)
@@ -11,6 +12,8 @@ export const PlayModeButtonGroup: FC<{}> = ({}) => {
 
     // todo listed to isRunningMode change from outside?
     const setIsPlaying = useCallback(async (val: boolean) => {
+        if (changingPlayState) return
+        changingPlayState = true
         if (val === manager.isRunningMode && !manager.isPausedRunning) {
             setIsPlaying1(val)
         }
@@ -28,6 +31,7 @@ export const PlayModeButtonGroup: FC<{}> = ({}) => {
             }
             setIsPlaying1(manager.isRunningMode)
         }
+        changingPlayState = false
     }, [manager])
 
     // todo on playing change
