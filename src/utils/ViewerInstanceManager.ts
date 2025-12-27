@@ -1875,6 +1875,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
     // todo
     //  reloadScene
 
+    savingScene = false
+
     async saveProjectSceneOrAsset(project: LoadedProject, file: SavedSceneFile): Promise<{ error: string | null, warn?: string }> {
         if(project !== this.loadedProject){
             console.error('Project does not match the loaded project, cannot save scene/asset.', file)
@@ -1903,9 +1905,14 @@ export class ViewerInstanceManager extends EventDispatcher<{
         // debugger
         Object.assign(project, meta)
 
+        this.savingScene = true
+
         if(scene) {
             const res = await this.exportScene(scene ? 'scene' : 'asset', true)
-            if (!res.file) return res
+            if (!res.file) {
+                this.savingScene = false
+                return res
+            }
             const filePath = scene
             const backupFilePath = backupPath(scene, Date.now().toFixed()) // todo clear old backups?
             const previewFilePath = thumbPath(scene)
@@ -1923,6 +1930,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
                 return false
             })
             if (!saved) {
+                this.savingScene = false
                 return {error: 'Failed to save scene file.'}
             }
 
@@ -1944,14 +1952,18 @@ export class ViewerInstanceManager extends EventDispatcher<{
             await this.browserStore.put(project, project.path + FILE_META_KEY)
 
             this.loadedNeedsSave = false
+            this.savingScene = false
             return {error: null}
         }
         if(this.loadedAssetObj){
             if((this.loadedAssetObj as ITexture).isTexture){
+                this.savingScene = false
                 return {error: "Texture Save not implemented yet."}
             }
+            this.savingScene = false
             return this.saveProjectAsset(project, null, this.loadedAssetObj as IObject3D|IMaterial, file.path)
         }
+        this.savingScene = false
         return {error: 'Unknown error saving scene/asset.'}
     }
 

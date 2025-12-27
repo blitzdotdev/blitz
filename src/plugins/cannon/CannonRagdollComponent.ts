@@ -69,7 +69,8 @@ export class CannonRagdollComponent extends Object3DComponent {
 
     angle = Math.PI / 4
 
-    angleShoulders = Math.PI / 3
+    // Increased to allow arms to fall more naturally (nearly parallel to body)
+    angleShoulders = Math.PI / 2
 
     twistAngle = Math.PI / 8
 
@@ -745,40 +746,40 @@ export class CannonRagdollComponent extends Object3DComponent {
         })
         this._constraints.push(spineJoint)
 
-        // Shoulders - these use UNIT_X in original, keep the same
-        // Original: pivotA(shouldersDistance/2, 0, upperBodyLength/2), pivotB(-upperArmLength/2, 0, 0)
-        // Ours: pivotA(shouldersDistance/2, upperBodyLength/2, 0), pivotB(-upperArmLength/2, 0, 0)
+        // Shoulders - In Y-up world, arms need to rotate around Z axis to swing down
+        // The cone axis should be Z so the arm can swing in the X-Y plane (up/down motion)
         const leftShoulder = new ConeTwistConstraint(upperBody, upperLeftArm, {
             pivotA: new Vec3(shouldersDistance / 2, upperBodyLength / 2, 0),
             pivotB: new Vec3(-upperArmLength / 2, 0, 0),
-            axisA: Vec3.UNIT_X,
-            axisB: Vec3.UNIT_X,
+            axisA: Vec3.UNIT_Z,
+            axisB: Vec3.UNIT_Z,
             angle: angleShoulders,
+            twistAngle,
         })
         const rightShoulder = new ConeTwistConstraint(upperBody, upperRightArm, {
             pivotA: new Vec3(-shouldersDistance / 2, upperBodyLength / 2, 0),
             pivotB: new Vec3(upperArmLength / 2, 0, 0),
-            axisA: Vec3.UNIT_X,
-            axisB: Vec3.UNIT_X,
+            axisA: Vec3.UNIT_Z,
+            axisB: Vec3.UNIT_Z,
             angle: angleShoulders,
             twistAngle,
         })
         this._constraints.push(leftShoulder, rightShoulder)
 
-        // Elbow joints - use UNIT_X as in original
+        // Elbow joints - also need Z axis for bending in Y-up world
         const leftElbowJoint = new ConeTwistConstraint(lowerLeftArm, upperLeftArm, {
             pivotA: new Vec3(-lowerArmLength / 2, 0, 0),
             pivotB: new Vec3(upperArmLength / 2, 0, 0),
-            axisA: Vec3.UNIT_X,
-            axisB: Vec3.UNIT_X,
+            axisA: Vec3.UNIT_Z,
+            axisB: Vec3.UNIT_Z,
             angle,
             twistAngle,
         })
         const rightElbowJoint = new ConeTwistConstraint(lowerRightArm, upperRightArm, {
             pivotA: new Vec3(lowerArmLength / 2, 0, 0),
             pivotB: new Vec3(-upperArmLength / 2, 0, 0),
-            axisA: Vec3.UNIT_X,
-            axisB: Vec3.UNIT_X,
+            axisA: Vec3.UNIT_Z,
+            axisB: Vec3.UNIT_Z,
             angle,
             twistAngle,
         })
@@ -982,7 +983,7 @@ export class CannonRagdollComponent extends Object3DComponent {
     start() {
         super.start();
         setTimeout(()=>{
-            this.activate(new Vec3(5, 3, 0), undefined);
+            this.activate();
         }, 2000)
     }
 

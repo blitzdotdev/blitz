@@ -1,4 +1,4 @@
-import {EntityComponentPlugin, EventDispatcher, PickingPlugin} from "../../../threepipe/lib";
+import {EntityComponentPlugin, EventDispatcher, PickingPlugin} from "threepipe";
 import {resolveFile, settingsKey} from "./project.ts";
 import {isPackageProject, ViewerInstanceManager} from "./ViewerInstanceManager.ts";
 
@@ -24,6 +24,7 @@ export class PlayModeHelper extends EventDispatcher<{
         // set loadedNeedsSave = false
         if (!manager.loadedScene) return false
         if (!manager.loadedProjectFile) return false
+        if (manager.savingScene) return false
 
         if (this.isRunningMode) {
             if (this.isPausedRunning) {

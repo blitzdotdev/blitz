@@ -8,7 +8,7 @@ import {FolderHeadCard} from "../../../uiconfig-blueprint/lib/esm/bpComponents/B
 import {InsSectionItem} from "./InsSectionItem.tsx";
 import React, {useState} from "react";
 import {SelectFileRef} from "../utils/ViewerInstanceManager.ts";
-import {generateUUID} from "../../../threepipe/lib";
+import {generateUUID} from "threepipe";
 import {RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {Button, Icon, InputGroup} from "@blueprintjs/core";
 import {addProjectScript} from "./AddProjectScript.tsx";

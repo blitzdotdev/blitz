@@ -1,4 +1,4 @@
-import {EventDispatcher} from "../../../threepipe/lib";
+import {EventDispatcher} from "threepipe";
 import {ViewerInstanceManager} from "./ViewerInstanceManager.ts";
 
 export class EditPreviewHelper extends EventDispatcher<{

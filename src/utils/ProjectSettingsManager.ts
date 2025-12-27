@@ -1,4 +1,4 @@
-import {EventDispatcher} from "../../../threepipe/lib";
+import {EventDispatcher} from "threepipe";
 import {
     ExternalPlugin,
     ExternalScript,
