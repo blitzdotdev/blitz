@@ -14,9 +14,12 @@
     "test:debug": "playwright test --debug",
     "test:report": "playwright show-report",
     "deploy": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist kite-threepipe-v0/ && git tag v$npm_package_version",
-    "deploy-tp": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/ && git tag v$npm_package_version"
+    "deploy-tp": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/ && git tag v$npm_package_version",
+    "mcp-bridge": "node scripts/mcp-bridge-http.mjs",
+    "mcp-bridge:test": "node scripts/mcp-bridge-server.mjs --test"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@threepipe/plugin-3d-tiles-renderer": "^0.3.2",
     "@threepipe/plugin-assimpjs": "^0.2.3",
     "@threepipe/plugin-blend-importer": "^0.1.0",
@@ -72,6 +75,8 @@
     "typescript": "^5.7.2",
     "vite": "^6.3.5",
     "web-vitals": "^3.5.0",
-    "zod": "^4.1.13"
+    "zod": "^4.1.13",
+    "ws": "^8.18.0",
+    "@types/ws": "^8.5.12"
   }
 }

@@ -99,6 +99,7 @@ import z from "zod";
 import {PlayModeHelper} from "./PlayModeHelper.ts";
 import {EditPreviewHelper} from "./EditPreviewHelper.ts";
 import {ProjectSettingsManager} from "./ProjectSettingsManager.ts";
+import {initMCPBridge} from "./ai";
 
 export interface ViewerProps {
     msaa: boolean,
@@ -1283,7 +1284,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             // console.timeEnd('settings load')
         }
         this._loadedNeedsSave = false
-
+        initMCPBridge({manager: this})
         return v
     }
 
