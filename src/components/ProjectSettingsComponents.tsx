@@ -16,6 +16,7 @@ import {PackageDependency} from "../utils/importMaps.ts";
 
 export function PluginsSectionComp(){
     const manager = useManager()
+    const {settingsManager} = manager
     // const viewer = manager.get()
     // const picking = viewer?.getPlugin(PickingPlugin)
     // const availablePlugins = picking?.availablePlugins() || []
@@ -25,7 +26,7 @@ export function PluginsSectionComp(){
     const removeProjectPlugin = async (p: ExternalPlugin)=>{
         if(!project) return false
         // todo confirm dialog
-        const res = await manager.removeProjectPlugin(p).then(()=>({error: null})).catch(e=>{
+        const res = await settingsManager.removeProjectPlugin(p).then(()=>({error: null})).catch(e=>{
             return {error: e?.message ?? 'Unknown error'}
         })
         const r = showSuccessErrorToast(res ? `Removed ${project.path}${p.import} successfully` : 'Unknown Error', 'Unable to remove plugin', res)
@@ -83,7 +84,7 @@ export function AddPluginComp(){
     const addProjectPlugin = async (path: string|ExternalPlugin)=>{
         if(!project) return false
         const path1 = typeof path === 'string' ? path : (path.import + (path.className ? `::${path.className}` : ''))
-        const res = await manager.addProjectPlugin(typeof path === 'string' ? {import: './'+path} : path).then(()=>({error: null})).catch(e=>{
+        const res = await manager.settingsManager.addProjectPlugin(typeof path === 'string' ? {import: './'+path} : path).then(()=>({error: null})).catch(e=>{
             return {error: e?.message ?? 'Unknown error'}
         })
         const r = showSuccessErrorToast(res ? `Loaded ${project.path}${path1} successfully` : 'Unknown Error', 'Unable to load plugin', res)
@@ -133,7 +134,7 @@ export function ScriptsSectionComp(){
     const removeProjectScript = async (p: ExternalScript)=>{
         if(!project) return false
         // todo confirm dialog
-        const res = await manager.removeProjectScript(p).then(()=>({error: null})).catch(e=>{
+        const res = await manager.settingsManager.removeProjectScript(p).then(()=>({error: null})).catch(e=>{
             return {error: e?.message ?? 'Unknown error'}
         })
         const r = showSuccessErrorToast(res ? `Removed ${project.path}${p.import} successfully` : 'Unknown Error', 'Unable to remove plugin', res)
@@ -197,7 +198,7 @@ export function DependenciesSectionComp(){
     const removeProjectDependency = async (p: PackageDependency)=>{
         if(!project) return false
         // todo confirm dialog
-        const res = await manager.removeProjectDependency(p).then(()=>({error: null})).catch(e=>{
+        const res = await manager.settingsManager.removeProjectDependency(p).then(()=>({error: null})).catch(e=>{
             return {error: e?.message ?? 'Unknown error'}
         })
         const r = showSuccessErrorToast(res ? `Removed ${p.key}@${p.version} from project, reload the page to clear it.` : 'Unknown Error', 'Unable to remove dependency', res)
@@ -238,7 +239,7 @@ export function AddDependencyComp(){
     const {project} = useProject()
     const addProjectDependency = async (dep: PackageDependency)=>{
         if(!project) return false
-        const res = await manager.addProjectDependency(dep).then(()=>({error: null})).catch(e=>{
+        const res = await manager.settingsManager.addProjectDependency(dep).then(()=>({error: null})).catch(e=>{
             return {error: e?.message ?? 'Unknown error'}
         })
         const r = showSuccessErrorToast(res ? `Added ${dep.key}@${dep.version} successfully` : 'Unknown Error', 'Unable to add dependency', res)

@@ -36,7 +36,6 @@ import {MaterialInstanceIns, ObjectInspectorUI} from "./ObjectInspectorUI.tsx";
 import {InsSectionItem} from "./InsSectionItem.tsx";
 import {UnkObjComponent} from "./UnkObjComponent.tsx";
 import {InsSectionHeader} from "./InsSectionHeader.tsx";
-import {addProjectScript} from "./AddProjectScript.tsx";
 
 export type InspectorPanelProps = {}
 
