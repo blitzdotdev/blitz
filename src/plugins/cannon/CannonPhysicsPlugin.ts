@@ -20,6 +20,7 @@ import {
 } from "threepipe"
 import {Cannon3DShapeComponent, Cannon3DShapeHelper} from "./Cannon3DShapeComponent.ts";
 import {Cannon3DBodyComponent} from "./Cannon3DBodyComponent.ts";
+import {CannonRagdollComponent} from "./CannonRagdollComponent.ts";
 
 @uiFolderContainer('Cannon Material')
 export class CannonMaterial2 extends CannonMaterial{
@@ -372,6 +373,7 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
     readonly componentTypes = {
         body: Cannon3DBodyComponent,
         shape: Cannon3DShapeComponent,
+        ragdoll: CannonRagdollComponent,
     } satisfies Record<string, TObject3DComponent>
 
     bodyComponents = new Set<Cannon3DBodyComponent>()
