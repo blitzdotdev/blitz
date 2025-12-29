@@ -1,5 +1,5 @@
 import {mainScenePath, settingsKey} from "../utils/project.ts";
-
+import agentsMdTemplate from './AgentsMdTemplate.md?raw';
 export const mainJsTemplate = `
 export async function main({ viewer }){
     
@@ -48,3 +48,5 @@ export const defaultIconTemplateSvg = `
   <path d="M227.87 373.705C232.544 314.732 247.987 196.224 251.699 175.19C227.976 172.401 148.259 174.432 111.216 175.596C110.788 177.23 110.987 179.02 111.888 180.577L221.117 369.245C222.624 371.847 225.172 373.375 227.87 373.705Z" fill="#154FA9"/>
 </svg>
 `
+
+export {agentsMdTemplate};

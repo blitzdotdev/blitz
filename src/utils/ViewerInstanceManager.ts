@@ -75,6 +75,7 @@ import {
     STORE_NAME
 } from "./project.ts";
 import {
+    agentsMdTemplate,
     defaultIconTemplatePng,
     defaultIconTemplateSvg,
     mainJsTemplate,
@@ -764,6 +765,15 @@ export class ViewerInstanceManager extends EventDispatcher<{
         if(!init.assetsJson.file) {
             // throw new Error('No assets.json file in project and cannot create one')
             console.error('No assets.json file in project and cannot create one')
+        }
+
+        if(meta.handle && !(await meta.handle.getFileHandle('AGENTS.md').catch(()=>null))){
+            const file = new File([agentsMdTemplate], 'AGENTS.md', {type: 'text/markdown', lastModified: Date.now()})
+            const w = await this.fsHelper.writeFile(init.base, 'AGENTS.md', file, meta.path, true).catch(e=>{
+                console.error('ThreeEditor - cannot write default AGENTS.md file', e)
+                return false
+            })
+            if(!w) console.error('ThreeEditor - cannot create AGENTS.md file')
         }
 
         try {
