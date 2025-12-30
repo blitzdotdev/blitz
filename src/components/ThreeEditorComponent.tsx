@@ -1,5 +1,5 @@
 import React, {useContext, useEffect, useMemo, useReducer, useRef, useState} from 'react';
-import {isPackageProject} from '../utils/ViewerInstanceManager.ts'
+import {isPackageProject} from '../utils/projectUtils.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {
     BPComponentProps,

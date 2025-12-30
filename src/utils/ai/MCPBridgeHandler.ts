@@ -13,7 +13,11 @@ import {
     IObject3D,
     Object3DGeneratorPlugin,
     IMaterial,
-    ITexture, UndoManagerPlugin
+    ITexture,
+    UndoManagerPlugin,
+    iObjectCommons,
+    Vector3,
+    Quaternion
 } from 'threepipe';
 
 export interface MCPBridgeHandlerOptions {
@@ -165,48 +169,71 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 const type = params.type as string;
                 const name = params.name as string | undefined;
                 const position = params.position as { x: number; y: number; z: number } | undefined;
+                const parentUuid = params.parentUuid as string | undefined;
 
-                let obj: IObject3D | undefined;
-
-                switch (type.toLowerCase()) {
-                    case 'box':
-                    case 'cube':
-                        obj = await generator.generate('box', {}) as IObject3D;
-                        break;
-                    case 'sphere':
-                        obj = await generator.generate('sphere', {}) as IObject3D;
-                        break;
-                    case 'plane':
-                        obj = await generator.generate('plane', {}) as IObject3D;
-                        break;
-                    case 'cylinder':
-                        obj = await generator.generate('cylinder', {}) as IObject3D;
-                        break;
-                    case 'cone':
-                        obj = await generator.generate('cone', {}) as IObject3D;
-                        break;
-                    case 'torus':
-                        obj = await generator.generate('torus', {}) as IObject3D;
-                        break;
-                    case 'empty':
-                    case 'group':
-                        obj = await generator.generate('empty', {}) as IObject3D;
-                        break;
-                    default:
-                        // Try to generate with the provided type
-                        try {
-                            obj = await generator.generate(type, {}) as IObject3D;
-                        } catch {
-                            return { error: `Unknown object type: ${type}` };
-                        }
+                // Check if the generator supports this type directly
+                if (!generator.generators[type]) {
+                    return { error: `Unknown object type: ${type}. Available types: ${Object.keys(generator.generators).join(', ')}` };
                 }
 
+                // Log all incoming params for debugging
+                console.log('[MCP createObject] ALL params received:', JSON.stringify(params));
+
+                // Build geometry/object parameters from input
+                const generatorParams: Record<string, unknown> = {};
+
+                // Geometry parameters
+                if (params.width !== undefined) generatorParams.width = params.width;
+                if (params.height !== undefined) generatorParams.height = params.height;
+                if (params.depth !== undefined) generatorParams.depth = params.depth;
+                if (params.radius !== undefined) generatorParams.radius = params.radius;
+                if (params.radiusTop !== undefined) generatorParams.radiusTop = params.radiusTop;
+                if (params.radiusBottom !== undefined) generatorParams.radiusBottom = params.radiusBottom;
+                if (params.tube !== undefined) generatorParams.tube = params.tube;
+                if (params.radialSegments !== undefined) generatorParams.radialSegments = params.radialSegments;
+                if (params.tubularSegments !== undefined) generatorParams.tubularSegments = params.tubularSegments;
+                if (params.widthSegments !== undefined) generatorParams.widthSegments = params.widthSegments;
+                if (params.heightSegments !== undefined) generatorParams.heightSegments = params.heightSegments;
+                if (params.depthSegments !== undefined) generatorParams.depthSegments = params.depthSegments;
+                if (params.openEnded !== undefined) generatorParams.openEnded = params.openEnded;
+
+                // Light parameters
+                if (params.color !== undefined) generatorParams.color = params.color;
+                if (params.intensity !== undefined) generatorParams.intensity = params.intensity;
+
+                // Camera parameters
+                if (params.fov !== undefined) generatorParams.fov = params.fov;
+                if (params.frustumSize !== undefined) generatorParams.frustumSize = params.frustumSize;
+
+                console.log('[MCP createObject] type:', type, 'generatorParams:', JSON.stringify(generatorParams));
+
+                const obj = generator.generate(type, generatorParams, false, false) as IObject3D | undefined;
+
                 if (obj) {
+                    // Log geometry info for debugging
+                    if ((obj as any).geometry?.userData?.generationParams) {
+                        console.log('[MCP createObject] geometry generationParams:', JSON.stringify((obj as any).geometry.userData.generationParams));
+                    }
+
                     if (name) obj.name = name;
                     if (position) {
                         obj.position.set(position.x, position.y, position.z);
                     }
-                    scene.addObject(obj);
+
+                    // Handle parenting
+                    if (parentUuid) {
+                        let parent: IObject3D | undefined;
+                        scene.traverse((o: IObject3D) => {
+                            if (o.uuid === parentUuid) parent = o;
+                        });
+                        if (parent) {
+                            parent.add(obj);
+                        } else {
+                            scene.addObject(obj);
+                        }
+                    } else {
+                        scene.addObject(obj);
+                    }
                     return { success: true, object: serializeObject(obj) };
                 }
                 return { error: 'Failed to create object' };
@@ -216,17 +243,23 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 const scene = getScene();
                 if (!scene) return { error: 'No scene loaded' };
 
-                const identifier = params.identifier as string;
-                const obj = findObject(identifier);
-                if (!obj) return { error: `Object not found: ${identifier}` };
+                const uuid = params.uuid as string;
+                if (!uuid) return { error: 'UUID is required for delete operation' };
+
+                // Find object by UUID only (not by name to avoid duplicates)
+                let obj: IObject3D | undefined;
+                scene.traverse((o: IObject3D) => {
+                    if (o.uuid === uuid) obj = o;
+                });
+                if (!obj) return { error: `Object not found with UUID: ${uuid}` };
 
                 const picking = getPicking();
                 if (picking?.getSelectedObject() === obj) {
                     picking.setSelectedObject(undefined as any);
                 }
 
-                obj.removeFromParent();
-                obj.dispose?.();
+                // Use iObjectCommons.deleteObject (skip confirmation with shiftKey: true)
+                await iObjectCommons.deleteObject(obj, { shiftKey: true });
 
                 return { success: true };
             }
@@ -468,24 +501,62 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 const scene = getScene();
                 if (!scene) return { error: 'No scene loaded' };
 
-                const identifier = params.identifier as string;
-                const newName = params.newName as string | undefined;
+                const uuid = params.uuid as string;
+                if (!uuid) return { error: 'UUID is required for duplicate operation' };
 
-                const obj = findObject(identifier);
-                if (!obj) return { error: `Object not found: ${identifier}` };
+                // Find object by UUID only
+                let obj: IObject3D | undefined;
+                scene.traverse((o: IObject3D) => {
+                    if (o.uuid === uuid) obj = o;
+                });
+                if (!obj) return { error: `Object not found with UUID: ${uuid}` };
 
-                const clone = obj.clone() as IObject3D;
-                clone.name = newName || `${obj.name} (copy)`;
+                const originalUuid = obj.uuid;
 
-                // Add to same parent
-                if (obj.parent) {
-                    obj.parent.add(clone);
+                // Use iObjectCommons.duplicateObject
+                const result = await iObjectCommons.duplicateObject(obj, { shiftKey: true }); // shiftKey: true to skip auto-select
+                result.action();
+
+                // Find the clone (it was added to the parent)
+                const parent = obj.parent;
+                const clone = parent?.children.find(c =>
+                    c.uuid !== originalUuid && (c as IObject3D).userData?.cloneParent === originalUuid
+                ) as IObject3D | undefined;
+
+                if (clone) {
+                    return { success: true, object: serializeObject(clone) };
+                }
+                return { success: true };
+            }
+
+            case 'focusObject': {
+                const viewer = getViewer();
+                const scene = getScene();
+                if (!viewer || !scene) return { error: 'No scene loaded' };
+
+                const uuid = params.uuid as string;
+
+                let obj: IObject3D | undefined;
+                if (uuid) {
+                    scene.traverse((o: IObject3D) => {
+                        if (o.uuid === uuid) obj = o;
+                    });
+                    if (!obj) return { error: `Object not found with UUID: ${uuid}` };
                 } else {
-                    scene.addObject(clone);
+                    // Focus on selected object or model root
+                    const picking = getPicking();
+                    const selected = picking?.getSelectedObject();
+                    obj = (selected && 'isObject3D' in selected && selected.isObject3D)
+                        ? selected as IObject3D
+                        : scene.modelRoot;
                 }
 
-                clone.setDirty?.();
-                return { success: true, object: serializeObject(clone) };
+                const padding = (params.padding as number) ?? 1.5;
+                const duration = (params.duration as number) ?? 500;
+
+                viewer.fitToView(obj, padding, duration, 'linear');
+
+                return { success: true, focusedObject: { uuid: obj.uuid, name: obj.name } };
             }
 
             case 'setObjectParent': {
@@ -499,43 +570,39 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 const obj = findObject(identifier);
                 if (!obj) return { error: `Object not found: ${identifier}` };
 
-                let newParent: IObject3D | null = null;
-                if (parentIdentifier && parentIdentifier.trim() !== '') {
-                    newParent = findObject(parentIdentifier) || null;
+                let newParent: IObject3D | undefined;
+                if (parentIdentifier) {
+                    newParent = findObject(parentIdentifier);
                     if (!newParent) return { error: `Parent not found: ${parentIdentifier}` };
+                } else {
+                    newParent = scene.modelRoot;
                 }
 
                 if (keepWorldTransform) {
                     // Store world position/rotation/scale
                     obj.updateWorldMatrix(true, false);
-                    const worldPos = obj.getWorldPosition(obj.position.clone());
-                    const worldQuat = obj.getWorldQuaternion(obj.quaternion.clone());
-                    const worldScale = obj.getWorldScale(obj.scale.clone());
+                    const worldPosition = obj.getWorldPosition(new Vector3());
+                    const worldQuaternion = obj.getWorldQuaternion(new Quaternion());
+                    const worldScale = obj.getWorldScale(new Vector3());
 
-                    // Reparent
-                    obj.removeFromParent();
-                    if (newParent) {
-                        newParent.add(obj);
-                    } else {
-                        scene.modelRoot.add(obj);
-                    }
+                    // Move to new parent
+                    newParent.add(obj);
 
-                    // Restore world transform
-                    obj.position.copy(worldPos);
-                    obj.quaternion.copy(worldQuat);
-                    obj.scale.copy(worldScale);
+                    // Convert world transforms to local transforms in new parent
+                    newParent.updateWorldMatrix(true, false);
+                    const parentWorldMatrixInverse = newParent.matrixWorld.clone().invert();
 
-                    // Convert to local space of new parent
-                    if (obj.parent) {
-                        obj.parent.worldToLocal(obj.position);
-                    }
+                    worldPosition.applyMatrix4(parentWorldMatrixInverse);
+                    obj.position.copy(worldPosition);
+
+                    const parentQuaternion = newParent.getWorldQuaternion(new Quaternion());
+                    parentQuaternion.invert();
+                    obj.quaternion.copy(worldQuaternion.premultiply(parentQuaternion));
+
+                    const parentScale = newParent.getWorldScale(new Vector3());
+                    obj.scale.set(worldScale.x / parentScale.x, worldScale.y / parentScale.y, worldScale.z / parentScale.z);
                 } else {
-                    obj.removeFromParent();
-                    if (newParent) {
-                        newParent.add(obj);
-                    } else {
-                        scene.modelRoot.add(obj);
-                    }
+                    newParent.add(obj);
                 }
 
                 obj.setDirty?.();
@@ -549,47 +616,7 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 const obj = findObject(identifier);
                 if (!obj) return { error: `Object not found: ${identifier}` };
 
-                const components = EntityComponentPlugin.ObjectToComponents.get(obj);
-                const componentDetails = components ? Array.from(components).map(c => {
-                    const props: Record<string, unknown> = {};
-                    // Get uiconfig properties if available
-                    const uiConfig = (c as any).uiConfig;
-                    if (uiConfig && uiConfig.children) {
-                        for (const child of uiConfig.children) {
-                            if (child.property) {
-                                props[child.property] = (c as any)[child.property];
-                            }
-                        }
-                    }
-                    return {
-                        uuid: c.uuid,
-                        name: (c as any).componentName || c.constructor.name,
-                        type: c.constructor.name,
-                        properties: props,
-                    };
-                }) : [];
-
-                const result: Record<string, unknown> = {
-                    uuid: obj.uuid,
-                    name: obj.name,
-                    type: obj.type,
-                    visible: obj.visible,
-                    position: { x: obj.position.x, y: obj.position.y, z: obj.position.z },
-                    rotation: { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z },
-                    scale: { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z },
-                    parentName: obj.parent?.name || null,
-                    parentUuid: obj.parent?.uuid || null,
-                    components: componentDetails,
-                    childCount: obj.children.length,
-                };
-
-                if (includeChildren) {
-                    result.children = obj.children.map(child =>
-                        serializeObject(child as IObject3D, true, 0, { skipBones: true })
-                    ).filter((c): c is Record<string, unknown> => c !== null);
-                }
-
-                return result;
+                return { object: serializeObject(obj, includeChildren) };
             }
 
             case 'findObjects': {
@@ -597,42 +624,39 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 if (!scene) return { error: 'No scene loaded' };
 
                 const namePattern = params.namePattern as string | undefined;
-                const typeFilter = params.type as string | undefined;
+                const type = params.type as string | undefined;
                 const hasComponent = params.hasComponent as string | undefined;
 
                 const results: Array<Record<string, unknown>> = [];
 
-                // Convert wildcard pattern to regex
-                let nameRegex: RegExp | null = null;
-                if (namePattern) {
-                    const pattern = namePattern.replace(/\*/g, '.*').replace(/\?/g, '.');
-                    nameRegex = new RegExp(pattern, 'i');
-                }
-
                 scene.traverse((obj: IObject3D) => {
-                    // Skip the scene itself and root containers
-                    if (obj === scene || obj === scene.modelRoot) return;
+                    // Skip bones by default
+                    if (obj.type === 'Bone') return;
 
-                    // Name filter
-                    if (nameRegex && !nameRegex.test(obj.name)) return;
+                    let matches = true;
 
-                    // Type filter
-                    if (typeFilter && obj.type !== typeFilter) return;
-
-                    // Component filter
-                    if (hasComponent) {
-                        const components = EntityComponentPlugin.ObjectToComponents.get(obj);
-                        if (!components) return;
-                        const hasMatch = Array.from(components).some(
-                            c => (c as any).componentName === hasComponent || c.constructor.name === hasComponent
-                        );
-                        if (!hasMatch) return;
+                    if (namePattern) {
+                        const pattern = namePattern.replace(/\*/g, '.*');
+                        const regex = new RegExp(pattern, 'i');
+                        if (!regex.test(obj.name)) matches = false;
                     }
 
-                    results.push(serializeObject(obj, false, 0, { skipBones: false }) as Record<string, unknown>);
+                    if (type && obj.type !== type) matches = false;
+
+                    if (hasComponent) {
+                        const components = EntityComponentPlugin.ObjectToComponents.get(obj);
+                        const hasIt = components && Array.from(components).some(
+                            c => (c as any).componentName === hasComponent || c.constructor.name === hasComponent
+                        );
+                        if (!hasIt) matches = false;
+                    }
+
+                    if (matches) {
+                        results.push(serializeObject(obj, false) as Record<string, unknown>);
+                    }
                 });
 
-                return { objects: results, count: results.length };
+                return { objects: results };
             }
 
             default:

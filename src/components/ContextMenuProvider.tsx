@@ -1,6 +1,6 @@
 import React, {createContext, FC, useState} from "react";
 import {MenuItem2, MenuItemAction} from "../utils/ContextMenuUtils.ts";
-import {logAsset} from "../utils/ViewerInstanceManager.ts";
+import {logAsset} from "../utils/projectUtils.ts";
 import {ContextMenuPopover, Menu, MenuDivider, MenuItem} from "@blueprintjs/core";
 import {AppToaster} from "uiconfig-blueprint/lib/esm/lib";
 import {useSafeContext} from "../utils/useSafeContext.ts";

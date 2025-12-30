@@ -23,9 +23,9 @@ import {
     UndoManagerPlugin,
     Vector3
 } from "threepipe";
-import {isExternalObject} from "./ViewerInstanceManager.ts";
 import {editorCameraController} from "./three/EditorCameraController.ts";
 import {LightMaterialOverrider} from "./three/LightMaterialOverrider.ts";
+import {isExternalObject} from "./projectUtils.ts";
 
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})

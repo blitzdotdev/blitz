@@ -14,8 +14,7 @@ import {
     isExternalGeometry,
     isExternalMaterial,
     isExternalTexture,
-    SelectFileRef,
-} from "../utils/ViewerInstanceManager.ts";
+} from "../utils/projectUtils.ts";
 import {ConfigObject, FolderHeadCard, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
 import {Button, Divider, Icon, Intent} from "@blueprintjs/core";
 import {RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";

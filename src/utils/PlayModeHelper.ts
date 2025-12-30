@@ -1,6 +1,7 @@
 import {EntityComponentPlugin, EventDispatcher, PickingPlugin} from "threepipe";
 import {resolveFile, settingsKey} from "./project.ts";
-import {isPackageProject, ViewerInstanceManager} from "./ViewerInstanceManager.ts";
+import {ViewerInstanceManager} from "./ViewerInstanceManager.ts";
+import {isPackageProject} from "./projectUtils.ts";
 
 export class PlayModeHelper extends EventDispatcher<{
     runModePauseChange: {},

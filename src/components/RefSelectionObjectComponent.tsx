@@ -14,7 +14,7 @@ import {
 import {ItemPredicate, ItemRenderer, Select} from "@blueprintjs/select";
 import {Button, ButtonGroup, Icon, IconName, MaybeElement, MenuItem} from "@blueprintjs/core";
 import {CSSProperties, ReactNode, useMemo, useRef} from "react";
-import {SelectFileRef, SelObjectType} from "../utils/ViewerInstanceManager.ts";
+import {SelectFileRef, SelObjectType} from "../utils/projectUtils.ts";
 import {FileComponentProps, FormGroupComponent, InputGroup2} from "uiconfig-blueprint/lib/esm/lib";
 import {FileManifestEntry, SelectedInspectorItem, traverseFiles, useAssets} from "../utils/AssetsProvider.ts";
 import {assetUrlPrefix, settingsKey} from "../utils/project.ts";

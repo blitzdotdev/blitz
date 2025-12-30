@@ -1,10 +1,6 @@
-import React, {createContext, FC, useCallback, useState} from "react";
-import {ContextMenuPopover, hideContextMenu, Menu, MenuDivider, MenuItem, showContextMenu} from "@blueprintjs/core";
+import React, {FC, useCallback, useState} from "react";
+import {hideContextMenu, Menu, MenuDivider, showContextMenu} from "@blueprintjs/core";
 import {MenuItem2, MenuItemAction} from "../utils/ContextMenuUtils.ts";
-import {showSuccessErrorToast} from "../utils/Toaster.tsx";
-import {AppToaster} from "uiconfig-blueprint/lib/esm/lib";
-import {logAsset} from "../utils/ViewerInstanceManager.ts";
-import {useSafeContext} from "../utils/useSafeContext.ts";
 import {renderMenuItems} from "./ContextMenuProvider.tsx";
 
 // todo rename to use custom context menu

@@ -1,3 +1,6 @@
+import {settingsKey} from "./project.ts";
+import {BroadcastDataTypes} from "./ViewerInstanceManager.ts";
+
 export async function getDirHandle(base: FileSystemDirectoryHandle, parts: string[]|string, create = true) {
     if(typeof parts === 'string') parts = parts.split('/').filter(Boolean)
     let dirHandle = base
@@ -46,4 +49,58 @@ export async function getFileHandle(base: FileSystemDirectoryHandle, path: strin
         return undefined
     })
     return {fileHandle, dirHandle};
+}
+
+
+export async function queryHandlePerm(handle: FileSystemDirectoryHandle) {
+    let perm = await handle.queryPermission({mode: 'readwrite'})
+    if (perm !== 'granted') {
+        perm = await handle.requestPermission({mode: 'readwrite'})
+    }
+    if (perm !== 'granted') {
+        // return {
+        //     error: 'no permission to write to the file system, cannot save file'
+        // }
+        throw new Error('No permission to access the project files')
+    }
+    return true
+}
+
+
+
+export async function writeFileHandle(fileHandle: FileSystemFileHandle, file: FileSystemWriteChunkType){
+    const writer = await fileHandle.createWritable()
+    await writer.write(file)
+    await writer.close()
+}
+
+export class AnotherFSHelper{
+
+    // todo channel is never closed
+    broadcastChannel = new BroadcastChannel(settingsKey + '-threepipe-editor')
+    broadcastMessage = <T extends keyof BroadcastDataTypes = keyof BroadcastDataTypes>(type: T, data: BroadcastDataTypes[T]) => {
+    };
+
+    async writeFile(base: FileSystemDirectoryHandle, path: string, file: File, project: string, create = true, handle?: FileSystemFileHandle){
+        handle = handle || (await getFileHandle(base, path, create))?.fileHandle
+        if(!handle){
+            return false
+        }
+        await writeFileHandle(handle, file)
+        if(path.startsWith('.')) return true
+        // notify to other tabs
+        try {
+            this.broadcastMessage('file-change', {
+                project,
+                path,
+                file,
+                // lastModified: file.lastModified,
+            })
+        }catch (e) {
+            console.warn('Failed to postMessage notification', e)
+        }
+        return true
+    }
+
+
 }

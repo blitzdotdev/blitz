@@ -10,7 +10,8 @@ import {
 import {comparePlugins} from "./ScriptUtil.ts";
 import {ImportMapsManager, PackageDependency} from "./importMaps.ts";
 import {parse} from "jsonc-parser";
-import {isPackageProject, ViewerInstanceManager} from "./ViewerInstanceManager.ts";
+import {ViewerInstanceManager} from "./ViewerInstanceManager.ts";
+import {isPackageProject} from "./projectUtils.ts";
 
 export class ProjectSettingsManager extends EventDispatcher<{}> {
 

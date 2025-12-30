@@ -388,15 +388,6 @@ To use Tailwind CSS for styling HTML UI components:
    }
    ```
 
-Common Tailwind classes for game UI:
-- **Positioning**: `absolute`, `fixed`, `top-4`, `left-4`, `bottom-0`, `right-0`
-- **Background**: `bg-black/80` (black with 80% opacity), `bg-gray-900`, `bg-gradient-to-r`
-- **Text**: `text-white`, `text-sm`, `text-xl`, `font-bold`, `text-shadow`
-- **Spacing**: `p-4` (padding), `m-2` (margin), `space-x-2` (horizontal spacing)
-- **Sizing**: `w-48` (width), `h-5` (height), `w-full`, `max-w-md`
-- **Effects**: `rounded-lg`, `shadow-lg`, `opacity-90`, `backdrop-blur`
-- **Animation**: `transition-all`, `duration-200`, `hover:scale-110`
-
 # EntityComponentPlugin API
 - The `EntityComponentPlugin` manages all components attached to objects in the scene.
 - Access the plugin from viewer: `const ecp = viewer.getPlugin(EntityComponentPlugin)` or from inside a component: `this.ctx.ecp`
@@ -465,7 +456,7 @@ viewer.addEventListener('preFrame', (e) => { /* before each frame */ })
 viewer.addEventListener('postFrame', (e) => { /* after each frame */ })
 viewer.addEventListener('preRender', (e) => { /* before rendering, only if dirty */ })
 viewer.addEventListener('postRender', (e) => { /* after rendering */ })
-viewer.addEventListener('update', (e) => { /* when setDirty() is called */ })
+viewer.addEventListener('update', (e) => { /* when setDirty() is called. Not very useful. */ })
 ```
 
 # Threepipe Documentation Links

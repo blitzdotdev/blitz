@@ -169,11 +169,15 @@ export class ScriptUtil extends EventDispatcher<{
             for (let i = 0; i < ps2.length; i++){
                 const path = ps2[i];
                 const mod = mods[i]
-                const pms2 = pms.then(p=>p[i])
+                const pms2 = pms.then(p=>({
+                    module: p.modules[i],
+                    deps: p.deps[i],
+                }))
                 // const plugins = modulePlugins.get(path) || []
-                mod.module = pms2.then(async (module)=>{
+                mod.module = pms2.then(async ({module, deps})=>{
                     if(!module.__tpModuleError) {
                         mod.module = module
+                        await this.observeDeps(deps);
                     }else {
                         // error in module, keep the last loaded module and show error to user
                     }
@@ -252,7 +256,6 @@ export class ScriptUtil extends EventDispatcher<{
                 if(path.startsWith('./') || path.startsWith('.././'))
                     await this.observeProjectFile(path).catch(e=>{
                         console.error('Error observing project script file: ', path, e)
-
                     })
                 mod = {
                     plugins: [],
@@ -261,12 +264,13 @@ export class ScriptUtil extends EventDispatcher<{
                     path,
                 }
                 this.scriptModules.set(path, mod)
-                mod.module = loadModule(path, this._readScript).then(async module => {
+                mod.module = loadModule(path, this._readScript).then(async ({module, deps}) => {
                     if (!module) {
                         throw new Error('Failed to import module: ' + path)
                     }
                     if (mod) {
                         mod.module = module
+                        await this.observeDeps(deps);
                     }
                     return module
                 })
@@ -287,6 +291,17 @@ export class ScriptUtil extends EventDispatcher<{
         if(refLoad) await this.refLoadModule(mod)
 
         return mod
+    }
+
+    private async observeDeps(deps: string[]) {
+        for (const dep of deps) {
+            if (dep.endsWith('.js') || dep.endsWith('.ts') || dep.endsWith('.mjs') || dep.endsWith('.jsx') || dep.endsWith('.tsx') || dep.endsWith('.mts')) {
+                if (dep.startsWith('./') || dep.startsWith('../'))
+                    await this.observeProjectFile(dep).catch(e => {
+                        console.error('Error observing project script file: ', dep, e)
+                    })
+            }
+        }
     }
 
     private async refRemovePlugin(refs: PluginRef[], plugin: PluginRef, path: string) {
@@ -565,7 +580,6 @@ export class ScriptUtil extends EventDispatcher<{
 
     // @ts-ignore
     fsObserverCallback = (records, observer, ...rest)=>{
-        // console.log('fs observer', records, observer, rest)
 
         for (const record of records) {
             console.log("Change detected:", record);
@@ -666,6 +680,8 @@ export class ScriptUtil extends EventDispatcher<{
             console.error('No such plugin script file: ' + path)
             return
         }
+        if([...this.observedFiles.values()].includes(path)) return // already observed
+        this.observedFiles.set(handles.fileHandle, path)
         try {
             // const perm = await handles.fileHandle.queryPermission({ mode: 'readwrite' });
             // if (perm !== 'granted') {
@@ -679,7 +695,6 @@ export class ScriptUtil extends EventDispatcher<{
         }catch (e) {
             console.warn(e)
         }
-        this.observedFiles.set(handles.fileHandle, path)
     }
 
     // endregion file observer

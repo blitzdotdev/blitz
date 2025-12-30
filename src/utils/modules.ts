@@ -86,9 +86,9 @@ async function loadModules1(paths1: string[], readFile: (path: string)=>Promise<
         const {code, ds} = patchDeps(str, path)
         const ff = {
             code: code + '\n//# sourceURL=' + path.replace(/\s/g, '_') + '\n',
-            deps: [],
-            depsn: [], // nested
-            depd: [], // dependants
+            deps: [] as string[],
+            depsn: [] as string[], // nested
+            depd: [] as string[], // dependants
             _isParsedJs: true,
             cacheKey: (lastFile?.cacheKey||0) + 1,
             needsUpdate: false
@@ -175,7 +175,10 @@ export async function loadModule(path: string, readFile: (path: string)=>Promise
     const {modules, files} = await loadModules1([path], readFile)
     scriptModules.set(path, {deps: files[0].depsn, module: modules[0]})
     // modules[0].__tpPluginPath = path // todo clone?
-    return modules[0] as SupPluginModule
+    return {
+        module: modules[0] as SupPluginModule,
+        deps: files[0].depsn
+    }
 }
 
 export async function loadModules(path: string[], readFile: (path: string)=>Promise<string>){
@@ -184,7 +187,10 @@ export async function loadModules(path: string[], readFile: (path: string)=>Prom
         scriptModules.set(p, {deps: files[i].depsn, module: modules[i]})
         // modules[i].__tpPluginPath = p // todo clone?
     })
-    return modules as SupPluginModule[]
+    return {
+        modules: modules as SupPluginModule[],
+        deps: files.map(f=>f.depsn)
+    }
 }
 
 export function getFileChanged(path: string[]|Set<string>){

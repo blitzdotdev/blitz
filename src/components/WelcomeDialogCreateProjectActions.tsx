@@ -1,7 +1,6 @@
 import {Alignment, Button, Colors, Icon} from '@blueprintjs/core'
 import {useDialogPrompt, useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
 import {useProjectActions} from '../utils/projectActions.tsx'
-import {queryHandlePerm, ViewerInstanceManager} from '../utils/ViewerInstanceManager.ts'
 import {useCallback} from 'react'
 import {useSaveFile} from "./UseSaveFile.tsx";
 import {getMeta} from "../utils/project.ts";
@@ -10,6 +9,8 @@ import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 import {resolveNameConflict} from "../utils/resolveNameConflict.ts";
 import {refreshProjectQueryState} from "../utils/refreshProjectQueryState.ts";
+import {queryHandlePerm} from "../utils/fsApi.ts";
+import {ViewerInstanceManager} from "../utils/ViewerInstanceManager.ts";
 
 export function useProjectFolderActions(){
     const manager = useManager()

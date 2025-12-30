@@ -81,7 +81,7 @@ import {
     mainJsTemplate,
     packageJsonTemplate
 } from '../data/projectTemplates.ts'
-import {getDirHandle, getFileHandle} from "./fsApi.ts";
+import {AnotherFSHelper, getDirHandle, getFileHandle, queryHandlePerm, writeFileHandle} from "./fsApi.ts";
 import {FetchProxy} from "./FetchProxy.ts";
 import {AssetTracker, cloneAssetItem, defSPropsMat, defSPropsObj} from "./AssetTracker.ts";
 import {CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
@@ -101,6 +101,15 @@ import {PlayModeHelper} from "./PlayModeHelper.ts";
 import {EditPreviewHelper} from "./EditPreviewHelper.ts";
 import {ProjectSettingsManager} from "./ProjectSettingsManager.ts";
 import {initMCPBridge} from "./ai";
+import {
+    backupPath,
+    canMakeAsset,
+    canSaveAsset,
+    isExternalObject,
+    isLoadableFile,
+    isPackageProject, SelectFileRef,
+    thumbPath
+} from "./projectUtils.ts";
 
 export interface ViewerProps {
     msaa: boolean,
@@ -113,35 +122,6 @@ export interface ViewerProps {
 
 export interface BroadcastDataTypes{
     'file-change': {path: string, project: string, file: File}
-}
-
-export const assetableFileTypes = ['.glb', '.mat', '.json'] // we can write asset ids into these files.
-export const notAssetableFileTypes = ['.scene.glb']
-
-export async function queryHandlePerm(handle: FileSystemDirectoryHandle) {
-    let perm = await handle.queryPermission({mode: 'readwrite'})
-    if (perm !== 'granted') {
-        perm = await handle.requestPermission({mode: 'readwrite'})
-    }
-    if (perm !== 'granted') {
-        // return {
-        //     error: 'no permission to write to the file system, cannot save file'
-        // }
-        throw new Error('No permission to access the project files')
-    }
-    return true
-}
-
-export function isLoadableFile(file: string) {
-    let loadable = true
-    // const loadableFiles = ['.mat', '.glb']
-    const loadableFiles = [...assetableFileTypes]
-    loadableFiles.push(...typesExts.image!)
-    if (!loadableFiles.some(ext => file.endsWith(ext))) loadable = false
-
-    // const notLoadableFiles = ['.scene.glb']
-    if (notAssetableFileTypes.some(ext => file.endsWith(ext))) loadable = false
-    return loadable;
 }
 
 export class ViewerInstanceManager extends EventDispatcher<{
@@ -701,7 +681,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
                     const d = meta.preview.endsWith('.svg') ?
                         defaultIconTemplateSvg :
                         Uint8Array.from(defaultIconTemplatePng, c => c.charCodeAt(0))
-                    await _writeFileHandle(iconFileHandle, d).catch(e=>{
+                    await writeFileHandle(iconFileHandle, d).catch(e=>{
                         console.error('ThreeEditor - cannot write default icon file', e)
                         // ignore error
                     })
@@ -1299,6 +1279,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
     }
 
     onObserveFileChange = async (path: string, project1: LoadedProject)=>{
+        // console.log('Project file changed detected:', path, project1.path)
         const project = this.loadedProject
         if(!project?.handle || !project?.settings) return
         if(project !== project1) {
@@ -1547,86 +1528,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return res
     }
 
-    async changeMaterialForObject(object: IObject3D, material: IMaterial, _selected: SelectedInspectorItem|SelectFileRef|null, project?: LoadedProject|null){
-        const isSingle = !Array.isArray(object.material)
-        const materialI = isSingle ? -1 : Array.isArray(object.material) ? object.material.indexOf(material) : -1
-        const isMultiple = !isSingle && materialI >= 0
-        if(!isSingle && !isMultiple){
-            console.warn('Material changed but material not found on object?', {material, object, materialI})
-            return {
-                error: 'Unknown Error changing material on object.'
-            }
-        }
-        let selected = null
-        // todo set material
-        if(!_selected){
-            const picking = this.get().getPlugin(PickingPlugin)!
-            // set null
-            if(isMultiple){
-                // remove this material
-                const mats = [...(object.material as IMaterial[])]
-                mats.splice(materialI, 1)
-                if(mats.length === 0) {
-                    selected = picking.getPlaceholderMaterial(object)
-                }
-                else selected = mats
-            }else {
-                selected = picking.getPlaceholderMaterial(object)
-            }
-        }
-        else if((_selected as IMaterial).isMaterial){
-            // set material directly?
-            selected = _selected as IMaterial
-        }
-        else if((_selected as SelectFileRef).entry?.isFSEntry){
-            if(!project){
-                // console.error('No project loaded, cannot import material from file', _selected)
-                return {
-                    error: 'No project loaded, cannot import material from file.'
-                }
-            }
-            // load and set material
-            const clone = await this.loadAssetMaterialClone((_selected as SelectFileRef).entry, project)
-            if(!clone) return {
-                error: 'Failed to load material from file.'
-            }
-            // not that not setting _tpAssetId to the asset here
-            selected = clone
-        }
-
-        if(selected){
-            // if(object._tpRootPath) selected._tpRootPath = object._tpRootPath // not really required here
-
-            // if(object._tpAssetId) selected._tpAssetId = object._tpAssetId
-            const action = ()=>{
-                let mats = object.material
-                if(isSingle || Array.isArray(selected)){
-                    mats = selected
-                } else if(isMultiple && Array.isArray(mats)){
-                    mats = [...mats]
-                    mats[materialI] = selected
-                }
-                object.material = mats
-            }
-
-
-            const undoMan = this.get().getPlugin(UndoManagerPlugin)
-            if(!undoMan){
-                console.error('UndoManagerPlugin not found.')
-                action()
-            }
-            else{
-                undoMan.performAction(undefined, ()=>{
-                    let current = object.material
-                    action()
-                    return ()=>{
-                        object.material = current
-                    }
-                }, [], 'Change Material on Object',)
-            }
-        }
-    }
-
     // for unique run mode
     editorId = generateUUID()
     _runningSceneFile: File|null = null
@@ -1635,9 +1536,10 @@ export class ViewerInstanceManager extends EventDispatcher<{
     async loadRunningScene(path: string){
         if(!this.playMode.isRunningMode || !this.loadedProject || !isPackageProject(this.loadedProject)) return
 
-        this.get().timeline.stop()
-        this.get().timeline.reset()
-        this.get().getPlugin(EntityComponentPlugin)!.stop()
+        const viewer = this.get()
+        viewer.timeline.stop()
+        viewer.timeline.reset()
+        viewer.getPlugin(EntityComponentPlugin)!.stop()
         this.unloadScene()
 
         const project = this.loadedProject
@@ -1659,8 +1561,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
             await this.loadImport(r, project, true)
         }
 
-        this.get().timeline.start()
-        this.get().getPlugin(EntityComponentPlugin)!.start()
+        viewer.timeline.start()
+        viewer.getPlugin(EntityComponentPlugin)!.start()
     }
 
     /**
@@ -2274,124 +2176,11 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
 }
 
-export type SelObjectType = 'object' | 'material' | 'texture' | 'geometry' | 'unknown' | 'none' | 'plugin'
-
-export interface SelectFileRef{
-    uuid: string
-    name: string
-    // path: string
-    type: SelObjectType|'image'|'script'|[TypedClass]
-    entry: FileManifestEntry
-    userData?: Record<string, any>
-
-    // _isViewerPlugin: true
-
-    // /**
-    //  * to be able to disable running the plugin at runtime
-    //  * not implemented
-    //  * @default true
-    //  */
-    // runtime?: boolean,
-    // /**
-    //  * to be able to disable the plugin in the editor
-    //  * @default true
-    //  */
-    // editor?: boolean
-}
-
 async function fileFromDataUrl(dataUrl: string, name: string = 'file') {
     const type = dataUrl.slice(5, dataUrl.indexOf(';'))
     const ext = mimeToExt[type] ?? type.split('/')[1]
     const blob = await (await fetch(dataUrl)).blob()
     return new File([blob], name + '.' + ext, {type: blob.type})
-}
-
-export const canMakeAsset = (obj: IObject3D|IMaterial)=>{
-    return ((obj as IObject3D).isObject3D || (obj as IMaterial).isMaterial)
-        && obj.userData
-        && !obj.userData.sProperties // already an instance of an asset
-        && !obj.userData.rootPath
-        // && !obj._tpAssetId
-        && !obj._tpRootPath
-        // && !obj.userData.tpAssetId
-        && !(obj as IObject3D).isScene
-        && !(obj as IObject3D)._sChildren
-        // todo
-        && !(obj as IObject3D).material && !(obj as IObject3D).geometry
-        // && !((obj as IObject3D).isObject3D ?
-        //         iObjectCommons.getMapsForObject3D.call(obj as IObject3D) :
-        //         iMaterialCommons.getMapsForMaterial.call(obj as IMaterial)
-        // ).size
-}
-
-export const canSaveAsset = (obj: IObject3D|IMaterial)=>{
-    return ((obj as IObject3D).isObject3D || (obj as IMaterial).isMaterial)
-        // && obj._isTpAsset
-        // && obj.userData.tpAssetId
-        && obj.userData.rootPath && obj.userData.rootPath.startsWith(assetUrlPrefix+'@')
-        // && obj._tpAssetId
-}
-
-export function logAsset(data: any, obj: IObject3D|IMaterial|ITexture|IGeometry){
-    console.log(obj, data)
-}
-
-export function isPackageProject(meta?: SavedSceneFile|SavedSceneFileMeta|SavedSceneFileMetaStored|null){
-    return meta && (meta.file as string === 'package.json' || (meta.file as any as File)?.name === 'package.json')
-}
-
-export function isExternalObject(obj: IObject3D){
-    let external = false
-    let obj1 = obj
-    while(obj1 && !external){
-        if(obj1.parent){
-            if(obj1.parent.isScene) break
-            if(obj1.parent._sChildren){
-                if(!obj1.parent._sChildren.includes(obj1)){
-                    external = true
-                    break
-                }
-            }
-            obj1 = obj1.parent
-        } else {
-            // not external but not part of the scene
-            // external = true
-            break
-        }
-    }
-    return external
-}
-
-export function isExternalMaterial(mat: IMaterial){
-    const meshes = Array.from(mat.appliedMeshes)
-    for (const mesh of meshes) {
-        // todo check sproperties
-        if(!isExternalObject(mesh)) return false
-    }
-    return true
-}
-
-export function isExternalGeometry(mat: IGeometry){
-    const meshes = Array.from(mat.appliedMeshes)
-    for (const mesh of meshes) {
-        // todo check sproperties
-        if(isExternalObject(mesh)) return true
-    }
-    return false
-}
-
-export function isExternalTexture(tex: ITexture){
-    const mats = Array.from(tex.appliedObjects||[])
-    for (const mat of mats) {
-        if((mat as IMaterial).isMaterial ? isExternalMaterial(mat as IMaterial) : isExternalObject(mat as IObject3D)) return true
-    }
-}
-
-export function thumbPath(path: string){
-    return `.${settingsKey}/thumbs/${path}.png`
-}
-export function backupPath(path: string, time: string){
-    return `.${settingsKey}/backups/${path}/${time}/${path.split('/').pop()}`
 }
 
 declare module 'threepipe'{
@@ -2401,41 +2190,4 @@ declare module 'threepipe'{
     interface ImportResultExtras{
         _libFileInfo?: z.infer<typeof libAssetEndpoints.info.schema>
     }
-}
-
-export async function _writeFileHandle(fileHandle: FileSystemFileHandle, file: FileSystemWriteChunkType){
-    const writer = await fileHandle.createWritable()
-    await writer.write(file)
-    await writer.close()
-}
-
-export class AnotherFSHelper{
-
-    // todo channel is never closed
-    broadcastChannel = new BroadcastChannel(settingsKey + '-threepipe-editor')
-    broadcastMessage = <T extends keyof BroadcastDataTypes = keyof BroadcastDataTypes>(type: T, data: BroadcastDataTypes[T]) => {
-    };
-
-    async writeFile(base: FileSystemDirectoryHandle, path: string, file: File, project: string, create = true, handle?: FileSystemFileHandle){
-        handle = handle || (await getFileHandle(base, path, create))?.fileHandle
-        if(!handle){
-            return false
-        }
-        await _writeFileHandle(handle, file)
-        if(path.startsWith('.')) return true
-        // notify to other tabs
-        try {
-            this.broadcastMessage('file-change', {
-                project,
-                path,
-                file,
-                // lastModified: file.lastModified,
-            })
-        }catch (e) {
-            console.warn('Failed to postMessage notification', e)
-        }
-        return true
-    }
-
-
 }

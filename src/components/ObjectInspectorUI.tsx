@@ -1,7 +1,7 @@
 import {
-    EntityComponentPlugin,
-    IMaterial,
-    IObject3D,
+    EntityComponentPlugin, generateUUID,
+    IMaterial, ImportResult,
+    IObject3D, ITexture,
     Object3DComponent,
     PickingPlugin,
     RootScene, TObject3DComponent,
@@ -11,7 +11,7 @@ import {PanelActions} from "@blueprintjs/core/lib/esnext/components/panel-stack2
 import {useManager} from "../utils/UseManager.ts";
 import {useProject} from "../utils/UseProject.ts";
 import React, {FC, useEffect, useMemo, useState} from "react";
-import {isExternalObject, SelectFileRef} from "../utils/ViewerInstanceManager.ts";
+import {isExternalObject, isPackageProject, SelectFileRef} from "../utils/projectUtils.ts";
 import {ContextMenuItemsProps, useContextMenu} from "./ContextMenuProvider.tsx";
 import {Button, Divider, Icon, MenuDivider, MenuItem} from "@blueprintjs/core";
 import {AppToaster, ConfigObject, FolderHeadCard, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
@@ -19,7 +19,7 @@ import {iconForSelectionObject} from "../utils/icons.tsx";
 import {isGeomEditable, isMatEditable} from "../utils/three/assetEditorChecks.ts";
 import {RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {showSuccessErrorToast} from "../utils/Toaster.tsx";
-import {assetUrlPrefix} from "../utils/project.ts";
+import {assetUrlPrefix, LoadedProject, SavedSceneFile, settingsKey} from "../utils/project.ts";
 import {
     InspectorPanelProps,
 } from "./InspectorPanelComponent.tsx";
@@ -27,6 +27,8 @@ import {ButtonWithTooltip} from "./ButtonWithTooltip.tsx";
 import {UnkObjComponent} from "./UnkObjComponent.tsx";
 import {SelectedInspectorItem} from "../utils/AssetsProvider.ts";
 import {addProjectScript} from "./AddProjectScript.tsx";
+import {refreshProjectQueryState} from "../utils/refreshProjectQueryState.ts";
+import {ViewerInstanceManager} from "../utils/ViewerInstanceManager.ts";
 
 function filterTopLevelPropUiConfig(obj: IObject3D|IMaterial, sProps: string[], disabledProps: string[]) {
     const config = useMemo(() => {
@@ -172,7 +174,7 @@ export function ObjectInspectorUI({
                     allowNone={true} object={material}
                     onChange={async (_selected, _e) => {
                         //todo loading while await
-                        showSuccessErrorToast('', '', await manager.changeMaterialForObject(object, material, _selected, project))
+                        showSuccessErrorToast('', '', await changeMaterialForObject(manager, object, material, _selected, project))
                     }}
                 >
                     {!!material.userData.isPlaceholder ?
@@ -182,14 +184,14 @@ export function ObjectInspectorUI({
                                 obj: object,
                                 Items: (p) => (<NewMaterialContextMenu {...p} onClick={async (newm) => {
                                     //todo loading while await
-                                    showSuccessErrorToast('', '', await manager.changeMaterialForObject(object, material, newm, project))
+                                    showSuccessErrorToast('', '', await changeMaterialForObject(manager, object, material, newm, project))
                                 }}/>),
                                 actions: {},
                             })
                         }}/> :
                         <ButtonWithTooltip tooltip={'Remove Material'} text={""} icon={"cross"} onClick={async () => {
                             //todo loading while await
-                            showSuccessErrorToast('', '', await manager.changeMaterialForObject(object, material, null, project))
+                            showSuccessErrorToast('', '', await changeMaterialForObject(manager, object, material, null, project))
                         }}/>
                     }
                 </RefSelectionObjectComponent>
@@ -391,3 +393,84 @@ export function AddCompComp({object, ...panelProps}: {object: IObject3D} & Panel
         ></Button>
     </RefSelectionObjectComponent>
 }
+
+export async function changeMaterialForObject(manager: ViewerInstanceManager, object: IObject3D, material: IMaterial, _selected: SelectedInspectorItem|SelectFileRef|null, project?: LoadedProject|null){
+    const isSingle = !Array.isArray(object.material)
+    const materialI = isSingle ? -1 : Array.isArray(object.material) ? object.material.indexOf(material) : -1
+    const isMultiple = !isSingle && materialI >= 0
+    if(!isSingle && !isMultiple){
+        console.warn('Material changed but material not found on object?', {material, object, materialI})
+        return {
+            error: 'Unknown Error changing material on object.'
+        }
+    }
+    let selected = null
+    // todo set material
+    if(!_selected){
+        const picking = manager.get().getPlugin(PickingPlugin)!
+        // set null
+        if(isMultiple){
+            // remove this material
+            const mats = [...(object.material as IMaterial[])]
+            mats.splice(materialI, 1)
+            if(mats.length === 0) {
+                selected = picking.getPlaceholderMaterial(object)
+            }
+            else selected = mats
+        }else {
+            selected = picking.getPlaceholderMaterial(object)
+        }
+    }
+    else if((_selected as IMaterial).isMaterial){
+        // set material directly?
+        selected = _selected as IMaterial
+    }
+    else if((_selected as SelectFileRef).entry?.isFSEntry){
+        if(!project){
+            // console.error('No project loaded, cannot import material from file', _selected)
+            return {
+                error: 'No project loaded, cannot import material from file.'
+            }
+        }
+        // load and set material
+        const clone = await manager.loadAssetMaterialClone((_selected as SelectFileRef).entry, project)
+        if(!clone) return {
+            error: 'Failed to load material from file.'
+        }
+        // not that not setting _tpAssetId to the asset here
+        selected = clone
+    }
+
+    if(selected){
+        // if(object._tpRootPath) selected._tpRootPath = object._tpRootPath // not really required here
+
+        // if(object._tpAssetId) selected._tpAssetId = object._tpAssetId
+        const action = ()=>{
+            let mats = object.material
+            if(isSingle || Array.isArray(selected)){
+                mats = selected
+            } else if(isMultiple && Array.isArray(mats)){
+                mats = [...mats]
+                mats[materialI] = selected
+            }
+            object.material = mats
+        }
+
+
+        const undoMan = manager.get().getPlugin(UndoManagerPlugin)
+        if(!undoMan){
+            console.error('UndoManagerPlugin not found.')
+            action()
+        }
+        else{
+            undoMan.performAction(undefined, ()=>{
+                let current = object.material
+                action()
+                return ()=>{
+                    object.material = current
+                }
+            }, [], 'Change Material on Object',)
+        }
+    }
+}
+

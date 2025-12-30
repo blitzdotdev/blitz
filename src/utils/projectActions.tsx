@@ -1,4 +1,4 @@
-import {isPackageProject, ViewerInstanceManager} from './ViewerInstanceManager.ts'
+import {isPackageProject} from './projectUtils.ts'
 import {useCallback} from 'react'
 import {uploadFile} from 'threepipe'
 import {ErrorRes, showSuccessErrorToast} from "./Toaster.tsx";
@@ -7,6 +7,7 @@ import {useProject} from "./UseProject.ts";
 import {useManager} from "./UseManager.ts";
 import {resolveNameConflict} from "./resolveNameConflict.ts";
 import {refreshProjectQueryState} from "./refreshProjectQueryState.ts";
+import {ViewerInstanceManager} from "./ViewerInstanceManager.ts";
 
 export function useProjectActions() {
     const manager = useManager()

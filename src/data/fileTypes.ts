@@ -1,4 +1,4 @@
-import {SelObjectType} from "../utils/ViewerInstanceManager.ts";
+import {SelObjectType} from "../utils/projectUtils.ts";
 
 export const typesExts: Partial<Record<SelObjectType|'image'|'script', string[]>> = {
     'plugin': ['.plugin.js', '.plugin.ts'],

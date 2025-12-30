@@ -304,30 +304,80 @@ export const mcpTools = [
     },
     {
         name: 'createObject',
-        description: 'Create a new 3D object in the scene',
+        description: 'Create a new 3D object in the scene using the Object3DGeneratorPlugin',
         inputSchema: {
             type: 'object',
             properties: {
-                type: { type: 'string', description: 'The type of object to create (e.g., "box", "sphere", "plane", "light", "camera", "empty")' },
+                type: {
+                    type: 'string',
+                    description: 'The type of object to create',
+                    enum: [
+                        // Primitives/Geometry
+                        'geometry-plane',
+                        'geometry-sphere',
+                        'geometry-box',
+                        'geometry-circle',
+                        'geometry-torus',
+                        'geometry-cylinder',
+                        'geometry-text',
+                        'geometry-line',
+                        // Objects
+                        'object-empty',
+                        'object-group',
+                        // Cameras
+                        'camera-perspective',
+                        'camera-orthographic',
+                        // Lights
+                        'light-point',
+                        'light-ambient',
+                        'light-directional',
+                        'light-spot',
+                        'light-hemisphere',
+                        'light-rect-area',
+                        // Text
+                        'troika-text-plane'
+                    ]
+                },
                 name: { type: 'string', description: 'Optional name for the object' },
                 position: {
                     type: 'object',
                     properties: { x: { type: 'number' }, y: { type: 'number' }, z: { type: 'number' } },
                     description: 'Initial position (default: {x: 0, y: 0, z: 0})'
-                }
+                },
+                parentUuid: { type: 'string', description: 'UUID of the parent object to attach to (optional)' },
+                // Geometry parameters for primitives
+                width: { type: 'number', description: 'Width for box/plane (default: 1)' },
+                height: { type: 'number', description: 'Height for box/plane/cylinder (default: 1)' },
+                depth: { type: 'number', description: 'Depth for box (default: 1)' },
+                radius: { type: 'number', description: 'Radius for sphere/circle/torus (default: 1)' },
+                radiusTop: { type: 'number', description: 'Top radius for cylinder (default: 1)' },
+                radiusBottom: { type: 'number', description: 'Bottom radius for cylinder (default: 1)' },
+                tube: { type: 'number', description: 'Tube radius for torus (default: 0.4)' },
+                radialSegments: { type: 'number', description: 'Radial segments for cylinder/torus (default: 32)' },
+                tubularSegments: { type: 'number', description: 'Tubular segments for torus (default: 48)' },
+                widthSegments: { type: 'number', description: 'Width segments for box/plane/sphere (default: 1-32)' },
+                heightSegments: { type: 'number', description: 'Height segments for box/plane/sphere/cylinder (default: 1-16)' },
+                depthSegments: { type: 'number', description: 'Depth segments for box (default: 1)' },
+                openEnded: { type: 'boolean', description: 'Open ended cylinder (default: false)' },
+                // Light parameters
+                color: { type: 'number', description: 'Color for lights as hex number (e.g., 0xffffff)' },
+                intensity: { type: 'number', description: 'Intensity for lights (default: 1-3)' },
+                // Camera parameters
+                fov: { type: 'number', description: 'Field of view for perspective camera (default: 50)' },
+                frustumSize: { type: 'number', description: 'Frustum size for orthographic camera' }
             },
             required: ['type']
         }
     },
     {
         name: 'deleteObject',
-        description: 'Delete an object from the scene by name or UUID',
+        description: 'Delete an object from the scene by UUID',
         inputSchema: {
             type: 'object',
             properties: {
-                identifier: { type: 'string', description: 'The name or UUID of the object to delete' }
+                uuid: { type: 'string', description: 'The UUID of the object to delete (required, name not accepted to avoid duplicates)' }
             },
-            required: ['identifier']
+            required: ['uuid']
         }
     },
     {
@@ -358,10 +408,9 @@ export const mcpTools = [
         inputSchema: {
             type: 'object',
             properties: {
-                identifier: { type: 'string', description: 'The name or UUID of the object to duplicate' },
-                newName: { type: 'string', description: 'Optional name for the duplicated object' }
+                uuid: { type: 'string', description: 'The UUID of the object to duplicate (required, name not accepted to avoid duplicates)' }
             },
-            required: ['identifier']
+            required: ['uuid']
         }
     },
     {
@@ -485,6 +534,19 @@ export const mcpTools = [
         name: 'getProjectInfo',
         description: 'Get information about the current project',
         inputSchema: { type: 'object', properties: {}, required: [] }
+    },
+    {
+        name: 'focusObject',
+        description: 'Focus the camera on an object (fit to view)',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                uuid: { type: 'string', description: 'The UUID of the object to focus on. If not provided, focuses on selected object or model root.' },
+                padding: { type: 'number', description: 'Padding multiplier for the view fit (default: 1.5)' },
+                duration: { type: 'number', description: 'Animation duration in milliseconds (default: 500)' }
+            },
+            required: []
+        }
     }
 ];
 

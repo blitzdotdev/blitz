@@ -1,5 +1,5 @@
 import {FileManifestEntry, SelectedInspectorItem} from "./AssetsProvider.ts";
-import {SelectFileRef, SelObjectType} from "./ViewerInstanceManager.ts";
+import {SelectFileRef, SelObjectType} from "./projectUtils.ts";
 import {objectToType} from "../components/RefSelectionObjectComponent.tsx";
 import {IconName, MaybeElement} from "@blueprintjs/core";
 import {TypedClass} from "threepipe";

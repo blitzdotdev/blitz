@@ -14,15 +14,13 @@ import {
     Vector3
 } from 'threepipe';
 import {
-    assetableFileTypes,
-    isExternalObject,
-    notAssetableFileTypes,
     ViewerInstanceManager
 } from "./ViewerInstanceManager.ts";
 import React from "react";
 import {FileManifestEntry} from "./AssetsProvider.ts";
 import {environmentCommand, materialCommand, objectCommand, textureCommand} from "./objectApplyCommands.tsx";
 import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
+import {assetableFileTypes, isExternalObject, notAssetableFileTypes} from "./projectUtils.ts";
 
 type DraggedItem = IMaterial | IObject3D | ITexture
 

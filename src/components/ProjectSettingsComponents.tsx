@@ -7,7 +7,7 @@ import {useListenProperty} from "./UseListenProperty.tsx";
 import {FolderHeadCard} from "../../../uiconfig-blueprint/lib/esm/bpComponents/BPFolderComponent";
 import {InsSectionItem} from "./InsSectionItem.tsx";
 import React, {useState} from "react";
-import {SelectFileRef} from "../utils/ViewerInstanceManager.ts";
+import {SelectFileRef} from "../utils/projectUtils.ts";
 import {generateUUID} from "threepipe";
 import {RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {Button, Icon, InputGroup} from "@blueprintjs/core";

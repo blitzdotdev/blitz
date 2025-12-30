@@ -10,7 +10,7 @@ import {
 import {bpUiConfigIcons, UiConfigRendererContextType} from 'uiconfig-blueprint/lib/esm/lib'
 import {VisibilityIcon} from "./VisibilityIcon";
 import React from "react";
-import {canMakeAsset, isExternalObject} from "../utils/ViewerInstanceManager.ts";
+import {canMakeAsset, isExternalObject} from "../utils/projectUtils.ts";
 import {HandleContextMenuCallback, MenuItem2} from "../utils/ContextMenuUtils.ts";
 import {Intent} from "@blueprintjs/core";
 import {BPTreeComponent} from "./BPTreeComponent.tsx";

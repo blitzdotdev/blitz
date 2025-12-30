@@ -1,4 +1,4 @@
-import {isLoadableFile, thumbPath} from "../utils/ViewerInstanceManager.ts";
+import {isLoadableFile, thumbPath} from "../utils/projectUtils.ts";
 import type {BreadcrumbProps} from "@blueprintjs/core/src/components/breadcrumbs/breadcrumb.tsx";
 import {
     Breadcrumbs,
@@ -250,7 +250,7 @@ export function FilesPanelGrid({}: {
         const path = currentPath === '/' ? name : (currentPath + '/' + name)
         content = content ?? new ArrayBuffer(0) // empty file. todo default content based on file type
 
-        await manager.writeFile(project.handle, path, new File([content], name), project.path).catch(e=>{
+        await manager.fsHelper.writeFile(project.handle, path, new File([content], name), project.path).catch(e=>{
             console.error('Error creating file:', e)
         })
         refreshManifest(true).then(r=>{

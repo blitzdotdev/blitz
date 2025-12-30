@@ -1,10 +1,9 @@
-import {isExternalObject} from "../utils/ViewerInstanceManager.ts";
+import {isExternalObject} from "../utils/projectUtils.ts";
 import {useContextMenu} from "./ContextMenuProvider.tsx";
-import {IMaterial, IObject3D, UiObjectConfig} from "threepipe";
+import {IObject3D, UiObjectConfig} from "threepipe";
 import React, {useMemo} from "react";
 import {BPHierarchyComponent} from "./BPHierarchyComponent.tsx";
 import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
-import {MenuDivider} from "@blueprintjs/core";
 import {Object3DGenerationMenu} from "./Object3DGenerationMenu.tsx";
 import {useManager} from "../utils/UseManager.ts";
 import {useMakeAsset} from "../utils/UseMakeAsset.ts";
