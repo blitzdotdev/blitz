@@ -2,7 +2,7 @@
 
 - The game is using kite game engine built on top of threepipe and three.js.
 - Scenes in the game are designed in a UI editor(similar to Unity/Godot) and exported as .scene.glb files. These are binary files and cannot be read or edited as text
-- The game dependencies, packages, scripts etc are defined in the package.json file in the game project. Any script or dependency required in the scene or the editor must be added to package.json
+- The game dependencies, packages, scripts etc are defined in the package.json file in the game project. Any script or dependency required in the scene or the editor must be added to package.json. Call MCP tool `refreshPackageJson` to update the editor after modifying package.json.
 - The game consists of objects in the scene like player, trees, enemies, weapons, etc. Each object is a three.js `Object3D` with `Object3DComponents` that extend the functionality of the objects
 - Custom components are used to add game-specific behavior to objects. For example, the `PlayerComponent` handles player movement and actions, while the `EnemyComponent` manages enemy AI. These components are defined in their dedicated .script.js files in the game folder and can be attached to the objects using the UI.
 - Instruct the user to make changes to the 3D scene or to add or remove components from the game.
@@ -83,70 +83,13 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
   - `init(object, state)` - Called when component is attached. Use for resources needed in edit mode too.
   - `destroy()` - Called when component is removed. Clean up edit-mode resources, return state.
 - Mark object as changed: `this.object.setDirty?.({source: 'MyComponent', change: 'position'})`
+- There is no `dispose` method on components by default. Use `stop` or `destroy` for cleanup.
 - Listen to object transform changes:
   ```js
   this._onObjectUpdate = (e) => { if (e.source !== 'MyComponent') this.handleChange() }
   this.object.addEventListener('objectUpdate', this._onObjectUpdate)
   // In destroy(): this.object.removeEventListener('objectUpdate', this._onObjectUpdate)
   ```
-
-## Lifecycle Example - Simple Movement
-```js
-class MoveInCircleComponent extends Object3DComponent {
-  static StateProperties = ['running', 'radius', 'timeScale']
-  static ComponentType = 'MoveInCircleComponent'
-  
-  running = true
-  radius = 2
-  timeScale = 0.1
-
-  update({time}) {
-    if (!this.running) return
-    this.object.position.x = Math.cos(time * this.timeScale / 100) * this.radius
-    this.object.position.z = Math.sin(time * this.timeScale / 100) * this.radius
-    return true // return true to mark scene dirty for re-render
-  }
-}
-```
-
-## Lifecycle Example - Physics Body
-```js
-class RigidBodyComponent extends Object3DComponent {
-  static StateProperties = ['running', 'mass', 'damping']
-  static ComponentType = 'RigidBodyComponent'
-
-  running = true
-  mass = 1
-  damping = 0.98
-  velocity = new Vector3()
-  acceleration = new Vector3()
-
-  start() { this.reset() }
-  stop() { this.reset() }
-
-  reset() {
-    this.velocity.set(0, 0, 0)
-    this.acceleration.set(0, 0, 0)
-  }
-
-  update({deltaTime}) {
-    if (!this.running) return
-    const dt = (deltaTime ?? 16) / 1000
-    this.velocity.addScaledVector(this.acceleration, dt)
-    this.velocity.multiplyScalar(this.damping)
-    this.acceleration.set(0, 0, 0)
-    if (this.velocity.lengthSq() < 1e-6) return
-    this.object.position.addScaledVector(this.velocity, dt)
-    return true
-  }
-
-  applyImpulse(impulse) {
-    this.velocity.x += impulse.x / this.mass
-    this.velocity.y += impulse.y / this.mass
-    this.velocity.z += impulse.z / this.mass
-  }
-}
-```
 
 ## State Properties
 - Listen to state property changes: `this.onStateChange('propertyName', (newVal, oldVal) => { ... })`
@@ -247,6 +190,213 @@ class RigidBodyComponent extends Object3DComponent {
 - Pause the game to inspect state: use the editor's pause button
 - In some cases, it might be better to show logs as HTML text over `this.ctx.viewer.canvas` instead of printing several logs in the console every frame, for the human developer to better see what's happening.
 - Use the Kite Editor MCP to inspect the editor and scene state at runtime.
+
+
+# EntityComponentPlugin API
+- The `EntityComponentPlugin` manages all components attached to objects in the scene.
+- Access the plugin from viewer: `const ecp = viewer.getPlugin(EntityComponentPlugin)` or from inside a component: `this.ctx.ecp`
+- Dispatch method to all components on an object: `EntityComponentPlugin.ObjectDispatch(object, 'methodName', eventData)` - calls `methodName(eventData)` on all components attached to the object
+
+## Getting Components
+- From a component instance: `this.getComponent(ComponentClass)` - searches current object, parents, and global registry
+- From a component instance (self only): `this.getComponent(ComponentClass, true)` - only searches current object
+- Static method on object: `EntityComponentPlugin.GetComponent(object, ComponentClass)` - get first matching component on object
+- Static method for parents: `EntityComponentPlugin.GetComponentInParent(object, ComponentClass)` - search object and parent hierarchy
+- Get all components on object: `EntityComponentPlugin.GetComponents(object, ComponentClass)` - returns array of matching components
+- Get all of type globally: `ecp.getComponentsOfType(ComponentClass)` - returns all components of a type in the scene
+- Get first of type globally: `ecp.getComponentOfType(ComponentClass)` - returns first component of a type in the scene
+
+## Adding/Removing Components
+- Add component: `ecp.addComponent(object, ComponentClass)` or `ecp.addComponent(object, 'ComponentType')` - returns an undo/redo action with the created component in `action.component`
+- Remove component: `ecp.removeComponent(object, component.uuid)` - returns an undo/redo action
+
+## Component Lifecycle Control
+- Start all components: `ecp.start()` - calls `start()` on all registered components
+- Stop all components: `ecp.stop()` - calls `stop()` on all registered components
+- Check if running: `ecp.running` - returns boolean indicating if components are active
+
+## Registering Component Types
+- Register a new component class: `ecp.addComponentType(ComponentClass)` - makes it available for use
+- Remove a component type: `ecp.removeComponentType(ComponentClass)`
+- Check if type exists: `ecp.hasComponentType(ComponentClass)` or `ecp.hasComponentType('ComponentType')`
+
+## Component Data on Objects
+- Component data is stored in `object.userData.EntityComponentPlugin` as a map of component UUID to `{type, state}`
+- Get component data: `EntityComponentPlugin.GetObjectData(object)` - returns the raw component data object
+- Get specific component data: `EntityComponentPlugin.GetComponentData(object, ComponentClass)` - returns `{id, type, state}` for matching component
+
+# ThreeViewer API
+
+The `ThreeViewer` is the main class in threepipe to manage a scene, render, and add plugins.
+- Docs: https://threepipe.org/guide/viewer-api.html
+
+## Core Properties
+- `viewer.scene` - RootScene: Main scene for rendering (extends three.js Scene)
+- `viewer.scene.mainCamera` - PerspectiveCamera2: Main camera for rendering
+- `viewer.scene.modelRoot` - Object3D: Container where loaded 3D models are added (this is the scene root in the editor UI). Anything outside this is considered virtual.
+- `viewer.renderManager` - ViewerRenderManager: Manages rendering pipeline, has access to webgl renderer, composer, passes, render targets etc.
+- `viewer.canvas` - HTMLCanvasElement: The rendering canvas
+- `viewer.container` - HTMLElement: The container element (use this for adding HTML overlays, not canvas.parentElement)
+- `viewer.assetManager` - AssetManager: Handles loading, caching, and exporting assets
+- `viewer.plugins` - Record of all added plugins
+
+## Key Methods
+- `viewer.load(url)` - Load a 3D model/texture/material and add to scene. Returns a Promise.
+- `viewer.import(url)` - Import an asset without adding to scene
+- `viewer.export(object)` - Export an object/material/texture to Blob
+- `viewer.exportScene({viewerConfig: true})` - Export entire scene with configuration as glb
+- `viewer.setBackgroundMap(url)` - Set background image/texture
+- `viewer.setEnvironmentMap(url)` - Set HDR environment map for lighting
+- `viewer.addSceneObject(object)` - Add an Object3D to the scene
+- `viewer.setDirty()` - Mark scene as needing re-render (next frame)
+- `viewer.getPlugin(PluginClass)` - Get an added plugin
+- `viewer.addPluginSync(PluginClass)` - Add a plugin
+- `viewer.fitToView(object)` - Animate camera to fit object in view
+- `viewer.traverseSceneObjects(callback)` - Iterate over all scene objects
+
+## Viewer Events
+```js
+viewer.addEventListener('preFrame', (e) => { /* before each frame */ })
+viewer.addEventListener('postFrame', (e) => { /* after each frame */ })
+viewer.addEventListener('preRender', (e) => { /* before rendering, only if dirty */ })
+viewer.addEventListener('postRender', (e) => { /* after rendering */ })
+viewer.addEventListener('update', (e) => { /* when setDirty() is called. Not very useful. */ })
+```
+
+# Threepipe Documentation Links
+- Viewer API: https://threepipe.org/guide/viewer-api.html
+- Loading Files: https://threepipe.org/guide/loading-files.html
+- Exporting Files: https://threepipe.org/guide/exporting-files.html
+- Plugin System: https://threepipe.org/guide/plugin-system.html
+- Core Plugins: https://threepipe.org/guide/core-plugins.html
+- Materials: https://threepipe.org/guide/materials.html
+- Serialization: https://threepipe.org/guide/serialization.html
+- 3D Assets: https://threepipe.org/guide/3d-assets.html
+
+# Examples
+
+## ⚠ Resource Cleanup in stop()
+**ALWAYS clean up resources created in `start()` within the `stop()` method to prevent memory leaks and leftover UI elements.**
+
+Common resources that MUST be cleaned up in `stop()`:
+- **HTML/DOM elements** - Remove from DOM and nullify references
+- **Event listeners** - Remove all added listeners (keyboard, mouse, window events)
+- **Timers** - Clear all `setTimeout`/`setInterval`
+- **Objects spawned at runtime** - Remove from scene and dispose
+- **Physics bodies** - Remove from physics world
+- **Three.js objects** - Call `dispose()` on geometries, materials, textures
+
+```js
+class ExampleComponent extends Object3DComponent {
+  _uiElement = null
+  _keyDownHandler = null
+  _timerId = null
+  _spawnedObjects = []
+
+  start() {
+    // Create UI
+    this._uiElement = document.createElement('div')
+    document.body.appendChild(this._uiElement)
+
+    // Add event listener
+    this._keyDownHandler = (e) => { /* handle */ }
+    window.addEventListener('keydown', this._keyDownHandler)
+
+    // Start timer
+    this._timerId = setInterval(() => { /* do something */ }, 1000)
+
+    // Spawn objects
+    const obj = new Mesh(...)
+    this._spawnedObjects.push(obj)
+    this.ctx.viewer.scene.add(obj)
+  }
+
+  stop() {
+    // Remove UI elements
+    if (this._uiElement) {
+      this._uiElement.remove()
+      this._uiElement = null
+    }
+
+    // Remove event listeners
+    if (this._keyDownHandler) {
+      window.removeEventListener('keydown', this._keyDownHandler)
+      this._keyDownHandler = null
+    }
+
+    // Clear timers
+    if (this._timerId) {
+      clearInterval(this._timerId)
+      this._timerId = null
+    }
+
+    // Clean up spawned objects
+    for (const obj of this._spawnedObjects) {
+      obj.removeFromParent()
+      obj.dispose?.(true)
+    }
+    this._spawnedObjects.length = 0
+  }
+}
+```
+
+## Lifecycle Example - Simple Movement
+```js
+class MoveInCircleComponent extends Object3DComponent {
+  static StateProperties = ['running', 'radius', 'timeScale']
+  static ComponentType = 'MoveInCircleComponent'
+  
+  running = true
+  radius = 2
+  timeScale = 0.1
+
+  update({time}) {
+    if (!this.running) return
+    this.object.position.x = Math.cos(time * this.timeScale / 100) * this.radius
+    this.object.position.z = Math.sin(time * this.timeScale / 100) * this.radius
+    return true // return true to mark scene dirty for re-render
+  }
+}
+```
+
+## Lifecycle Example - Physics Body
+```js
+class RigidBodyComponent extends Object3DComponent {
+  static StateProperties = ['running', 'mass', 'damping']
+  static ComponentType = 'RigidBodyComponent'
+
+  running = true
+  mass = 1
+  damping = 0.98
+  velocity = new Vector3()
+  acceleration = new Vector3()
+
+  start() { this.reset() }
+  stop() { this.reset() }
+
+  reset() {
+    this.velocity.set(0, 0, 0)
+    this.acceleration.set(0, 0, 0)
+  }
+
+  update({deltaTime}) {
+    if (!this.running) return
+    const dt = (deltaTime ?? 16) / 1000
+    this.velocity.addScaledVector(this.acceleration, dt)
+    this.velocity.multiplyScalar(this.damping)
+    this.acceleration.set(0, 0, 0)
+    if (this.velocity.lengthSq() < 1e-6) return
+    this.object.position.addScaledVector(this.velocity, dt)
+    return true
+  }
+
+  applyImpulse(impulse) {
+    this.velocity.x += impulse.x / this.mass
+    this.velocity.y += impulse.y / this.mass
+    this.velocity.z += impulse.z / this.mass
+  }
+}
+```
 
 ## HTML UI Over Canvas Example
 ```js
@@ -388,87 +538,6 @@ To use Tailwind CSS for styling HTML UI components:
      }
    }
    ```
-
-# EntityComponentPlugin API
-- The `EntityComponentPlugin` manages all components attached to objects in the scene.
-- Access the plugin from viewer: `const ecp = viewer.getPlugin(EntityComponentPlugin)` or from inside a component: `this.ctx.ecp`
-- Dispatch method to all components on an object: `EntityComponentPlugin.ObjectDispatch(object, 'methodName', eventData)` - calls `methodName(eventData)` on all components attached to the object
-
-## Getting Components
-- From a component instance: `this.getComponent(ComponentClass)` - searches current object, parents, and global registry
-- From a component instance (self only): `this.getComponent(ComponentClass, true)` - only searches current object
-- Static method on object: `EntityComponentPlugin.GetComponent(object, ComponentClass)` - get first matching component on object
-- Static method for parents: `EntityComponentPlugin.GetComponentInParent(object, ComponentClass)` - search object and parent hierarchy
-- Get all components on object: `EntityComponentPlugin.GetComponents(object, ComponentClass)` - returns array of matching components
-- Get all of type globally: `ecp.getComponentsOfType(ComponentClass)` - returns all components of a type in the scene
-- Get first of type globally: `ecp.getComponentOfType(ComponentClass)` - returns first component of a type in the scene
-
-## Adding/Removing Components
-- Add component: `ecp.addComponent(object, ComponentClass)` or `ecp.addComponent(object, 'ComponentType')` - returns an undo/redo action with the created component in `action.component`
-- Remove component: `ecp.removeComponent(object, component.uuid)` - returns an undo/redo action
-
-## Component Lifecycle Control
-- Start all components: `ecp.start()` - calls `start()` on all registered components
-- Stop all components: `ecp.stop()` - calls `stop()` on all registered components
-- Check if running: `ecp.running` - returns boolean indicating if components are active
-
-## Registering Component Types
-- Register a new component class: `ecp.addComponentType(ComponentClass)` - makes it available for use
-- Remove a component type: `ecp.removeComponentType(ComponentClass)`
-- Check if type exists: `ecp.hasComponentType(ComponentClass)` or `ecp.hasComponentType('ComponentType')`
-
-## Component Data on Objects
-- Component data is stored in `object.userData.EntityComponentPlugin` as a map of component UUID to `{type, state}`
-- Get component data: `EntityComponentPlugin.GetObjectData(object)` - returns the raw component data object
-- Get specific component data: `EntityComponentPlugin.GetComponentData(object, ComponentClass)` - returns `{id, type, state}` for matching component
-
-# ThreeViewer API
-
-The `ThreeViewer` is the main class in threepipe to manage a scene, render, and add plugins.
-- Docs: https://threepipe.org/guide/viewer-api.html
-
-## Core Properties
-- `viewer.scene` - RootScene: Main scene for rendering (extends three.js Scene)
-- `viewer.scene.mainCamera` - PerspectiveCamera2: Main camera for rendering
-- `viewer.scene.modelRoot` - Object3D: Container where loaded 3D models are added (this is the scene root in the editor UI). Anything outside this is considered virtual.
-- `viewer.renderManager` - ViewerRenderManager: Manages rendering pipeline, has access to webgl renderer, composer, passes, render targets etc.
-- `viewer.canvas` - HTMLCanvasElement: The rendering canvas
-- `viewer.container` - HTMLElement: The container element (use this for adding HTML overlays, not canvas.parentElement)
-- `viewer.assetManager` - AssetManager: Handles loading, caching, and exporting assets
-- `viewer.plugins` - Record of all added plugins
-
-## Key Methods
-- `viewer.load(url)` - Load a 3D model/texture/material and add to scene. Returns a Promise.
-- `viewer.import(url)` - Import an asset without adding to scene
-- `viewer.export(object)` - Export an object/material/texture to Blob
-- `viewer.exportScene({viewerConfig: true})` - Export entire scene with configuration as glb
-- `viewer.setBackgroundMap(url)` - Set background image/texture
-- `viewer.setEnvironmentMap(url)` - Set HDR environment map for lighting
-- `viewer.addSceneObject(object)` - Add an Object3D to the scene
-- `viewer.setDirty()` - Mark scene as needing re-render (next frame)
-- `viewer.getPlugin(PluginClass)` - Get an added plugin
-- `viewer.addPluginSync(PluginClass)` - Add a plugin
-- `viewer.fitToView(object)` - Animate camera to fit object in view
-- `viewer.traverseSceneObjects(callback)` - Iterate over all scene objects
-
-## Viewer Events
-```js
-viewer.addEventListener('preFrame', (e) => { /* before each frame */ })
-viewer.addEventListener('postFrame', (e) => { /* after each frame */ })
-viewer.addEventListener('preRender', (e) => { /* before rendering, only if dirty */ })
-viewer.addEventListener('postRender', (e) => { /* after rendering */ })
-viewer.addEventListener('update', (e) => { /* when setDirty() is called. Not very useful. */ })
-```
-
-# Threepipe Documentation Links
-- Viewer API: https://threepipe.org/guide/viewer-api.html
-- Loading Files: https://threepipe.org/guide/loading-files.html
-- Exporting Files: https://threepipe.org/guide/exporting-files.html
-- Plugin System: https://threepipe.org/guide/plugin-system.html
-- Core Plugins: https://threepipe.org/guide/core-plugins.html
-- Materials: https://threepipe.org/guide/materials.html
-- Serialization: https://threepipe.org/guide/serialization.html
-- 3D Assets: https://threepipe.org/guide/3d-assets.html
 
 ## Manager/System Pattern Example
 ```js

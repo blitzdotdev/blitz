@@ -34,7 +34,8 @@ export const packageJsonTemplate = {
     main: './main.js',
     keywords: ['3d', 'game', 'threepipe', 'three-editor'],
     dependencies: {
-        threepipe: ">=0.4.2"
+        "threepipe": ">=0.4.2",
+        "@kite3d/mcp-bridge": ">=0.0.1"
     }
 }
 
@@ -65,13 +66,11 @@ export const mcpJsonTemplate = {
         // example:
         "kite3d-dev-mcp": {
             type: "stdio",
-            command: "node",
+            command: "npx",
             args: [
-                "node_modules/@kite3d/mcp-bridge/bridge-server.js"
-            ],
-            env: {
-                MCP_BRIDGE_WS_PORT: "3848"
-            }
+                "@kite3d/mcp-bridge",
+                "--port=3848"
+            ]
         }
     }
 }

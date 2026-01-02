@@ -1,0 +1,8 @@
+# Ignore built bridge server files
+bridge-server.js
+bridge-server.js.map
+
+# But keep package.json and README.md
+!package.json
+!README.md
+

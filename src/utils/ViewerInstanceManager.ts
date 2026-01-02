@@ -1300,6 +1300,24 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return v
     }
 
+    async refreshPackageJson(){
+        const project = this.loadedProject
+        if(!project?.handle || !project?.settings) return
+
+        const file: File = await resolveFile('package.json', project.path, project.handle)
+        const project2 = await parsePackageJsonSettings(file, project)
+        project.file = project2.file
+        project.lastModified = project2.lastModified
+        project.handle = project2.handle
+        if(project.settings && project2.settings) {
+            project.settings.json = project2.settings.json
+            project.settings.mainScene = project2.settings.mainScene
+            if (JSON.stringify(project2.settings.config) !== JSON.stringify(project.settings.config)) {
+                await this.settingsManager.setSettings(project2.settings.config, false)
+            }
+        }
+    }
+
     onObserveFileChange = async (path: string, project1: LoadedProject)=>{
         // console.log('Project file changed detected:', path, project1.path)
         const project = this.loadedProject
@@ -1309,18 +1327,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             return
         }
         if(path === 'package.json'){
-            const file: File = await resolveFile(path, project.path, project.handle)
-            const project2 = await parsePackageJsonSettings(file, project)
-            project.file = project2.file
-            project.lastModified = project2.lastModified
-            project.handle = project2.handle
-            if(project.settings && project2.settings) {
-                project.settings.json = project2.settings.json
-                project.settings.mainScene = project2.settings.mainScene
-                if (JSON.stringify(project2.settings.config) !== JSON.stringify(project.settings.config)) {
-                    await this.settingsManager.setSettings(project2.settings.config, false)
-                }
-            }
+            await this.refreshPackageJson()
         }
         if(path === 'assets.json'){
             try {

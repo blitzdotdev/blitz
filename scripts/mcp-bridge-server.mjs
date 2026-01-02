@@ -31,14 +31,18 @@ import {mcpTools} from "./mcp-tools.mjs";
  * For HTTP transport, use mcp-bridge-http.mjs instead.
  *
  * Usage:
- *   MCP mode: node mcp-bridge-server.mjs
- *   Test mode: node mcp-bridge-server.mjs --test
+ *   MCP mode: node mcp-bridge-server.mjs [--port=3848]
+ *   Test mode: node mcp-bridge-server.mjs --test [--port=3848]
  */
 
-// Check if running in test mode BEFORE any imports that might log
-const isTestMode = process.argv.includes('--test');
+// Parse command line arguments
+const args = process.argv.slice(2);
+const isTestMode = args.includes('--test');
+const transport = args.includes('--http') ? 'http' : 'stdio';
 
-const transport = process.argv.includes('--http') ? 'http' : 'stdio';
+// Parse --port argument
+const portArg = args.find(arg => arg.startsWith('--port='));
+const wsPort = portArg ? portArg.split('=')[1] : (process.env.MCP_BRIDGE_WS_PORT || undefined);
 
 // In MCP mode, we must ensure NOTHING goes to stdout except JSON-RPC
 if (transport === 'stdio' && !isTestMode) {
@@ -107,7 +111,7 @@ async function main() {
     try {
         // Wrap WebSocket setup in try-catch
         try {
-            setupWebSocketServer();
+            setupWebSocketServer(wsPort);
         } catch (wsError) {
             process.stderr.write(`WebSocket setup error: ${wsError.message}\n`);
             process.exit(1);

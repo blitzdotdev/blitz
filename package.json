@@ -1,12 +1,13 @@
 {
   "name": "threepipe-blueprint-editor",
   "private": true,
-  "version": "0.11.0",
+  "version": "0.12.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:mcp": "esbuild scripts/mcp-bridge-server.mjs --bundle --outfile=dist/mcp/bridge-server.js --platform=node --format=esm --sourcemap --banner:js='#!/usr/bin/env node'",
+    "build:mcp": "esbuild scripts/mcp-bridge-server.mjs --bundle --outfile=packages/mcp-bridge/bridge-server.js --platform=node --format=esm --sourcemap --external:@modelcontextprotocol/sdk --external:ws --external:node:* --packages=external && chmod +x packages/mcp-bridge/bridge-server.js",
+    "publish:mcp": "npm run build:mcp && cd packages/mcp-bridge && npm publish --access public",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "playwright test",

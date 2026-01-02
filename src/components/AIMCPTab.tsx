@@ -232,10 +232,33 @@ export function AIMCPTab({
                         lineHeight: '1.5'
                     }}>
                         <ol style={{paddingLeft: '20px', margin: '5px 0'}}>
-                            <li>Run the MCP server by adding it to .mcp.json file or configuring in your IDE</li>
-                            <li>Check the port is same in both mcp.json and above </li>
+                            <li>Configure MCP server in your .mcp.json with the port: <code>--port={wsPort}</code></li>
+                            <li>Start your AI client (Claude, Copilot, etc.) to launch the bridge server</li>
                             <li>Click the "Connect to MCP Bridge" button above</li>
                         </ol>
+                        <div style={{marginTop: '10px', fontSize: '11px'}}>
+                            Example .mcp.json:
+                            <pre style={{
+                                background: 'rgba(0,0,0,0.2)',
+                                padding: '8px',
+                                borderRadius: '4px',
+                                marginTop: '5px',
+                                overflow: 'auto'
+                            }}>
+{`{
+  "servers": {
+    "kite3d-dev-mcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@kite3d/mcp-bridge",
+        "--port=${wsPort}"
+      ]
+    }
+  }
+}`}
+                            </pre>
+                        </div>
                     </div>
                 </div>
 

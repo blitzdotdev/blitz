@@ -1,4 +1,3 @@
-
 // ============================================
 // MCP Tools Definition
 // ============================================
@@ -325,6 +324,15 @@ export const mcpTools = [
                 padding: {type: 'number', description: 'Padding multiplier for the view fit (default: 1.5)'},
                 duration: {type: 'number', description: 'Animation duration in milliseconds (default: 500)'}
             },
+            required: []
+        }
+    },
+    {
+        name: 'refreshPackageJson',
+        description: 'Force refresh package.json settings in the editor. Use this after modifying package.json to reload project configuration, scripts, and plugins.',
+        inputSchema: {
+            type: 'object',
+            properties: {},
             required: []
         }
     }

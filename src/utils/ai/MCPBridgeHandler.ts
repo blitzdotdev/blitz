@@ -614,6 +614,15 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 return { objects: results };
             }
 
+            case 'refreshPackageJson': {
+                try {
+                    await manager.refreshPackageJson();
+                    return { success: true, message: 'Package.json settings refreshed successfully' };
+                } catch (error) {
+                    return { error: `Failed to refresh package.json: ${(error as Error).message}` };
+                }
+            }
+
             default:
                 return { error: `Unknown action: ${action}` };
         }
@@ -626,7 +635,7 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
 export function initMCPBridge(options: MCPBridgeHandlerOptions & { wsUrl?: string }): MCPBridgeClient {
     const client = new MCPBridgeClient({
         wsUrl: options.wsUrl,
-        autoReconnect: false,
+        autoReconnect: true,
         onConnect: () => {
             console.log('[MCPBridge] Connected to bridge server');
         },

@@ -9,7 +9,7 @@ import {WebSocket, WebSocketServer} from 'ws';
 
 // Configuration
 // export const HTTP_PORT = process.env.MCP_BRIDGE_HTTP_PORT || 3847;
-export const WS_PORT = process.env.MCP_BRIDGE_WS_PORT || 3848;
+const DEFAULT_WS_PORT = 3848;
 
 // Store for connected editor clients
 export const editorClients = new Set();
@@ -173,17 +173,17 @@ function handleEditorMessage(ws, message) {
     }
 }
 
-export function setupWebSocketServer() {
+export function setupWebSocketServer(port) {
     try {
-        const port = parseInt(WS_PORT);
-        if( isNaN(port) || port <= 0 || port > 65535) {
-            throw new Error(`[Bridge] Invalid WebSocket port: ${WS_PORT}`);
+        const parsedPort = parseInt(port || DEFAULT_WS_PORT);
+        if( isNaN(parsedPort) || parsedPort <= 0 || parsedPort > 65535) {
+            throw new Error(`[Bridge] Invalid WebSocket port: ${port}`);
         }
-        wsServer = new WebSocketServer({ port: port });
+        wsServer = new WebSocketServer({ port: parsedPort });
 
         wsServer.on('error', (error) => {
             if (error.code === 'EADDRINUSE') {
-                logError(`[Bridge] WebSocket port ${port} in use, stop the other instance or choose a different port`);
+                logError(`[Bridge] WebSocket port ${parsedPort} in use, stop the other instance or choose a different port`);
             } else {
                 logError(`WebSocket server error: ${error.message}`);
             }
@@ -220,7 +220,7 @@ export function setupWebSocketServer() {
             });
         });
 
-        log(`[Bridge] WebSocket server listening on ws://localhost:${port}`);
+        log(`[Bridge] WebSocket server listening on ws://localhost:${parsedPort}`);
         return wsServer;
     } catch (error) {
         if (error.code === 'EADDRINUSE') {
