@@ -171,50 +171,13 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 const position = params.position as { x: number; y: number; z: number } | undefined;
                 const parentUuid = params.parentUuid as string | undefined;
 
-                // Check if the generator supports this type directly
                 if (!generator.generators[type]) {
                     return { error: `Unknown object type: ${type}. Available types: ${Object.keys(generator.generators).join(', ')}` };
                 }
 
-                // Log all incoming params for debugging
-                console.log('[MCP createObject] ALL params received:', JSON.stringify(params));
-
-                // Build geometry/object parameters from input
-                const generatorParams: Record<string, unknown> = {};
-
-                // Geometry parameters
-                if (params.width !== undefined) generatorParams.width = params.width;
-                if (params.height !== undefined) generatorParams.height = params.height;
-                if (params.depth !== undefined) generatorParams.depth = params.depth;
-                if (params.radius !== undefined) generatorParams.radius = params.radius;
-                if (params.radiusTop !== undefined) generatorParams.radiusTop = params.radiusTop;
-                if (params.radiusBottom !== undefined) generatorParams.radiusBottom = params.radiusBottom;
-                if (params.tube !== undefined) generatorParams.tube = params.tube;
-                if (params.radialSegments !== undefined) generatorParams.radialSegments = params.radialSegments;
-                if (params.tubularSegments !== undefined) generatorParams.tubularSegments = params.tubularSegments;
-                if (params.widthSegments !== undefined) generatorParams.widthSegments = params.widthSegments;
-                if (params.heightSegments !== undefined) generatorParams.heightSegments = params.heightSegments;
-                if (params.depthSegments !== undefined) generatorParams.depthSegments = params.depthSegments;
-                if (params.openEnded !== undefined) generatorParams.openEnded = params.openEnded;
-
-                // Light parameters
-                if (params.color !== undefined) generatorParams.color = params.color;
-                if (params.intensity !== undefined) generatorParams.intensity = params.intensity;
-
-                // Camera parameters
-                if (params.fov !== undefined) generatorParams.fov = params.fov;
-                if (params.frustumSize !== undefined) generatorParams.frustumSize = params.frustumSize;
-
-                console.log('[MCP createObject] type:', type, 'generatorParams:', JSON.stringify(generatorParams));
-
-                const obj = generator.generate(type, generatorParams, false, false) as IObject3D | undefined;
+                const obj = generator.generate(type, params, false, false) as IObject3D | undefined;
 
                 if (obj) {
-                    // Log geometry info for debugging
-                    if ((obj as any).geometry?.userData?.generationParams) {
-                        console.log('[MCP createObject] geometry generationParams:', JSON.stringify((obj as any).geometry.userData.generationParams));
-                    }
-
                     if (name) obj.name = name;
                     if (position) {
                         obj.position.set(position.x, position.y, position.z);
@@ -252,11 +215,6 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                     if (o.uuid === uuid) obj = o;
                 });
                 if (!obj) return { error: `Object not found with UUID: ${uuid}` };
-
-                const picking = getPicking();
-                if (picking?.getSelectedObject() === obj) {
-                    picking.setSelectedObject(undefined as any);
-                }
 
                 // Use iObjectCommons.deleteObject (skip confirmation with shiftKey: true)
                 await iObjectCommons.deleteObject(obj, { shiftKey: true });
@@ -430,9 +388,6 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                         return { success: true };
                     case 'stop':
                         await manager.playMode?.stopRunMode();
-                        return { success: true };
-                    case 'refresh':
-                        viewer?.setDirty();
                         return { success: true };
                     default:
                         return { error: `Unknown command: ${command}` };

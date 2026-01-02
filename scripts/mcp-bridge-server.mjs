@@ -1,5 +1,29 @@
 #!/usr/bin/env node
 
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+    CallToolRequestSchema,
+    ListToolsRequestSchema,
+    ListResourcesRequestSchema,
+    ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+
+import {
+    setLogFunctions,
+    setupWebSocketServer,
+    startHttpServer,
+    shutdown,
+    mcpResources,
+    executeTool,
+    readResource,
+    editorState,
+    editorClients,
+    requestFromEditor
+} from './mcp-bridge-common.mjs';
+
+import {mcpTools} from "./mcp-tools.mjs";
+
 /**
  * MCP Bridge Server for Kite 3D Game Engine - Stdio Transport
  *
@@ -14,8 +38,11 @@
 // Check if running in test mode BEFORE any imports that might log
 const isTestMode = process.argv.includes('--test');
 
+const transport = process.argv.includes('--http') ? 'http' : 'stdio';
+
+
 // In MCP mode, we must ensure NOTHING goes to stdout except JSON-RPC
-if (!isTestMode) {
+if (transport === 'stdio' && !isTestMode) {
     process.removeAllListeners('warning');
     const noop = () => {};
     console.log = noop;
@@ -34,29 +61,6 @@ process.on('unhandledRejection', (reason) => {
     process.stderr.write(`Unhandled rejection: ${reason}\n`);
     process.exit(1);
 });
-
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-    CallToolRequestSchema,
-    ListToolsRequestSchema,
-    ListResourcesRequestSchema,
-    ReadResourceRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
-
-import {
-    setLogFunctions,
-    setupWebSocketServer,
-    startHttpServer,
-    shutdown,
-    mcpTools,
-    mcpResources,
-    executeTool,
-    readResource,
-    editorState,
-    editorClients,
-    requestFromEditor
-} from './mcp-bridge-common.mjs';
 
 // Setup logging
 const log = isTestMode ? ((...args) => process.stderr.write(args.join(' ') + '\n')) : () => {};
@@ -107,15 +111,15 @@ async function main() {
             setupWebSocketServer();
         } catch (wsError) {
             process.stderr.write(`WebSocket setup error: ${wsError.message}\n`);
-            // Continue even if WS fails - MCP should still work
+            process.exit(1);
         }
 
-        try {
-            await startHttpServer();
-        } catch (httpError) {
-            process.stderr.write(`HTTP server error: ${httpError.message}\n`);
-            // Continue even if HTTP fails - MCP should still work
-        }
+        // try {
+        //     await startHttpServer();
+        // } catch (httpError) {
+        //     process.stderr.write(`HTTP server error: ${httpError.message}\n`);
+        //     // Continue even if HTTP fails - MCP should still work
+        // }
 
         if (isTestMode) {
             log('\n[Bridge] Running in TEST MODE');
