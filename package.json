@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:mcp": "esbuild scripts/mcp-bridge-server.mjs --bundle --outfile=dist/mcp/bridge-server.js --platform=node --format=esm --sourcemap --banner:js='#!/usr/bin/env node'",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "playwright test",
@@ -15,7 +16,7 @@
     "test:report": "playwright show-report",
     "deploy": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist kite-threepipe-v0/ && git tag v$npm_package_version",
     "deploy-tp": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/ && git tag v$npm_package_version",
-    "mcp-bridge": "node scripts/mcp-bridge-http.mjs",
+    "mcp-bridge": "node scripts/mcp-bridge-server.mjs",
     "mcp-bridge:test": "node scripts/mcp-bridge-server.mjs --test"
   },
   "dependencies": {
@@ -63,6 +64,7 @@
     "@vitejs/plugin-react": "^4.2.1",
     "cannon-es": "^0.20.0",
     "dotenv": "^16.4.5",
+    "esbuild": "^0.27.2",
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",

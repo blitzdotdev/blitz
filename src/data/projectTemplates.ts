@@ -58,4 +58,22 @@ export const gitignoreTemplate = gitignoreTemplate1 + `
 ./${settingsKey}/backups/
 ./${settingsKey}/thumbs/
 `
+
+export const mcpJsonTemplate = {
+    servers: {
+        // add your MCP stdio servers configuration here
+        // example:
+        "kite3d-dev-mcp": {
+            type: "stdio",
+            command: "node",
+            args: [
+                "node_modules/@kite3d/mcp-bridge/bridge-server.js"
+            ],
+            env: {
+                MCP_BRIDGE_WS_PORT: "3848"
+            }
+        }
+    }
+}
+
 export {agentsMdTemplate};

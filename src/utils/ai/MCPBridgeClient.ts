@@ -32,7 +32,7 @@ const DEFAULT_WS_PORT = 3848;
 
 export class MCPBridgeClient {
     private ws: WebSocket | null = null;
-    private wsUrl: string;
+    public wsUrl: string;
     private autoReconnect: boolean;
     private reconnectInterval: number;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;

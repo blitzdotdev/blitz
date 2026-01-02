@@ -80,6 +80,7 @@ import {
     defaultIconTemplateSvg,
     gitignoreTemplate,
     mainJsTemplate,
+    mcpJsonTemplate,
     packageJsonTemplate
 } from '../data/projectTemplates.ts'
 import {AnotherFSHelper, getDirHandle, getFileHandle, queryHandlePerm, writeFileHandle} from "./fsApi.ts";
@@ -101,7 +102,7 @@ import z from "zod";
 import {PlayModeHelper} from "./PlayModeHelper.ts";
 import {EditPreviewHelper} from "./EditPreviewHelper.ts";
 import {ProjectSettingsManager} from "./ProjectSettingsManager.ts";
-import {initMCPBridge} from "./ai";
+import {initMCPBridge, MCPBridgeClient} from "./ai";
 import {
     backupPath,
     canMakeAsset,
@@ -766,6 +767,15 @@ export class ViewerInstanceManager extends EventDispatcher<{
             if(!w) console.error('ThreeEditor - cannot create .gitignore file')
         }
 
+        if(meta.handle && !(await meta.handle.getFileHandle('.mcp.json').catch(()=>null))){
+            const file = new File([JSON.stringify(mcpJsonTemplate, null, 2)], '.mcp.json', {type: 'application/json', lastModified: Date.now()})
+            const w = await this.fsHelper.writeFile(init.base, '.mcp.json', file, meta.path, true).catch(e=>{
+                console.error('ThreeEditor - cannot write default .mcp.json file', e)
+                return false
+            })
+            if(!w) console.error('ThreeEditor - cannot create .mcp.json file')
+        }
+
         try {
             const m = await parsePackageJsonSettings(init.package.file, meta)
             const assetsJsonText = init.assetsJson.file ? await init.assetsJson.file.text() : ''
@@ -1134,6 +1144,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
     defaultViewerSettings: ISerializedViewerConfig|null = null
     loadedProject: LoadedProject|null = null
 
+    mcpBridge: MCPBridgeClient | undefined
+
     _viewerPluginAdded = (e: any)=>{
         if(!e.plugin || !this.defaultViewerSettings) return
         const meta = getEmptyMeta()
@@ -1284,7 +1296,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             // console.timeEnd('settings load')
         }
         this._loadedNeedsSave = false
-        initMCPBridge({manager: this})
+        this.mcpBridge = this.loadedProject ? initMCPBridge({manager: this}) : undefined
         return v
     }
 

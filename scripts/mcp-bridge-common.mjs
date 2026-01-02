@@ -175,11 +175,15 @@ function handleEditorMessage(ws, message) {
 
 export function setupWebSocketServer() {
     try {
-        wsServer = new WebSocketServer({ port: WS_PORT });
+        const port = parseInt(WS_PORT);
+        if( isNaN(port) || port <= 0 || port > 65535) {
+            throw new Error(`[Bridge] Invalid WebSocket port: ${WS_PORT}`);
+        }
+        wsServer = new WebSocketServer({ port: port });
 
         wsServer.on('error', (error) => {
             if (error.code === 'EADDRINUSE') {
-                logFn(`[Bridge] WebSocket port ${WS_PORT} in use, continuing without WS server`);
+                logError(`[Bridge] WebSocket port ${port} in use, stop the other instance or choose a different port`);
             } else {
                 logError(`WebSocket server error: ${error.message}`);
             }
@@ -216,11 +220,11 @@ export function setupWebSocketServer() {
             });
         });
 
-        log(`[Bridge] WebSocket server listening on ws://localhost:${WS_PORT}`);
+        log(`[Bridge] WebSocket server listening on ws://localhost:${port}`);
         return wsServer;
     } catch (error) {
         if (error.code === 'EADDRINUSE') {
-            logFn(`[Bridge] WebSocket port ${WS_PORT} in use, continuing without WS server`);
+            logFn(`[Bridge] WebSocket port ${port} in use, continuing without WS server`);
             return null;
         }
         throw error;

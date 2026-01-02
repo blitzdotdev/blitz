@@ -626,7 +626,7 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
 export function initMCPBridge(options: MCPBridgeHandlerOptions & { wsUrl?: string }): MCPBridgeClient {
     const client = new MCPBridgeClient({
         wsUrl: options.wsUrl,
-        autoReconnect: true,
+        autoReconnect: false,
         onConnect: () => {
             console.log('[MCPBridge] Connected to bridge server');
         },
@@ -641,11 +641,8 @@ export function initMCPBridge(options: MCPBridgeHandlerOptions & { wsUrl?: strin
     const handler = createMCPBridgeHandler(options);
     client.setRequestHandler(handler);
 
-    // Start the connection
-    client.connect().catch((error) => {
-        console.error('[MCPBridge] Initial connection failed:', error);
-        // Auto-reconnect is enabled, so it will retry
-    });
+    // Don't auto-connect - let users connect manually through the UI
+    console.log('[MCPBridge] MCP Bridge initialized. Connect manually through the AI MCP Bridge tab.');
 
     return client;
 }

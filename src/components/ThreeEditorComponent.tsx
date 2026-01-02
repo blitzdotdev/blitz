@@ -29,6 +29,7 @@ import {BPTreeFolderComponent} from "./BPTreeFolderComponent.tsx";
 import {iconForSelectionObject} from "../utils/icons.tsx";
 import {MemoryTab} from "./MemoryTab.tsx";
 import {AIAgentTab} from "./AIAgentTab.tsx";
+import {AIMCPTab} from "./AIMCPTab.tsx";
 import {objToSelectItemRef, RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
 import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
@@ -311,14 +312,23 @@ export function ThreeEditorComponent() {
                                 },
                                 content: <MemoryTab/>
                             },
+                            // {
+                            //     title: 'AI Agent',
+                            //     style: {
+                            //         position: "relative",
+                            //         display: "flex",
+                            //         flexDirection: "column",
+                            //     },
+                            //     content: <AIAgentTab/>
+                            // },
                             {
-                                title: 'AI Agent',
+                                title: 'AI MCP Bridge',
                                 style: {
                                     position: "relative",
                                     display: "flex",
                                     flexDirection: "column",
                                 },
-                                content: <AIAgentTab/>
+                                content: <AIMCPTab mcpBridge={manager.mcpBridge}/>
                             },
                         ],
                     }}

@@ -12,7 +12,7 @@ import {
 import {
     setLogFunctions,
     setupWebSocketServer,
-    startHttpServer,
+    // startHttpServer,
     shutdown,
     mcpResources,
     executeTool,
@@ -39,7 +39,6 @@ import {mcpTools} from "./mcp-tools.mjs";
 const isTestMode = process.argv.includes('--test');
 
 const transport = process.argv.includes('--http') ? 'http' : 'stdio';
-
 
 // In MCP mode, we must ensure NOTHING goes to stdout except JSON-RPC
 if (transport === 'stdio' && !isTestMode) {
