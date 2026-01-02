@@ -219,6 +219,7 @@ class RigidBodyComponent extends Object3DComponent {
 - Preload assets before game starts using the AssetManagerPlugin
 - Use relative paths from the game folder for assets
 - Destroy loaded assets in `stop()` or `destroy()`.
+- Models in the projects `assets` folder can be loaded with the base path `/kite/@/assets/`. E.g. `/kite/@/assets/enemy.glb`
 
 ## Timers & Delays
 - Use `setTimeout`/`setInterval` but clear them in `stop()` to prevent memory leaks

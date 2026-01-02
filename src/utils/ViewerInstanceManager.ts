@@ -78,6 +78,7 @@ import {
     agentsMdTemplate,
     defaultIconTemplatePng,
     defaultIconTemplateSvg,
+    gitignoreTemplate,
     mainJsTemplate,
     packageJsonTemplate
 } from '../data/projectTemplates.ts'
@@ -743,7 +744,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             if(w) init.assetsJson.file = file
         }
         if(!init.assetsJson.file) {
-            // throw new Error('No assets.json file in project and cannot create one')
+            // throw new Error('No assets.json file in project')
             console.error('No assets.json file in project and cannot create one')
         }
 
@@ -754,6 +755,15 @@ export class ViewerInstanceManager extends EventDispatcher<{
                 return false
             })
             if(!w) console.error('ThreeEditor - cannot create AGENTS.md file')
+        }
+
+        if(meta.handle && !(await meta.handle.getFileHandle('.gitignore').catch(()=>null))){
+            const file = new File([gitignoreTemplate], '.gitignore', {type: 'text/plain', lastModified: Date.now()})
+            const w = await this.fsHelper.writeFile(init.base, '.gitignore', file, meta.path, true).catch(e=>{
+                console.error('ThreeEditor - cannot write default .gitignore file', e)
+                return false
+            })
+            if(!w) console.error('ThreeEditor - cannot create .gitignore file')
         }
 
         try {

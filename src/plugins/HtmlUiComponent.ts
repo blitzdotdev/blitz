@@ -16,6 +16,7 @@ export type UiPositionMode = typeof uiPositionMode[number]
 export class HtmlUiComponent extends Object3DComponent {
     static ComponentType = 'HtmlUiComponent'
     static StateProperties: ComponentDefn['StateProperties'] = [
+        'enabled',
         {
             key: 'htmlData',
             type: 'string',
@@ -41,6 +42,8 @@ export class HtmlUiComponent extends Object3DComponent {
     ]
 
     declare element: HTMLDivElement
+
+    enabled = true
 
     // HTML content
     htmlData = '<div>Hello World</div>'

@@ -1,5 +1,7 @@
 import {mainScenePath, settingsKey} from "../utils/project.ts";
 import agentsMdTemplate from './AgentsMdTemplate.md?raw';
+import gitignoreTemplate1 from './GitignoreTemplate.txt?raw';
+
 export const mainJsTemplate = `
 export async function main({ viewer }){
     
@@ -49,4 +51,11 @@ export const defaultIconTemplateSvg = `
 </svg>
 `
 
+export const gitignoreTemplate = gitignoreTemplate1 + `
+
+./${settingsKey}/running/
+./${settingsKey}/temp/
+./${settingsKey}/backups/
+./${settingsKey}/thumbs/
+`
 export {agentsMdTemplate};
