@@ -2,7 +2,6 @@
 // MCP Tools Definition
 // ============================================
 
-
 export const mcpTools = [
     {
         name: 'getSceneHierarchy',

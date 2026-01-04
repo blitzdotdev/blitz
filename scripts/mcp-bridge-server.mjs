@@ -14,7 +14,6 @@ import {
     setupWebSocketServer,
     // startHttpServer,
     shutdown,
-    mcpResources,
     executeTool,
     readResource,
     editorState,
@@ -23,6 +22,7 @@ import {
 } from './mcp-bridge-common.mjs';
 
 import {mcpTools} from "./mcp-tools.mjs";
+import {mcpResources} from "./mcp-resources.mjs";
 
 /**
  * MCP Bridge Server for Kite 3D Game Engine - Stdio Transport
