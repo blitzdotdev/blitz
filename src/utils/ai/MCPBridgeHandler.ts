@@ -7,6 +7,8 @@
 
 import { ViewerInstanceManager } from '../ViewerInstanceManager.ts';
 import { MCPBridgeClient, RequestHandler } from './MCPBridgeClient.ts';
+import { mcpTools, mcpResources } from './MCPToolsResources.ts';
+import { AppToaster } from 'uiconfig-blueprint/lib/esm/lib';
 import {
     EntityComponentPlugin,
     PickingPlugin,
@@ -22,14 +24,13 @@ import {
 
 export interface MCPBridgeHandlerOptions {
     manager: ViewerInstanceManager;
-    onChatMessage?: (message: string, type: 'info' | 'warning' | 'error' | 'success') => void;
 }
 
 /**
  * Create request handlers for MCP bridge actions
  */
 export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): RequestHandler {
-    const { manager, onChatMessage } = options;
+    const { manager } = options;
 
     const getViewer = () => manager.get();
     const getScene = () => getViewer()?.scene;
@@ -70,13 +71,12 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
             name: obj.name,
             type: obj.type,
             visible: obj.visible,
-            position: { x: obj.position.x, y: obj.position.y, z: obj.position.z },
-            rotation: { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z },
-            scale: { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z },
+            position: { x: obj.position.x.toFixed(4), y: obj.position.y.toFixed(4), z: obj.position.z.toFixed(4) },
+            rotation: { x: obj.rotation.x.toFixed(4), y: obj.rotation.y.toFixed(4), z: obj.rotation.z.toFixed(4) },
+            scale: { x: obj.scale.x.toFixed(4), y: obj.scale.y.toFixed(4), z: obj.scale.z.toFixed(4) },
             components: components ? Array.from(components).map(c => ({
                 uuid: c.uuid,
-                name: (c as any).componentName || c.constructor.name,
-                type: c.constructor.name,
+                type: c.constructor.ComponentType,
             })) : [],
         };
 
@@ -104,11 +104,23 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 const picking = getPicking();
                 const selected = picking?.getSelectedObject();
                 const isObject = selected && 'isObject3D' in selected && selected.isObject3D;
+                const project = manager.loadedProject;
                 return {
-                    hasViewer: !!viewer,
+                    hasProject: !!project,
+                    projectPath: project?.path || null,
+                    openedFile: manager.loadedProjectFile?.path || null,
                     isRunning: manager.playMode?.isRunningMode ?? false,
+                    needsSave: manager.loadedNeedsSave,
                     selectedObject: isObject ? serializeObject(selected as IObject3D) : null,
-                    projectPath: manager.loadedProject?.path || null,
+                };
+            }
+
+            case 'getToolsAndResources': {
+                console.warn('[MCPBridge] getToolsAndResources');
+                // Return tools and resources to the bridge server
+                return {
+                    tools: mcpTools,
+                    resources: mcpResources
                 };
             }
 
@@ -268,19 +280,19 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 if (!ecp) return { error: 'EntityComponentPlugin not available' };
 
                 const objectIdentifier = params.objectIdentifier as string;
-                const componentName = params.componentName as string;
+                const componentType = params.componentType as string;
 
                 const obj = findObject(objectIdentifier);
                 if (!obj) return { error: `Object not found: ${objectIdentifier}` };
 
-                const result = await ecp.addComponent(obj, componentName);
-                if (!result?.component) return { error: `Failed to add component: ${componentName}` };
+                const result = await ecp.addComponent(obj, componentType);
+                if (!result?.component) return { error: `Failed to add component: ${componentType}` };
 
                 return {
                     success: true,
                     component: {
                         uuid: result.component.uuid,
-                        name: (result.component as any).componentName || componentName,
+                        type: result.component.constructor.ComponentType || componentType,
                     },
                 };
             }
@@ -290,18 +302,21 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 if (!ecp) return { error: 'EntityComponentPlugin not available' };
 
                 const objectIdentifier = params.objectIdentifier as string;
-                const componentName = params.componentName as string;
+                const componentType = params.componentIdentifier as string | undefined;
 
                 const obj = findObject(objectIdentifier);
                 if (!obj) return { error: `Object not found: ${objectIdentifier}` };
 
-                const components = EntityComponentPlugin.ObjectToComponents.get(obj);
-                if (!components) return { error: 'No components on object' };
+                const components1 = EntityComponentPlugin.ObjectToComponents.get(obj);
+                if (!components1) return { error: 'No components on object' };
 
-                const component = Array.from(components).find(
-                    c => (c as any).componentName === componentName || c.uuid === componentName
+                const components = components1.filter(
+                    c => (c.constructor.ComponentType === componentType) || (c.uuid === componentType)
                 );
-                if (!component) return { error: `Component not found: ${componentName}` };
+                if (!components.length) return { error: `Component not found: ${componentType}` };
+                if (components.length > 1) return { error: `Multiple components found for type: ${componentType}. Please specify UUID.` };
+
+                const component = components[0];
 
                 ecp.removeComponent(obj, component.uuid);
                 return { success: true };
@@ -326,16 +341,16 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 };
             }
 
-            case 'getProjectFiles': {
-                const project = manager.loadedProject;
-                if (!project) return { error: 'No project loaded' };
-
-                // Return project info - files would be listed by reading directory
-                return {
-                    projectPath: project.path,
-                    hasProject: true,
-                };
-            }
+            // case 'getProjectFiles': {
+            //     const project = manager.loadedProject;
+            //     if (!project) return { error: 'No project loaded' };
+            //
+            //     // Return project info - files would be listed by reading directory
+            //     return {
+            //         projectPath: project.path,
+            //         hasProject: true,
+            //     };
+            // }
 
             // case 'readFile': {
             //     const path = params.path as string;
@@ -379,12 +394,11 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                     case 'redo':
                         viewer?.getPlugin<UndoManagerPlugin>('UndoManagerPlugin')?.redo?.();
                         return { success: true };
-                    case 'save':
-                        // Trigger save through the manager's save mechanism
-                        // This would need proper integration with the save workflow
-                        return { error: 'Save command not yet implemented via MCP' };
                     case 'play':
                         await manager.playMode?.startRunMode();
+                        return { success: true };
+                    case 'pause':
+                        await manager.playMode?.pauseRunMode();
                         return { success: true };
                     case 'stop':
                         await manager.playMode?.stopRunMode();
@@ -412,6 +426,36 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 return { materials };
             }
 
+            case 'saveOpenedFile': {
+                if (!manager.loadedProjectFile || !manager.loadedProject) {
+                    return { error: 'No project file is currently opened' };
+                }
+
+                try {
+                    const res = await manager.saveProjectSceneOrAsset(manager.loadedProject, manager.loadedProjectFile).catch(e => {
+                        console.error(e);
+                        return { error: 'Unable to save file: ' + (e.message || e.toString()) };
+                    });
+
+                    if (res && res.error) {
+                        const result: { error: string; warn?: string } = { error: res.error };
+                        if ('warn' in res && res.warn) {
+                            result.warn = res.warn;
+                        }
+                        return result;
+                    }
+
+                    const filePath = `${manager.loadedProject.path}${manager.loadedProjectFile.path}`;
+                    return {
+                        success: true,
+                        message: `Saved ${filePath} successfully.`,
+                        filePath
+                    };
+                } catch (error) {
+                    return { error: `Failed to save file: ${(error as Error).message}` };
+                }
+            }
+
             case 'getTextures': {
                 const viewer = getViewer();
                 if (!viewer) return { error: 'No viewer available' };
@@ -432,25 +476,36 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                 return { textures };
             }
 
-            case 'sendChatMessage': {
+            case 'showToast': {
                 const message = params.message as string;
-                const type = (params.type as 'info' | 'warning' | 'error' | 'success') || 'info';
+                const type = (params.type as 'success' | 'info' | 'warning' | 'danger') || 'info';
 
-                if (onChatMessage) {
-                    onChatMessage(message, type);
-                }
+                // Map toast types to Blueprint intents and icons
+                const intentMap = {
+                    success: 'success',
+                    info: 'primary',
+                    warning: 'warning',
+                    danger: 'danger'
+                } as const
+
+                const iconMap = {
+                    success: 'tick',
+                    info: 'info-sign',
+                    warning: 'warning-sign',
+                    danger: 'error'
+                }  as const
+
+                AppToaster().show({
+                    message,
+                    intent: intentMap[type],
+                    icon: iconMap[type],
+                    timeout: 3000,
+                    isCloseButtonShown: true,
+                });
+
                 return { success: true };
             }
 
-            case 'getProjectInfo': {
-                const project = manager.loadedProject;
-                return {
-                    hasProject: !!project,
-                    projectPath: project?.path || null,
-                    isRunning: manager.playMode?.isRunningMode ?? false,
-                    needsSave: manager.loadedNeedsSave,
-                };
-            }
 
             case 'duplicateObject': {
                 const scene = getScene();
@@ -601,7 +656,7 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                     if (hasComponent) {
                         const components = EntityComponentPlugin.ObjectToComponents.get(obj);
                         const hasIt = components && Array.from(components).some(
-                            c => (c as any).componentName === hasComponent || c.constructor.name === hasComponent
+                            c => c.constructor.ComponentType === hasComponent || c.uuid === hasComponent
                         );
                         if (!hasIt) matches = false;
                     }
@@ -650,8 +705,7 @@ export function initMCPBridge(options: MCPBridgeHandlerOptions & { wsUrl?: strin
     const handler = createMCPBridgeHandler(options);
     client.setRequestHandler(handler);
 
-    // Don't auto-connect - let users connect manually through the UI
-    console.log('[MCPBridge] MCP Bridge initialized. Connect manually through the AI MCP Bridge tab.');
+    client.connect()
 
     return client;
 }

@@ -1,6 +1,7 @@
-// ============================================
-// MCP Tools Definition
-// ============================================
+/**
+ * MCP Tools and Resources definitions for Kite 3D Editor
+ * These are sent to the bridge server when it connects
+ */
 
 export const mcpTools = [
     {
@@ -225,10 +226,10 @@ export const mcpTools = [
             type: 'object',
             properties: {
                 objectIdentifier: {type: 'string', description: 'The name or UUID of the object'},
-                componentName: {type: 'string', description: 'The name of the component to add'},
+                componentType: {type: 'string', description: 'The type of the component to add'},
                 properties: {type: 'object', description: 'Initial properties for the component'}
             },
-            required: ['objectIdentifier', 'componentName']
+            required: ['objectIdentifier', 'componentType']
         }
     },
     {
@@ -238,27 +239,27 @@ export const mcpTools = [
             type: 'object',
             properties: {
                 objectIdentifier: {type: 'string', description: 'The name or UUID of the object'},
-                componentName: {type: 'string', description: 'The name of the component to remove'}
+                componentIdentifier: {type: 'string', description: 'The type or UUID of the component to remove'}
             },
-            required: ['objectIdentifier', 'componentName']
+            required: ['objectIdentifier', 'componentIdentifier']
         }
     },
     {
         name: 'getAvailableComponents',
-        description: 'Get a list of available components/scripts that can be added to objects',
+        description: 'Get a list of available component types that can be added to objects',
         inputSchema: {type: 'object', properties: {}, required: []}
     },
-    {
-        name: 'getProjectFiles',
-        description: 'Get a list of files in the current project',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                path: {type: 'string', description: 'Optional subdirectory path to list'}
-            },
-            required: []
-        }
-    },
+    // {
+    //     name: 'getProjectFiles',
+    //     description: 'Get a list of files in the current project',
+    //     inputSchema: {
+    //         type: 'object',
+    //         properties: {
+    //             path: {type: 'string', description: 'Optional subdirectory path to list'}
+    //         },
+    //         required: []
+    //     }
+    // },
     {
         name: 'executeCommand',
         description: 'Execute an editor command (undo, redo, save, play, stop, etc.)',
@@ -268,7 +269,7 @@ export const mcpTools = [
                 command: {
                     type: 'string',
                     description: 'The command to execute',
-                    enum: ['undo', 'redo', 'save', 'play', 'stop', 'pause', 'refresh']
+                    enum: [/*'undo', 'redo',*/ 'play', 'stop', 'pause']
                 }
             },
             required: ['command']
@@ -285,16 +286,16 @@ export const mcpTools = [
         inputSchema: {type: 'object', properties: {}, required: []}
     },
     {
-        name: 'sendChatMessage',
-        description: 'Send a message to be displayed in the editor chat/log',
+        name: 'showToast',
+        description: 'Show a toast notification message to the user in the editor UI',
         inputSchema: {
             type: 'object',
             properties: {
-                message: {type: 'string', description: 'The message to display'},
+                message: {type: 'string', description: 'The message to display in the toast'},
                 type: {
                     type: 'string',
-                    description: 'Message type: info, warning, error, success',
-                    enum: ['info', 'warning', 'error', 'success']
+                    description: 'Toast type: success (green), info (blue), warning (orange), or danger (red)',
+                    enum: ['success', 'info', 'warning', 'danger']
                 }
             },
             required: ['message']
@@ -302,12 +303,7 @@ export const mcpTools = [
     },
     {
         name: 'getEditorState',
-        description: 'Get the current editor state including selection and mode',
-        inputSchema: {type: 'object', properties: {}, required: []}
-    },
-    {
-        name: 'getProjectInfo',
-        description: 'Get information about the current project',
+        description: 'Get the current editor state including project info, selection, play mode, and save state',
         inputSchema: {type: 'object', properties: {}, required: []}
     },
     {
@@ -334,5 +330,29 @@ export const mcpTools = [
             properties: {},
             required: []
         }
+    },
+    {
+        name: 'saveOpenedFile',
+        description: 'Save the currently opened project file (scene or asset). This saves the current state of the loaded scene or asset file to disk.',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+            required: []
+        }
     }
+];
+
+export const mcpResources = [
+    {
+        uri: 'kite3d://scene/hierarchy',
+        name: 'Scene Hierarchy',
+        description: 'Current scene object hierarchy',
+        mimeType: 'application/json'
+    },
+    {
+        uri: 'kite3d://editor/state',
+        name: 'Editor State',
+        description: 'Current editor state including selection and mode',
+        mimeType: 'application/json'
+    },
 ];

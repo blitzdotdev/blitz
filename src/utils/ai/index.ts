@@ -11,6 +11,7 @@ export type { BridgeMessage, RequestHandler, MCPBridgeClientOptions } from './MC
 export { createMCPBridgeHandler, initMCPBridge } from './MCPBridgeHandler.ts';
 export type { MCPBridgeHandlerOptions } from './MCPBridgeHandler.ts';
 
+export { mcpTools, mcpResources } from './MCPToolsResources.ts';
+
 export { ChatHistoryManager } from './ChatHistoryManager.ts';
 export type { ChatMessage, ChatHistory } from './ChatHistoryManager.ts';
-

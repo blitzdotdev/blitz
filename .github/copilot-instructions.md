@@ -9,5 +9,5 @@
 - `EntityComponentPlugin` from threepipe is used to manage components on objects in the scene. When in doubt check the source code in `node_modules/threepipe/src`.
 - The game developer is expected to write scripts manually or using agenetic coding tools to create full-featured game components and systems. The game editor UI includes an AI agent, but many users prefer to use local AI in their IDE like copilot, claude code etc.
 - Game editor UI is built using React, Blueprint.js 5, and uiconfig.js. It has many custom styles and overrides the blueprint default theme heavily.
-- After doing the task, do NOT explain all the changes in a summary.
+- After doing the task, DO NOT explain all the changes in a summary or md file
 - Do not create extra markdown files unless necessary

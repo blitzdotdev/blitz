@@ -2,6 +2,9 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import http from 'http';
+import { randomUUID } from 'crypto';
 import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
@@ -18,40 +21,43 @@ import {
     readResource,
     editorState,
     editorClients,
-    requestFromEditor
+    requestFromEditor,
+    mcpTools,
+    mcpResources
 } from './mcp-bridge-common.mjs';
 
-import {mcpTools} from "./mcp-tools.mjs";
-import {mcpResources} from "./mcp-resources.mjs";
-
 /**
- * MCP Bridge Server for Kite 3D Game Engine - Stdio Transport
+ * MCP Bridge Server for Kite 3D Game Engine - Stdio/HTTP Transport
  *
- * This uses stdio transport for MCP communication.
- * For HTTP transport, use mcp-bridge-http.mjs instead.
+ * This uses stdio or HTTP transport for MCP communication.
  *
  * Usage:
- *   MCP mode: node mcp-bridge-server.mjs [--port=3848]
+ *   Stdio mode: node mcp-bridge-server.mjs [--port=3848]
+ *   HTTP mode: node mcp-bridge-server.mjs --http [--port=3848] [--mcp-port=3849]
  *   Test mode: node mcp-bridge-server.mjs --test [--port=3848]
  */
 
 // Parse command line arguments
 const args = process.argv.slice(2);
 const isTestMode = args.includes('--test');
-const transport = args.includes('--http') ? 'http' : 'stdio';
+const transportType = args.includes('--http') ? 'http' : 'stdio';
 
-// Parse --port argument
+// Parse --port argument (for WebSocket)
 const portArg = args.find(arg => arg.startsWith('--port='));
 const wsPort = portArg ? portArg.split('=')[1] : (process.env.MCP_BRIDGE_WS_PORT || undefined);
 
+// Parse --mcp-port argument (for HTTP transport)
+const mcpPortArg = args.find(arg => arg.startsWith('--mcp-port='));
+const mcpHttpPort = mcpPortArg ? parseInt(mcpPortArg.split('=')[1]) : (process.env.MCP_HTTP_PORT ? parseInt(process.env.MCP_HTTP_PORT) : 3849);
+
 // In MCP mode, we must ensure NOTHING goes to stdout except JSON-RPC
-if (transport === 'stdio' && !isTestMode) {
-    process.removeAllListeners('warning');
-    const noop = () => {};
-    console.log = noop;
-    console.info = noop;
-    console.warn = noop;
-    console.debug = noop;
+if (transportType === 'stdio' && !isTestMode) {
+    // process.removeAllListeners('warning');
+    // const noop = () => {};
+    // console.log = noop;
+    // console.info = noop;
+    // console.warn = noop;
+    // console.debug = noop;
 }
 
 // Catch any uncaught errors before they can corrupt stdout
@@ -66,8 +72,8 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // Setup logging
-const log = isTestMode ? ((...args) => process.stderr.write(args.join(' ') + '\n')) : () => {};
-const logError = isTestMode ? ((...args) => process.stderr.write('ERROR: ' + args.join(' ') + '\n')) : () => {};
+const log = (...args)=>process.stderr.write(args.join(' ') + '\n');
+const logError = (...args)=>process.stderr.write('ERROR: ' + args.join(' ') + '\n');
 setLogFunctions(log, logError);
 
 // ============================================
@@ -76,10 +82,14 @@ setLogFunctions(log, logError);
 
 const mcpServer = new Server(
     { name: 'kite3d-dev-mcp', version: '1.0.0' },
-    { capabilities: { tools: {}, resources: {} } }
+    { capabilities: { tools: {
+                listChanged: true,
+            }, resources: {
+                listChanged: true,
+            } } }
 );
 
-mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: mcpTools }));
+mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: mcpTools.value }));
 
 mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
@@ -89,7 +99,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
 });
 
-mcpServer.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: mcpResources }));
+mcpServer.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: mcpResources.value }));
 
 mcpServer.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const { uri } = request.params;
@@ -111,7 +121,11 @@ async function main() {
     try {
         // Wrap WebSocket setup in try-catch
         try {
-            setupWebSocketServer(wsPort);
+            setupWebSocketServer({
+                port: wsPort,
+                onToolsChanged: ()=>mcpServer && mcpServer.sendToolListChanged(),
+                onResourcesChanged: ()=>mcpServer && mcpServer.sendResourceListChanged(),
+            });
         } catch (wsError) {
             process.stderr.write(`WebSocket setup error: ${wsError.message}\n`);
             process.exit(1);
@@ -175,10 +189,48 @@ async function main() {
 
             prompt();
         } else {
-            const transport = new StdioServerTransport();
-            await mcpServer.connect(transport);
-            // Keep the process alive
-            process.stdin.resume();
+            if (transportType === 'http') {
+                // HTTP Transport mode - NOT TESTED
+                const httpTransport = new StreamableHTTPServerTransport({
+                    sessionIdGenerator: () => randomUUID(),
+                });
+
+                await mcpServer.connect(httpTransport);
+
+                // Create HTTP server
+                const httpServer = http.createServer(async (req, res) => {
+                    try {
+                        await httpTransport.handleRequest(req, res);
+                    } catch (error) {
+                        process.stderr.write(`HTTP request error: ${error.message}\n`);
+                        if (!res.headersSent) {
+                            res.writeHead(500, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ error: 'Internal server error' }));
+                        }
+                    }
+                });
+
+                httpServer.listen(mcpHttpPort, () => {
+                    process.stderr.write(`[Bridge] MCP HTTP server listening on port ${mcpHttpPort}\n`);
+                });
+
+                // Handle graceful shutdown for HTTP
+                const shutdownHttp = async () => {
+                    process.stderr.write('\n[Bridge] Shutting down HTTP server...\n');
+                    httpServer.close();
+                    await httpTransport.close();
+                };
+
+                process.on('SIGINT', shutdownHttp);
+                process.on('SIGTERM', shutdownHttp);
+
+            } else {
+                // Stdio Transport mode
+                const transport = new StdioServerTransport();
+                await mcpServer.connect(transport);
+                // Keep the process alive
+                process.stdin.resume();
+            }
         }
     } catch (error) {
         process.stderr.write(`ERROR: ${error.message}\n${error.stack}\n`);

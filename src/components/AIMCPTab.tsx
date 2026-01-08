@@ -246,7 +246,7 @@ export function AIMCPTab({
                                 overflow: 'auto'
                             }}>
 {`{
-  "servers": {
+  "mcpServers": {
     "kite3d-dev-mcp": {
       "type": "stdio",
       "command": "npx",

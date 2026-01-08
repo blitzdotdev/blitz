@@ -47,7 +47,7 @@ export class MCPBridgeClient {
     constructor(options: MCPBridgeClientOptions = {}) {
         this.wsUrl = options.wsUrl || `ws://localhost:${DEFAULT_WS_PORT}`;
         this.autoReconnect = options.autoReconnect ?? true;
-        this.reconnectInterval = options.reconnectInterval ?? 10000;
+        this.reconnectInterval = options.reconnectInterval ?? 3000;
         this.onConnect = options.onConnect;
         this.onDisconnect = options.onDisconnect;
         this.onError = options.onError;
@@ -213,4 +213,3 @@ export class MCPBridgeClient {
 export function createMCPBridgeClient(options?: MCPBridgeClientOptions): MCPBridgeClient {
     return new MCPBridgeClient(options);
 }
-

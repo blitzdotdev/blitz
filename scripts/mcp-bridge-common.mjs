@@ -26,6 +26,10 @@ export let editorState = {
     isConnected: false
 };
 
+// Dynamic tools and resources from editor
+export let mcpTools = {value: []};
+export let mcpResources = {value: []};
+
 // WebSocket server reference
 let wsServer = null;
 let httpServer = null;
@@ -173,7 +177,7 @@ function handleEditorMessage(ws, message) {
     }
 }
 
-export function setupWebSocketServer(port) {
+export function setupWebSocketServer({port, onToolsChanged, onResourcesChanged} = {}) {
     try {
         const parsedPort = parseInt(port || DEFAULT_WS_PORT);
         if( isNaN(parsedPort) || parsedPort <= 0 || parsedPort > 65535) {
@@ -183,20 +187,52 @@ export function setupWebSocketServer(port) {
 
         wsServer.on('error', (error) => {
             if (error.code === 'EADDRINUSE') {
-                logError(`[Bridge] WebSocket port ${parsedPort} in use, stop the other instance or choose a different port`);
+                console.error(`[Bridge] WebSocket port ${parsedPort} in use, stop the other instance or choose a different port`);
             } else {
-                logError(`WebSocket server error: ${error.message}`);
+                console.error(`WebSocket server error: ${error.message}`);
             }
         });
 
         wsServer.on('connection', (ws) => {
-            log('[Bridge] Editor client connected');
+            console.error('[Bridge] Editor client connected');
             editorClients.add(ws);
             editorState.isConnected = true;
 
+            // Request initial state
             sendToEditor(ws, {
                 type: 'request',
+                requestId: ++requestIdCounter,
                 action: 'getState'
+            });
+
+            // Request tools and resources
+            const toolsRequestId = ++requestIdCounter;
+            pendingRequests.set(toolsRequestId, {
+                resolve: (data) => {
+                    // toolsRes.resolve(data)
+                    if (data && typeof data === 'object') {
+                        if (data.tools) {
+                            mcpTools.value = data.tools;
+                            console.error('[Bridge] Received', data.tools.length, 'tools from editor');
+                            if (onToolsChanged) onToolsChanged(data.tools);
+                        }
+                        if (data.resources) {
+                            mcpResources.value = data.resources;
+                            console.error('[Bridge] Received', data.resources.length, 'resources from editor');
+                            if (onResourcesChanged) onResourcesChanged(data.resources);
+                        }
+                    }
+                },
+                reject: (error) => {
+                    logError('[Bridge] Failed to get tools and resources:', error);
+                    // toolsRes.reject(error)
+                }
+            });
+
+            sendToEditor(ws, {
+                type: 'request',
+                requestId: toolsRequestId,
+                action: 'getToolsAndResources'
             });
 
             ws.on('message', (data) => {
@@ -299,8 +335,6 @@ export async function readResource(uri) {
                 return await requestFromEditor('getSceneHierarchy');
             case 'kite3d://editor/state':
                 return await requestFromEditor('getEditorState');
-            case 'kite3d://project/info':
-                return await requestFromEditor('getProjectInfo');
             default:
                 return { error: `Unknown resource: ${uri}` };
         }
