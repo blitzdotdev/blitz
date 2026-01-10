@@ -2,9 +2,9 @@
 
 - The game is using kite game engine built on top of threepipe and three.js.
 - Scenes in the game are designed in a UI editor(similar to Unity/Godot) and exported as .scene.glb files. These are binary files and cannot be read or edited as text
-- The game dependencies, packages, scripts etc are defined in the package.json file in the game project. Any script or dependency required in the scene or the editor must be added to package.json. Call MCP tool `refreshPackageJson` to update the editor after modifying package.json.
+- The game dependencies, packages, scripts etc are defined in the package.json file in the game project. Any script or dependency required in the scene or the editor must be added to package.json (under kite->scripts, like `{"import": "./assets/file.script.js"}`). Call MCP tool `refreshPackageJson` to update the editor after modifying package.json
 - The game consists of objects in the scene like player, trees, enemies, weapons, etc. Each object is a three.js `Object3D` with `Object3DComponents` that extend the functionality of the objects
-- Custom components are used to add game-specific behavior to objects. For example, the `PlayerComponent` handles player movement and actions, while the `EnemyComponent` manages enemy AI. These components are defined in their dedicated .script.js files in the game folder and can be attached to the objects using the UI.
+- Custom components are used to add game-specific behavior to objects. For example, the `PlayerComponent` handles player movement and actions, while the `EnemyComponent` manages enemy AI. These components are defined in their dedicated .script.js files in the game `assets` folder and can be attached to the objects using the UI.
 - Instruct the user to make changes to the 3D scene or to add or remove components from the game.
 - Check node_modules/threepipe for the source code of threepipe and its plugins like `ThreeViewer`, `EntityComponentPlugin` etc.
 - threepipe is based on three.js, any three.js export can be imported like `import * as THREE from 'three';`, for three.js addons, they need to be imported from threepipe like `import { SimplifyModifier } from 'threepipe';`(but its not required in most cases as the functionality is built into some plugin).
@@ -19,6 +19,7 @@
 - Define `Object3DComponent` classes that attach to scene objects
 - **Lifecycle**: Bound to objects - loaded/unloaded when the object is added/removed from the scene
 - Components are instantiated per-object and can have multiple instances in a scene
+- Only ONE component per script.js file
 - Access via `EntityComponentPlugin` methods
 - Use for: Player controllers, enemy AI, interactive objects, per-object/per-scene/per-level behaviors
 - Example: `PlayerController.script.js`, `EnemyAI.script.js`, `Collectible.script.js`, `GameManager.script.js`
@@ -90,6 +91,7 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
   this.object.addEventListener('objectUpdate', this._onObjectUpdate)
   // In destroy(): this.object.removeEventListener('objectUpdate', this._onObjectUpdate)
   ```
+- Only items that are supposed to be visible in the edit mode should be created in `init()` and cleaned up in `destroy()`. Items only needed during play mode should be created in `start()` and cleaned up in `stop()`.
 
 ## State Properties
 - Listen to state property changes: `this.onStateChange('propertyName', (newVal, oldVal) => { ... })`

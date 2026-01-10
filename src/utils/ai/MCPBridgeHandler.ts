@@ -187,7 +187,7 @@ export function createMCPBridgeHandler(options: MCPBridgeHandlerOptions): Reques
                     return { error: `Unknown object type: ${type}. Available types: ${Object.keys(generator.generators).join(', ')}` };
                 }
 
-                const obj = generator.generate(type, params, false, false) as IObject3D | undefined;
+                const obj = generator.generate(type, {...params, type: undefined}, false, false) as IObject3D | undefined;
 
                 if (obj) {
                     if (name) obj.name = name;
