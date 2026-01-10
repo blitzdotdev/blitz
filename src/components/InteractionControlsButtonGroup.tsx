@@ -2,7 +2,7 @@ import {ButtonGroup, Intent, Menu, Popover, Tooltip} from "@blueprintjs/core";
 import {FC, useCallback, useEffect, useReducer, useState} from 'react'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
 import {Object3DGenerationMenu} from './Object3DGenerationMenu.tsx'
-import {EditModePlugin} from "../utils/EditModePlugin.ts";
+import {CameraType, EditModePlugin} from "../utils/EditModePlugin.ts";
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
@@ -13,9 +13,7 @@ import {CameraSelectionMenu} from "./CameraSelectionMenu.tsx";
 import {useManager} from "../utils/UseManager.ts";
 import {OverrideLightingType, OverrideMaterialType} from "../utils/three/LightMaterialOverrider.ts";
 
-type SetKeys = 'transform-controls' | 'post-processing' | 'widgets' | 'grid' | 'backgroundColor' | 'cameraMode' | 'overrideMaterial'
-
-type CameraType = 'perspective' | 'orthographic' | 'default';
+type SetKeys = 'transform-controls' | 'post-processing' | 'widgets' | 'grid' | 'backgroundColor' | 'overrideMaterial'
 
 export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     const manager = useManager()
@@ -28,7 +26,6 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
 
     states['grid'] = useReducer(editModePlugin.toggleGrid, false)
     states['backgroundColor'] = useReducer(editModePlugin.toggleBackgroundColor, false)
-    states['cameraMode'] = useReducer(editModePlugin.toggleCameraMode, false)
 
     // Track actual override material state, not just toggle
     const [overrideMaterialActive, setOverrideMaterialActive] = useState<OverrideMaterialType | null>(null);
@@ -46,10 +43,27 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
         states['widgets'][1](true)
         states['grid'][1](editModePlugin.grid.visible)
         states['backgroundColor'][1](editModePlugin.viewer?.renderManager.renderPass.renderBackground ?? false)
-        states['cameraMode'][1](editModePlugin.cameraMode === 'orthographic')
         setOverrideMaterialActive(null)
         setOverrideLightingActive(null)
-        setCurrentCamera(editModePlugin.cameraMode)
+
+        // Listen to camera changes from EditModePlugin
+        const handleCameraChange = () => {
+            const activeCameraType = editModePlugin.getActiveCameraType();
+            setCurrentCamera(activeCameraType);
+        };
+
+        // Listen to EditModePlugin camera changes
+        editModePlugin.addEventListener('cameraChanged', handleCameraChange);
+
+        // Listen to sceneUpdate for when scene cameras are activated externally
+        const handleSceneUpdate = (e: any) => {
+            // Check if mainCamera changed (scene camera activated)
+            handleCameraChange();
+        };
+        editModePlugin.viewer?.scene.addEventListener('mainCameraChange', handleSceneUpdate);
+
+        // Initial camera check
+        handleCameraChange();
 
         // on unmount
         return () => {
@@ -57,6 +71,8 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
             set('transform-controls', true)
             set('post-processing', true)
             set('widgets', true)
+            editModePlugin.removeEventListener('cameraChanged', handleCameraChange);
+            editModePlugin.viewer?.scene.removeEventListener('mainCameraChange', handleSceneUpdate);
             // set('grid', true)
             // set('backgroundColor', true)
             // set('cameraMode', false)
@@ -68,6 +84,9 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
     const [tcPopoverOpen, setTcPopoverOpen] = useState(false);
     const [omPopoverOpen, setOmPopoverOpen] = useState(false);
     const [cameraPopoverOpen, setCameraPopoverOpen] = useState(false);
+
+    // Check if using scene camera for visual indication
+    const isUsingSceneCamera = editModePlugin.isUsingSceneCamera();
 
     return !editEnabled ? null : (
         <div className="interactionControlsButtonContainer">
@@ -174,11 +193,11 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                     {/*    position={"bottom"}*/}
                     {/*>*/}
                         <InteractionIconButton
-                            // todo active and intent based on selected camera mode
-                            intent={Intent.NONE}
+                            // Show warning intent when using scene camera to indicate it's different from editor cameras
+                            intent={isUsingSceneCamera ? Intent.WARNING : Intent.NONE}
                             // to prevent focus away from canvas on click
                             onMouseDown={(e) => e.preventDefault()}
-                            icon={'camera'} active={false}
+                            icon={'camera'} active={isUsingSceneCamera}
                             onClick={() => {
                                 // Just open the popover, don't toggle the state
                                 // The state is controlled by the menu selections

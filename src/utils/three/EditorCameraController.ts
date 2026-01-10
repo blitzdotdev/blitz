@@ -7,18 +7,25 @@ import {
     ThreeViewer,
     Vector3
 } from "threepipe";
+import {CameraType} from "../EditModePlugin.ts";
 
 export function editorCameraController(plugin: {
     viewer: ThreeViewer | null | undefined,
     enableWASDMovement: boolean,
     wasdMovementSpeed: number,
     keyMap: { [key: string]: boolean },
-    cameraMode: 'perspective' | 'orthographic',
+    cameraMode: CameraType,
     cameraPerspective: PerspectiveCamera2,
     cameraOrtho: OrthographicCamera2,
+    isDisabled: () => boolean,
 }) {
     const viewer = plugin.viewer
     if (!plugin.enableWASDMovement || !viewer) return
+
+    // Only handle WASD movement for editor cameras, not scene cameras
+    if (plugin.cameraMode !== 'perspective' && plugin.cameraMode !== 'orthographic') return
+    if (plugin.isDisabled()) return
+
     // if()
     const camView = viewer.getPlugin(CameraViewPlugin)!
     if (camView.animating) return

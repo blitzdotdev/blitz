@@ -27,10 +27,14 @@ import {editorCameraController} from "./three/EditorCameraController.ts";
 import {LightMaterialOverrider} from "./three/LightMaterialOverrider.ts";
 import {isExternalObject} from "./projectUtils.ts";
 
+// Camera type that can be 'perspective', 'orthographic', 'default' (scene.defaultCamera), or a scene camera UUID
+export type CameraType = 'perspective' | 'orthographic' | 'default' | string;
+
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
 export class EditModePlugin extends AViewerPluginSync<{
     enableChanged: {}
+    cameraChanged: {camera: 'perspective' | 'orthographic' | IObject3D}
 } & AViewerPluginEventMap>{
     public static readonly PluginType = 'EditModePlugin';
 
@@ -50,7 +54,7 @@ export class EditModePlugin extends AViewerPluginSync<{
     cameraOrtho = new OrthographicCamera2('orbit')
 
     @onChange('setDirty')
-    cameraMode: 'perspective' | 'orthographic' = 'perspective'
+    cameraMode: CameraType = 'perspective'
 
     // grid = new Mesh(new PlaneGeometry(), new GridMaterial())
     grid = new GridHelper(100, 100, 0x62793a, 0x4e4f4f)
@@ -345,25 +349,30 @@ export class EditModePlugin extends AViewerPluginSync<{
 
     setDirty(): any {
         if(!this._viewer) return
-        if(!this.isDisabled() !== this._lastEnabled){
+        const enabled = !this.isDisabled()
+        if(enabled !== this._lastEnabled){
             this._lastEnabled = !this._lastEnabled
             if(this._lastEnabled) this.onEnable()
             else this.onDisable()
         }
-        if(!this.isDisabled()&&this._viewer){
-            const cam = this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho
-            if(this._viewer.scene.mainCamera !== cam){
-                // this._viewer.scene.mainCamera = cam
-                if(cam === this.cameraPerspective && this._viewer.scene.mainCamera === this.cameraOrtho){
-                    // switching from ortho to perspective, match position
-                    this.cameraPerspective.position.copy(this.cameraOrtho.position)
-                    this.cameraPerspective.target.copy(this.cameraOrtho.target)
-                } else if(cam === this.cameraOrtho && this._viewer.scene.mainCamera === this.cameraPerspective){
-                    // switching from perspective to ortho, match position
-                    this.cameraOrtho.position.copy(this.cameraPerspective.position)
-                    this.cameraOrtho.target.copy(this.cameraPerspective.target)
+        if(enabled && this._viewer){
+            // Only activate editor cameras, not scene cameras
+            if(this.cameraMode === 'perspective' || this.cameraMode === 'orthographic') {
+                const cam = this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho
+                if(this._viewer.scene.mainCamera !== cam){
+                    // this._viewer.scene.mainCamera = cam
+                    if(cam === this.cameraPerspective && this._viewer.scene.mainCamera === this.cameraOrtho){
+                        // switching from ortho to perspective, match position
+                        this.cameraPerspective.position.copy(this.cameraOrtho.position)
+                        this.cameraPerspective.target.copy(this.cameraOrtho.target)
+                    } else if(cam === this.cameraOrtho && this._viewer.scene.mainCamera === this.cameraPerspective){
+                        // switching from perspective to ortho, match position
+                        this.cameraOrtho.position.copy(this.cameraPerspective.position)
+                        this.cameraOrtho.target.copy(this.cameraPerspective.target)
+                    }
+                    cam.activateMain()
+                    this.dispatchEvent({type: 'cameraChanged', camera: this.cameraMode})
                 }
-                cam.activateMain()
             }
         }
     }
@@ -421,7 +430,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         this._settings.viewerCursorStyle = this._viewer.canvas.style.cursor
         this._viewer.canvas.style.cursor = 'default' // todo prevent orbit controls etc from overriding it.
 
-        this._settings.sceneMainCamera = this._viewer.scene.mainCamera
+        // this._settings.sceneMainCamera = this._viewer.scene.mainCamera
         ;(this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho).activateMain()
 
         const controlProps = {
@@ -473,8 +482,8 @@ export class EditModePlugin extends AViewerPluginSync<{
         // delete this._settings.maxFarPlane
         this._viewer.canvas.style.cursor = this._settings.viewerCursorStyle
         delete this._settings.viewerCursorStyle
-        this._settings.sceneMainCamera.activateMain()
-        delete this._settings.sceneMainCamera
+        this._viewer.scene.defaultCamera.activateMain()
+        // delete this._settings.sceneMainCamera
 
         const controls = this._viewer.scene.mainCamera.controls as OrbitControls3|undefined
         if(typeof controls?.stopDamping === 'function')
@@ -518,12 +527,81 @@ export class EditModePlugin extends AViewerPluginSync<{
         this._viewer.scene.setDirty()
         return next
     }
-    toggleCameraMode = (_current: boolean, next: boolean)=>{
-        if(_current === next) return next
-        this.cameraMode = next ? 'orthographic' : 'perspective'
-        this.setDirty()
-        return next
+
+    /**
+     * Set the camera mode to editor camera (perspective/orthographic) or scene camera (default or UUID)
+     * @param cameraType - 'perspective', 'orthographic', 'default', or UUID string
+     * Returns true if the camera was successfully activated
+     */
+    setCameraMode(cameraType: CameraType): boolean {
+        if(!this._viewer || this.isDisabled()) return false
+
+        // Handle editor cameras
+        if (cameraType === 'perspective' || cameraType === 'orthographic') {
+            this.cameraMode = cameraType
+            this.setDirty()
+            return true
+        }
+
+        // Handle scene cameras ('default' or UUID)
+        let camera: IObject3D | null = null
+
+        if (cameraType === 'default') {
+            // Use scene.defaultCamera
+            camera = this._viewer.scene.defaultCamera as IObject3D
+        } else {
+            // Find camera by UUID in the scene
+            this._viewer.scene.modelRoot.traverse((obj: IObject3D) => {
+                if (obj.uuid === cameraType && obj.isCamera) {
+                    camera = obj
+                }
+            })
+        }
+
+        if (!camera || !camera.isCamera) return false
+
+        // Activate the camera
+        const activateMain = (camera as any).activateMain
+        if (typeof activateMain === 'function') {
+            activateMain.call(camera)
+            this.cameraMode = cameraType // Store 'default' or UUID in cameraMode
+            this.dispatchEvent({type: 'cameraChanged', camera: camera})
+            return true
+        }
+
+        return false
+    }
+
+
+    /**
+     * Get the currently active camera type
+     * Returns 'perspective', 'orthographic', 'default', or the UUID of a scene camera
+     */
+    getActiveCameraType(): CameraType {
+        if(!this._viewer) return this.cameraMode
+
+        const mainCamera = this._viewer.scene.mainCamera
+
+        if (mainCamera === this.cameraPerspective) {
+            return 'perspective'
+        } else if (mainCamera === this.cameraOrtho) {
+            return 'orthographic'
+        } else if (mainCamera === this._viewer.scene.defaultCamera) {
+            return 'default'
+        } else if (mainCamera) {
+            // It's another scene camera
+            return mainCamera.uuid
+        }
+
+        return this.cameraMode
+    }
+
+    /**
+     * Check if currently using a scene camera (not editor cameras)
+     */
+    isUsingSceneCamera(): boolean {
+        const type = this.getActiveCameraType()
+        return type !== 'perspective' && type !== 'orthographic'
     }
 
 }
-

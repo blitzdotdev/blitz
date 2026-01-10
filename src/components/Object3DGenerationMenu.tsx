@@ -15,7 +15,7 @@ const extraUiData: {
         icon: 'shapes',
     },
     'object': {
-        label: 'Object',
+        label: 'Empty',
         icon: 'new-object',
     },
     'camera': {
@@ -143,7 +143,7 @@ export function Object3DGenerationMenu({onGenerate}: {onGenerate?: (obj: IObject
     }, [generator])
     return <>
         <MenuDivider title="Create" className={"context-menu-divider"} />
-        {items.map((v) => <MenuItem
+        {[...items].reverse().map((v) => <MenuItem
             key={v.uuid}
             text={v.label || '(unknown)'}
             icon={v.icon || undefined}

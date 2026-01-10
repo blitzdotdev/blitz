@@ -15,6 +15,7 @@ export class EditPreviewHelper extends EventDispatcher<{
         this.features.disable('widgets', 'EditPreview')
         this.features.disable('transform-controls', 'EditPreview')
         // this.features.disable('picking', 'EditPreview')
+        // debugger
         this.features.disable('edit-mode', 'EditPreview')
         this.enabled = true
         this.dispatchEvent({type: 'editPreviewChange'})

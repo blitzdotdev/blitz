@@ -36,7 +36,7 @@ export class ImportMapsManager{
             }
             const externals = Object.keys(this.defaultImports)
             if(externals.includes(dep.key)) {
-                console.warn(`Import map for ${dep.key} exists in default imports, skipping.`)
+                // console.warn(`Import map for ${dep.key} exists in default imports, skipping.`)
                 continue
             }
             externals.push(...Object.keys(this.addedImports))
