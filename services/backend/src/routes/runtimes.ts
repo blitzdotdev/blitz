@@ -12,10 +12,13 @@ function validVersion(version: string): boolean {
   return version.length <= 128 && RUNTIME_VERSION_RE.test(version);
 }
 
+async function hasRuntimeAuth(provided: string | undefined, expected: string | undefined): Promise<boolean> {
+  const token = provided?.replace(/^Bearer /, "") ?? "";
+  return Boolean(expected && token && await timingSafeStringEqual(token, expected));
+}
+
 runtimes.put("/api/v1/runtimes/:version", async (c) => {
-  const provided = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
-  const expected = c.env.RUNTIME_UPLOAD_TOKEN ?? "";
-  if (!expected || !provided || !await timingSafeStringEqual(provided, expected)) {
+  if (!await hasRuntimeAuth(c.req.header("authorization"), c.env.RUNTIME_UPLOAD_TOKEN)) {
     return jsonError(401, "invalid_runtime_token", "A valid runtime upload Bearer token is required.");
   }
 
@@ -95,4 +98,19 @@ runtimes.get("/api/v1/runtimes", async (c) => {
     "SELECT version, sha256, size FROM runtimes ORDER BY version ASC",
   ).all<Pick<RuntimeRow, "version" | "sha256" | "size">>();
   return c.json({ runtimes: result.results });
+});
+
+runtimes.delete("/api/v1/runtimes/:version", async (c) => {
+  if (!await hasRuntimeAuth(c.req.header("authorization"), c.env.RUNTIME_UPLOAD_TOKEN)) {
+    return jsonError(401, "invalid_runtime_token", "A valid runtime upload Bearer token is required.");
+  }
+  const version = c.req.param("version");
+  if (!validVersion(version)) {
+    return jsonError(400, "invalid_runtime_version", "The runtime version is invalid.");
+  }
+  const row = await c.env.DB.prepare(
+    "DELETE FROM runtimes WHERE version = ? RETURNING version, sha256",
+  ).bind(version).first<Pick<RuntimeRow, "version" | "sha256">>();
+  if (!row) return jsonError(404, "runtime_not_found", "The runtime version was not found.");
+  return c.json({ deleted: true, version: row.version, sha256: row.sha256 });
 });

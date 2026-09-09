@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { startLocalStack, type LocalStack } from "./_helpers.js";
 
 interface CreatedGame {
@@ -45,6 +45,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await stack?.cleanup();
+});
+
+beforeEach(async () => {
+  await stack.ready();
 });
 
 describe("local backend and gateway publish flow", () => {
@@ -311,7 +315,7 @@ describe("local backend and gateway publish flow", () => {
   });
 
   it("authorizes a one-time claim secret and claims with a platform JWT", async () => {
-    stack.executeSql(`UPDATE games SET claim_secret_hash = NULL WHERE id = '${created.game_id}'`);
+    await stack.executeSql(`UPDATE games SET claim_secret_hash = NULL WHERE id = '${created.game_id}'`);
     const authorize = await fetch(`${stack.backendUrl}/api/v1/games/${created.game_id}/authorize-claim-secret`, {
       method: "POST",
       headers: gameHeaders(created.deploy_token),
@@ -396,16 +400,16 @@ describe("local backend and gateway publish flow", () => {
       headers: gameHeaders(expiring.body.deploy_token, { "Content-Type": "application/json" }),
       body: JSON.stringify({ files: { "index.html": { sha256: hash, size: bytes.length } } }),
     })).status).toBe(201);
-    stack.executeSql(`UPDATE games SET expires_at = datetime('now', '-1 minute') WHERE id = '${expiring.body.game_id}'`);
+    await stack.executeSql(`UPDATE games SET expires_at = datetime('now', '-1 minute') WHERE id = '${expiring.body.game_id}'`);
     expect((await stack.scheduled()).status).toBe(200);
     expect((await fetch(expiring.body.preview_url)).status).toBe(410);
 
-    stack.executeSql(`UPDATE games SET updated_at = datetime('now', '-2 minutes') WHERE id = '${expiring.body.game_id}'`);
+    await stack.executeSql(`UPDATE games SET updated_at = datetime('now', '-2 minutes') WHERE id = '${expiring.body.game_id}'`);
     expect((await stack.scheduled()).status).toBe(200);
     expect((await fetch(expiring.body.preview_url)).status).toBe(404);
     expect((await stack.scheduled("*/10 * * * *")).status).toBe(200);
     expect(stack.r2BlobExists(hash)).toBe(false);
-  });
+  }, 180_000);
 
   it("sweeps unreferenced blobs, preserves references and runtimes, prunes retention, and reconciles R2", async () => {
     const gc = await createGame(`gc-${Date.now().toString(36)}`, "198.51.100.31");
@@ -474,7 +478,7 @@ describe("local backend and gateway publish flow", () => {
     expect(stack.r2BlobExists(releaseHashes[0])).toBe(false);
     expect(stack.r2BlobExists(releaseHashes[10])).toBe(true);
 
-    stack.executeSql(`UPDATE blobs SET ref_count = 0 WHERE sha256 = '${releaseHashes[10]}'`);
+    await stack.executeSql(`UPDATE blobs SET ref_count = 0 WHERE sha256 = '${releaseHashes[10]}'`);
     expect((await stack.scheduled("0 0 * * *")).status).toBe(200);
     expect((await stack.scheduled("*/10 * * * *")).status).toBe(200);
     expect(stack.r2BlobExists(releaseHashes[10])).toBe(true);

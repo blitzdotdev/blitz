@@ -65,8 +65,9 @@ export interface LocalStack {
   backendUrl: string;
   gatewayUrl: string;
   logs: string[];
-  executeSql(sql: string): string;
+  executeSql(sql: string): Promise<string>;
   scheduled(cron?: string): Promise<Response>;
+  ready(): Promise<void>;
   putR2Blob(hash: string, bytes: Uint8Array): void;
   r2BlobExists(hash: string): boolean;
   cleanup(): Promise<void>;
@@ -110,15 +111,23 @@ export async function startLocalStack(): Promise<LocalStack> {
     throw error;
   }
 
+  async function settleAfterStorageCommand(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await waitFor(`${backendUrl}/health`, [200], logs);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
   return {
     backendUrl,
     gatewayUrl,
     logs,
-    executeSql(sql: string): string {
-      return runWrangler(BACKEND_DIR, [
+    async executeSql(sql: string): Promise<string> {
+      const output = runWrangler(BACKEND_DIR, [
         "d1", "execute", "blitz-games-platform-db", "--local",
         "--persist-to", persistDir, "--command", sql,
       ]);
+      await settleAfterStorageCommand();
+      return output;
     },
     async scheduled(cron = "* * * * *"): Promise<Response> {
       const query = new URLSearchParams({ cron });
@@ -132,6 +141,9 @@ export async function startLocalStack(): Promise<LocalStack> {
         }
       }
       throw new Error(`Scheduled trigger failed after retries: ${String(lastError)}\n${logs.slice(-50).join("")}`);
+    },
+    async ready(): Promise<void> {
+      await waitFor(`${backendUrl}/health`, [200], logs);
     },
     putR2Blob(hash: string, bytes: Uint8Array): void {
       execFileSync("npx", [

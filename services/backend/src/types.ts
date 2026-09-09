@@ -27,6 +27,8 @@ export interface GameRow {
   claim_secret_hash: string | null;
   active_release: string | null;
   bytes_used: number;
+  listed: number;
+  description: string | null;
   created_at: string;
   updated_at: string;
 }
