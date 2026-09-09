@@ -1,5 +1,5 @@
 {
-	"name": "kite3d-landing",
+	"name": "blitz-landing",
 	"type": "module",
 	"scripts": {
 		"dev": "wrangler dev",

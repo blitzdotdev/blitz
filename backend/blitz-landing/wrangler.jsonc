@@ -4,7 +4,7 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "kite3d-landing",
+	"name": "blitz-landing",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-12-29",
 	"account_id": "3c4cf55a12810e878be2349f1411ca08",
@@ -16,12 +16,7 @@
 	"observability": {
 		"enabled": true
 	},
-	"routes": [
-		{
-			"pattern": "kite3d.dev",
-			"custom_domain": true
-		}
-	]
+	// route removed during the Kite->Blitz rename: blitz.dev is served by the platform worker; set a route before deploying
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

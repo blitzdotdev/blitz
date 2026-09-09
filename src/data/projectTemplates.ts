@@ -34,8 +34,7 @@ export const packageJsonTemplate = {
     main: './main.js',
     keywords: ['3d', 'game', 'threepipe', 'three-editor'],
     dependencies: {
-        "threepipe": ">=0.4.2",
-        "@kite3d/mcp-bridge": ">=0.0.1"
+        "threepipe": ">=0.4.2"
     }
 }
 
@@ -54,25 +53,10 @@ export const defaultIconTemplateSvg = `
 
 export const gitignoreTemplate = gitignoreTemplate1 + `
 
-./${settingsKey}/running/
-./${settingsKey}/temp/
-./${settingsKey}/backups/
-./${settingsKey}/thumbs/
+./.${settingsKey}/running/
+./.${settingsKey}/temp/
+./.${settingsKey}/backups/
+./.${settingsKey}/thumbs/
 `
-
-export const mcpJsonTemplate = {
-    servers: {
-        // add your MCP stdio servers configuration here
-        // example:
-        "kite3d-dev-mcp": {
-            type: "stdio",
-            command: "npx",
-            args: [
-                "@kite3d/mcp-bridge",
-                "--port=3848"
-            ]
-        }
-    }
-}
 
 export {agentsMdTemplate};

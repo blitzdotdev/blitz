@@ -4,7 +4,7 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "kite-assets-proxy-v1",
+	"name": "blitz-assets-proxy-v1",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-12-05",
 	"account_id": "3c4cf55a12810e878be2349f1411ca08",

@@ -523,7 +523,7 @@ export class MyComponent extends Object3DComponent {
         if(files.length === 1){
             const f = files[0]
             if(f.path === 'package.json') return
-            if(f.path === 'kite.json') return
+            if(f.path === 'blitz.json') return
             if(f.path === 'assets.json') return
             // if(!f.path.startsWith(project?.assets ?? 'assets/')) return
             if(!isLoadableFile(f.path)) return

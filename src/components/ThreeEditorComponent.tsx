@@ -28,8 +28,6 @@ import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
 import {BPTreeFolderComponent} from "./BPTreeFolderComponent.tsx";
 import {iconForSelectionObject} from "../utils/icons.tsx";
 import {MemoryTab} from "./MemoryTab.tsx";
-import {AIAgentTab} from "./AIAgentTab.tsx";
-import {AIMCPTab} from "./AIMCPTab.tsx";
 import {objToSelectItemRef, RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
 import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
@@ -211,7 +209,7 @@ export function ThreeEditorComponent() {
                             <path d="M141.695 398.527C147.362 327.027 166.086 183.346 170.586 157.844C141.823 154.463 45.1729 156.925 0.262264 158.337C-0.256772 160.318 -0.01564 162.488 1.07713 164.375L133.508 393.119C135.335 396.275 138.424 398.127 141.695 398.527Z" fill="#154FA9"/>
                         </svg>
                         <Navbar.Heading>
-                            Kite 3D
+                            Blitz
                         </Navbar.Heading>
                         {project && (<>
                         <Navbar.Divider/>
@@ -311,24 +309,6 @@ export function ThreeEditorComponent() {
                                     flexDirection: "column",
                                 },
                                 content: <MemoryTab/>
-                            },
-                            // {
-                            //     title: 'AI Agent',
-                            //     style: {
-                            //         position: "relative",
-                            //         display: "flex",
-                            //         flexDirection: "column",
-                            //     },
-                            //     content: <AIAgentTab/>
-                            // },
-                            {
-                                title: 'AI MCP Bridge',
-                                style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                },
-                                content: <AIMCPTab mcpBridge={manager.mcpBridge}/>
                             },
                         ],
                     }}

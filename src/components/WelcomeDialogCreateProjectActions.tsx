@@ -118,7 +118,7 @@ export function useProjectFolderActions(){
             placeholder: 'My File',
             closeButtonText: 'Cancel',
             submitButtonText: 'Create',
-            value: 'kite-project',
+            value: 'blitz-project',
             // onClose: ()=>{console.log('close'); return true},
             onSubmit: async (value) => {
                 const projectName = value.trim().replace(/[/\\?%*:|"<>\s]/g, '-')

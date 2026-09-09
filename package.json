@@ -6,8 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:mcp": "esbuild scripts/mcp-bridge-server.mjs --bundle --outfile=packages/mcp-bridge/bridge-server.js --platform=node --format=esm --sourcemap --external:@modelcontextprotocol/sdk --external:ws --external:node:* --packages=external && chmod +x packages/mcp-bridge/bridge-server.js",
-    "publish:mcp": "npm run build:mcp && cd packages/mcp-bridge && npm publish --access public",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "playwright test",
@@ -15,13 +13,10 @@
     "test:headed": "playwright test --headed",
     "test:debug": "playwright test --debug",
     "test:report": "playwright show-report",
-    "deploy": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist kite-threepipe-v0/ && git tag v$npm_package_version",
-    "deploy-tp": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/ && git tag v$npm_package_version",
-    "mcp-bridge": "node scripts/mcp-bridge-server.mjs",
-    "mcp-bridge:test": "node scripts/mcp-bridge-server.mjs --test"
+    "deploy": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist blitz-threepipe-v0/ && git tag v$npm_package_version",
+    "deploy-tp": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/ && git tag v$npm_package_version"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
     "@threepipe/plugin-3d-tiles-renderer": "^0.3.2",
     "@threepipe/plugin-assimpjs": "^0.2.3",
     "@threepipe/plugin-blend-importer": "^0.1.0",
@@ -65,7 +60,6 @@
     "@vitejs/plugin-react": "^4.2.1",
     "cannon-es": "^0.20.0",
     "dotenv": "^16.4.5",
-    "esbuild": "^0.27.2",
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
@@ -78,8 +72,6 @@
     "typescript": "^5.7.2",
     "vite": "^6.3.5",
     "web-vitals": "^3.5.0",
-    "zod": "^4.1.13",
-    "ws": "^8.18.0",
-    "@types/ws": "^8.5.12"
+    "zod": "^4.1.13"
   }
 }

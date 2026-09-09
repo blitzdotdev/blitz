@@ -3,7 +3,7 @@ import {getFileHandle} from "./fsApi.ts";
 import {browserFileStore} from "./BrowserFileStore.ts";
 import {parse, ParseError} from "jsonc-parser";
 
-export const settingsKey = "kite"
+export const settingsKey = "blitz"
 export const assetUrlPrefix = '/' + settingsKey + '/'
 
 const packageFilePath = 'package.json'

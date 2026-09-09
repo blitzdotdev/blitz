@@ -5,7 +5,7 @@ export function WelcomeDialogEmptyProjectState() {
     return <NonIdealState
         // icon={'projects'}
         icon={<img src={'/logo.svg'} height={100}/>}
-        title={'Kite 3D Editor'}
+        title={'Blitz Editor'}
         description={(
             <p style={{textAlign: 'justify'}}>
                 <br/>

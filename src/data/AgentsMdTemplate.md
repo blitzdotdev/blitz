@@ -1,8 +1,8 @@
-# Notes for Kite and threepipe Game Development
+# Notes for Blitz and threepipe Game Development
 
-- The game is using kite game engine built on top of threepipe and three.js.
+- The game is using Blitz game engine built on top of threepipe and three.js.
 - Scenes in the game are designed in a UI editor(similar to Unity/Godot) and exported as .scene.glb files. These are binary files and cannot be read or edited as text
-- The game dependencies, packages, scripts etc are defined in the package.json file in the game project. Any script or dependency required in the scene or the editor must be added to package.json. Call MCP tool `refreshPackageJson` to update the editor after modifying package.json.
+- The game dependencies, packages, scripts etc are defined in the package.json file in the game project. Any script or dependency required in the scene or the editor must be added to package.json.
 - The game consists of objects in the scene like player, trees, enemies, weapons, etc. Each object is a three.js `Object3D` with `Object3DComponents` that extend the functionality of the objects
 - Custom components are used to add game-specific behavior to objects. For example, the `PlayerComponent` handles player movement and actions, while the `EnemyComponent` manages enemy AI. These components are defined in their dedicated .script.js files in the game folder and can be attached to the objects using the UI.
 - Instruct the user to make changes to the 3D scene or to add or remove components from the game.
@@ -12,8 +12,8 @@
 - Do not use inheritance when creating custom components, always extend from `Object3DComponent` directly. For reusable code, use composition by creating helper classes or functions that can be used across multiple components.
 - The game uses ES6 modules, so use `import` and `export` statements for modularity.
 - When editing files with the editor open, the changes are hot-reloaded automatically on file save. It is necessary to ensure that all resources and event listeners are properly cleaned up in the `destroy()`(or `stop()`) method of components to prevent memory leaks during hot-reloading.
-- Some sample components and plugins can be found at the end of this file and in `.kite/samples` folder with names ending with `.script.js`. 
-- kite3d supports two types of code files:
+- Some sample components and plugins can be found at the end of this file and in `.blitz/samples` folder with names ending with `.script.js`. 
+- Blitz supports two types of code files:
 
 ## .script.js Files (Components)
 - Define `Object3DComponent` classes that attach to scene objects
@@ -162,7 +162,7 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
 - Preload assets before game starts using the AssetManagerPlugin
 - Use relative paths from the game folder for assets
 - Destroy loaded assets in `stop()` or `destroy()`.
-- Models in the projects `assets` folder can be loaded with the base path `/kite/assets/`. E.g. `/kite/assets/enemy.glb`
+- Models in the projects `assets` folder can be loaded with the base path `/blitz/assets/`. E.g. `/blitz/assets/enemy.glb`
 
 ## Timers & Delays
 - Use `setTimeout`/`setInterval` but clear them in `stop()` to prevent memory leaks
@@ -189,7 +189,6 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
 - Access any object by name: `viewer.scene.getObjectByName('PlayerMesh')`
 - Pause the game to inspect state: use the editor's pause button
 - In some cases, it might be better to show logs as HTML text over `this.ctx.viewer.canvas` instead of printing several logs in the console every frame, for the human developer to better see what's happening.
-- Use the Kite Editor MCP to inspect the editor and scene state at runtime.
 
 
 # EntityComponentPlugin API
