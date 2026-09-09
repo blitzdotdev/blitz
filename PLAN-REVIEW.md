@@ -4,6 +4,42 @@ Date: 2026-09-09. Code reviewed: threepipe-blueprint-editor @ 342be7f, threepipe
 
 This file is a review, not the plan. PLAN.md stays the source of truth.
 
+## Status board (2026-09-09, evening)
+
+BUILT means done, verified, and on `main` unless a branch is named. RUNNING means a Codex pass is on it now. UNBUILT means not started. This board is the source of truth for what exists; the sections below are the review.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Workspace: one repo, subtrees for threepipe and uiconfig-blueprint, `apps/editor`, `services/*`, root build and typecheck | BUILT | `git log` on main; `npm run build`, `npm run typecheck` pass |
+| Rename Kite to Blitz; MCP bridge and in-editor AI chat removed; `.blitz/` gitignore paths fixed | BUILT | commit `42fa7a9`; tsc and vite build pass |
+| Editor online | BUILT | https://blitz-editor.blitzapp.workers.dev/ ; headless load shows zero console errors, service worker registered |
+| Games backend on workers.dev: anonymous 12 h games, rate limits, `tp_` tokens, claim with secret, email sign-in, content-addressed blobs, releases with activate, fork by `source`, delete, expiry and cleanup crons | BUILT | https://blitz-backend.blitzapp.workers.dev ; 17 local tests; curl walkthrough in `docs/backend-build-report-2026-09-09.md` |
+| Game gateway on workers.dev: path mode, MIME map, ETag and 304, Range and 206, lazy expiry 410, 404 | BUILT | https://blitz-game-gateway.blitzapp.workers.dev/<slug>/ |
+| API contract for agents | BUILT | `docs/publish-api.md` |
+| E2E gate plan | BUILT (plan only) | `docs/e2e-test-plan.md` |
+| Blob GC: refcounts, ten-release retention, 24 h grace sweep, daily reconciliation, runtimes as roots | RUNNING | pass on `services/backend` |
+| Slug check `GET /api/v1/slugs/:slug`; spinner page for a game without a release; runtime registry `PUT/GET /api/v1/runtimes/:version`; Google sign-in with the teenyapp client id | RUNNING | same pass |
+| Phase A runtime: `createGame({base, canvas})`, `dist/runtime.js`, sample project, Playwright runtime test, `main.js` text in the AGENTS template | RUNNING | branch `phase-a`, worktree `/Users/minjunes/blitz-worktrees/phase-a` |
+| NOW-1 watcher: whole-folder watching, content-hash echo, conflict rule, scene and asset reload on external change, settings and asset-map watch | UNBUILT | today: scripts only via `FileSystemObserver`; `reloadScene` is a TODO |
+| NOW-1 IndexedDB trimmed to handles and recents | UNBUILT | |
+| NOW-1 exact `blitz.version` in package.json and an editor bootstrapper per version | UNBUILT | |
+| NOW-1 undo journal `.blitz/journal.jsonl`; `.blitz/state.json` and `.blitz/console.log` mirrors for agents | UNBUILT | |
+| NOW-2 glTF scene file: text, no binary, stable names, deterministic, validated; external `.bin` exporter option in threepipe | UNBUILT | scene is still `assets/main.scene.glb` |
+| Phase B: Open game dialog, deploy client, `.blitz/deploys.json`, runtime upload on editor deploy | UNBUILT | spec in `docs/publish-dialog.md` |
+| Phase B additions decided today: follow mode `?game=<slug>#token=…`, `agents.md` on the editor origin with a page pointer, gateway CORS for the editor origin, pull-before-publish guard `base_release` | UNBUILT | decision recorded in section 7 |
+| Runtime handler API: scripted input, tick stepping (plan DEFER) | UNBUILT | |
+| Agent connection: websocket or CLI (plan DEFER) | UNBUILT | |
+| `packages/engine`: open-source Blitz engine extracted from the editor | UNBUILT | layout decision only |
+| `services/asset-library-proxy` deployed for the editor's asset library | UNBUILT | worker not created |
+| Blitz logo and artwork | UNBUILT | editor still shows the kite artwork |
+| Per-game backend logic on D1 (auth, economy) | UNBUILT | later |
+| Staging wildcard `*.games.blitz.dev` and `editor-staging.blitz.dev` for host-mode tests | UNBUILT | proposal in `docs/e2e-test-plan.md` |
+| E2E gate execution | UNBUILT | after the running passes and Phase B |
+| Domain cutover to blitz.dev and `*.app.blitz.dev` | BLOCKED | another agent detaches them from teenybase; then gated on the E2E pass |
+| Google Cloud: add editor origins to the OAuth client | USER ACTION | client id `118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com` |
+
+Build order agreed: Phase A, then NOW-1 watcher core, then Phase B, then NOW-2.
+
 ## 0. Findings that change all three items
 
 ### 0.1 The manifest is package.json, not kite.json
@@ -156,3 +192,5 @@ Things the spec must change or add before build:
 4. **main.js contract.** The release requires `main.js` and the runtime calls `main({viewer})`, but the AGENTS.md template tells agents that `main.js` is unused in development. Fix the template text when the Deploy section is written (section 6 there).
 5. **Backend additions are in progress here:** `GET /api/v1/slugs/:slug`, the spinner branch (503 with `X-Blitz-State`), the `runtimes` table and routes with `RUNTIME_UPLOAD_TOKEN`, GC roots for runtimes, and Google sign-in with the existing teenyapp client id. Blob GC itself was a gap in the shipped backend and is being built now (refcounts, release retention, grace-period sweep, bounded reconciliation).
 6. **Answers to its open questions.** 1: yes, a `RUNTIME_UPLOAD_TOKEN` secret. 2: yes, reject an unregistered `_blitz/runtime.js` once Phase A ships. 3: mirror the editor now, exact pins under the version policy. 4: agreed, COOP and COEP stay off.
+
+7. **Follow mode decided (evening).** The agent builds in its own folder and publishes; the editor opens `?game=<slug>#token=…`, loads from the gateway, refreshes on each release, and its Save publishes. Folder mode stays as the one-click path for hands-on editing. Rule for agents: pull before publish; the API rejects a publish whose `base_release` is not the active release. `agents.md` is served from the editor origin with a pointer in the page HTML.
