@@ -70,6 +70,24 @@ Success: `200`, with the same body shape as register.
 
 Errors: `400 invalid_login`; auth-library authentication errors for bad credentials.
 
+### Sign in with Google Identity Services
+
+`POST /api/v1/table/users/auth/google-login`
+
+Auth: none. This is the teenybase framework route exposed by the backend's `/api` mount. It uses the existing teenyapp Google OAuth client and the Google Identity Services ID-token flow; there is no Google client secret.
+
+Content type: `application/x-www-form-urlencoded`.
+
+Form fields:
+
+- `credential`: required GIS JWT credential.
+- `g_csrf_token`: required double-submit CSRF value.
+- `select_by`: optional GIS selection metadata.
+
+The request must also carry a `g_csrf_token` cookie whose value exactly matches the form field. A missing form value returns `400`; a missing or mismatched cookie returns `403`. Let GIS perform its form POST directly, or use a credentialed request that preserves the cookie. On success the JSON includes the platform `token`, `refresh_token`, and user `record`. This backend does not currently configure teenybase `authCookie`, so clients must use the returned token as the Bearer token.
+
+The Google Cloud OAuth client must list the sign-in page origins as authorized JavaScript origins: `https://blitz.dev`, plus `https://blitz-backend.blitzapp.workers.dev` for workers.dev testing.
+
 ### Current user
 
 `GET /api/v1/auth/me`
@@ -85,6 +103,26 @@ Success: `200`.
 Errors: `401 authentication_required`, `401 invalid_token`, `404 user_not_found`.
 
 ## Games
+
+### Check a slug
+
+`GET /api/v1/slugs/:slug`
+
+Auth: none. This uses the same per-IP rate limiter as anonymous creation. The slug namespace is owned by this backend's D1 database and is independent of teenyapp.
+
+Success: `200`.
+
+```json
+{"slug":"my-game","available":true}
+```
+
+Unavailable:
+
+```json
+{"slug":"my-game","available":false,"reason":"slug_taken"}
+```
+
+`reason` is `invalid_slug`, `reserved_slug`, or `slug_taken`. Rate limiting returns `429 rate_limited` with `Retry-After: 60`.
 
 ### Create an anonymous game
 
@@ -140,7 +178,7 @@ Success: `200`.
 {"deleted":true,"game_id":"UUID","slug":"my-game"}
 ```
 
-The game row, releases, and deploy tokens are removed. Shared R2 blobs are not removed.
+The game row, releases, and deploy tokens are removed atomically with release-reference decrements. Shared R2 blobs remain during the grace period and are removed by GC only after their global release count reaches zero.
 
 Errors: `401 authentication_required`, `401 invalid_token`, `404 game_not_found`, `409 game_not_open`, `410 game_expired`.
 
@@ -236,6 +274,8 @@ Success for a new object: `201`.
 
 An existing object is idempotent and returns `200` with `uploaded:false`. The default per-blob limit is 100 MiB.
 
+Every successful upload also upserts the D1 blob inventory row without changing an existing release reference count. A newly uploaded, unreferenced object starts at `ref_count = 0` and receives the GC grace period.
+
 Errors: `400 invalid_hash`, `400 invalid_content_length`, `400 body_required`, `411 content_length_required`, `413 blob_too_large`, `422 hash_mismatch`, plus game-auth errors.
 
 ## Releases
@@ -260,6 +300,8 @@ Request:
 
 Paths are relative. They cannot contain empty, `.`, or `..` segments, backslashes, or NUL bytes. A path is at most 512 characters. A release has 1-2,000 files. `message` is optional and at most 500 characters. All blobs must exist and their R2 sizes must match. The default active-manifest quota is 500 MiB. Reused blob bytes count once per path in the manifest.
 
+`_blitz/runtime.js` is accepted like any other file. When `REQUIRE_REGISTERED_RUNTIME=true`, its SHA-256 must exist in the runtime registry or publishing returns `409 unregistered_runtime`.
+
 The server sorts paths, emits compact canonical JSON, and hashes that JSON with SHA-256. Publishing also activates the release.
 
 Success: `201` for a new release or `200` for an idempotent existing manifest.
@@ -268,7 +310,9 @@ Success: `201` for a new release or `200` for an idempotent existing manifest.
 {"release_hash":"<sha256>","preview_url":"...","files":{"index.html":{"sha256":"...","size":123}}}
 ```
 
-Errors: `400 bad_request`, `400 invalid_manifest`, `400 invalid_message`, `409 missing_blobs`, `409 blob_size_mismatch`, `413 game_quota_exceeded`, plus game-auth errors.
+Errors: `400 bad_request`, `400 invalid_manifest`, `400 invalid_message`, `409 missing_blobs`, `409 blob_size_mismatch`, `409 unregistered_runtime` when strict runtime registration is enabled, `413 game_quota_exceeded`, plus game-auth errors.
+
+Publishing increments each distinct blob SHA-256 once per new release in the same atomic D1 batch that inserts and activates the release. The backend retains at most `RELEASE_RETENTION` releases per game (default `10`). A publish beyond the limit removes the oldest inactive releases and decrements their references in that same batch; the active release is never pruned. Re-publishing an identical manifest is idempotent and does not add references.
 
 ### List releases
 
@@ -297,6 +341,48 @@ Success: `200`.
 ```
 
 Errors: `404 release_not_found`, plus game-auth errors.
+
+## Runtime registry
+
+Runtime blobs use the same content-addressed `blobs/<sha256>` R2 namespace. A runtime registry row is a GC root even when its release `ref_count` is zero.
+
+### Upload or replace a runtime version
+
+`PUT /api/v1/runtimes/:version`
+
+Auth: `Authorization: Bearer <RUNTIME_UPLOAD_TOKEN>`. The body is raw bytes and requires an exact `Content-Length`. Versions are 1-128 letters, digits, dots, underscores, or hyphens. The backend computes SHA-256, uploads the object with R2 checksum verification, ensures the blob inventory row exists, and upserts the version.
+
+Success: `201`.
+
+```json
+{"version":"1.2.3","sha256":"<sha256>","size":123456}
+```
+
+Errors: `400 invalid_runtime_version`, `400 invalid_content_length`, `400 content_length_mismatch`, `400 body_required`, `401 invalid_runtime_token`, `409 runtime_blob_conflict`, `411 content_length_required`, `413 runtime_too_large`, `422 hash_mismatch`.
+
+### Get a runtime version
+
+`GET /api/v1/runtimes/:version`
+
+Auth: none. Success: `200` with `{version, sha256, size}`. Missing: `404 runtime_not_found`.
+
+### List runtimes
+
+`GET /api/v1/runtimes`
+
+Auth: none. Success: `200`.
+
+```json
+{"runtimes":[{"version":"1.2.3","sha256":"<sha256>","size":123456}]}
+```
+
+## Blob lifecycle and garbage collection
+
+`blobs.ref_count` counts a SHA-256 once per release, including inactive releases retained for rollback. Forked release rows add their own references. Explicit game deletion, expiry cleanup, and retention pruning decrement counts in their row-deletion transactions.
+
+Every 10 minutes, GC considers at most 500 zero-reference blobs older than `BLOB_GRACE_SECONDS` (default `86400`, 24 hours). Runtime hashes are excluded. R2 deletion uses batches of at most 1,000 keys and D1 rows are removed conditionally after a final zero-reference/runtime check.
+
+Daily reconciliation lists at most `RECONCILE_BATCH` R2 objects (default `500`) and stores its continuation cursor in the existing KV namespace. It inventories objects missing from D1 using their R2 upload time, repairs release-derived reference counts, and logs one structured summary per run.
 
 ## Claiming
 
@@ -344,7 +430,9 @@ workers.dev and local path form: `https://<gateway>/<slug>/<path>`.
 
 `/` and every path ending in `/` map to `index.html`. Other paths match the manifest exactly. Only `GET` and `HEAD` are accepted.
 
-Success is `200`, or `206` for one valid byte range. Responses include `Content-Type`, `Content-Encoding: identity`, `ETag: "<sha256>"`, `Accept-Ranges: bytes`, `Cache-Control: public, max-age=60, must-revalidate`, and `X-Content-Type-Options: nosniff`. Identity encoding preserves byte-for-byte strong ETags on workers.dev. A matching `If-None-Match` returns `304`. An invalid or unsatisfiable range returns `416`. Missing games, releases, paths, or R2 objects return `404`. Cleaning or expired games return `410`. Creating games return `503`. Other methods return `405`.
+Success is `200`, or `206` for one valid byte range. Responses include `Content-Type`, `Content-Encoding: identity`, `ETag: "<sha256>"`, `Accept-Ranges: bytes`, `Cache-Control: public, max-age=60, must-revalidate`, and `X-Content-Type-Options: nosniff`. Identity encoding preserves byte-for-byte strong ETags on workers.dev. A matching `If-None-Match` returns `304`. An invalid or unsatisfiable range returns `416`. Missing games, releases, paths, or R2 objects return `404`. Cleaning or expired games return `410`. Creating games return `503`. An open game with no active release returns the publishing spinner described below. Other methods return `405`.
+
+The publishing spinner returns `503` with `Retry-After: 2`, `Cache-Control: no-store`, `X-Blitz-State: publishing`, and `X-Content-Type-Options: nosniff`. Its centered HTML page says "Publishing your game" and polls the current URL every two seconds with `cache: 'no-store'`; it reloads once the response no longer has `X-Blitz-State`. This behavior is the same in custom-host mode and workers.dev/local path mode. Unknown slugs remain `404`.
 
 Known extensions include HTML, JavaScript, CSS, JSON, GLB, glTF, BIN, KTX2, Basis, Wasm, HDR, EXR, PNG, JPEG, WebP, SVG, MP3, Ogg, WAV, MP4, WebM, WOFF2, TXT, and Markdown. An explicit manifest `mime` wins. Unknown files use `application/octet-stream`.
 
@@ -434,7 +522,7 @@ curl -fsS -X POST "$BACKEND_URL/api/v1/games/$SLUG/claim" \
   --data "{\"secret\":\"$CLAIM_SECRET\"}" | jq
 ```
 
-Delete the walkthrough game when finished. This keeps the shared blobs for future deduplication.
+Delete the walkthrough game when finished. Its release references drop immediately; blobs remain available for deduplication during the 24-hour GC grace period and survive longer if another release or runtime still references them.
 
 ```sh
 curl -fsS -X DELETE "$BACKEND_URL/api/v1/games/$GAME_ID" \
