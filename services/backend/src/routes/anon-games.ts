@@ -7,8 +7,10 @@ import {
   ANON_TTL_HOURS,
 } from "../utils/anon-constants.js";
 import { randomBase64Url, sha256Hex } from "../utils/crypto.js";
+import { incrementBlobRefStatements } from "../utils/blob-refs.js";
 import { jsonError, positiveInteger } from "../utils/http.js";
 import { previewUrl } from "../utils/preview.js";
+import { enforceCreationIpRateLimit } from "../utils/rate-limit.js";
 import { slugError } from "../utils/validation.js";
 
 export const anonGames = new Hono<AppEnv>();
@@ -30,10 +32,8 @@ anonGames.post("/api/v1/new-game/:slug", async (c) => {
   const ip = c.req.header("cf-connecting-ip") ?? "unknown";
   const cf = c.req.raw.cf as { asn?: number } | undefined;
   const asn = typeof cf?.asn === "number" ? String(cf.asn) : null;
-  const ipNative = await c.env.ANON_RL_IP.limit({ key: ip });
-  if (!ipNative.success || !await kvWindowAllowed(c.env.ANON_TRIPWIRE, "ip", ip, 10)) {
-    return jsonError(429, "rate_limited", "Rate limit exceeded for this IP.", { scope: "ip" }, { "Retry-After": "60" });
-  }
+  const ipRateLimitError = await enforceCreationIpRateLimit(c);
+  if (ipRateLimitError) return ipRateLimitError;
   if (asn) {
     const asnNative = await c.env.ANON_RL_ASN.limit({ key: asn });
     if (!asnNative.success || !await kvWindowAllowed(c.env.ANON_TRIPWIRE, "asn", asn, 100)) {
@@ -111,6 +111,8 @@ anonGames.post("/api/v1/new-game/:slug", async (c) => {
       `INSERT INTO releases (id, release_hash, game_id, manifest_json, message)
        VALUES (?, ?, ?, ?, ?)`,
     ).bind(releaseId, source.active_release, gameId, source.manifest_json, `Forked from ${sourceSlug}`));
+    const manifest = JSON.parse(source.manifest_json) as { files: Record<string, { sha256: string; size: number; mime?: string }> };
+    statements.push(...incrementBlobRefStatements(c.env.DB, manifest.files));
   }
 
   try {

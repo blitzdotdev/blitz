@@ -7,6 +7,14 @@ import { SHA256_RE } from "../utils/validation.js";
 export const blobs = new Hono<AppEnv>();
 const DEFAULT_MAX_BLOB_BYTES = 100 * 1024 * 1024;
 
+async function upsertBlobRow(db: D1Database, hash: string, size: number): Promise<void> {
+  await db.prepare(
+    `INSERT INTO blobs (sha256, size, ref_count, created_at, last_referenced_at)
+     VALUES (?, ?, 0, datetime('now'), NULL)
+     ON CONFLICT(sha256) DO UPDATE SET size = excluded.size`,
+  ).bind(hash, size).run();
+}
+
 blobs.post("/api/v1/games/:id/blobs/missing", gameAuthMiddleware, async (c) => {
   const body = await readJsonObject(c.req.raw);
   if (!body || !Array.isArray(body.hashes)) return jsonError(400, "bad_request", "Body must be { hashes: string[] }.");
@@ -45,7 +53,10 @@ blobs.put("/api/v1/games/:id/blobs/:sha256", gameAuthMiddleware, async (c) => {
   if (!SHA256_RE.test(hash)) return jsonError(400, "invalid_hash", "sha256 must be lowercase hexadecimal.");
   const finalKey = `blobs/${hash}`;
   const existing = await c.env.BLOBS.head(finalKey);
-  if (existing) return c.json({ sha256: hash, size: existing.size, uploaded: false });
+  if (existing) {
+    await upsertBlobRow(c.env.DB, hash, existing.size);
+    return c.json({ sha256: hash, size: existing.size, uploaded: false });
+  }
 
   const maxBytes = positiveInteger(c.env.MAX_BLOB_BYTES, DEFAULT_MAX_BLOB_BYTES);
   const lengthHeader = c.req.header("content-length");
@@ -65,6 +76,7 @@ blobs.put("/api/v1/games/:id/blobs/:sha256", gameAuthMiddleware, async (c) => {
     // R2 computes SHA-256 while consuming the fixed-length request stream and
     // atomically rejects a checksum mismatch, so no partial final object exists.
     await c.env.BLOBS.put(finalKey, c.req.raw.body, { sha256: hash });
+    await upsertBlobRow(c.env.DB, hash, declaredLength);
     return c.json({ sha256: hash, size: declaredLength, uploaded: true }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv, ManifestFile, ReleaseManifest } from "../types.js";
 import { gameAuthMiddleware } from "../middleware/agent-auth.js";
+import { incrementBlobRefStatements } from "../utils/blob-refs.js";
 import { sha256Hex } from "../utils/crypto.js";
 import { jsonError, positiveInteger, readJsonObject } from "../utils/http.js";
 import {
@@ -13,6 +14,7 @@ import { previewUrl } from "../utils/preview.js";
 
 export const releases = new Hono<AppEnv>();
 const DEFAULT_MAX_GAME_BYTES = 500 * 1024 * 1024;
+const DEFAULT_RELEASE_RETENTION = 10;
 
 async function verifyBlobs(bucket: R2Bucket, files: Record<string, ManifestFile>): Promise<{
   missing: string[];
@@ -52,6 +54,18 @@ releases.put("/api/v1/games/:id/releases", gameAuthMiddleware, async (c) => {
     return jsonError(413, "game_quota_exceeded", `Manifest exceeds the ${maxGameBytes}-byte game quota.`, { bytes_used: bytesUsed });
   }
 
+  const runtime = files["_blitz/runtime.js"];
+  if (runtime && String(c.env.REQUIRE_REGISTERED_RUNTIME) === "true") {
+    const registered = await c.env.DB.prepare(
+      "SELECT 1 FROM runtimes WHERE sha256 = ? LIMIT 1",
+    ).bind(runtime.sha256).first();
+    if (!registered) {
+      return jsonError(409, "unregistered_runtime", "_blitz/runtime.js must use a registered runtime hash.", {
+        sha256: runtime.sha256,
+      });
+    }
+  }
+
   const verified = await verifyBlobs(c.env.BLOBS, files);
   if (verified.missing.length) return jsonError(409, "missing_blobs", "One or more manifest blobs are missing.", { missing: verified.missing });
   if (verified.sizeMismatch.length) return jsonError(409, "blob_size_mismatch", "One or more manifest sizes do not match R2.", { mismatches: verified.sizeMismatch });
@@ -59,26 +73,64 @@ releases.put("/api/v1/games/:id/releases", gameAuthMiddleware, async (c) => {
   const manifestJson = canonicalizeManifest(files);
   const releaseHash = await sha256Hex(manifestJson);
   const gameId = c.get("gameId");
-  const existing = await c.env.DB.prepare(
-    "SELECT id FROM releases WHERE game_id = ? AND release_hash = ?",
-  ).bind(gameId, releaseHash).first<{ id: string }>();
-
-  const statements = [];
-  if (!existing) {
-    statements.push(c.env.DB.prepare(
-      "INSERT INTO releases (id, release_hash, game_id, manifest_json, message) VALUES (?, ?, ?, ?, ?)",
-    ).bind(crypto.randomUUID(), releaseHash, gameId, manifestJson, message || null));
-  }
+  const retained = positiveInteger(c.env.RELEASE_RETENTION, DEFAULT_RELEASE_RETENTION);
+  const keepInactive = Math.max(0, retained - 1);
+  const releaseId = crypto.randomUUID();
+  const statements: D1PreparedStatement[] = [
+    c.env.DB.prepare(
+      "INSERT OR IGNORE INTO releases (id, release_hash, game_id, manifest_json, message) VALUES (?, ?, ?, ?, ?)",
+    ).bind(releaseId, releaseHash, gameId, manifestJson, message || null),
+    ...incrementBlobRefStatements(c.env.DB, files, { id: releaseId, gameId, releaseHash }),
+  ];
   statements.push(c.env.DB.prepare(
     "UPDATE games SET active_release = ?, bytes_used = ?, updated_at = datetime('now') WHERE id = ?",
   ).bind(releaseHash, bytesUsed, gameId));
-  await c.env.DB.batch(statements);
+  statements.push(c.env.DB.prepare(
+    `WITH pruned AS (
+       SELECT release.id, release.manifest_json
+       FROM releases AS release
+       WHERE release.game_id = ? AND release.release_hash <> ?
+       ORDER BY release.created_at DESC, release.rowid DESC
+       LIMIT -1 OFFSET ?
+     )
+     UPDATE blobs
+     SET ref_count = MAX(0, ref_count - (
+       SELECT COUNT(*)
+       FROM pruned
+       WHERE EXISTS (
+         SELECT 1
+         FROM json_each(pruned.manifest_json, '$.files') AS file
+         WHERE json_extract(file.value, '$.sha256') = blobs.sha256
+       )
+     ))
+     WHERE EXISTS (
+       SELECT 1
+       FROM pruned
+       WHERE EXISTS (
+         SELECT 1
+         FROM json_each(pruned.manifest_json, '$.files') AS file
+         WHERE json_extract(file.value, '$.sha256') = blobs.sha256
+       )
+     )`,
+  ).bind(gameId, releaseHash, keepInactive));
+  statements.push(c.env.DB.prepare(
+    `DELETE FROM releases
+     WHERE id IN (
+       SELECT release.id
+       FROM releases AS release
+       WHERE release.game_id = ? AND release.release_hash <> ?
+       ORDER BY release.created_at DESC, release.rowid DESC
+       LIMIT -1 OFFSET ?
+     )`,
+  ).bind(gameId, releaseHash, keepInactive));
+  const results = await c.env.DB.batch(statements);
+  const inserted = (results[0]?.meta.changes ?? 0) > 0;
 
   return c.json({
     release_hash: releaseHash,
     preview_url: previewUrl(c.env, c.get("gameSlug")),
     files,
-  }, existing ? 200 : 201);
+  }, inserted ? 201 : 200);
 });
 
 releases.get("/api/v1/games/:id/releases", gameAuthMiddleware, async (c) => {

@@ -14,6 +14,11 @@
     "MAX_BLOB_BYTES": "104857600",
     "MAX_GAME_BYTES": "524288000",
     "ANON_TTL_HOURS": "12",
+    "RELEASE_RETENTION": "10",
+    "BLOB_GRACE_SECONDS": "86400",
+    "RECONCILE_BATCH": "500",
+    "REQUIRE_REGISTERED_RUNTIME": "false",
+    "GOOGLE_CLIENT_ID": "118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com",
     "RESPOND_WITH_ERRORS": "false",
     "RESPOND_WITH_QUERY_LOG": "false"
   },
