@@ -57,6 +57,7 @@ export const gitignoreTemplate = gitignoreTemplate1 + `
 ./.${settingsKey}/temp/
 ./.${settingsKey}/backups/
 ./.${settingsKey}/thumbs/
+./.${settingsKey}/deploys.json
 `
 
 export {agentsMdTemplate};
