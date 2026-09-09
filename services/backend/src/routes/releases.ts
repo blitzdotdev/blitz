@@ -11,6 +11,7 @@ import {
   parseManifestFiles,
 } from "../utils/manifest.js";
 import { previewUrl } from "../utils/preview.js";
+import { checkBaseRelease } from "../utils/releases.js";
 
 export const releases = new Hono<AppEnv>();
 const DEFAULT_MAX_GAME_BYTES = 500 * 1024 * 1024;
@@ -38,6 +39,21 @@ async function verifyBlobs(bucket: R2Bucket, files: Record<string, ManifestFile>
 releases.put("/api/v1/games/:id/releases", gameAuthMiddleware, async (c) => {
   const body = await readJsonObject(c.req.raw);
   if (!body) return jsonError(400, "bad_request", "A JSON body is required.");
+
+  if (body.base_release !== undefined) {
+    const game = await c.env.DB.prepare(
+      "SELECT active_release FROM games WHERE id = ?",
+    ).bind(c.get("gameId")).first<{ active_release: string | null }>();
+    const check = checkBaseRelease(body.base_release, game?.active_release ?? null);
+    if (!check.ok && check.reason === "invalid") {
+      return jsonError(400, "invalid_base_release", "base_release must be a lowercase SHA-256 release hash.");
+    }
+    if (!check.ok) {
+      return jsonError(409, "release_moved", "The active release changed. Pull it before publishing.", {
+        active_release: game?.active_release ?? null,
+      });
+    }
+  }
 
   let files: Record<string, ManifestFile>;
   try {
@@ -152,6 +168,32 @@ releases.get("/api/v1/games/:id/releases", gameAuthMiddleware, async (c) => {
       active: release.release_hash === game?.active_release,
     };
   }) });
+});
+
+releases.get("/api/v1/games/:id/releases/:hash", gameAuthMiddleware, async (c) => {
+  const hash = c.req.param("hash");
+  const [release, game] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT release_hash, manifest_json, message, created_at
+       FROM releases WHERE game_id = ? AND release_hash = ? LIMIT 1`,
+    ).bind(c.get("gameId"), hash).first<{
+      release_hash: string;
+      manifest_json: string;
+      message: string | null;
+      created_at: string;
+    }>(),
+    c.env.DB.prepare("SELECT active_release FROM games WHERE id = ?")
+      .bind(c.get("gameId")).first<{ active_release: string | null }>(),
+  ]);
+  if (!release) return jsonError(404, "release_not_found", "The release was not found for this game.");
+  const manifest = JSON.parse(release.manifest_json) as ReleaseManifest;
+  return c.json({
+    release_hash: release.release_hash,
+    files: manifest.files,
+    message: release.message,
+    created_at: release.created_at,
+    active: release.release_hash === game?.active_release,
+  });
 });
 
 releases.post("/api/v1/games/:id/releases/:hash/activate", gameAuthMiddleware, async (c) => {
