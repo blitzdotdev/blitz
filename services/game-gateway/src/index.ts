@@ -1,4 +1,4 @@
-import { expiredPage, notFoundPage, provisioningPage } from "./errors.js";
+import { expiredPage, notFoundPage, provisioningPage, publishingPage } from "./errors.js";
 import { mimeForPath } from "./mime.js";
 import { mapRequestPath, resolveGatewayTarget } from "./path.js";
 import { parseRangeHeader } from "./range.js";
@@ -65,7 +65,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (game.state === "cleaning") return expiredPage();
   if (game.expires_at && game.expires_at <= new Date().toISOString().slice(0, 19).replace("T", " ")) return expiredPage();
   if (game.state === "creating") return provisioningPage();
-  if (!game.active_release) return notFoundPage();
+  if (!game.active_release) return publishingPage();
 
   const manifest = await loadManifest(env, game.id, game.active_release);
   const file = manifest?.files[path];

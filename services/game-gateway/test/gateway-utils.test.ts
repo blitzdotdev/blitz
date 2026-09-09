@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { publishingPage } from "../src/errors.js";
 import { mimeForPath } from "../src/mime.js";
 import { mapRequestPath, resolveGatewayTarget } from "../src/path.js";
 import { parseRangeHeader } from "../src/range.js";
@@ -41,5 +42,19 @@ describe("HTTP range parsing", () => {
   it("rejects unsatisfiable or multiple ranges", () => {
     expect(parseRangeHeader("bytes=10-12", 10)).toBeNull();
     expect(parseRangeHeader("bytes=0-1,3-4", 10)).toBeNull();
+  });
+});
+
+describe("publishing page", () => {
+  it("returns the polling spinner contract", async () => {
+    const response = publishingPage();
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("2");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-blitz-state")).toBe("publishing");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    const body = await response.text();
+    expect(body).toContain("Publishing your game");
+    expect(body).toContain("fetch(location.href,{cache:'no-store'})");
   });
 });
