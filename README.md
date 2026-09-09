@@ -8,9 +8,10 @@ This repository is an npm workspace for the Blitz editor and its supporting pack
 - `packages/threepipe/` is the vendored `repalash/threepipe` `master` branch with full history.
 - `packages/uiconfig-blueprint/` is the vendored `repalash/uiconfig-blueprint` `dev` branch with full history.
 - `services/asset-library-proxy/` is the editor asset-library proxy.
-- `backend/` is not yet moved into `services/` and is temporarily ignored while another agent writes it.
-- `game-gateway/` is not yet moved into `services/` and is temporarily ignored while another agent writes it.
-- `docs/` is temporarily ignored while another agent writes it.
+- `services/backend/` is the Hono and teenybase API worker for game publishing.
+- `services/game-gateway/` is the worker that serves published game assets.
+- `docs/publish-api.md` documents the publishing API contract.
+- `docs/backend-build-report-2026-09-09.md` records the backend build and deployment handoff.
 
 ## Commands
 
@@ -21,9 +22,16 @@ Install with `npm install --ignore-scripts --cache /tmp/blitz-npm-cache`.
 - `npm run build:editor` builds `apps/editor/dist/`.
 - `npm run build` runs all three builds in dependency order.
 - `npm run typecheck` type-checks the editor.
+- `npm run typecheck:services` type-checks the backend and game gateway.
+- `npm run test:backend` runs the backend unit and local-worker integration tests.
+- `npm run test:gateway` runs the game gateway unit tests.
 - `npm run dev:editor` starts the editor development server.
 
-Use `--cache /tmp/blitz-npm-cache` on every npm command. Keep `--ignore-scripts` on installs.
+Use `--cache /tmp/blitz-npm-cache` and `--ignore-scripts` on every npm install.
+
+## Deploying
+
+The backend and game gateway deploy from their default `wrangler.jsonc` files to workers.dev. Do not use either worker's `wrangler.prod.jsonc`, which configures routes for `blitz.dev` and `*.app.blitz.dev`, until those domains are detached from teenybase.
 
 ## Upstream sync
 
