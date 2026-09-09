@@ -138,3 +138,21 @@ Dependencies: publishing needs the runtime loader (0.3), the blob upload, and th
 2. Published games: bundle all plugins into the runtime build, or keep esm.sh imports? This decides offline play and version pinning.
 3. Blob size and quota numbers for anonymous games.
 4. Do first-version games need any backend (D1)? If not, the static kind is enough.
+
+## 7. Publish dialog spec (docs/publish-dialog.md)
+
+Added 2026-09-09 after the backend shipped. The spec in `docs/publish-dialog.md` (written with another agent) covers the release convention, the runtime `createGame({base, canvas})`, and the editor "Open game" dialog. It matches this review where they overlap:
+
+- The deploy secrets live in `.blitz/deploys.json`, gitignored, with `claim_secret` for later sign-in (section 5.6 there, item 5 in section 3 here).
+- The runtime ships inside the release as `_blitz/runtime.js`, content-addressed and uploaded once per version (section 4.2 there). This keeps every game same-origin and makes the runtime a GC root. It replaces the `blitz.dev/runtime/<version>/` idea in item 6 of section 3 here. Prefer the spec.
+- The runtime version equals the editor version, written into `package.json` on first deploy (one version string, section 1.5 here).
+- Its ordering rules for component registration, plugins, and the timeline (section 4.4 there) match the engine facts in section 2 here.
+
+Things the spec must change or add before build:
+
+1. **Absolute paths break the workers.dev preview.** The generated `index.html` uses `/_blitz/runtime.js` and `base: '/'`. Until the `*.app.blitz.dev` route exists, the gateway serves games at `https://<gateway>/<slug>/`, so those paths resolve to the gateway root and 404. Use relative paths: `./_blitz/runtime.js` in the import map and the module script, and `base: new URL('./', location.href).href`. Relative paths work in both modes.
+2. **Keep runtime code separable.** The spec builds the runtime as a second Vite input inside `apps/editor`. Fine for Phase A, but put the new modules under `apps/editor/src/runtime/` with no imports from React, Blueprint, or uiconfig. Then the later move to `packages/engine` (section 0 of the layout discussion) is a directory move.
+3. **esm.sh at play time.** The import map pulls `@threepipe/*` plugins from esm.sh. A published game then depends on a third-party CDN. Bundle the runtime plugin set into `runtime.js` for v1 and keep esm.sh only for project-declared extra dependencies.
+4. **main.js contract.** The release requires `main.js` and the runtime calls `main({viewer})`, but the AGENTS.md template tells agents that `main.js` is unused in development. Fix the template text when the Deploy section is written (section 6 there).
+5. **Backend additions are in progress here:** `GET /api/v1/slugs/:slug`, the spinner branch (503 with `X-Blitz-State`), the `runtimes` table and routes with `RUNTIME_UPLOAD_TOKEN`, GC roots for runtimes, and Google sign-in with the existing teenyapp client id. Blob GC itself was a gap in the shipped backend and is being built now (refcounts, release retention, grace-period sweep, bounded reconciliation).
+6. **Answers to its open questions.** 1: yes, a `RUNTIME_UPLOAD_TOKEN` secret. 2: yes, reject an unregistered `_blitz/runtime.js` once Phase A ships. 3: mirror the editor now, exact pins under the version policy. 4: agreed, COOP and COEP stay off.
