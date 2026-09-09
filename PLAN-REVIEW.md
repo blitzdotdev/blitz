@@ -38,6 +38,16 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | Domain cutover to blitz.dev and `*.app.blitz.dev` | BLOCKED | another agent detaches them from teenybase; then gated on the E2E pass |
 | Google Cloud: add editor origins to the OAuth client | USER ACTION | client id `118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com` |
 
+### Plan items mapped to the board
+
+| Plan item | Status | What is built | What is not |
+|---|---|---|---|
+| NOW-1 Project source of truth | UNBUILT | folder-backed projects and script hot reload existed before this work | whole-folder watcher, hash echo, conflict rule, scene and asset reload, IndexedDB trim, exact version and bootstrapper, undo journal, agent mirror files |
+| NOW-2 glb to glTF | UNBUILT | nothing; the scene is still `assets/main.scene.glb` | text glTF, no binary in the scene, stable names, deterministic output, validation, threepipe `.bin` exporter option |
+| NOW-3 Publishing | SERVER BUILT, CLIENT UNBUILT, DOMAIN BLOCKED | anonymous game creation, 12 h expiry, claim on sign-in, blobs in R2, manifests in D1, serving at the workers.dev path URL, forks for parallel versions, the curl contract | the editor "Open game" button and deploy client (Phase B), the generated `index.html` and the runtime that makes a release play (Phase A running, Phase B), the `<game>.app.blitz.dev` host form (cutover blocked), follow mode |
+| DEFER Runtime state controller | LOAD HALF RUNNING | `createGame` load-and-run is Phase A | handler API: scripted input, tick stepping |
+| DEFER Agent connection | UNBUILT | file-based mirrors are proposed in NOW-1 | websocket or CLI |
+
 Build order agreed: Phase A, then NOW-1 watcher core, then Phase B, then NOW-2.
 
 ## 0. Findings that change all three items
