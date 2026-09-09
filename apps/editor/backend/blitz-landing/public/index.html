@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blitz - another Game Engine</title>
+  <meta name="description" content="Build browser games with threepipe & three.js. Visual editor, entity-component system, and hot-reload development.">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Blitz - Web-Based Game Engine">
+  <meta property="og:description" content="Build browser games with threepipe & three.js. Visual editor, entity-component system, and hot-reload development.">
+  <meta property="og:image" content="image.png">
+  <meta property="og:type" content="website">
+
+  <!-- Fonts -->
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+
+  <style>
+    /* Gilroy Font */
+    @font-face {
+      font-family: 'Gilroy';
+      src: url('https://cdn.jsdelivr.net/gh/repalash/gilroy-free-webfont@fonts/Gilroy-Extrabold.eot');
+      src: local('Gilroy Extrabold'), local('Gilroy-Extrabold'),
+        url('https://cdn.jsdelivr.net/gh/repalash/gilroy-free-webfont@fonts/Gilroy-Extrabold.eot?#iefix') format('embedded-opentype'),
+        url('https://cdn.jsdelivr.net/gh/repalash/gilroy-free-webfont@fonts/Gilroy-Extrabold.woff') format('woff'),
+        url('https://cdn.jsdelivr.net/gh/repalash/gilroy-free-webfont@fonts/Gilroy-Extrabold.ttf') format('truetype');
+      font-weight: 800;
+      font-style: normal;
+    }
+
+    /* Glass Button Animations */
+    @property --angle-1 {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: -75deg;
+    }
+
+    @property --angle-2 {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: -45deg;
+    }
+
+    :root {
+      --global--size: clamp(0.9rem, 1.5vw, 1.1rem);
+      --anim--hover-time: 400ms;
+      --anim--hover-ease: cubic-bezier(0.25, 1, 0.5, 1);
+      --bg-primary: #f5f5f7;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Full Screen Layout */
+    .page {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Background Image */
+    .bg-image {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+
+    .bg-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+    }
+
+    /* Dotted Grid Overlay */
+    .bg-dots {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* Header */
+    header {
+      position: relative;
+      z-index: 10;
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: #fff;
+      text-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.5),
+        0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .logo img {
+      height: 64px;
+      width: auto;
+      filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
+    }
+
+    .logo span {
+      font-family: 'Gilroy', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+
+    .nav-links a {
+      color: #fff;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.2s, opacity 0.2s;
+      text-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.5),
+        0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    .nav-links a:hover {
+      opacity: 0.85;
+    }
+
+    /* Hero Content */
+    .hero {
+      position: relative;
+      z-index: 10;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 0 24px 80px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 100px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #1d1d1f;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      /*background: #34c759;*/
+      background: #ff800c;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    h1 {
+      font-family: 'Gilroy', sans-serif;
+      font-size: clamp(2.5rem, 7vw, 4.5rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+      margin-bottom: 16px;
+      color: #fff;
+      text-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.4),
+        0 4px 12px rgba(0, 0, 0, 0.3),
+        0 0 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .tagline {
+      font-size: clamp(1rem, 2vw, 1.2rem);
+      color: #fff;
+      max-width: 500px;
+      margin: 0 auto 36px;
+      font-weight: 500;
+      line-height: 1.5;
+      text-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.5),
+        0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    /* CTA Buttons */
+    .cta-group {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: var(--global--size);
+    }
+
+    /* ========== GLASS BUTTON ========== */
+    .button-wrap {
+      position: relative;
+      z-index: 2;
+      border-radius: 999vw;
+      background: transparent;
+      pointer-events: none;
+      transition: all var(--anim--hover-time) var(--anim--hover-ease);
+    }
+
+    .button-shadow {
+      --shadow-cuttoff-fix: 2em;
+      position: absolute;
+      width: calc(100% + var(--shadow-cuttoff-fix));
+      height: calc(100% + var(--shadow-cuttoff-fix));
+      top: calc(0% - var(--shadow-cuttoff-fix) / 2);
+      left: calc(0% - var(--shadow-cuttoff-fix) / 2);
+      filter: blur(clamp(2px, 0.125em, 12px));
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .button-shadow::after {
+      content: "";
+      position: absolute;
+      z-index: 0;
+      inset: 0;
+      border-radius: 999vw;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.1));
+      width: calc(100% - var(--shadow-cuttoff-fix) - 0.25em);
+      height: calc(100% - var(--shadow-cuttoff-fix) - 0.25em);
+      top: calc(var(--shadow-cuttoff-fix) - 0.5em);
+      left: calc(var(--shadow-cuttoff-fix) - 0.875em);
+      padding: 0.125em;
+      box-sizing: border-box;
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      transition: all var(--anim--hover-time) var(--anim--hover-ease);
+      overflow: visible;
+      opacity: 1;
+    }
+
+    .glass-btn {
+      --border-width: clamp(1px, 0.0625em, 4px);
+      all: unset;
+      cursor: pointer;
+      position: relative;
+      -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+      pointer-events: auto;
+      z-index: 3;
+      background: linear-gradient(
+        -75deg,
+        rgba(255, 255, 255, 0.05),
+        rgba(255, 255, 255, 0.2),
+        rgba(255, 255, 255, 0.05)
+      );
+      border-radius: 999vw;
+      box-shadow: inset 0 0.125em 0.125em rgba(0, 0, 0, 0.05),
+        inset 0 -0.125em 0.125em rgba(255, 255, 255, 0.5),
+        0 0.25em 0.125em -0.125em rgba(0, 0, 0, 0.2),
+        0 0 0.1em 0.25em inset rgba(255, 255, 255, 0.2),
+        0 0 0 0 rgba(255, 255, 255, 1);
+      backdrop-filter: blur(clamp(1px, 0.125em, 4px));
+      -webkit-backdrop-filter: blur(clamp(1px, 0.125em, 4px));
+      transition: all var(--anim--hover-time) var(--anim--hover-ease);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5em;
+    }
+
+    .glass-btn:hover {
+      transform: scale(0.975);
+      backdrop-filter: blur(0.01em);
+      -webkit-backdrop-filter: blur(0.01em);
+      box-shadow: inset 0 0.125em 0.125em rgba(0, 0, 0, 0.05),
+        inset 0 -0.125em 0.125em rgba(255, 255, 255, 0.5),
+        0 0.15em 0.05em -0.1em rgba(0, 0, 0, 0.25),
+        0 0 0.05em 0.1em inset rgba(255, 255, 255, 0.5),
+        0 0 0 0 rgba(255, 255, 255, 1);
+    }
+
+    .glass-btn span {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0.5em;
+      user-select: none;
+      font-family: "Inter", sans-serif;
+      letter-spacing: -0.02em;
+      font-weight: 500;
+      font-size: 1em;
+      color: rgba(50, 50, 50, 1);
+      text-shadow: 0em 0.25em 0.05em rgba(0, 0, 0, 0.1);
+      transition: all var(--anim--hover-time) var(--anim--hover-ease);
+      padding-inline: 1.4em;
+      padding-block: 0.8em;
+    }
+
+    .glass-btn:hover span {
+      text-shadow: 0.025em 0.025em 0.025em rgba(0, 0, 0, 0.12);
+    }
+
+    .glass-btn span svg {
+      width: 1.1em;
+      height: 1.1em;
+      flex-shrink: 0;
+    }
+
+    /* Glass shine effect */
+    .glass-btn span::after {
+      content: "";
+      display: block;
+      position: absolute;
+      z-index: 1;
+      width: calc(100% - var(--border-width));
+      height: calc(100% - var(--border-width));
+      top: calc(0% + var(--border-width) / 2);
+      left: calc(0% + var(--border-width) / 2);
+      box-sizing: border-box;
+      border-radius: 999vw;
+      overflow: clip;
+      background: linear-gradient(
+        var(--angle-2),
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.5) 40% 50%,
+        rgba(255, 255, 255, 0) 55%
+      );
+      z-index: 3;
+      mix-blend-mode: screen;
+      pointer-events: none;
+      background-size: 200% 200%;
+      background-position: 0% 50%;
+      background-repeat: no-repeat;
+      transition: background-position calc(var(--anim--hover-time) * 1.25) var(--anim--hover-ease),
+        --angle-2 calc(var(--anim--hover-time) * 1.25) var(--anim--hover-ease);
+    }
+
+    .glass-btn:hover span::after {
+      background-position: 25% 50%;
+    }
+
+    /* Button outline */
+    .glass-btn::after {
+      content: "";
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      border-radius: 999vw;
+      width: calc(100% + var(--border-width));
+      height: calc(100% + var(--border-width));
+      top: calc(0% - var(--border-width) / 2);
+      left: calc(0% - var(--border-width) / 2);
+      padding: var(--border-width);
+      box-sizing: border-box;
+      background: conic-gradient(
+          from var(--angle-1) at 50% 50%,
+          rgba(0, 0, 0, 0.5),
+          rgba(0, 0, 0, 0) 5% 40%,
+          rgba(0, 0, 0, 0.5) 50%,
+          rgba(0, 0, 0, 0) 60% 95%,
+          rgba(0, 0, 0, 0.5)
+        ),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5));
+      mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      transition: all var(--anim--hover-time) var(--anim--hover-ease),
+        --angle-1 500ms ease;
+      box-shadow: inset 0 0 0 calc(var(--border-width) / 2) rgba(255, 255, 255, 0.5);
+    }
+
+    .glass-btn:hover::after {
+      --angle-1: -125deg;
+    }
+
+    /* Shadow hover effects */
+    .button-wrap:has(.glass-btn:hover) .button-shadow {
+      filter: blur(clamp(2px, 0.0625em, 6px));
+    }
+
+    .button-wrap:has(.glass-btn:hover) .button-shadow::after {
+      top: calc(var(--shadow-cuttoff-fix) - 0.875em);
+      opacity: 1;
+    }
+
+    /* Active state */
+    .button-wrap:has(.glass-btn:active) {
+      transform: rotate3d(1, 0, 0, 25deg);
+    }
+
+    .button-wrap:has(.glass-btn:active) .glass-btn {
+      box-shadow: inset 0 0.125em 0.125em rgba(0, 0, 0, 0.05),
+        inset 0 -0.125em 0.125em rgba(255, 255, 255, 0.5),
+        0 0.125em 0.125em -0.125em rgba(0, 0, 0, 0.2),
+        0 0 0.1em 0.25em inset rgba(255, 255, 255, 0.2),
+        0 0.225em 0.05em 0 rgba(0, 0, 0, 0.05),
+        0 0.25em 0 0 rgba(255, 255, 255, 0.75),
+        inset 0 0.25em 0.05em 0 rgba(0, 0, 0, 0.15);
+    }
+
+    /* Footer */
+    footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: 16px 32px;
+      text-align: center;
+    }
+
+    footer p {
+      color: #fff;
+      font-size: 0.9rem;
+      text-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.5),
+        0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+
+    footer a {
+      color: #fff;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+
+    footer a:hover {
+      opacity: 0.85;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      header {
+        padding: 16px 20px;
+      }
+
+      .nav-links {
+        gap: 20px;
+      }
+
+      .hero {
+        padding-top: 100px;
+        padding-bottom: 100px;
+      }
+
+      .cta-group {
+        flex-direction: column;
+        width: 100%;
+        max-width: 280px;
+      }
+
+      .button-wrap {
+        width: 100%;
+      }
+
+      .glass-btn {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    @media (max-width: 480px) {
+      header {
+        padding: 12px 16px;
+      }
+
+      .logo span {
+        display: none;
+      }
+
+      .nav-links {
+        gap: 16px;
+      }
+
+      .nav-links a {
+        font-size: 0.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <!-- Background Image -->
+    <div class="bg-image">
+      <picture>
+        <!-- Mobile -->
+        <source srcset="image.webp" media="(max-width: 767px)">
+        <!-- Desktop fallback -->
+<!--        <img src="image2.png" alt="Blitz Editor">-->
+<!--        <img src="image5.png" alt="Blitz Editor">-->
+        <img src="image6.webp" alt="Blitz Editor">
+      </picture>
+    </div>
+
+    <!-- Dotted Grid Overlay -->
+    <svg class="bg-dots" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <pattern id="dottedGrid" width="30" height="30" patternUnits="userSpaceOnUse">
+          <circle cx="2" cy="2" r="1" fill="rgba(0,0,0,0.08)" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#dottedGrid)" />
+    </svg>
+
+    <header>
+      <a href="/" class="logo">
+        <img src="logo-dark.svg" alt="Blitz">
+        <span>Blitz</span>
+      </a>
+      <nav class="nav-links">
+        <a href="https://github.com/repalash/threepipe" target="_blank">GitHub</a>
+<!--        <a href="https://threepipe.org/" target="_blank">Docs</a>-->
+        <a href="https://blitz.dev/discord" target="_blank">Discord</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="badge">Early Access Coming Soon</div>
+      <h1>make your first game!</h1>
+      <div class="cta-group">
+        <div class="button-wrap">
+          <a href="https://github.com/repalash/threepipe" class="glass-btn" target="_blank">
+            <span>
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+              </svg>
+              Star on GitHub
+            </span>
+          </a>
+          <div class="button-shadow"></div>
+        </div>
+        <div class="button-wrap">
+          <a href="https://blitz.dev/discord" class="glass-btn" target="_blank">
+            <span>
+              <svg viewBox="0 0 24 24" fill="#5865F2">
+                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+              </svg>
+              Join Discord
+            </span>
+          </a>
+          <div class="button-shadow"></div>
+        </div>
+      </div>
+      <br/>
+      <p class="tagline">
+        Visual editor, entity-component system, hot-reload development, with support of your favourite AI agent.
+      </p>
+    </section>
+
+    <footer>
+      <p>Built on <a href="https://threepipe.org" target="_blank">threepipe</a> & <a href="https://threejs.org" target="_blank">three.js</a> <br/> © 2025 Blitz</p>
+    </footer>
+  </div>
+</body>
+</html>
+
