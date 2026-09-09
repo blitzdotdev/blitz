@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { $Database, D1Adapter, teenyHono } from "teenybase/worker";
 import config from "virtual:teenybase";
 import type { AppEnv } from "./types.js";
@@ -28,6 +29,7 @@ const app = teenyHono<AppEnv>(async (c) => {
     exposeHeaders: ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
   },
   onError(error, c) {
+    if (error instanceof HTTPException) return error.getResponse();
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error(JSON.stringify({ event: "request_error", path: c.req.path, message }));
     return jsonError(500, "internal_error", "An internal error occurred.",

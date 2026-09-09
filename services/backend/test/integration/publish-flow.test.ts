@@ -121,6 +121,23 @@ describe("local backend and gateway publish flow", () => {
     });
   });
 
+  it("exposes Google GIS login with framework form and CSRF validation", async () => {
+    const url = `${stack.backendUrl}/api/v1/table/users/auth/google-login`;
+    const missing = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "",
+    });
+    expect(missing.status).toBe(400);
+
+    const csrfMismatch = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ credential: "not-a-real-google-token", g_csrf_token: "body-token" }),
+    });
+    expect(csrfMismatch.status).toBe(403);
+  });
+
   it("rejects an unregistered runtime hash when strict runtime checks are enabled", async () => {
     const result = await createGame(`runtime-check-${Date.now().toString(36)}`, "198.51.100.22");
     expect(result.response.status).toBe(201);
