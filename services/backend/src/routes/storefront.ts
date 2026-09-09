@@ -148,7 +148,7 @@ function renderStorefront(games: StorefrontGame[]): string {
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Blitz — Play games</title>
+<title>Blitz: Play games</title>
 <style>
 :root{color-scheme:dark;font:16px/1.5 system-ui,sans-serif;background:#0d0d14;color:#f7f7fb}*{box-sizing:border-box}body{margin:0}main,footer{width:min(1120px,calc(100% - 32px));margin:auto}header{padding:64px 0 28px}h1{font-size:clamp(2.3rem,7vw,4.7rem);line-height:1;margin:0 0 12px}.intro{color:#aaaabd;margin:0 0 28px}input{width:100%;padding:15px 18px;border:1px solid #353547;border-radius:12px;background:#171722;color:inherit;font:inherit}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:22px;padding:8px 0 64px}.card{overflow:hidden;border:1px solid #292938;border-radius:16px;background:#171722}.card img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;background:#191925}.details{padding:18px}.details h2{margin:0;font-size:1.2rem}.author,.description{color:#aaaabd;margin:3px 0 14px}.description{min-height:3em}.play{display:inline-block;padding:9px 17px;border-radius:9px;background:#7657ff;color:white;text-decoration:none;font-weight:700}.empty{color:#aaaabd}footer{padding:0 0 36px;color:#77778a}footer a{color:#aaaabd}
 </style></head><body><main><header><h1>Play something new.</h1><p class="intro">Games made and published with Blitz.</p>
