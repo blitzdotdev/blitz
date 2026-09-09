@@ -27,6 +27,22 @@ Use `--cache /tmp/blitz-npm-cache` on every npm command. Keep `--ignore-scripts`
 
 ## Upstream sync
 
-Run `git subtree pull --prefix=packages/threepipe threepipe master` to sync Threepipe.
+The vendored packages keep their upstream history, so a pull merges cleanly into the prefix.
 
-Run `git subtree pull --prefix=packages/uiconfig-blueprint uiconfig-blueprint dev` to sync UIConfig Blueprint.
+Apple Git has no `git subtree`. Use the subtree merge strategy, which works with any git:
+
+```
+git pull -s subtree -Xsubtree=packages/threepipe threepipe master
+git pull -s subtree -Xsubtree=packages/uiconfig-blueprint uiconfig-blueprint dev
+```
+
+If a git with `git subtree` is installed (for example Homebrew git), these are equivalent:
+
+```
+git subtree pull --prefix=packages/threepipe threepipe master
+git subtree pull --prefix=packages/uiconfig-blueprint uiconfig-blueprint dev
+```
+
+## Dependency notes
+
+`three` and `@types/three` are pinned in the root `overrides` to repalash's patched release tarballs on GitHub. threepipe needs that patched build, and the old `pkg.threepipe.org` registry is gone. If those release URLs disappear, the install breaks. A mirror under the blitzdotdev org is the fix.
