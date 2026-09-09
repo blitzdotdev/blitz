@@ -8,7 +8,7 @@
 - Instruct the user to make changes to the 3D scene or to add or remove components from the game.
 - Check node_modules/threepipe for the source code of threepipe and its plugins like `ThreeViewer`, `EntityComponentPlugin` etc.
 - threepipe is based on three.js, any three.js export can be imported like `import * as THREE from 'three';`, for three.js addons, they need to be imported from threepipe like `import { SimplifyModifier } from 'threepipe';`(but its not required in most cases as the functionality is built into some plugin).
-- The game includes a main.js file that is not used during development, so it not to be modified.
+- The game includes a `main.js` file that exports `main({viewer})`. The published runtime calls it after the scene has loaded and the timeline, components, and physics have started. The editor's current play mode does not call `main.js`, so test editor play behavior through components and keep published-only setup in `main({viewer})`.
 - Do not use inheritance when creating custom components, always extend from `Object3DComponent` directly. For reusable code, use composition by creating helper classes or functions that can be used across multiple components.
 - The game uses ES6 modules, so use `import` and `export` statements for modularity.
 - When editing files with the editor open, the changes are hot-reloaded automatically on file save. It is necessary to ensure that all resources and event listeners are properly cleaned up in the `destroy()`(or `stop()`) method of components to prevent memory leaks during hot-reloading.
