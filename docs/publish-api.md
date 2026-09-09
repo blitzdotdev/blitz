@@ -158,6 +158,8 @@ Errors: `400 invalid_slug`, `400 reserved_slug`, `400 invalid_name`, `400 invali
 
 Auth: the game's deploy token or the owner's platform JWT.
 
+`:id` may be the game ID or slug. Slugs are resolved first. The same applies to the blob, release, and deploy-token routes below.
+
 Success: `200`.
 
 ```json
@@ -240,6 +242,12 @@ Auth: game deploy token or owner JWT.
 
 Success: `200` with `Content-Length` and `ETag`. Missing: `404`. Invalid hash: `400 invalid_hash`.
 
+### Download a blob
+
+`GET /api/v1/games/:id/blobs/:sha256`
+
+Auth: game deploy token or owner JWT. Success streams the bytes with `Content-Type: application/octet-stream`, `Content-Length`, and `ETag`. Blobs are global, but this route requires game auth and is not a public mirror.
+
 ### Check missing blobs
 
 `POST /api/v1/games/:id/blobs/missing`
@@ -294,9 +302,12 @@ Request:
     "index.html": {"sha256":"<sha256>","size":123,"mime":"text/html; charset=utf-8"},
     "models/scene.glb": {"sha256":"<sha256>","size":456}
   },
-  "message":"Initial release"
+  "message":"Initial release",
+  "base_release":"<previous-active-release-hash>"
 }
 ```
+
+`base_release` is optional. Send the release hash you last pulled. If it is not the current active release, the server returns `409 release_moved` with `error.active_release`. Pull that release before publishing again. A malformed value returns `400 invalid_base_release`.
 
 Paths are relative. They cannot contain empty, `.`, or `..` segments, backslashes, or NUL bytes. A path is at most 512 characters. A release has 1-2,000 files. `message` is optional and at most 500 characters. All blobs must exist and their R2 sizes must match. The default active-manifest quota is 500 MiB. Reused blob bytes count once per path in the manifest.
 
@@ -327,6 +338,20 @@ Success: `200`.
 ```
 
 Errors: game-auth errors.
+
+### Get a release
+
+`GET /api/v1/games/:id/releases/:hash`
+
+Auth: game deploy token or owner JWT.
+
+Success: `200`.
+
+```json
+{"release_hash":"...","files":{"index.html":{"sha256":"...","size":123}},"message":"Initial release","created_at":"...","active":true}
+```
+
+Errors: `404 release_not_found`, plus game-auth errors.
 
 ### Activate a release
 

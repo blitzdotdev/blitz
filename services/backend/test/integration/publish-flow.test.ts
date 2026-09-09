@@ -218,6 +218,41 @@ describe("local backend and gateway publish flow", () => {
     expect(release.preview_url).toBe(created.preview_url);
     expect(Object.keys(release.files)).toHaveLength(2);
 
+    const bySlug = await fetch(`${stack.backendUrl}/api/v1/games/${created.slug}`, {
+      headers: gameHeaders(created.deploy_token),
+    });
+    expect(bySlug.status).toBe(200);
+    expect((await bySlug.json() as { game: { id: string } }).game.id).toBe(created.game_id);
+
+    const releaseDetail = await fetch(
+      `${stack.backendUrl}/api/v1/games/${created.slug}/releases/${firstReleaseHash}`,
+      { headers: gameHeaders(created.deploy_token) },
+    );
+    expect(releaseDetail.status).toBe(200);
+    expect(await releaseDetail.json()).toMatchObject({
+      release_hash: firstReleaseHash,
+      files: {
+        "index.html": { sha256: indexHash, size: indexBytes.length },
+        "models/tiny.glb": { sha256: binaryHash, size: binaryBytes.length },
+      },
+      message: "first release",
+      active: true,
+    });
+
+    const unauthenticatedBlob = await fetch(
+      `${stack.backendUrl}/api/v1/games/${created.slug}/blobs/${binaryHash}`,
+    );
+    expect(unauthenticatedBlob.status).toBe(401);
+    const pulledBlob = await fetch(
+      `${stack.backendUrl}/api/v1/games/${created.slug}/blobs/${binaryHash}`,
+      { headers: gameHeaders(created.deploy_token) },
+    );
+    expect(pulledBlob.status).toBe(200);
+    expect(pulledBlob.headers.get("content-type")).toBe("application/octet-stream");
+    expect(pulledBlob.headers.get("content-length")).toBe(String(binaryBytes.length));
+    expect(pulledBlob.headers.get("etag")).toBe(`"${binaryHash}"`);
+    expect(new Uint8Array(await pulledBlob.arrayBuffer())).toEqual(binaryBytes);
+
     const page = await fetch(created.preview_url);
     expect(page.status).toBe(200);
     expect(page.headers.get("content-type")).toBe("text/html; charset=utf-8");
@@ -237,10 +272,32 @@ describe("local backend and gateway publish flow", () => {
   });
 
   it("removes a path in a second release and restores it by activation", async () => {
+    const moved = await fetch(`${stack.backendUrl}/api/v1/games/${created.slug}/releases`, {
+      method: "PUT",
+      headers: gameHeaders(created.deploy_token, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        files: { "index.html": { sha256: indexHash, size: indexBytes.length } },
+        message: "stale update",
+        base_release: "f".repeat(64),
+      }),
+    });
+    expect(moved.status).toBe(409);
+    expect(await moved.json()).toEqual({
+      error: {
+        code: "release_moved",
+        message: "The active release changed. Pull it before publishing.",
+        active_release: firstReleaseHash,
+      },
+    });
+
     const second = await fetch(`${stack.backendUrl}/api/v1/games/${created.game_id}/releases`, {
       method: "PUT",
       headers: gameHeaders(created.deploy_token, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ files: { "index.html": { sha256: indexHash, size: indexBytes.length } }, message: "remove model" }),
+      body: JSON.stringify({
+        files: { "index.html": { sha256: indexHash, size: indexBytes.length } },
+        message: "remove model",
+        base_release: firstReleaseHash,
+      }),
     });
     expect(second.status, await second.clone().text()).toBe(201);
     expect((await fetch(`${stack.gatewayUrl}/${created.slug}/models/tiny.glb`)).status).toBe(404);
@@ -290,6 +347,9 @@ describe("local backend and gateway publish flow", () => {
     });
     expect(detail.status).toBe(200);
     expect((await detail.json() as { game: { expires_at: string | null } }).game.expires_at).toBeNull();
+    expect((await fetch(`${stack.backendUrl}/api/v1/games/${created.slug}`, {
+      headers: { Authorization: `Bearer ${account.token}` },
+    })).status).toBe(200);
 
     const mint = await fetch(`${stack.backendUrl}/api/v1/games/${created.game_id}/tokens`, {
       method: "POST",

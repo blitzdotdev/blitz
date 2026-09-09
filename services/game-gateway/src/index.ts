@@ -1,4 +1,5 @@
 import { expiredPage, notFoundPage, provisioningPage, publishingPage } from "./errors.js";
+import { addEditorCors, allowedEditorOrigin, editorPreflight } from "./cors.js";
 import { mimeForPath } from "./mime.js";
 import { mapRequestPath, resolveGatewayTarget } from "./path.js";
 import { parseRangeHeader } from "./range.js";
@@ -122,15 +123,22 @@ function responseHeaders(path: string, file: ManifestFile, etag: string): Header
 
 export default {
   async fetch(request, env): Promise<Response> {
+    const editorOrigin = allowedEditorOrigin(request.headers.get("Origin"), env.EDITOR_ORIGINS);
+    if (request.method === "OPTIONS") {
+      if (editorOrigin) return editorPreflight(request, editorOrigin);
+      return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
+    }
     try {
-      return await handleRequest(request, env);
+      const response = await handleRequest(request, env);
+      return editorOrigin ? addEditorCors(response, editorOrigin) : response;
     } catch (error) {
       console.error(JSON.stringify({
         event: "gateway_error",
         path: new URL(request.url).pathname,
         message: error instanceof Error ? error.message : String(error),
       }));
-      return new Response("Internal Server Error", { status: 500 });
+      const response = new Response("Internal Server Error", { status: 500 });
+      return editorOrigin ? addEditorCors(response, editorOrigin) : response;
     }
   },
 } satisfies ExportedHandler<Env>;

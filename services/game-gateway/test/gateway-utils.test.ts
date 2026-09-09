@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { publishingPage } from "../src/errors.js";
+import { addEditorCors, allowedEditorOrigin, editorPreflight } from "../src/cors.js";
 import { mimeForPath } from "../src/mime.js";
 import { mapRequestPath, resolveGatewayTarget } from "../src/path.js";
 import { parseRangeHeader } from "../src/range.js";
@@ -56,5 +57,40 @@ describe("publishing page", () => {
     const body = await response.text();
     expect(body).toContain("Publishing your game");
     expect(body).toContain("fetch(location.href,{cache:'no-store'})");
+  });
+});
+
+describe("editor CORS", () => {
+  it("uses the production editor and localhost defaults", () => {
+    expect(allowedEditorOrigin("https://blitz-editor.blitzapp.workers.dev")).toBe("https://blitz-editor.blitzapp.workers.dev");
+    expect(allowedEditorOrigin("http://localhost:5173")).toBe("http://localhost:5173");
+    expect(allowedEditorOrigin("https://example.com")).toBeNull();
+  });
+
+  it("adds CORS only for an explicitly allowed origin", () => {
+    expect(allowedEditorOrigin("https://editor.example", " https://editor.example, http://localhost:5173 "))
+      .toBe("https://editor.example");
+    const response = addEditorCors(new Response("ok", { headers: { Vary: "Accept-Encoding" } }), "https://editor.example");
+    expect(response.headers.get("access-control-allow-origin")).toBe("https://editor.example");
+    expect(response.headers.get("access-control-expose-headers")).toBe("ETag, X-Blitz-State");
+    expect(response.headers.get("vary")).toBe("Accept-Encoding, Origin");
+  });
+
+  it("handles GET and HEAD preflights and rejects other methods", () => {
+    for (const method of ["GET", "HEAD"]) {
+      const request = new Request("https://gateway.example/game/", {
+        method: "OPTIONS",
+        headers: { "Access-Control-Request-Method": method },
+      });
+      const response = editorPreflight(request, "https://editor.example");
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-methods")).toBe("GET, HEAD");
+      expect(response.headers.get("access-control-allow-origin")).toBe("https://editor.example");
+    }
+    const rejected = editorPreflight(new Request("https://gateway.example/game/", {
+      method: "OPTIONS",
+      headers: { "Access-Control-Request-Method": "POST" },
+    }), "https://editor.example");
+    expect(rejected.status).toBe(405);
   });
 });

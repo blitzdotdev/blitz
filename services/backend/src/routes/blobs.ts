@@ -37,16 +37,25 @@ blobs.post("/api/v1/games/:id/blobs/missing", gameAuthMiddleware, async (c) => {
 blobs.get("/api/v1/games/:id/blobs/:sha256", gameAuthMiddleware, async (c) => {
   const hash = c.req.param("sha256");
   if (!SHA256_RE.test(hash)) return jsonError(400, "invalid_hash", "sha256 must be lowercase hexadecimal.");
-  const object = await c.env.BLOBS.head(`blobs/${hash}`);
+  const key = `blobs/${hash}`;
+  if (c.req.method === "HEAD") {
+    const object = await c.env.BLOBS.head(key);
+    if (!object) return new Response(null, { status: 404 });
+    return new Response(null, { headers: blobResponseHeaders(hash, object.size) });
+  }
+  const object = await c.env.BLOBS.get(key);
   if (!object) return new Response(null, { status: 404 });
-  return new Response(null, {
-    headers: {
-      "Content-Length": String(object.size),
+  return new Response(object.body, { headers: blobResponseHeaders(hash, object.size) });
+});
+
+function blobResponseHeaders(hash: string, size: number): HeadersInit {
+  return {
+      "Content-Type": "application/octet-stream",
+      "Content-Length": String(size),
       "ETag": `"${hash}"`,
       "X-Content-Type-Options": "nosniff",
-    },
-  });
-});
+  };
+}
 
 blobs.put("/api/v1/games/:id/blobs/:sha256", gameAuthMiddleware, async (c) => {
   const hash = c.req.param("sha256");

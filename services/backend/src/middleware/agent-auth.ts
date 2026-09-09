@@ -44,8 +44,9 @@ export const gameAuthMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => 
        JOIN games g ON g.id = gt.game_id
        WHERE gt.token_hash = ? AND gt.revoked = 0
          AND (g.id = ? OR g.slug = ?)
+       ORDER BY CASE WHEN g.slug = ? THEN 0 ELSE 1 END
        LIMIT 1`,
-    ).bind(tokenHash, idOrSlug, idOrSlug).first<(GameRow & { token_id: string })>();
+    ).bind(tokenHash, idOrSlug, idOrSlug, idOrSlug).first<(GameRow & { token_id: string })>();
     if (!row) return jsonError(401, "invalid_token", "The game token is invalid, revoked, or scoped to another game.");
 
     c.executionCtx.waitUntil(
@@ -67,8 +68,11 @@ export const gameAuthMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => 
     }
     if (!db.auth.uid) return jsonError(401, "invalid_token", "The platform token is invalid or expired.");
     const row = await c.env.DB.prepare(
-      "SELECT * FROM games WHERE (id = ? OR slug = ?) AND owner_id = ? LIMIT 1",
-    ).bind(idOrSlug, idOrSlug, db.auth.uid).first<GameRow>();
+      `SELECT * FROM games
+       WHERE (id = ? OR slug = ?) AND owner_id = ?
+       ORDER BY CASE WHEN slug = ? THEN 0 ELSE 1 END
+       LIMIT 1`,
+    ).bind(idOrSlug, idOrSlug, db.auth.uid, idOrSlug).first<GameRow>();
     if (!row) return jsonError(404, "game_not_found", "The game was not found or is not owned by this user.");
 
     c.set("userId", db.auth.uid);

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { canonicalizeManifest, manifestBytes, parseManifestFiles } from "../../src/utils/manifest.js";
+import { checkBaseRelease } from "../../src/utils/releases.js";
 
 describe("release manifests", () => {
   it("canonicalizes paths and descriptor keys before hashing", () => {
@@ -18,5 +19,15 @@ describe("release manifests", () => {
   it("rejects traversal paths and malformed hashes", () => {
     expect(() => parseManifestFiles({ "../index.html": { sha256: "a".repeat(64), size: 1 } })).toThrow("invalid file path");
     expect(() => parseManifestFiles({ "index.html": { sha256: "nope", size: 1 } })).toThrow("invalid sha256");
+  });
+});
+
+describe("release base guards", () => {
+  it("accepts an omitted or current base and rejects invalid or moved hashes", () => {
+    const active = "a".repeat(64);
+    expect(checkBaseRelease(undefined, active)).toEqual({ ok: true });
+    expect(checkBaseRelease(active, active)).toEqual({ ok: true });
+    expect(checkBaseRelease("not-a-hash", active)).toEqual({ ok: false, reason: "invalid" });
+    expect(checkBaseRelease("b".repeat(64), active)).toEqual({ ok: false, reason: "moved" });
   });
 });

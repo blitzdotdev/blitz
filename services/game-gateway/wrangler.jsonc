@@ -8,7 +8,10 @@
   "workers_dev": true,
   "preview_urls": true,
   "dev": { "port": 8788 },
-  "vars": { "APP_DOMAIN": "app.blitz.dev" },
+  "vars": {
+    "APP_DOMAIN": "app.blitz.dev",
+    "EDITOR_ORIGINS": "https://blitz-editor.blitzapp.workers.dev,http://localhost:5173"
+  },
   "d1_databases": [
     {
       "binding": "DB",
