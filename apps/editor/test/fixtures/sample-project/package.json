@@ -1,0 +1,17 @@
+{
+  "name": "blitz-runtime-sample",
+  "version": "1.0.0",
+  "private": true,
+  "mainScene": "assets/main.scene.gltf",
+  "dependencies": {
+    "threepipe": "0.5.1"
+  },
+  "blitz": {
+    "plugins": [],
+    "imports": {},
+    "scripts": ["Spinner.script.js"],
+    "viewer": {
+      "msaa": false
+    }
+  }
+}

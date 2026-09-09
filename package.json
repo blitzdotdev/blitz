@@ -27,6 +27,7 @@
     "typecheck:services": "npm run typecheck -w services/backend && npm run typecheck -w services/game-gateway",
     "test:backend": "npm test -w services/backend",
     "test:gateway": "npm test -w services/game-gateway",
+    "test:runtime": "npm run test:runtime -w apps/editor",
     "deploy:backend": "npm run deploy -w services/backend",
     "deploy:gateway": "npm run deploy -w services/game-gateway",
     "dev:editor": "npm run dev -w apps/editor"

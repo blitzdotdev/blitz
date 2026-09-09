@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Blitz runtime fixture</title>
+    <script type="importmap">
+    {"imports":{
+        "threepipe":"./runtime.js",
+        "three":"./runtime.js",
+        "uiconfig.js":"./runtime.js",
+        "ts-browser-helpers":"./runtime.js"
+    }}
+    </script>
+    <style>
+        html, body, canvas { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    </style>
+</head>
+<body>
+    <canvas id="blitz-canvas"></canvas>
+    <script type="module">
+        import {createGame, RUNTIME_VERSION} from './runtime.js'
+
+        window.__blitzUpdates = 0
+        window.__blitzErrors = []
+        window.__blitzRuntimeVersion = RUNTIME_VERSION
+        try {
+            window.__blitzGame = await createGame({
+                base: new URL('./sample-project/', location.href).href,
+                canvas: document.getElementById('blitz-canvas'),
+                onError: (error) => window.__blitzErrors.push(String(error)),
+            })
+        } catch (error) {
+            window.__blitzStartupError = String(error)
+        } finally {
+            window.__blitzReady = true
+        }
+    </script>
+</body>
+</html>
