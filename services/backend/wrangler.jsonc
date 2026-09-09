@@ -7,6 +7,9 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": true,
+  "rules": [
+    { "type": "Text", "globs": ["**/*.md", "**/*.txt"], "fallthrough": true }
+  ],
   "dev": { "port": 8787 },
   "vars": {
     "APP_DOMAIN": "app.blitz.dev",

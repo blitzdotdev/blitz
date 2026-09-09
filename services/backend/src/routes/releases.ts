@@ -40,6 +40,20 @@ releases.put("/api/v1/games/:id/releases", gameAuthMiddleware, async (c) => {
   const body = await readJsonObject(c.req.raw);
   if (!body) return jsonError(400, "bad_request", "A JSON body is required.");
 
+  let description: string | undefined;
+  if (body.metadata !== undefined) {
+    if (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata)) {
+      return jsonError(400, "invalid_metadata", "metadata must be an object.");
+    }
+    const metadata = body.metadata as Record<string, unknown>;
+    if (metadata.description !== undefined) {
+      if (typeof metadata.description !== "string" || metadata.description.length > 500) {
+        return jsonError(400, "invalid_description", "metadata.description must be a string of at most 500 characters.");
+      }
+      description = metadata.description.trim();
+    }
+  }
+
   if (body.base_release !== undefined) {
     const game = await c.env.DB.prepare(
       "SELECT active_release FROM games WHERE id = ?",
@@ -98,9 +112,13 @@ releases.put("/api/v1/games/:id/releases", gameAuthMiddleware, async (c) => {
     ).bind(releaseId, releaseHash, gameId, manifestJson, message || null),
     ...incrementBlobRefStatements(c.env.DB, files, { id: releaseId, gameId, releaseHash }),
   ];
-  statements.push(c.env.DB.prepare(
-    "UPDATE games SET active_release = ?, bytes_used = ?, updated_at = datetime('now') WHERE id = ?",
-  ).bind(releaseHash, bytesUsed, gameId));
+  statements.push(description === undefined
+    ? c.env.DB.prepare(
+      "UPDATE games SET active_release = ?, bytes_used = ?, updated_at = datetime('now') WHERE id = ?",
+    ).bind(releaseHash, bytesUsed, gameId)
+    : c.env.DB.prepare(
+      "UPDATE games SET active_release = ?, bytes_used = ?, description = ?, updated_at = datetime('now') WHERE id = ?",
+    ).bind(releaseHash, bytesUsed, description, gameId));
   statements.push(c.env.DB.prepare(
     `WITH pruned AS (
        SELECT release.id, release.manifest_json

@@ -104,6 +104,31 @@ Errors: `401 authentication_required`, `401 invalid_token`, `404 user_not_found`
 
 ## Games
 
+### List published games
+
+`GET /api/v1/games?limit=<1-100>&cursor=<opaque-cursor>`
+
+Auth: none. The list contains only claimed games that are listed and have an active release. Anonymous games are never returned. Games are ordered by active-release creation time, newest first. `limit` defaults to `24`; pass the returned `next_cursor` unchanged to fetch the next page.
+
+Success: `200`.
+
+```json
+{
+  "games":[{
+    "slug":"my-game",
+    "name":"My Game",
+    "description":"A tiny adventure",
+    "author":"player_one",
+    "thumbnail_url":"https://blitz-game-gateway.<subdomain>.workers.dev/my-game/thumbnail.png",
+    "preview_url":"https://blitz-game-gateway.<subdomain>.workers.dev/my-game/",
+    "updated_at":"YYYY-MM-DD HH:MM:SS"
+  }],
+  "next_cursor":null
+}
+```
+
+When the active manifest does not contain `thumbnail.png` at its root, `thumbnail_url` is a `data:image/svg+xml,...` placeholder. Errors: `400 invalid_limit`, `400 invalid_cursor`.
+
 ### Check a slug
 
 `GET /api/v1/slugs/:slug`
@@ -163,10 +188,28 @@ Auth: the game's deploy token or the owner's platform JWT.
 Success: `200`.
 
 ```json
-{"game":{"id":"...","owner_id":"...","slug":"my-game","name":"My Game","state":"open","visibility":"public","expires_at":"...","active_release":"...","bytes_used":123,"created_at":"...","updated_at":"...","preview_url":"..."}}
+{"game":{"id":"...","owner_id":"...","slug":"my-game","name":"My Game","description":"A tiny adventure","listed":true,"state":"open","visibility":"public","expires_at":"...","active_release":"...","bytes_used":123,"created_at":"...","updated_at":"...","preview_url":"..."}}
 ```
 
 Errors: `401 authentication_required`, `401 invalid_token`, `404 game_not_found`, `409 game_not_open`, `410 game_expired`.
+
+### Update a game
+
+`PATCH /api/v1/games/:id`
+
+Auth: the game's deploy token or the owner's platform JWT. `:id` may be the game ID or slug.
+
+Request fields are optional, but at least one is required:
+
+```json
+{"name":"My Game","description":"A tiny adventure","listed":true}
+```
+
+`name` is 1-100 characters after trimming. `description` is a string of at most 500 characters; an empty string clears the visible text. `listed` is boolean. Anonymous games remain absent from the store even when `listed` is true. Claiming a game resets `listed` to true.
+
+Success: `200`, with the same `game` object shape as Get a game; `listed` is returned as a boolean from this endpoint.
+
+Errors: `400 bad_request`, `400 invalid_update`, `400 invalid_name`, `400 invalid_description`, `400 invalid_listed`, plus game-auth errors.
 
 ### Delete a game
 
@@ -303,11 +346,12 @@ Request:
     "models/scene.glb": {"sha256":"<sha256>","size":456}
   },
   "message":"Initial release",
-  "base_release":"<previous-active-release-hash>"
+  "base_release":"<previous-active-release-hash>",
+  "metadata":{"description":"A tiny adventure"}
 }
 ```
 
-`base_release` is optional. Send the release hash you last pulled. If it is not the current active release, the server returns `409 release_moved` with `error.active_release`. Pull that release before publishing again. A malformed value returns `400 invalid_base_release`.
+`base_release` is optional. Send the release hash you last pulled. If it is not the current active release, the server returns `409 release_moved` with `error.active_release`. Pull that release before publishing again. A malformed value returns `400 invalid_base_release`. `metadata` is optional. When `metadata.description` is present, it must be a string of at most 500 characters and is copied to the game.
 
 Paths are relative. They cannot contain empty, `.`, or `..` segments, backslashes, or NUL bytes. A path is at most 512 characters. A release has 1-2,000 files. `message` is optional and at most 500 characters. All blobs must exist and their R2 sizes must match. The default active-manifest quota is 500 MiB. Reused blob bytes count once per path in the manifest.
 
@@ -321,7 +365,7 @@ Success: `201` for a new release or `200` for an idempotent existing manifest.
 {"release_hash":"<sha256>","preview_url":"...","files":{"index.html":{"sha256":"...","size":123}}}
 ```
 
-Errors: `400 bad_request`, `400 invalid_manifest`, `400 invalid_message`, `409 missing_blobs`, `409 blob_size_mismatch`, `409 unregistered_runtime` when strict runtime registration is enabled, `413 game_quota_exceeded`, plus game-auth errors.
+Errors: `400 bad_request`, `400 invalid_manifest`, `400 invalid_message`, `400 invalid_metadata`, `400 invalid_description`, `409 missing_blobs`, `409 blob_size_mismatch`, `409 unregistered_runtime` when strict runtime registration is enabled, `413 game_quota_exceeded`, plus game-auth errors.
 
 Publishing increments each distinct blob SHA-256 once per new release in the same atomic D1 batch that inserts and activates the release. The backend retains at most `RELEASE_RETENTION` releases per game (default `10`). A publish beyond the limit removes the oldest inactive releases and decrements their references in that same batch; the active release is never pruned. Re-publishing an identical manifest is idempotent and does not add references.
 
@@ -400,6 +444,22 @@ Auth: none. Success: `200`.
 ```json
 {"runtimes":[{"version":"1.2.3","sha256":"<sha256>","size":123456}]}
 ```
+
+### Delete a runtime version
+
+`DELETE /api/v1/runtimes/:version`
+
+Auth: `Authorization: Bearer <RUNTIME_UPLOAD_TOKEN>`.
+
+Success: `200`.
+
+```json
+{"deleted":true,"version":"1.2.3","sha256":"<sha256>"}
+```
+
+Deleting the registry row does not immediately remove its R2 blob. If no release references the hash, the blob becomes eligible for the normal grace-period sweep.
+
+Errors: `400 invalid_runtime_version`, `401 invalid_runtime_token`, `404 runtime_not_found`.
 
 ## Blob lifecycle and garbage collection
 

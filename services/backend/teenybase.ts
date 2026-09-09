@@ -79,6 +79,8 @@ const config: DatabaseSettings = {
         tableField("claim_secret_hash", "text", "text", {}),
         tableField("active_release", "text", "text", {}),
         tableField("bytes_used", "integer", "integer", { notNull: true, default: sql`0` }),
+        tableField("listed", "bool", "boolean", { notNull: true, default: sql`1` }),
+        tableField("description", "text", "text", {}),
         tableField("created_at", "text", "text", { notNull: true, default: sql`(datetime('now'))` }),
         tableField("updated_at", "text", "text", { notNull: true, default: sql`(datetime('now'))` }),
       ],

@@ -10,6 +10,7 @@ import { games } from "./routes/games.js";
 import { releases } from "./routes/releases.js";
 import { runtimes } from "./routes/runtimes.js";
 import { slugs } from "./routes/slugs.js";
+import { storefront } from "./routes/storefront.js";
 import { tokens } from "./routes/tokens.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { runCleanup } from "./cron/cleanup.js";
@@ -25,7 +26,7 @@ const app = teenyHono<AppEnv>(async (c) => {
   cors: {
     origin: "*",
     allowHeaders: ["Authorization", "Content-Type", "If-None-Match", "Range"],
-    allowMethods: ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     exposeHeaders: ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
   },
   onError(error, c) {
@@ -46,6 +47,7 @@ app.route("/", slugs);
 app.route("/", claims);
 app.route("/", tokens);
 app.route("/", games);
+app.route("/", storefront);
 
 app.get("/health", (c) => c.json({ status: "ok", service: "blitz-backend" }));
 app.notFound(() => jsonError(404, "not_found", "Route not found."));

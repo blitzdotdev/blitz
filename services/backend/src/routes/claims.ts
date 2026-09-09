@@ -47,7 +47,7 @@ claims.post("/api/v1/games/:slug/claim", platformAuthMiddleware, async (c) => {
   const claimed = await c.env.DB.prepare(
     `UPDATE games
      SET owner_id = ?, expires_at = NULL, anon_meta = NULL, claim_secret_hash = NULL,
-         updated_at = datetime('now')
+         listed = 1, updated_at = datetime('now')
      WHERE id = ? AND owner_id = ? AND state = 'open' AND expires_at > datetime('now')
        AND claim_secret_hash = ?
      RETURNING id, slug, owner_id`,
