@@ -28,7 +28,7 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | Phase B part 1: framework-free publish module (walk, hash, manifest, index.html with relative paths, API client, deploys.json, publish and pull orchestration), `agents.md` served with a page pointer, slug-or-id lookup, `base_release` guard, pull endpoints, gateway CORS, runtime registration on deploy | BUILT, merged | commits `aa5568f`..`cb32c12`; live proof: curl-only publish of the sample project plays on workers.dev; runtime 0.12.0 registered |
 | Phase B part 2: the publish dialog in the editor | UNBUILT, moved to C2 | runs in the local editor through the local server |
 | Follow mode and the hosted editor | DROPPED (evening) | no hosted editor; the editor runs only from `blitz dev` |
-| `agents.md` served by blitz.dev | UNBUILT, phase D | today served from the workers.dev editor origin; C1 rewrites it for the `blitz` flow |
+| Storefront (phase D): listed and description columns, listing rule, server-rendered grid with 60 s edge cache, public JSON list, PATCH unlist, thumbnail convention, `agents.md` and `llms.txt` served by the backend, runtime DELETE | BUILT, merged | commit `c059f4e`; live at https://blitz-backend.blitzapp.workers.dev/ ; verified: anonymous games never listed |
 | Runtime handler API: scripted input, tick stepping (plan DEFER) | UNBUILT | |
 | Agent connection: websocket or CLI (plan DEFER) | UNBUILT | |
 | Open-source split: `@blitzdev/engine`, `@blitzdev/editor`, `@blitzdev/blitz`, `@blitzdev/template`, all Apache-2.0 with `src/` shipped so agents can grep them; cloud services stay closed | UNBUILT, decided | `docs/open-source-split.md`; rights check on the editor code first |
