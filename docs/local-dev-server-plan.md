@@ -50,7 +50,7 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Hosted editor
 
-`blitz.dev` keeps the editor for follow mode: `?game=<slug>#token=…` loads a published game from the gateway, refreshes on each release, and Save publishes. It serves `agents.md`. It no longer offers local folders.
+`editor.blitz.dev` keeps the editor for follow mode only: `?game=<slug>#token=…` loads a published game from the gateway, refreshes on each release, and Save publishes. It no longer offers local folders. `blitz.dev` itself is the store for published games and serves the canonical `agents.md`. See `docs/storefront-plan.md`.
 
 ## Agents
 

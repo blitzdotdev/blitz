@@ -80,4 +80,4 @@ Status: plan. Run it on the test domains after Phase B, the GC pass, and the ass
 
 ## Exit rule
 
-All rows pass, or each failure has an issue with an owner. Then the cutover: attach `blitz.dev` to `blitz-editor` and `*.app.blitz.dev/*` to `blitz-game-gateway` from the prod configs, and set `APP_DOMAIN=app.blitz.dev`.
+All rows pass, or each failure has an issue with an owner. Then the cutover: attach `blitz.dev` to `blitz-backend` (the store and the API), `editor.blitz.dev` to `blitz-editor`, and `*.app.blitz.dev/*` to `blitz-game-gateway` from the prod configs, and set `APP_DOMAIN=app.blitz.dev`. See `docs/storefront-plan.md` for the domain map.

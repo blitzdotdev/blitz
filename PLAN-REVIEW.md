@@ -35,7 +35,7 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | Per-game backend logic on D1 (auth, economy) | UNBUILT | later |
 | Staging wildcard `*.games.blitz.dev` and `editor-staging.blitz.dev` for host-mode tests | UNBUILT | proposal in `docs/e2e-test-plan.md` |
 | E2E gate execution | UNBUILT | after the running passes and Phase B |
-| Domain cutover to blitz.dev and `*.app.blitz.dev` | BLOCKED | another agent detaches them from teenybase; then gated on the E2E pass |
+| Domain cutover: `blitz.dev` to the store, `editor.blitz.dev` to the editor, `*.app.blitz.dev` to the gateway | BLOCKED | another agent detaches the domains from teenybase; then gated on the E2E pass; map in `docs/storefront-plan.md` |
 | Google Cloud: add editor origins to the OAuth client | USER ACTION | client id `118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com` |
 
 ### Plan items mapped to the board
@@ -206,3 +206,5 @@ Things the spec must change or add before build:
 7. **Follow mode decided (evening).** The agent builds in its own folder and publishes; the editor opens `?game=<slug>#token=…`, loads from the gateway, refreshes on each release, and its Save publishes. Folder mode stays as the one-click path for hands-on editing. Rule for agents: pull before publish; the API rejects a publish whose `base_release` is not the active release. `agents.md` is served from the editor origin with a pointer in the page HTML.
 
 8. **Scene model proposed by the owner (evening, pending confirmation).** `assets/main.scene.gltf` plus `main.scene.bin` is the single source of truth, text. The human edits it in the editor. The agent edits it with scripts (gltf-transform in JS, pygltflib in Python), never by hand. Procedural content is scoped: a `Generator` component on a node holds `{module, params}`, runs at load in the editor and the runtime, and fills that node's children, which are tagged generated and excluded from save. Bake is explicit and scoped to one generator node and refuses when the node has non-generated children or human edits since the last bake, unless forced. `.blitz/journal.jsonl` records human edits as a semantic diff per save. This replaces the loose `scene.js` and the writable `scene.json` ideas. Cost: an editor post-process of the JSON export (external `.bin`, stable ids, stable key order) instead of a threepipe exporter change.
+
+9. **blitz.dev is the store (evening decision).** blitz.dev lists published games, consumer facing, dead simple: a grid of cards with a Play button, served by the backend worker with a 60 s edge cache. Listed means claimed, active release, and `listed` true. Anonymous games stay link-only. The hosted editor moves to `editor.blitz.dev` for follow mode. The canonical `agents.md` is served by blitz.dev. Plan: `docs/storefront-plan.md`, phase D, backend only, in parallel with C1.
