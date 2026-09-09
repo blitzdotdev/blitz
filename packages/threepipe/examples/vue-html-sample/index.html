@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Threepipe Vue/HTML Sample</title>
+    <style>
+        html, body{
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+
+    <script type="module" src="../examples-utils/global-loading.mjs"></script>
+    <script type="module" src="../examples-utils/simple-code-preview.mjs"></script>
+</head>
+<body>
+<div id="app">
+    <canvas id="three-canvas" style="width: 800px; height: 600px" ref="canvasRef"></canvas>
+</div>
+<script id="example-script" type="module" data-scripts="./index.html">
+    // import { ThreeViewer, LoadingScreenPlugin } from 'https://unpkg.com/threepipe@latest/dist/index.mjs'
+    import { ThreeViewer, LoadingScreenPlugin, _testStart, _testFinish } from './../../dist/index.mjs'
+    import { createApp, ref, onMounted, onBeforeUnmount } from "https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js";
+
+    _testStart()
+    const ThreeViewerComponent = {
+        setup() {
+            const canvasRef = ref(null);
+
+            onMounted(() => {
+                const viewer = new ThreeViewer({
+                    canvas: canvasRef.value,
+                    plugins: [LoadingScreenPlugin],
+                });
+
+                // Load an environment map
+                const envPromise = viewer.setEnvironmentMap('https://samples.threepipe.org/minimal/venice_sunset_1k.hdr');
+                const modelPromise = viewer.load('https://samples.threepipe.org/minimal/DamagedHelmet/glTF/DamagedHelmet.gltf', {
+                    autoCenter: true,
+                    autoScale: true,
+                });
+
+                Promise.all([envPromise, modelPromise]).then(([env, model]) => {
+                    console.log('Loaded', model, env, viewer);
+                    _testFinish()
+                });
+
+                onBeforeUnmount(() => {
+                    viewer.dispose();
+                });
+            });
+
+            return { canvasRef };
+        },
+    };
+
+    const app = createApp(ThreeViewerComponent);
+    app.mount('#app');
+</script>
+</body>
+</html>

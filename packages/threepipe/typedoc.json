@@ -1,0 +1,34 @@
+{
+    "externalSymbolLinkMappings": {
+        "@types/three": {
+            "*": "https://threejs.org/docs"
+        },
+        "three": {
+            "*": "https://threejs.org/docs/"
+        },
+        "ts-browser-helpers": {
+            "*": "https://repalash.com/ts-browser-helpers"
+        },
+        "uiconfig.js": {
+            "*": "https://repalash.com/uiconfig.js"
+        },
+        "uiconfig-tweakpane": {
+            "*": "https://repalash.com/uiconfig-tweakpane"
+        }
+    },
+    "entryPoints": [
+        "src/index.ts"
+    ],
+    "name": "ThreePipe",
+    "excludeExternals": true,
+    "readme": "none",
+    "sourceLinkExternal": true,
+    "categorizeByGroup": false,
+    "categoryOrder": [
+        "Viewer", "Plugins", "Asset Manager", "*", "Others"
+    ],
+    "externalPattern": [
+        "**/node_modules/**",
+        "**/three-ts-types/**"
+    ]
+}

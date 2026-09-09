@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="WEB_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/temp" />
+      <excludeFolder url="file://$MODULE_DIR$/.tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/dist" />
+      <excludeFolder url="file://$MODULE_DIR$/lib" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/extra-importers/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/blueprintjs/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/tweakpane/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/website/.vitepress/cache" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/blend-importer/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/configurator/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/gaussian-splatting/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/geometry-generator/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/gltf-transform/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/network/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/plugin-template-rollup" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/plugin-template-vite" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/svg-renderer/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/tweakpane-editor/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/website/.vitepress/dist" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/3d-tiles-renderer/dist" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/3d-tiles-renderer/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/assimpjs/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/path-tracing/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/blend-importer/data" />
+      <excludeFolder url="file://$MODULE_DIR$/website/.worker/.wrangler" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/timeline-ui/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/experiments" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/r3f/docs" />
+      <excludeFolder url="file://$MODULE_DIR$/plugins/troika-text/docs" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

@@ -1,0 +1,100 @@
+name: Publish packages to npm
+
+on:
+  push:
+    branches: ["master"]
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# Cancel old runs when a new push arrives (cancels stale approval requests)
+concurrency:
+  group: publish
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      passed: ${{ steps.verify.outputs.passed }}
+      has_publishable: ${{ steps.verify.outputs.has_publishable }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check for version changes
+        id: check
+        run: node scripts/ci/publish-check.mjs
+      - name: Install and build
+        id: build
+        if: steps.check.outputs.has_changes == 'true'
+        run: npm ci 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+        continue-on-error: true
+        env:
+          DOT_ENV_CONTENT: ${{ secrets.examples_dot_env }}
+      - name: Verify builds
+        if: steps.check.outputs.has_changes == 'true'
+        id: verify
+        run: node scripts/ci/build-verify.mjs
+        continue-on-error: true
+        env:
+          PUBLISH_CHANGES: ${{ steps.check.outputs.changes }}
+      - name: Generate docs
+        if: steps.verify.outputs.has_publishable == 'true'
+        run: npm run docs-all
+      - name: Upload build artifacts
+        if: steps.verify.outputs.has_publishable == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          retention-days: 1
+          path: |
+            dist/
+            lib/
+            docs/
+            plugins/*/dist/
+            plugins/*/docs/
+      - name: Notify Discord
+        if: always() && steps.check.outputs.has_changes == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PASSED_PACKAGES: ${{ steps.verify.outputs.passed || '[]' }}
+          FAILED_PACKAGES: ${{ steps.verify.outputs.failed || '[]' }}
+        run: node scripts/ci/notify-discord.mjs
+      - name: Fail if all builds failed
+        if: always() && steps.verify.outputs.all_failed == 'true'
+        run: exit 1
+
+  publish:
+    needs: check
+    if: needs.check.outputs.has_publishable == 'true'
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+      - name: Install dependencies (skip build)
+        run: npm ci --ignore-scripts
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+      - name: Publish packages
+        env:
+          PUBLISH_CHANGES: ${{ needs.check.outputs.passed }}
+        run: node scripts/ci/publish-packages.mjs

@@ -1,0 +1,71 @@
+{
+    "name": "@threepipe/plugin-gaussian-splatting",
+    "description": "Gaussian Splatting for Threepipe",
+    "version": "0.2.5",
+    "devDependencies": {
+        "comlink": "^4.4.1",
+        "@types/emscripten": "^1.39.10"
+    },
+    "dependencies": {
+        "threepipe": "file:./../../src/"
+    },
+    "peerDependencies": {
+        "threepipe": ">=0.1.0"
+    },
+    "exports": {
+        ".": {
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js",
+            "types": "./src/index.d.ts"
+        },
+        "./dist/": {
+            "import": "./dist/",
+            "require": "./dist/"
+        }
+    },
+    "clean-package": {
+        "remove": [
+            "clean-package",
+            "scripts",
+            "devDependencies",
+            "//"
+        ],
+        "replace": {
+            "dependencies": {}
+        }
+    },
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.ts",
+    "files": [
+        "dist",
+        "src", "README.md", "CHANGELOG.md", "docs", "tsconfig.json"
+    ],
+    "scripts": {
+        "new:pack": "npm run prepare 1>&2 && npm run docs 1>&2 && clean-package && npm pack --silent && clean-package restore",
+        "prepare": "npm run build",
+        "build": "rimraf dist && vite build",
+        "dev": "NODE_ENV=development vite build --watch",
+        "docs": "rimraf docs && npx typedoc --skipErrorChecking"
+    },
+    "author": "repalash <palash@shaders.app>",
+    "license": "Apache-2.0",
+    "keywords": [
+        "three",
+        "three.js",
+        "threepipe",
+        "gaussian-splatting",
+        "ml",
+        "ai"
+    ],
+    "bugs": {
+        "url": "https://github.com/repalash/threepipe/issues"
+    },
+    "homepage": "https://github.com/repalash/threepipe#readme",
+    "repository": {
+        "type": "git",
+        "url": "git://github.com/repalash/threepipe.git",
+        "directory": "plugins/gaussian-splatting"
+    }
+}

@@ -1,0 +1,923 @@
+import {
+    BufferGeometry,
+    Color,
+    EquirectangularReflectionMapping,
+    Euler,
+    EventListener,
+    EventListener2,
+    IUniform,
+    Object3D,
+    Scene,
+    UVMapping,
+    Vector3,
+} from 'three'
+import type {IObject3D, IObject3DEventMap, IObjectProcessor} from '../IObject'
+import {type ICamera} from '../ICamera'
+import {autoGPUInstanceMeshes, Box3B} from '../../three'
+import {AnyOptions, onChange2, onChange3, serialize} from 'ts-browser-helpers'
+import {PerspectiveCamera2} from '../camera/PerspectiveCamera2'
+import {addModelProcess, centerAllGeometries, ThreeSerialization} from '../../utils'
+import {ITexture} from '../ITexture'
+import {AddObjectOptions, IScene, ISceneEventMap, ISceneSetDirtyOptions, IWidget} from '../IScene'
+import {iObjectCommons} from './iObjectCommons'
+import {RootSceneImportResult} from '../../assetmanager'
+import {
+    uiButton,
+    uiColor,
+    uiConfig,
+    uiFolderContainer,
+    uiImage,
+    UiObjectConfig,
+    uiSlider,
+    uiToggle,
+    uiVector,
+} from 'uiconfig.js'
+import {getFittingDistance} from '../../three/utils/camera'
+import {iCameraCommons} from './iCameraCommons'
+
+@uiFolderContainer('Root Scene')
+export class RootScene<TE extends ISceneEventMap = ISceneEventMap> extends Scene<TE&ISceneEventMap> implements IScene<TE> {
+    readonly isRootScene = true
+
+    assetType = 'model' as const
+    declare uiConfig: UiObjectConfig
+
+    // private _processors = new ObjectProcessorMap<'environment' | 'background'>()
+    // private _sceneObjects: ISceneObject[] = []
+    private _mainCamera: ICamera | null = null
+    /**
+     * The root object where all imported objects are added.
+     */
+    readonly modelRoot: IObject3D
+    // readonly lightsRoot: IObject3D // todo this can be added before modelRoot to add extra lights before the model root.
+
+    @serialize() @onChange2(RootScene.prototype.onBackgroundChange)
+        backgroundColor: Color | null = null // read in three.js WebGLBackground
+
+    @uiColor<RootScene>('Background Color', (s)=>({
+        hidden: ()=>s.backgroundColor === null || s.backgroundColor === undefined || s.background === 'environment',
+    }))
+    protected get _backgroundColorUi() {
+        return '#' + (this.backgroundColor?.getHexString() ?? '000000')
+    }
+
+    protected set _backgroundColorUi(v) {
+        this.setBackgroundColor(v)
+    }
+
+    @onChange3(RootScene.prototype.onBackgroundChange)
+    @serialize() @uiImage<RootScene>('Background Image', (s)=>({
+        hidden: ()=>s.backgroundColor === null || s.backgroundColor === undefined || s.background === 'environment',
+    }))
+        background: null | Color | ITexture | 'environment' = null
+
+    /**
+     * Toggle the background between color and transparent.
+     */
+    @uiButton<RootScene>(undefined, (s)=>({
+        label: ()=>!s.backgroundColor ? 'Set Color Background' : 'Set Transparent BG',
+        tags: ['context-menu'],
+    }))
+    toggleTransparentBackground() {
+        if (!this.backgroundColor) {
+            this.backgroundColor = new Color(0xffffff) // todo save last color and image?
+        } else {
+            this.background = null
+            this.backgroundColor = null
+        }
+        this.refreshUi?.()
+        this.setDirty()
+    }
+
+    /**
+     * Toggle the background between texture and environment map.
+     */
+    @uiButton<RootScene>(undefined, (s)=>({
+        label: ()=>s.background === 'environment' ? 'Remove Env Background' : 'Set Env Background',
+        disabled: ()=>!s.environment, tags: ['context-menu'],
+    }))
+    toggleEnvironmentBackground() {
+        if (this.background === 'environment') {
+            this.background = null
+        } else {
+            this.background = 'environment'
+        }
+    }
+
+
+    /**
+     * The intensity for the background color and map.
+     */
+    @serialize() @onChange3(RootScene.prototype.setDirty)
+    @uiSlider('Background Intensity', [0, 10], 0.01)
+        backgroundIntensity = 1
+
+    /**
+     * Enable/Disable tonemapping selectively for the background.
+     * Note - This requires both TonemapPlugin and GBufferPlugin or DepthBufferPlugin to be in the viewer to work.
+     */
+    @uiToggle('Background Tonemap'/* , (e)=>({e._viewer?.renderManager.gbufferTarget})*/) // todo let scene access the viewer
+    @onChange3(RootScene.prototype.setDirty)
+    @serialize()
+        backgroundTonemap = true
+
+    private _environment: ITexture | null = null
+    /**
+     * The default environment map used when rendering materials in the scene
+     */
+    @uiImage('Environment')
+    @serialize()
+    // Note: getter/setter defined in constructor using Object.defineProperty
+    declare environment: ITexture | null
+
+    /**
+     * The intensity for the environment light.
+     */
+    @uiSlider('Environment Intensity', [0, 10], 0.01)
+    @serialize() @onChange3(RootScene.prototype.setDirty)
+        environmentIntensity = 1
+
+    @serialize()
+    @uiVector<RootScene>('Environment Rotation', undefined, undefined, (t)=>({disabled: ()=>t.fixedEnvMapDirection || !t.environment}))
+    declare environmentRotation: Euler
+    @serialize()
+    @uiVector<RootScene>('Background Rotation', undefined, undefined, (t)=>({hidden: ()=>!t.background || t.background === 'environment' || !(t.background as any).isTexture || (t.background as any).mapping !== EquirectangularReflectionMapping}))
+    declare backgroundRotation: Euler
+
+    // @uiSlider('Environment Rotation', [-Math.PI, Math.PI], 0.01)
+    // @bindToValue({obj: 'environment', key: 'rotation', onChange: RootScene.prototype.setDirty, onChangeParams: false})
+    //     envMapRotation = 0
+
+    /**
+     * Extra textures/envmaps that can be used by objects/materials/plugins and will be serialized.
+     */
+    @serialize()
+    public textureSlots: Record<string, ITexture> = {}
+
+    /**
+     * Fixed direction environment reflections irrespective of camera position.
+     */
+    @uiToggle('Fixed Env Direction')
+    @serialize() @onChange3(RootScene.prototype.setDirty)
+        fixedEnvMapDirection = false
+
+    /**
+     * The default camera in the scene. This camera is always in the scene and used by default if no camera is set as main.
+     * It is also saved along with the scene JSON and shown in the UI. This is added to the scene root, hence not saved in the glTF when a scene glb is exported.
+     */
+    @uiConfig() @serialize() readonly defaultCamera: ICamera
+
+    /**
+     * Calls dispose on current old environment map, background map when it is changed.
+     * Runtime only (not serialized)
+     */
+    autoDisposeSceneMaps = true
+
+    // private _environmentLight?: IEnvironmentLight
+
+    // required just because we don't want activeCamera to be null.
+    private _dummyCam = new PerspectiveCamera2('') as ICamera
+
+    get mainCamera(): ICamera {
+        return this._mainCamera || this._dummyCam
+    }
+    set mainCamera(camera: ICamera | undefined) {
+        const cam = this.mainCamera
+        if (!camera) camera = this.defaultCamera
+        if (cam === camera) return
+        if (cam) {
+            cam.deactivateMain(undefined, true)
+            cam.removeEventListener('cameraUpdate', this._mainCameraUpdate)
+        }
+        if (camera) {
+            this._mainCamera = camera
+            camera.addEventListener('cameraUpdate', this._mainCameraUpdate)
+            camera.activateMain(undefined, true)
+
+            if (!camera._canvas && camera !== this.defaultCamera) {
+                console.warn('RootScene: mainCamera does not have a canvas set, some controls might not work properly.')
+            }
+        } else {
+            this._mainCamera = null
+        }
+        this.dispatchEvent({type: 'activeCameraChange', lastCamera: cam, camera}) // deprecated
+        this.dispatchEvent({type: 'mainCameraChange', lastCamera: cam, camera})
+        this.setDirty()
+    }
+
+    private _renderCamera: ICamera | undefined
+    get renderCamera() {
+        return this._renderCamera ?? this.mainCamera
+    }
+    set renderCamera(camera: ICamera) {
+        const cam = this._renderCamera
+        this._renderCamera = camera
+        this.dispatchEvent({type: 'renderCameraChange', lastCamera: cam, camera})
+    }
+
+    objectProcessor?: IObjectProcessor
+
+    /**
+     * Create a scene instance. This is done automatically in the {@link ThreeViewer} and must not be created separately.
+     * @param camera
+     * @param objectProcessor
+     */
+    constructor(camera: ICamera, objectProcessor?: IObjectProcessor) {
+        super()
+        this.setDirty = this.setDirty.bind(this)
+        this.name = 'RootScene'
+
+        this.objectProcessor = objectProcessor
+        iObjectCommons.upgradeObject3D.call(this)
+        this.objectProcessor?.processObject(this)
+
+        // this is called from parentDispatch since scene is a parent.
+        this.addEventListener('materialUpdate', (e: any)=>this.dispatchEvent({...e, type: 'sceneMaterialUpdate'}))
+        this.addEventListener('objectUpdate', this.refreshScene)
+        this.addEventListener('geometryUpdate', this.refreshScene)
+        this.addEventListener('geometryChanged', this.refreshScene)
+
+        this.environmentRotation?._onChange(()=>{
+            this.setDirty({key: 'environmentRotation', value: this.environmentRotation})
+        })
+        this.backgroundRotation?._onChange(()=>{
+            this.setDirty({key: 'backgroundRotation', value: this.backgroundRotation})
+        })
+
+        this.defaultCamera = camera
+        this.modelRoot = new Object3D() as IObject3D
+        this.modelRoot.userData.rootSceneModelRoot = true
+        this.modelRoot.name = 'Scene' // for the UI
+        // this.modelRoot.addEventListener('update', this.setDirty) // todo: where was this dispatched from/used ?
+
+        // eslint-disable-next-line deprecation/deprecation
+        this.add(this.modelRoot as any)
+        // this.addSceneObject(this.modelRoot as any, {addToRoot: true, autoScale: false})
+
+        // eslint-disable-next-line deprecation/deprecation
+        this.add(this.defaultCamera)
+
+        this.mainCamera = this.defaultCamera
+
+        Object.defineProperty(this, 'environment', {
+            configurable: true,
+            enumerable: true,
+            get: () => {
+                // Return override environment if we're in render step and override is set
+                if (this._isMainRendering && this.overrideRenderEnvironment !== null) {
+                    return this.overrideRenderEnvironment
+                }
+                return this._environment
+            },
+            set: (value: ITexture | null) => {
+                const oldValue = this._environment
+                this._environment = value
+                this._onEnvironmentChange({key: 'environment', value, oldValue, target: this})
+            },
+        })
+    }
+
+    /**
+     * Add any object to the scene.
+     * @param imported
+     * @param options
+     */
+    addObject<T extends IObject3D|Object3D = IObject3D>(imported: T, options?: AddObjectOptions): T&IObject3D {
+        if (options?.clearSceneObjects || options?.disposeSceneObjects) {
+            this.clearSceneModels(options.disposeSceneObjects)
+        }
+        if (!imported) return imported
+        if (!imported.isObject3D) {
+            console.error('Invalid object, cannot add to scene.', imported)
+            return imported as T&IObject3D
+        }
+        this._addObject3D(<IObject3D>imported, options)
+        this.dispatchEvent({type: 'addSceneObject', object: <IObject3D>imported, options})
+        return imported as T&IObject3D
+    }
+
+    /**
+     * Load model root scene exported to GLTF format. Used internally by {@link ThreeViewer.addSceneObject}.
+     * @param obj
+     * @param options
+     */
+    loadModelRoot(obj: RootSceneImportResult, options?: AddObjectOptions) {
+        if (options?.clearSceneObjects || options?.disposeSceneObjects) {
+            this.clearSceneModels(options.disposeSceneObjects)
+        }
+        if (!obj.userData?.rootSceneModelRoot) {
+            console.error('RootScene: Invalid model root scene object. Trying to add anyway.', obj)
+        }
+        if (obj.userData) {
+            // todo deep merge all userdata?
+            if (obj.userData.__importData) // this is with `__` as it is not automatically serialized, but it can be read in gltf exporter extensions and serialized manually
+                this.modelRoot.userData.__importData = {
+                    ...this.modelRoot.userData.__importData,
+                    ...obj.userData.__importData,
+                }
+            if (obj.userData.gltfAsset) {
+                this.modelRoot.userData.gltfAsset = { // todo: why are we merging values?
+                    ...this.modelRoot.userData.gltfAsset,
+                    ...obj.userData.gltfAsset,
+                    extras: {
+                        ...this.modelRoot.userData.gltfAsset?.extras,
+                        ...obj.userData.gltfAsset.extras,
+                    },
+                }
+            }
+            if (obj.userData.gltfExtras)
+                this.modelRoot.userData.gltfExtras = {
+                    ...this.modelRoot.userData.gltfExtras,
+                    ...obj.userData.gltfExtras,
+                }
+        }
+        if (obj.userData?.gltfAsset?.copyright) obj.children.forEach(c => !c.userData.license && (c.userData.license = obj.userData.gltfAsset?.copyright))
+        if (obj.animations) {
+            if (!this.modelRoot.animations) this.modelRoot.animations = []
+            for (const animation of obj.animations) {
+                if (this.modelRoot.animations.includes(animation)) continue
+                this.modelRoot.animations.push(animation)
+            }
+        }
+        if (obj._loadingPromise) {
+            if (this.modelRoot._loadingPromise) {
+                this.modelRoot._loadingPromise = Promise.allSettled([this.modelRoot._loadingPromise, obj._loadingPromise])
+            } else {
+                this.modelRoot._loadingPromise = obj._loadingPromise
+            }
+        }
+        const children = obj._childrenCopy || [...obj.children]
+        return children.map(c=>this.addObject(c, {...options, clearSceneObjects: false, disposeSceneObjects: false}))
+    }
+
+    private _addObject3D(model: IObject3D|null, {addToRoot = false, ...options}: AddObjectOptions = {}): void {
+        const obj = model
+        if (!obj || !obj.isObject3D) {
+            console.error('RootScene: Invalid object, cannot add to scene.')
+            return
+        }
+        const target = addToRoot ? this : this.modelRoot
+        target.add(obj)
+
+        if (options.indexInParent !== undefined) {
+            const newIndex = options.indexInParent
+            const newIndex2 = target.children.indexOf(obj)
+            if (newIndex >= 0 && newIndex2 >= 0 && newIndex !== newIndex2 && newIndex < target.children.length) {
+                target.children.splice(newIndex2, 1)
+                target.children.splice(newIndex, 0, obj) // add at new index
+            }
+        }
+
+        addModelProcess(obj, options)
+        this.setDirty({refreshScene: true})
+    }
+
+    @uiButton('Center All Geometries', {sendArgs: false, tags: ['context-menu']})
+    centerAllGeometries(keepPosition = true, obj?: IObject3D) {
+        return centerAllGeometries(obj ?? this.modelRoot, keepPosition)
+    }
+
+    clearSceneModels(dispose = false, setDirty = true): void {
+        if (dispose) return this.disposeSceneModels(setDirty)
+        this.modelRoot.clear()
+        this.modelRoot.children = []
+        setDirty && this.setDirty({refreshScene: true})
+    }
+
+    disposeSceneModels(setDirty = true, clear = true) {
+        if (clear) {
+            for (const child of [...this.modelRoot.children]) {
+                child.dispose ? child.dispose() : child.removeFromParent()
+            }
+            this.modelRoot.clear()
+            if (setDirty) this.setDirty({refreshScene: true})
+        } else {
+            for (const child of this.modelRoot.children) {
+                child.dispose && child.dispose(false)
+            }
+        }
+    }
+
+    private _onEnvironmentChange(ev?: {value: ITexture|null, oldValue: ITexture|null, key?: string, target?: any}) {
+        if (ev?.oldValue && ev.oldValue !== ev.value) {
+            if (this.autoDisposeSceneMaps && typeof ev.oldValue.dispose === 'function') ev.oldValue.dispose()
+        }
+
+        // console.warn('environment changed')
+        if (this.environment?.mapping === UVMapping) {
+            this.environment.mapping = EquirectangularReflectionMapping // for PMREMGenerator
+            this.environment.needsUpdate = true
+        }
+
+        // todo dispatch texturesChanged also
+        this.dispatchEvent({
+            type: 'environmentChanged',
+            oldTexture: ev?.oldValue?.isTexture ? ev.oldValue : null,
+            texture: this.environment?.isTexture ? this.environment : null,
+            environment: this.environment,
+        })
+        this.setDirty({refreshScene: true, geometryChanged: false})
+        this.refreshUi?.()
+    }
+
+    onBackgroundChange(ev?: {value: ITexture|null, oldValue: ITexture|null}) {
+        if (ev?.oldValue && ev.oldValue !== ev.value) {
+            if (this.autoDisposeSceneMaps && typeof ev.oldValue.dispose === 'function') ev.oldValue.dispose()
+        }
+
+        // todo dispatch texturesChanged also
+        this.dispatchEvent({
+            type: 'backgroundChanged',
+            oldTexture: ev?.oldValue && ev.oldValue.isTexture ? ev.oldValue : null,
+            texture:(this.background as ITexture)?.isTexture ? (this.background as ITexture) : null,
+            background: this.background,
+            backgroundColor: this.backgroundColor,
+        })
+        this.setDirty({refreshScene: true, geometryChanged: false})
+        this.refreshUi?.()
+    }
+
+    /**
+     * @deprecated Use {@link addObject}
+     */
+    add(...object: Object3D[]): this {
+        const filter = object.filter(o=>o.parent !== this)
+        filter.length && super.add(...filter) // to prevent multiple event dispatch
+        // this._onSceneUpdate() // this is not needed, since it will be bubbled up from the object3d and we will get event objectUpdate
+        return this
+    }
+
+    /**
+     * Sets the backgroundColor property from a string, number or Color, and updates the scene.
+     * Note that when setting a `Color` object, it will be cloned.
+     * @param color
+     */
+    setBackgroundColor(color: string | number | Color | null) {
+        const col = color || typeof color === 'number' ? new Color(color) : null
+        if (col && this.backgroundColor && !col.equals(this.backgroundColor) ||
+            (!col || !this.backgroundColor) && col !== this.backgroundColor
+        ) this.backgroundColor = col
+    }
+
+    /**
+     * Mark the scene dirty, and force render in the next frame.
+     * @param options - set `refreshScene` to true to mark that any object transformations have changed. It might trigger effects like frame fade depening on plugins.
+     * @returns {this}
+     */
+    setDirty(options?: ISceneSetDirtyOptions): this {
+        // todo: for onChange calls -> check options.key for specific key that's changed and use it to determine refreshScene
+        if (options?.sceneUpdate) {
+            console.warn('sceneUpdate is deprecated, use refreshScene instead.')
+            options.refreshScene = true
+        }
+        this.dispatchEvent({type: 'update', bubbleToParent: false, object: this}) // todo remove
+        iObjectCommons.setDirty.call(this, {...options, scene: this})
+        return this
+    }
+
+
+    private _mainCameraUpdate: EventListener2<'cameraUpdate', IObject3DEventMap, ICamera> = (e) => {
+        if (!this._mainCamera?.parent) this.setDirty({refreshScene: false})
+        this.dispatchEvent({...e, type: 'mainCameraUpdate'})
+        this.dispatchEvent({...e, type: 'activeCameraUpdate'}) // deprecated
+        if (e.source !== 'RootScene') {
+            if (e.key === 'fov' && this.dollyActiveCameraFov()) return
+            if (this.refreshActiveCameraNearFar(!e.projectionUpdated)) {
+                // it will call mainCameraUpdate twice, that's fine first without projectionUpdated, then with projectionUpdated
+                return
+            }
+        }
+    }
+
+    // cached values
+    private _sceneBounds: Box3B = new Box3B
+    private _sceneBoundingRadius = 0
+
+    refreshScene(event?: Partial<(ISceneEventMap['objectUpdate']|ISceneEventMap['geometryUpdate']|ISceneEventMap['geometryChanged'])> & ISceneSetDirtyOptions & {type?: keyof ISceneEventMap}): this {
+        const fromSelf = event && event.type === 'objectUpdate' && (event.object === this || (event as any).target === this)
+        // todo test the isCamera here. this is for animation object plugin
+        if (event?.sceneUpdate === false || event?.refreshScene === false || event?.object?.isCamera) return fromSelf ? this : this.setDirty(event) // so that it doesn't trigger frame fade, shadow refresh etc
+        // console.warn(event)
+        this.refreshActiveCameraNearFar()
+        // this.dollyActiveCameraFov()
+        this._sceneBounds = this.getBounds(false, true)
+        this._sceneBoundingRadius = this._sceneBounds.getSize(new Vector3()).length() / 2.
+        this.dispatchEvent({...event, type: 'sceneUpdate', hierarchyChanged: ['addedToParent', 'removedFromParent'].includes(event?.change || '')})
+        if (!fromSelf) iObjectCommons.setDirty.call(this, {...event, scene: this})
+        return this
+    }
+
+    refreshUi = iObjectCommons.refreshUi.bind(this)
+    traverseModels = iObjectCommons.traverseModels.bind(this)
+
+    /**
+     * Dispose the scene and clear all resources.
+     */
+    dispose(clear = true): void {
+        this.disposeSceneModels(false, clear)
+
+        if (clear) {
+            [...this.children].forEach(child => child.dispose ? child.dispose() : child.removeFromParent())
+            this.clear()
+        }
+
+        // todo: dispose more stuff?
+        this.disposeTextures(clear)
+        return
+    }
+
+    /**
+     * Dispose and optionally remove all textures set directly on this scene.
+     * @param clear
+     */
+    disposeTextures(clear = true) {
+        this.environment?.dispose()
+        if ((this.background as ITexture)?.isTexture) (this.background as ITexture)?.dispose?.()
+
+        if (clear) {
+            this.environment = null
+            this.background = null
+        }
+    }
+
+    /**
+     * Returns the bounding box of the whole scene (model root and other meta objects).
+     * To get the bounds of just the objects added by the user(not by plugins) use `new Box3B().expandByObject(scene.modelRoot)`
+     * @param precise
+     * @param ignoreInvisible
+     * @param ignoreWidgets
+     * @param ignoreObject
+     * @returns {Box3B}
+     */
+    getBounds(precise = false, ignoreInvisible = true, ignoreWidgets = true, ignoreObject?: (obj: Object3D)=>boolean): Box3B {
+        // See bboxVisible in userdata in Box3B
+        return new Box3B().expandByObject(this, precise, ignoreInvisible, (o: any)=>{
+            if (ignoreWidgets && ((o as IWidget).isWidget || o.assetType === 'widget')) return true
+            return ignoreObject?.(o) ?? false
+        })
+    }
+
+    /**
+     * Similar to {@link getBounds}, but returns the bounding box of just the {@link modelRoot}.
+     * @param precise
+     * @param ignoreInvisible
+     * @param ignoreWidgets
+     * @param ignoreObject
+     * @returns {Box3B}
+     */
+    getModelBounds(precise = false, ignoreInvisible = true, ignoreWidgets = true, ignoreObject?: (obj: Object3D)=>boolean): Box3B {
+        if (this.modelRoot == undefined)
+            return new Box3B()
+        return new Box3B().expandByObject(this.modelRoot, precise, ignoreInvisible, (o: any)=>{
+            if (ignoreWidgets && o.assetType === 'widget') return true
+            return ignoreObject?.(o) ?? false
+        })
+    }
+
+    @uiButton('Auto GPU Instance Meshes', {tags: ['context-menu']})
+    autoGPUInstanceMeshes() {
+        const geoms = new Set<BufferGeometry>()
+        this.modelRoot.traverseModels!((o) => {o.geometry && geoms.add(o.geometry)}, {visible: false, widgets: false})
+        geoms.forEach((g: any) => autoGPUInstanceMeshes(g))
+    }
+
+    private _v1 = new Vector3()
+    private _v2 = new Vector3()
+
+    private _autoNearFarDisabled = new Set<string>()
+
+    /**
+     * For Programmatically toggling autoNearFar. This property is not supposed to be in the UI or serialized.
+     * Use camera.userData.autoNearFar for UI and serialization
+     * This is used in PickingPlugin, editor plugins
+     * autoNearFar will still be disabled if this is true and camera.userData.autoNearFar is false
+     */
+    disableAutoNearFar(id = 'default') {
+        const enabled = this._autoNearFarDisabled.size === 0
+        this._autoNearFarDisabled.add(id)
+        const camera = this.mainCamera as ICamera
+        if (enabled && camera.userData.autoNearFar !== false) {
+            let near = camera.near, far = camera.far
+            near = camera.userData.minNearPlane ?? iCameraCommons.defaultMinNear
+            far = camera.userData.maxFarPlane ?? iCameraCommons.defaultMaxFar
+            iCameraCommons.setNearFar(camera, near, far, true, 'RootScene')
+        }
+    }
+    enableAutoNearFar(id = 'default') {
+        if (!this._autoNearFarDisabled.has(id)) return
+        this._autoNearFarDisabled.delete(id)
+        const camera = this.mainCamera as ICamera
+        if (this._autoNearFarDisabled.size === 0 && camera) {
+            this.setDirty()
+        }
+    }
+
+    /**
+     * Refreshes the scene active camera near far values, based on the scene bounding box.
+     * This is called automatically every time the camera is updated.
+     */
+    refreshActiveCameraNearFar(setDirty = true): boolean {
+        const camera = this.mainCamera as ICamera
+        if (!camera) return false
+
+        let near = camera.near, far = camera.far
+        if (camera.userData.minNearPlane !== undefined) {
+            near = camera.userData.minNearPlane
+        }
+        if (camera.userData.maxFarPlane !== undefined) {
+            far = camera.userData.maxFarPlane
+        }
+
+        // console.log(this.autoNearFarEnabled, camera.userData.autoNearFar, camera.userData.maxFarPlane, camera.far)
+        if (this._autoNearFarDisabled.size !== 0 || camera.userData.autoNearFar === false) {
+            return iCameraCommons.setNearFar(camera, near, far, setDirty, 'RootScene')
+        }
+
+        // todo check if this takes too much time with large scenes(when moving the camera and not animating), but we also need to support animations
+        const bbox = this.getBounds(false) // todo: can we use this._sceneBounds or will it have some issue with animation?
+        const size = bbox.getSize(this._v2).length()
+        if (size < 0.001) {
+            return iCameraCommons.setNearFar(camera, near, far, setDirty, 'RootScene')
+        }
+
+        camera.getWorldPosition(this._v1).sub(bbox.getCenter(this._v2))
+        const radius = 1.5 * Math.max(0.25, size) / 2.
+        const dist = this._v1.length()
+
+        // new way
+        const dist1 = Math.max(0.1, -this._v1.normalize().dot(camera.getWorldDirection(new Vector3())))
+        near = Math.max(Math.max(camera.userData.minNearPlane ?? iCameraCommons.defaultMinNear, 0.001), dist1 * (dist - radius))
+        far = Math.min(Math.max(near + radius, dist1 * (dist + radius)), camera.userData.maxFarPlane ?? iCameraCommons.defaultMaxFar)
+
+        // old way, has issues when panning very far from the camera target
+        // const near = Math.max(camera.userData.minNearPlane ?? 0.2, dist - radius)
+        // const far = Math.min(Math.max(near + 1, dist + radius), camera.userData.maxFarPlane ?? 1000)
+
+        if (far < near || far - near < 0.1) {
+            far = near + 0.1
+        }
+
+        return iCameraCommons.setNearFar(camera, near, far, setDirty, 'RootScene')
+
+        // todo try using minimum of all 6 endpoints of bbox.
+
+        // camera.near = 3
+        // camera.far = 20
+    }
+
+    /**
+     * Refreshes the scene active camera near far values, based on the scene bounding box.
+     * This is called automatically every time the camera fov is updated.
+     */
+    dollyActiveCameraFov(): boolean {
+        const camera = this.mainCamera as ICamera
+        if (!camera) return false
+        if (!camera.userData.dollyFov) {
+            return false
+        }
+
+        const bbox = this.getModelBounds(false, true, true)
+
+        // todo this is not exact because of 1.5, this needs to be calculated based on current position and last fov
+        const cameraZ = getFittingDistance(camera, bbox) * 1.5
+        const direction = new Vector3().subVectors(camera.target, camera.position).normalize()
+        camera.position.copy(direction.multiplyScalar(-cameraZ).add(camera.target))
+        camera.setDirty({change: 'position', source: 'RootScene'})
+        return true
+    }
+
+    updateShaderProperties(material: {defines: Record<string, string|number|undefined>, uniforms: {[name: string]: IUniform}}): this {
+        if (material.uniforms.sceneBoundingRadius) material.uniforms.sceneBoundingRadius.value = this._sceneBoundingRadius
+        else console.warn('RootScene: no uniform: sceneBoundingRadius')
+        return this
+    }
+
+    /**
+     * Serialize the scene properties
+     * @param meta
+     * @returns {any}
+     */
+    toJSON(meta?: any): any {
+        const o = ThreeSerialization.Serialize(this, meta, true)
+        o.envMapIntensity = o.environmentIntensity // for backward compatibility, remove later
+        return o
+    }
+
+    /**
+     * Deserialize the scene properties
+     * @param json - object from {@link toJSON}
+     * @param meta
+     * @returns {this<ICamera>}
+     */
+    fromJSON(json: any, meta?: any): this {
+        const env = json.environment
+        if (env !== undefined) {
+            this.environment = ThreeSerialization.Deserialize(env, this.environment, meta, false)
+            delete json.environment
+            if (meta?._configMetadata && meta._configMetadata.version < 2) {
+                // legacy - files saved pre three.js < r162, threepipe < v0.4.0
+                if (this.environment?.rotation) {
+                    // old files used to save y rotation inside the texture.
+                    this.environmentRotation.y = this.environment.rotation
+                    this.environment.rotation = 0 // for next save
+                }
+            }
+        }
+
+        // some files have both for backwards compatibility, prefer environmentIntensity
+        if (json.environmentIntensity !== undefined && json.envMapIntensity !== undefined) {
+            json = {...json}
+            delete json.envMapIntensity
+        }
+
+        ThreeSerialization.Deserialize(json, this, meta, true)
+        json.environment = env
+        return this
+    }
+
+    addEventListener<T extends keyof ISceneEventMap>(type: T, listener: EventListener<ISceneEventMap[T], T, this>): void {
+        if (type === 'activeCameraChange') console.error('activeCameraChange is deprecated. Use mainCameraChange instead.')
+        if (type === 'activeCameraUpdate') console.error('activeCameraUpdate is deprecated. Use mainCameraUpdate instead.')
+        if (type === 'sceneMaterialUpdate') console.error('sceneMaterialUpdate is deprecated. Use materialUpdate instead.')
+        if (type === 'update') console.error('update is deprecated. Use sceneUpdate instead.')
+        super.addEventListener(type, listener)
+    }
+
+    /**
+     * Override environment map to use during rendering.
+     * When set and _isMainRendering is true, this will be returned instead of the normal environment.
+     */
+    overrideRenderEnvironment: ITexture | null = null;
+
+    /**
+     * Flag to indicate if we're currently in the render step.
+     * Set by ViewerApp during rendering.
+     * @internal
+     */
+    ['_isMainRendering'] = false
+
+
+    // region inherited type fixes
+    // re-declaring from IObject3D because: https://github.com/microsoft/TypeScript/issues/16936
+
+    declare traverse: (callback: (object: IObject3D) => void) => void
+    declare traverseVisible: (callback: (object: IObject3D) => void) => void
+    declare traverseAncestors: (callback: (object: IObject3D) => void) => void
+    declare getObjectById: (id: number) => IObject3D | undefined
+    declare getObjectByName: (name: string) => IObject3D | undefined
+    declare getObjectByProperty: (name: string, value: string) => IObject3D | undefined
+    // dispatchEvent: (event: ISceneEvent) => void
+    declare parent: IObject3D | null
+    declare children: IObject3D[]
+
+    // endregion
+
+
+    // region deprecated
+
+    /**
+     * Find objects by name exact match in the complete hierarchy.
+     * @deprecated Use {@link getObjectByName} instead.
+     * @param name - name
+     * @param parent - optional root node to start search from
+     * @returns Array of found objects
+     */
+    public findObjectsByName(name: string, parent?: IObject3D, upgradedOnly = false): IObject3D[] {
+        const o: IObject3D[] = []
+        const fn = (object: IObject3D) => {
+            if (object.name === name) o.push(object)
+        }
+        const obj: IObject3D = parent ?? this
+        if (upgradedOnly && obj.traverseModels) obj.traverseModels(fn, {visible: false, widgets: true})
+        else obj.traverse(fn)
+        return o
+    }
+
+    /**
+     * @deprecated
+     * Sets the camera pointing towards the object at a specific distance.
+     * @param rootObject - The object to point at.
+     * @param centerOffset - The distance offset from the object to point at.
+     * @param targetOffset - The distance offset for the target from the center of object to point at.
+     */
+    resetCamera(rootObject:Object3D|undefined = undefined, centerOffset = new Vector3(1, 1, 1), targetOffset = new Vector3(0, 0, 0)): void {
+        if (this._mainCamera) {
+            this.matrixWorldNeedsUpdate = true
+            this.updateMatrixWorld(true)
+            const bounds = rootObject ? new Box3B().expandByObject(rootObject, true, true) : this.getBounds(true)
+            const center = bounds.getCenter(new Vector3())
+            const radius = bounds.getSize(new Vector3()).length() * 0.5
+
+            center.add(targetOffset.clone().multiplyScalar(radius))
+
+            this._mainCamera.position = new Vector3( // todo: for nested cameras?
+                center.x + centerOffset.x * radius,
+                center.y + centerOffset.y * radius,
+                center.z + centerOffset.z * radius,
+            )
+            this._mainCamera.target = center
+            // this.scene.mainCamera.controls?.targetOffset.set(0, 0, 0)
+            this.setDirty()
+        }
+
+    }
+
+
+    /**
+     * Minimum Camera near plane
+     * @deprecated - use camera.minNearPlane instead
+     */
+    get minNearDistance(): number {
+        console.error('minNearDistance is deprecated. Use camera.userData.minNearPlane instead')
+        return this.mainCamera.userData.minNearPlane ?? 0.02
+    }
+    /**
+     * @deprecated - use camera.minNearPlane instead
+     */
+    set minNearDistance(value: number) {
+        console.error('minNearDistance is deprecated. Use camera.userData.minNearPlane instead')
+        if (this.mainCamera)
+            this.mainCamera.userData.minNearPlane = value
+    }
+
+
+    /**
+     * @deprecated
+     */
+    get activeCamera(): ICamera {
+        console.error('activeCamera is deprecated. Use mainCamera instead.')
+        return this.mainCamera
+    }
+
+    /**
+     * @deprecated
+     */
+    set activeCamera(camera: ICamera | undefined) {
+        console.error('activeCamera is deprecated. Use mainCamera instead.')
+        this.mainCamera = camera
+    }
+
+    /**
+     * Get the threejs scene object
+     * @deprecated
+     */
+    get modelObject(): this {
+        return this as any
+    }
+
+    /**
+     * Add any processed scene object to the scene.
+     * @deprecated renamed to {@link addObject}
+     * @param imported
+     * @param options
+     */
+    addSceneObject<T extends IObject3D|Object3D = IObject3D>(imported: T, options?: AddObjectOptions): T {
+        return this.addObject(imported, options)
+    }
+
+    /**
+     * Equivalent to setDirty({refreshScene: true}), dispatches 'sceneUpdate' event with the specified options.
+     * @deprecated use refreshScene
+     * @param options
+     */
+    updateScene(options?: AnyOptions): this {
+        console.warn('updateScene is deprecated. Use refreshScene instead')
+        return this.refreshScene(options || {})
+    }
+
+    /**
+     * @deprecated renamed to {@link clearSceneModels}
+     */
+    removeSceneModels() {
+        this.clearSceneModels()
+    }
+
+    /**
+     * @deprecated use {@link enableAutoNearFar} and {@link disableAutoNearFar} instead.
+     */
+    get autoNearFarEnabled() {
+        return this._autoNearFarDisabled.size === 0
+    }
+    /**
+     * @deprecated use {@link enableAutoNearFar} and {@link disableAutoNearFar} instead.
+     */
+    set autoNearFarEnabled(v) {
+        if (v) this.enableAutoNearFar('default')
+        else this.disableAutoNearFar('default')
+    }
+
+    /**
+     * @deprecated Use environmentIntensity instead.
+     */
+    get envMapIntensity() {
+        console.warn('RootScene.envMapIntensity is deprecated, use environmentIntensity instead.')
+        return this.environmentIntensity
+    }
+    set envMapIntensity(value: number) {
+        console.warn('RootScene.envMapIntensity is deprecated, use environmentIntensity instead.')
+        this.environmentIntensity = value
+    }
+
+    // endregion
+}
+
