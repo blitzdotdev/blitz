@@ -1,10 +1,10 @@
 import {useManager} from "../utils/UseManager.ts";
-import {useLoadingState} from "../../../uiconfig-blueprint/lib/esm/components/loadingState";
+import {useLoadingState} from "uiconfig-blueprint/lib/esm/components/loadingState";
 import {useProject} from "../utils/UseProject.ts";
 import {ExternalPlugin, ExternalScript} from "../utils/project.ts";
 import {showSuccessErrorToast} from "../utils/Toaster.tsx";
 import {useListenProperty} from "./UseListenProperty.tsx";
-import {FolderHeadCard} from "../../../uiconfig-blueprint/lib/esm/bpComponents/BPFolderComponent";
+import {FolderHeadCard} from "uiconfig-blueprint/lib/esm/bpComponents/BPFolderComponent";
 import {InsSectionItem} from "./InsSectionItem.tsx";
 import React, {useState} from "react";
 import {SelectFileRef} from "../utils/projectUtils.ts";

@@ -7,7 +7,7 @@ export class BPTreeFolderComponent extends BPTreeComponent<UiObjectConfig> {
 
     protected _getNodeId(obj: UiObjectConfig) {
         if(!obj.uuid) obj.uuid = uuidV4();
-        return obj.uuid;
+        return obj.uuid!;
     }
 
     protected _updateNodeInfo(node: TreeNodeInfo<UiObjectConfig>, obj: UiObjectConfig) {

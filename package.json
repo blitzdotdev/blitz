@@ -1,0 +1,29 @@
+{
+  "name": "blitz",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "services/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "overrides": {
+    "three": "https://github.com/repalash/three.js-modded/releases/download/v0.163.10003/package.tgz",
+    "@types/three": "https://github.com/repalash/three-ts-types/releases/download/v0.163.10003/package.tgz",
+    "@tanstack/db": "0.5.11",
+    "@tanstack/query-db-collection": "1.0.6",
+    "@tanstack/react-db": "0.1.55",
+    "ts-browser-helpers": "0.19.4",
+    "zod": "4.1.13"
+  },
+  "scripts": {
+    "build:threepipe": "npm run compile -w packages/threepipe",
+    "build:ui": "npm run build -w packages/uiconfig-blueprint",
+    "build:editor": "npm run build -w apps/editor",
+    "build": "npm run build:threepipe && npm run build:ui && npm run build:editor",
+    "typecheck": "npx tsc --noEmit -p apps/editor/tsconfig.json",
+    "dev:editor": "npm run dev -w apps/editor"
+  }
+}
