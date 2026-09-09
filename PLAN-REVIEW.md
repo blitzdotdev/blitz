@@ -48,7 +48,7 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | DEFER Runtime state controller | LOAD HALF RUNNING | `createGame` load-and-run is Phase A | handler API: scripted input, tick stepping |
 | DEFER Agent connection | UNBUILT | file-based mirrors are proposed in NOW-1 | websocket or CLI |
 
-Build order agreed (revised, evening): Phase A done, Phase B part 1 running, then C1 local dev server and editor source, then C2 cloud source, dialog, glTF model. See `docs/local-dev-server-plan.md`.
+Build order agreed (revised, evening): Phase A done, Phase B part 1 running, then C1 blitz command, local dev server, editor source, then C2 cloud source, dialog, glTF model. See `docs/local-dev-server-plan.md`.
 
 ## 0. Findings that change all three items
 

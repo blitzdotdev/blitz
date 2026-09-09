@@ -8,14 +8,14 @@ A local server owns the project folder. The user's agent installs and runs it. T
 
 ## Shape
 
-One npm package, `@blitzdev/cli`, with the editor build inside it.
+One npm package, `@blitzdev/blitz`, with the bin named `blitz` and the editor build inside it. The unscoped npm name `blitz` belongs to the Blitz.js framework, so the package is scoped and the command is `blitz`. After `npm i -g @blitzdev/blitz` the command is `blitz`; without a global install it is `npx @blitzdev/blitz`.
 
 ```
-npx @blitzdev/cli init my-game     # writes the project template and AGENTS.md
-npx @blitzdev/cli dev              # serves the editor and the project at http://127.0.0.1:4321/?t=<token>
-npx @blitzdev/cli publish          # walks, hashes, uploads, releases; prints the live URL
-npx @blitzdev/cli pull             # downloads the active release into the folder
-npx @blitzdev/cli open             # opens the editor URL in the default browser
+blitz init my-game     # writes the project template and AGENTS.md
+blitz dev              # serves the editor and the project at http://127.0.0.1:4321/?t=<token>
+blitz publish          # walks, hashes, uploads, releases; prints the live URL
+blitz pull             # downloads the active release into the folder
+blitz open             # opens the editor URL in the default browser
 ```
 
 `dev` serves everything from one origin, so nothing needs CORS, private-network permission, or mixed-content exemptions:
@@ -46,7 +46,7 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Versioning
 
-`package.json` has `blitz.version`. The CLI reads it. If it differs from the CLI's own version, the CLI re-runs itself as `npx @blitzdev/cli@<version>`. npm is the versioned store for editor, runtime, template, and `agents.md`. No bootstrapper page is needed.
+`package.json` has `blitz.version`. `blitz` reads it. If it differs from its own version, it re-runs itself as `npx @blitzdev/blitz@<version>`. npm is the versioned store for editor, runtime, template, and `agents.md`. No bootstrapper page is needed.
 
 ## Hosted editor
 
@@ -54,18 +54,18 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Agents
 
-`agents.md` says: run `init`, run `dev`, print the editor URL, edit files, run `publish`, print the live URL. Pull before publish. Read `.blitz/journal.jsonl` after the human has been editing. Requirement: Node 20 or newer.
+`agents.md` says: run `blitz init`, run `blitz dev`, print the editor URL, edit files, run `blitz publish`, print the live URL. Pull before publish. Read `.blitz/journal.jsonl` after the human has been editing. Requirement: Node 20 or newer.
 
 ## Phases
 
-**C1. CLI, server, editor source.** `@blitzdev/cli` with `init`, `dev`, `publish`, `pull`, `open`. The editor on `DevServerSource`, the deletions above, play mode through `createGame`. Tests: server unit and integration, and an editor Playwright suite that runs against a real dev server. The editor E2E becomes fully automatable, because no folder picker is involved.
+**C1. `blitz`, server, editor source.** `@blitzdev/blitz` with `init`, `dev`, `publish`, `pull`, `open`. The editor on `DevServerSource`, the deletions above, play mode through `createGame`. Tests: server unit and integration, and an editor Playwright suite that runs against a real dev server. The editor E2E becomes fully automatable, because no folder picker is involved.
 
 **C2. Cloud source and dialog.** `CloudSource` for follow mode, the publish and claim dialog calling `/api/publish` locally or the backend directly in cloud mode. Then the glTF source of truth and the `Generator` component from the review, section 7, item 8.
 
-**Release.** `deploy:editor` also publishes `@blitzdev/cli` to npm with the editor and runtime inside, and registers the runtime hash with the backend.
+**Release.** `deploy:editor` also publishes `@blitzdev/blitz` to npm with the editor and runtime inside, and registers the runtime hash with the backend.
 
 ## What this replaces
 
 - NOW-1 in `PLAN.md`: the watcher, echo, conflict, IndexedDB, and bootstrapper items are all served by the local server.
-- Phase B part 2 as specified in `docs/publish-dialog.md`: the dialog stays, the folder walk in the browser goes; the CLI walks.
-- Phase B part 1, running now: kept. Its API client, manifest, index.html generator, backend guard, CORS, and agents.md are reused by the CLI. Its browser folder walker is dropped.
+- Phase B part 2 as specified in `docs/publish-dialog.md`: the dialog stays, the folder walk in the browser goes; `blitz publish` walks.
+- Phase B part 1, running now: kept. Its API client, manifest, index.html generator, backend guard, CORS, and agents.md are reused by `blitz`. Its browser folder walker is dropped.
