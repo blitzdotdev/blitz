@@ -37,7 +37,7 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Editor changes
 
-- One `ProjectSource` interface: `list`, `read`, `write(path, bytes, ifMatch)`, `delete`, `events`. Two implementations: `DevServerSource` (this server) and `CloudSource` (the backend releases, for follow mode). Both are HTTP.
+- One `ProjectSource` interface: `list`, `read`, `write(path, bytes, ifMatch)`, `delete`, `events`. One implementation: `DevServerSource`. HTTP to the local server.
 - Delete: `fsApi.ts`, the directory handles and recent list in IndexedDB, `BrowserFileStore.ts`, `FileSystemObserver` use in `ScriptUtil.ts`, `fsImporter.ts`, `public/fs-sw.js`, `FetchProxy.ts`, the open-folder and new-folder dialogs. Assets resolve with the runtime's URL modifier to `/files/<path>`.
 - Play mode calls `createGame({base: '/files/'})`. That collapses the three play paths into one.
 - Echo and conflicts: every editor write carries its client id and the expected hash. An event with the editor's own id is ignored. A `412` on write reloads the file and asks the human. Unsaved edits are never overwritten silently.
@@ -46,11 +46,11 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Versioning
 
-`package.json` has `blitz.version`. `blitz` reads it. If it differs from its own version, it re-runs itself as `npx @blitzdev/blitz@<version>`. npm is the versioned store for editor, runtime, template, and `agents.md`. No bootstrapper page is needed.
+The project's `devDependencies` pin `@blitzdev/blitz` at one version. `npx blitz` runs that local version. npm is the versioned store for editor, runtime, template, and `agents.md`. No bootstrapper page, no re-exec. See `docs/open-source-split.md` for the packages.
 
-## Hosted editor
+## No hosted editor
 
-`editor.blitz.dev` keeps the editor for follow mode only: `?game=<slug>#token=…` loads a published game from the gateway, refreshes on each release, and Save publishes. It no longer offers local folders. `blitz.dev` itself is the store for published games and serves the canonical `agents.md`. See `docs/storefront-plan.md`.
+The editor runs only from `blitz dev`. There is no editor on any domain and no follow mode. Publishing and claiming happen from the local editor through the local server, or from the command line. blitz.dev is the store, see `docs/storefront-plan.md`.
 
 ## Agents
 
@@ -58,9 +58,9 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Phases
 
-**C1. `blitz`, server, editor source.** `@blitzdev/blitz` with `init`, `dev`, `publish`, `pull`, `open`. The editor on `DevServerSource`, the deletions above, play mode through `createGame`. Tests: server unit and integration, and an editor Playwright suite that runs against a real dev server. The editor E2E becomes fully automatable, because no folder picker is involved.
+**C1. `blitz`, server, editor source, packages.** `@blitzdev/blitz` with `init`, `dev`, `publish`, `pull`, `open`. `packages/engine` extracted, `apps/editor` moved to `packages/editor`, `packages/template`. The editor on `DevServerSource`, the deletions above, play mode through `createGame`. Tests: server unit and integration, and an editor Playwright suite that runs against a real dev server. The editor E2E becomes fully automatable, because no folder picker is involved.
 
-**C2. Cloud source and dialog.** `CloudSource` for follow mode, the publish and claim dialog calling `/api/publish` locally or the backend directly in cloud mode. Then the glTF source of truth and the `Generator` component from the review, section 7, item 8.
+**C2. Dialog and scene model.** The publish and claim dialog in the local editor, calling `/api/publish` on the local server. Then the glTF source of truth, the `Generator` component, and scoped bake from the review, section 7, item 8.
 
 **Release.** `deploy:editor` also publishes `@blitzdev/blitz` to npm with the editor and runtime inside, and registers the runtime hash with the backend.
 

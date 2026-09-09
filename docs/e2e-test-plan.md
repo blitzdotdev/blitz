@@ -4,7 +4,7 @@ Status: plan. Run it on the test domains after Phase B, the GC pass, and the ass
 
 ## Test domains
 
-- Editor: `https://blitz-editor.blitzapp.workers.dev/`
+- Editor: local, from `blitz dev` at `http://127.0.0.1:4321/` (the workers.dev copy is a temporary test artifact)
 - Backend: `https://blitz-backend.blitzapp.workers.dev`
 - Gateway, path mode: `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/`
 - Gateway, host mode: needs a staging wildcard. Proposed `*.games.blitz.dev/*` routed to `blitz-game-gateway` with `APP_DOMAIN=games.blitz.dev`, plus `editor-staging.blitz.dev` as a custom domain for the editor. Both are additive on the blitz.dev zone. They do not touch the teenybase routes.
@@ -13,15 +13,15 @@ Status: plan. Run it on the test domains after Phase B, the GC pass, and the ass
 
 | # | Step | Expect |
 |---|---|---|
-| E1 | Open the editor in Chrome | Welcome screen. No console errors. `fs-sw.js` registered on the deployed origin. |
-| E2 | New project into an empty folder | `package.json` with the `blitz` block, `assets.json`, `main.js`, `assets/`, `AGENTS.md`, `.gitignore` with `.blitz/` paths. |
-| E3 | Open an existing folder | Loads without re-copying. Recent list shows it after reload. |
-| E4 | Add a `.script.js`, save from an external editor | Component type appears in the editor without a manual refresh. |
+| E1 | `blitz init`, `blitz dev`, open the URL | Editor loads the project. No console errors. |
+| E2 | `blitz init` output | `package.json` with the `@blitzdev/blitz` devDependency, `assets.json`, `main.js`, `assets/`, `AGENTS.md`, `.gitignore` with `.blitz/` paths. |
+| E3 | Restart `blitz dev` in an existing project | Loads the same project. |
+| E4 | Add a `.script.js` from an external editor | Component type appears in the editor without a manual refresh, via the server event stream. |
 | E5 | Attach the component, press play, stop | Update runs in play. Stop restores the scene. |
 | E6 | Save scene | `assets/main.scene.glb` written. Backup and thumbnail under `.blitz/`. |
 | E7 | Drop a glb into the canvas | Asset in `assets/`, entry in `assets.json`, loads via `/blitz/@id/`. |
 | E8 | Asset library panel | Polyhaven list loads through the deployed asset proxy. |
-| E9 | Reload the editor tab | Project reopens from the stored handle after one permission prompt. |
+| E9 | Reload the editor tab | Project reopens with no prompt. |
 | E10 | Existing Playwright suite in `apps/editor/tests` | Passes, or each failure is triaged as pre-existing. |
 
 ## 2. Publish from the editor (Phase B)
@@ -29,7 +29,7 @@ Status: plan. Run it on the test domains after Phase B, the GC pass, and the ass
 | # | Step | Expect |
 |---|---|---|
 | P1 | Open game, slug prefilled | Availability shows free, taken, reserved, invalid as typed. |
-| P2 | Create live game | New tab opens at once. Spinner page 503 with `X-Blitz-State`. Progress bar. Game plays when the release lands. |
+| P2 | Create live game | New tab opens at once. Spinner page 503 with `X-Blitz-State`. Progress from the local server. Game plays when the release lands. |
 | P3 | `.blitz/deploys.json` | Entry with token, secret, URL, expiry. Gitignored. |
 | P4 | Publish update after a script change | New release hash. Reload shows the change. Old release listed. |
 | P5 | Slug taken race | 409 returns to the slug field, blank tab closed. |
@@ -80,4 +80,4 @@ Status: plan. Run it on the test domains after Phase B, the GC pass, and the ass
 
 ## Exit rule
 
-All rows pass, or each failure has an issue with an owner. Then the cutover: attach `blitz.dev` to `blitz-backend` (the store and the API), `editor.blitz.dev` to `blitz-editor`, and `*.app.blitz.dev/*` to `blitz-game-gateway` from the prod configs, and set `APP_DOMAIN=app.blitz.dev`. See `docs/storefront-plan.md` for the domain map.
+All rows pass, or each failure has an issue with an owner. Then the cutover: attach `blitz.dev` to `blitz-backend` (the store and the API) and `*.app.blitz.dev/*` to `blitz-game-gateway` from the prod configs, and set `APP_DOMAIN=app.blitz.dev`. See `docs/storefront-plan.md` for the domain map.

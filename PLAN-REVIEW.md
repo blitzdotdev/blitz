@@ -26,10 +26,11 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | NOW-1 undo journal `.blitz/journal.jsonl`; `.blitz/state.json` and `.blitz/console.log` mirrors for agents | UNBUILT | |
 | NOW-2 glTF scene file: text, no binary, stable names, deterministic, validated; external `.bin` exporter option in threepipe | UNBUILT | scene is still `assets/main.scene.glb` |
 | Phase B: Open game dialog, deploy client, `.blitz/deploys.json`, runtime upload on editor deploy | UNBUILT | spec in `docs/publish-dialog.md` |
-| Phase B additions decided today: follow mode `?game=<slug>#token=…`, `agents.md` on the editor origin with a page pointer, gateway CORS for the editor origin, pull-before-publish guard `base_release` | UNBUILT | decision recorded in section 7 |
+| Follow mode and the hosted editor | DROPPED (evening) | no hosted editor; the editor runs only from `blitz dev` |
+| `agents.md` served by blitz.dev, pull-before-publish guard `base_release`, pull endpoints | UNBUILT, part in Phase B part 1 | see section 7 |
 | Runtime handler API: scripted input, tick stepping (plan DEFER) | UNBUILT | |
 | Agent connection: websocket or CLI (plan DEFER) | UNBUILT | |
-| `packages/engine`: open-source Blitz engine extracted from the editor | UNBUILT | layout decision only |
+| Open-source split: `@blitzdev/engine`, `@blitzdev/editor`, `@blitzdev/blitz`, `@blitzdev/template`, all Apache-2.0 with `src/` shipped so agents can grep them; cloud services stay closed | UNBUILT, decided | `docs/open-source-split.md`; rights check on the editor code first |
 | `services/asset-library-proxy` deployed for the editor's asset library | UNBUILT | worker not created |
 | Blitz logo and artwork | UNBUILT | editor still shows the kite artwork |
 | Per-game backend logic on D1 (auth, economy) | UNBUILT | later |
@@ -208,3 +209,5 @@ Things the spec must change or add before build:
 8. **Scene model proposed by the owner (evening, pending confirmation).** `assets/main.scene.gltf` plus `main.scene.bin` is the single source of truth, text. The human edits it in the editor. The agent edits it with scripts (gltf-transform in JS, pygltflib in Python), never by hand. Procedural content is scoped: a `Generator` component on a node holds `{module, params}`, runs at load in the editor and the runtime, and fills that node's children, which are tagged generated and excluded from save. Bake is explicit and scoped to one generator node and refuses when the node has non-generated children or human edits since the last bake, unless forced. `.blitz/journal.jsonl` records human edits as a semantic diff per save. This replaces the loose `scene.js` and the writable `scene.json` ideas. Cost: an editor post-process of the JSON export (external `.bin`, stable ids, stable key order) instead of a threepipe exporter change.
 
 9. **blitz.dev is the store (evening decision).** blitz.dev lists published games, consumer facing, dead simple: a grid of cards with a Play button, served by the backend worker with a 60 s edge cache. Listed means claimed, active release, and `listed` true. Anonymous games stay link-only. The hosted editor moves to `editor.blitz.dev` for follow mode. The canonical `agents.md` is served by blitz.dev. Plan: `docs/storefront-plan.md`, phase D, backend only, in parallel with C1.
+
+10. **Open-source split like PlayCanvas (evening decision).** Engine, editor, the `blitz` command, and the template are open (Apache-2.0) npm packages that ship their `src/`, so a project's `node_modules` holds everything an agent may grep. The cloud services stay closed. Unlike PlayCanvas, the editor runs standalone from `blitz dev` with no cloud. There is no hosted editor and no follow mode. Plan: `docs/open-source-split.md`.

@@ -8,9 +8,8 @@ Date: 2026-09-09, evening. Status: plan, approved direction. blitz.dev is the di
 |---|---|---|
 | `blitz.dev` | the store: all published games, plus `/api/*` and `/agents.md` | `blitz-backend` |
 | `<slug>.app.blitz.dev` | one game | `blitz-game-gateway` |
-| `editor.blitz.dev` | the hosted editor for follow mode only | `blitz-editor` |
 
-The local editor runs from `blitz dev` on localhost and is not on any domain.
+The editor runs only from `blitz dev` on localhost. There is no hosted editor.
 
 ## The store page
 
@@ -18,7 +17,7 @@ The local editor runs from `blitz dev` on localhost and is not on any domain.
 - A search box filters the loaded list in the browser. No accounts on the page. A small "Sign in" link goes to the claim and my-games pages.
 - Server-rendered from D1 in the backend worker, cached at the edge for 60 seconds. No client framework.
 - `GET /api/v1/games` returns the same list as JSON, paginated, for future clients.
-- `GET /agents.md` and `GET /llms.txt` are served here. That is the canonical agents URL. The editor origin redirects its copy here after cutover.
+- `GET /agents.md` and `GET /llms.txt` are served here. That is the canonical agents URL.
 
 ## What is listed
 
