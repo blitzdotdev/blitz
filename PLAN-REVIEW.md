@@ -20,7 +20,7 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | Blob GC: refcounts, ten-release retention, 24 h grace sweep, daily reconciliation, runtimes as roots | BUILT | commit `d8e9aec`; live on workers.dev; 12 integration tests; design in `services/backend/BLOB-GC.md` |
 | Slug check `GET /api/v1/slugs/:slug`; spinner page for a game without a release; runtime registry `PUT/GET /api/v1/runtimes/:version`; Google sign-in with the teenyapp client id | BUILT | commits `dbd5be3`, `ac43e74`, `af38c90`; verified live; Google needs the editor origin in the OAuth client |
 | Phase A runtime: `createGame({base, canvas})`, `dist/runtime.js` (2.75 MiB, plugins bundled), sample project, Playwright runtime test with two negative controls, `main.js` text in the AGENTS template | BUILT, merged into main | commits `26d4fa1`, `973bea0`; test passes; note: editor play mode does not run `main.js`, only the published runtime does |
-| NOW-1 watcher: whole-folder watching, content-hash echo, conflict rule, scene and asset reload on external change, settings and asset-map watch | UNBUILT | today: scripts only via `FileSystemObserver`; `reloadScene` is a TODO |
+| NOW-1 watcher and friends | SUPERSEDED | replaced by the local dev server, see `docs/local-dev-server-plan.md` (evening decision): the server watches, serves, and versions files; the editor drops the File System Access API |
 | NOW-1 IndexedDB trimmed to handles and recents | UNBUILT | |
 | NOW-1 exact `blitz.version` in package.json and an editor bootstrapper per version | UNBUILT | |
 | NOW-1 undo journal `.blitz/journal.jsonl`; `.blitz/state.json` and `.blitz/console.log` mirrors for agents | UNBUILT | |
@@ -48,7 +48,7 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | DEFER Runtime state controller | LOAD HALF RUNNING | `createGame` load-and-run is Phase A | handler API: scripted input, tick stepping |
 | DEFER Agent connection | UNBUILT | file-based mirrors are proposed in NOW-1 | websocket or CLI |
 
-Build order agreed: Phase A, then NOW-1 watcher core, then Phase B, then NOW-2.
+Build order agreed (revised, evening): Phase A done, Phase B part 1 running, then C1 local dev server and editor source, then C2 cloud source, dialog, glTF model. See `docs/local-dev-server-plan.md`.
 
 ## 0. Findings that change all three items
 
