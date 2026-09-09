@@ -1,0 +1,25 @@
+{
+  "name": "blitz-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --test-scheduled --var GATEWAY_ORIGIN:http://127.0.0.1:8788",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types worker-configuration.d.ts",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run --config test/vitest.config.ts",
+    "test:integration": "vitest run --config test/vitest.integration.config.ts",
+    "test": "npm run test:unit && npm run test:integration"
+  },
+  "dependencies": {
+    "hono": "^4.9.8",
+    "teenybase": "^0.0.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260908.1",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.130.0"
+  }
+}

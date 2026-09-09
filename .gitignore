@@ -2,17 +2,15 @@ node_modules/
 .import-staging/
 .idea/
 
-# TEMPORARY: another agent is writing these; move to services/ later
-/backend/
-/game-gateway/
-/docs/
-
 /packages/*/lib/
 /packages/*/dist/
 /packages/*/docs/
 /apps/*/dist/
 
 .wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
 *.log
 .env
 .env.*
