@@ -13,7 +13,8 @@
     "test:headed": "playwright test --headed",
     "test:debug": "playwright test --debug",
     "test:report": "playwright show-report",
-    "deploy": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist blitz-threepipe-v0/ && git tag v$npm_package_version",
+    "deploy": "wrangler deploy",
+    "deploy:r2-legacy": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist blitz-threepipe-v0/ && git tag v$npm_package_version",
     "deploy-tp": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/ && git tag v$npm_package_version"
   },
   "dependencies": {

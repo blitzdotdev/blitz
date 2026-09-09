@@ -33,6 +33,10 @@ Use `--cache /tmp/blitz-npm-cache` and `--ignore-scripts` on every npm install.
 
 The backend and game gateway deploy from their default `wrangler.jsonc` files to workers.dev. Do not use either worker's `wrangler.prod.jsonc`, which configures routes for `blitz.dev` and `*.app.blitz.dev`, until those domains are detached from teenybase.
 
+### Editor hosting
+
+The editor is hosted at <https://blitz-editor.blitzapp.workers.dev/>. Run `npm run deploy:editor` from the repository root to build and deploy it, or run `npm run deploy -w apps/editor` to deploy the existing editor build. Routes for `blitz.dev` will be added after the domain handover.
+
 ## Upstream sync
 
 The vendored packages keep their upstream history, so a pull merges cleanly into the prefix.

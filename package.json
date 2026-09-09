@@ -29,6 +29,7 @@
     "test:gateway": "npm test -w services/game-gateway",
     "deploy:backend": "npm run deploy -w services/backend",
     "deploy:gateway": "npm run deploy -w services/game-gateway",
+    "deploy:editor": "npm run build && npm run deploy -w apps/editor",
     "dev:editor": "npm run dev -w apps/editor"
   }
 }

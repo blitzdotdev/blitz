@@ -1,0 +1,14 @@
+{
+  "name": "blitz-editor",
+  "account_id": "d25a778b256fb6ef6eea554d77c40f27",
+  "compatibility_date": "2026-09-09",
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "none",
+    "not_found_handling": "single-page-application"
+  },
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  }
+}
