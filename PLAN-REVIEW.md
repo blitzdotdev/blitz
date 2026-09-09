@@ -25,9 +25,10 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | NOW-1 exact `blitz.version` in package.json and an editor bootstrapper per version | UNBUILT | |
 | NOW-1 undo journal `.blitz/journal.jsonl`; `.blitz/state.json` and `.blitz/console.log` mirrors for agents | UNBUILT | |
 | NOW-2 glTF scene file: text, no binary, stable names, deterministic, validated; external `.bin` exporter option in threepipe | UNBUILT | scene is still `assets/main.scene.glb` |
-| Phase B: Open game dialog, deploy client, `.blitz/deploys.json`, runtime upload on editor deploy | UNBUILT | spec in `docs/publish-dialog.md` |
+| Phase B part 1: framework-free publish module (walk, hash, manifest, index.html with relative paths, API client, deploys.json, publish and pull orchestration), `agents.md` served with a page pointer, slug-or-id lookup, `base_release` guard, pull endpoints, gateway CORS, runtime registration on deploy | BUILT, merged | commits `aa5568f`..`cb32c12`; live proof: curl-only publish of the sample project plays on workers.dev; runtime 0.12.0 registered |
+| Phase B part 2: the publish dialog in the editor | UNBUILT, moved to C2 | runs in the local editor through the local server |
 | Follow mode and the hosted editor | DROPPED (evening) | no hosted editor; the editor runs only from `blitz dev` |
-| `agents.md` served by blitz.dev, pull-before-publish guard `base_release`, pull endpoints | UNBUILT, part in Phase B part 1 | see section 7 |
+| `agents.md` served by blitz.dev | UNBUILT, phase D | today served from the workers.dev editor origin; C1 rewrites it for the `blitz` flow |
 | Runtime handler API: scripted input, tick stepping (plan DEFER) | UNBUILT | |
 | Agent connection: websocket or CLI (plan DEFER) | UNBUILT | |
 | Open-source split: `@blitzdev/engine`, `@blitzdev/editor`, `@blitzdev/blitz`, `@blitzdev/template`, all Apache-2.0 with `src/` shipped so agents can grep them; cloud services stay closed | UNBUILT, decided | `docs/open-source-split.md`; rights check on the editor code first |
