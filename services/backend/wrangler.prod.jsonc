@@ -42,6 +42,6 @@
     { "name": "ANON_RL_IP", "namespace_id": "2001", "simple": { "limit": 10, "period": 60 } },
     { "name": "ANON_RL_ASN", "namespace_id": "2002", "simple": { "limit": 100, "period": 60 } }
   ],
-  "triggers": { "crons": ["* * * * *"] },
+  "triggers": { "crons": ["* * * * *", "*/10 * * * *", "0 0 * * *"] },
   "observability": { "enabled": true, "logs": { "head_sampling_rate": 1 } }
 }

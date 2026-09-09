@@ -66,7 +66,9 @@ export interface LocalStack {
   gatewayUrl: string;
   logs: string[];
   executeSql(sql: string): string;
-  scheduled(): Promise<Response>;
+  scheduled(cron?: string): Promise<Response>;
+  putR2Blob(hash: string, bytes: Uint8Array): void;
+  r2BlobExists(hash: string): boolean;
   cleanup(): Promise<void>;
 }
 
@@ -89,6 +91,9 @@ export async function startLocalStack(): Promise<LocalStack> {
     "dev", "--local", "--test-scheduled", "--ip", "127.0.0.1", "--port", String(backendPort),
     "--persist-to", persistDir,
     "--var", "PLATFORM_AUTH_JWT_SECRET:integration-jwt-secret-with-at-least-32-bytes",
+    "--var", "RUNTIME_UPLOAD_TOKEN:integration-runtime-upload-token-with-at-least-32-bytes",
+    "--var", "BLOB_GRACE_SECONDS:0",
+    "--var", "REQUIRE_REGISTERED_RUNTIME:true",
     "--var", `GATEWAY_ORIGIN:http://127.0.0.1:${gatewayPort}`,
   ], logs);
 
@@ -115,8 +120,46 @@ export async function startLocalStack(): Promise<LocalStack> {
         "--persist-to", persistDir, "--command", sql,
       ]);
     },
-    scheduled(): Promise<Response> {
-      return fetch(`${backendUrl}/__scheduled?cron=*+*+*+*+*`);
+    async scheduled(cron = "* * * * *"): Promise<Response> {
+      const query = new URLSearchParams({ cron });
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+          return await fetch(`${backendUrl}/cdn-cgi/local/scheduled?${query}`);
+        } catch (error) {
+          lastError = error;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+      throw new Error(`Scheduled trigger failed after retries: ${String(lastError)}\n${logs.slice(-50).join("")}`);
+    },
+    putR2Blob(hash: string, bytes: Uint8Array): void {
+      execFileSync("npx", [
+        "wrangler", "r2", "object", "put", `blitz-games-blobs/blobs/${hash}`,
+        "--pipe", "--local", "--persist-to", persistDir,
+      ], {
+        cwd: BACKEND_DIR,
+        env: { ...process.env, NO_COLOR: "1", WRANGLER_SEND_METRICS: "false", CI: "1" },
+        input: bytes,
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 120_000,
+      });
+    },
+    r2BlobExists(hash: string): boolean {
+      try {
+        execFileSync("npx", [
+          "wrangler", "r2", "object", "get", `blitz-games-blobs/blobs/${hash}`,
+          "--pipe", "--local", "--persist-to", persistDir,
+        ], {
+          cwd: BACKEND_DIR,
+          env: { ...process.env, NO_COLOR: "1", WRANGLER_SEND_METRICS: "false", CI: "1" },
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 120_000,
+        });
+        return true;
+      } catch {
+        return false;
+      }
     },
     async cleanup(): Promise<void> {
       await Promise.all([stop(backend), stop(gateway)]);

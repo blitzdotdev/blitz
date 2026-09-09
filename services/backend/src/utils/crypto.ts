@@ -30,3 +30,8 @@ export function timingSafeHexEqual(left: string, right: string): boolean {
   const rightBytes = /^[0-9a-f]{64}$/.test(right) ? hexToBytes(right) : new Uint8Array(32);
   return crypto.subtle.timingSafeEqual(leftBytes, rightBytes) && left.length === right.length;
 }
+
+export async function timingSafeStringEqual(left: string, right: string): Promise<boolean> {
+  const [leftHash, rightHash] = await Promise.all([sha256Hex(left), sha256Hex(right)]);
+  return timingSafeHexEqual(leftHash, rightHash);
+}

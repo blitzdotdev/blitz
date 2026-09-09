@@ -7,10 +7,13 @@ import { blobs } from "./routes/blobs.js";
 import { claims } from "./routes/claims.js";
 import { games } from "./routes/games.js";
 import { releases } from "./routes/releases.js";
+import { runtimes } from "./routes/runtimes.js";
+import { slugs } from "./routes/slugs.js";
 import { tokens } from "./routes/tokens.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { runCleanup } from "./cron/cleanup.js";
 import { runExpiry } from "./cron/expiry.js";
+import { runBlobReconciliation, runBlobSweep } from "./cron/blob-gc.js";
 import { jsonError } from "./utils/http.js";
 
 const baseApp = new Hono<AppEnv>();
@@ -36,6 +39,8 @@ app.route("/", createAuthRoutes(app));
 app.route("/", anonGames);
 app.route("/", blobs);
 app.route("/", releases);
+app.route("/", runtimes);
+app.route("/", slugs);
 app.route("/", claims);
 app.route("/", tokens);
 app.route("/", games);
@@ -47,9 +52,15 @@ export { app };
 
 export default {
   fetch: app.fetch.bind(app),
-  async scheduled(_controller, env): Promise<void> {
-    // Clean rows marked by earlier ticks, then mark the next overdue batch.
-    await runCleanup(env);
-    await runExpiry(env);
+  async scheduled(controller, env): Promise<void> {
+    if (controller.cron === "* * * * *") {
+      // Clean rows marked by earlier ticks, then mark the next overdue batch.
+      await runCleanup(env);
+      await runExpiry(env);
+    } else if (controller.cron === "*/10 * * * *") {
+      await runBlobSweep(env);
+    } else if (controller.cron === "0 0 * * *") {
+      await runBlobReconciliation(env);
+    }
   },
 } satisfies ExportedHandler<Env>;

@@ -9,7 +9,11 @@ export interface AppVariables {
   agentTokenId?: string;
 }
 
-export type AppEnv = $Env<Env, AppVariables>;
+export interface SecretBindings {
+  RUNTIME_UPLOAD_TOKEN?: string;
+}
+
+export type AppEnv = $Env<Env & SecretBindings, AppVariables>;
 
 export interface GameRow {
   id: string;
@@ -35,4 +39,11 @@ export interface ManifestFile {
 
 export interface ReleaseManifest {
   files: Record<string, ManifestFile>;
+}
+
+export interface RuntimeRow {
+  version: string;
+  sha256: string;
+  size: number;
+  created_at: string;
 }

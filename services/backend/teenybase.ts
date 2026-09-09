@@ -25,8 +25,9 @@ const config: DatabaseSettings = {
   appUrl: "https://blitz.dev",
   jwtSecret: "$PLATFORM_AUTH_JWT_SECRET",
   jwtIssuer: "blitz-games-platform",
-  // Google auth is intentionally absent until a GOOGLE_CLIENT_ID is configured
-  // and the product explicitly enables the provider.
+  authProviders: [
+    { name: 'google', clientId: '$GOOGLE_CLIENT_ID' },
+  ],
   tables: [
     {
       name: "users",
