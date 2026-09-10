@@ -30,7 +30,9 @@ export async function registerScripts(viewer: ThreeViewer, modules: Iterable<Scr
             found.plugins.push(plugin)
         }
         for (const component of walked.components) {
-            if (!entityComponents.hasComponentType(component.value)) {
+            const existing = entityComponents.componentTypes.get(component.value.ComponentType)
+            if (existing !== component.value) {
+                if (existing) entityComponents.removeComponentType(existing)
                 await entityComponents.addComponentType(component.value)
             }
             found.components.push(component)

@@ -15,6 +15,7 @@ export default defineConfig({
                 version: resolve(__dirname, 'src/runtime/version.ts'),
                 projectFormat: resolve(__dirname, 'src/runtime/projectFormat.ts'),
                 migrations: resolve(__dirname, 'src/runtime/migrations.ts'),
+                importMap: resolve(__dirname, 'src/importMap.ts'),
             },
             formats: ['es'],
             fileName: (_format, entryName) => `${entryName}.js`,
