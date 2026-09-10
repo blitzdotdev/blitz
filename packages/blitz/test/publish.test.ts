@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
-import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises'
+import {chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile} from 'node:fs/promises'
 import {createServer} from 'node:http'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
@@ -161,6 +161,21 @@ describe('.blitz/deploys.json', () => {
         }}}
         await writeDeploys(root.asHandle(), deploys)
         expect(await readDeploys(root.asHandle())).toEqual(deploys)
+    })
+
+    it('creates and repairs the disk file with owner-only permissions', async () => {
+        const root = await mkdtemp(resolve(tmpdir(), 'blitz-deploy-mode-'))
+        projectRoots.push(root)
+        const path = resolve(root, '.blitz/deploys.json')
+        const handle = new NodeProjectDirectory(root).asHandle()
+
+        await writeDeploys(handle, {games: {}})
+        expect((await stat(path)).mode & 0o777).toBe(0o600)
+
+        await chmod(path, 0o644)
+        await writeDeploys(handle, {games: {}})
+
+        expect((await stat(path)).mode & 0o777).toBe(0o600)
     })
 })
 
@@ -455,6 +470,28 @@ describe('publish reliability', () => {
         expect(backend.games.size).toBe(0)
         expect((await readDeploys(new NodeProjectDirectory(root).asHandle())).last_publish)
             .toMatchObject({status: 'failed'})
+    })
+
+    it('allows a stale dirty flag when the in-memory and saved scene hashes match', async () => {
+        const root = await diskProject()
+        const backend = await startMockBackend()
+        backends.push(backend)
+        await mkdir(resolve(root, '.blitz'), {recursive: true})
+        await writeFile(resolve(root, '.blitz/state.json'), JSON.stringify({
+            playState: 'stopped',
+            dirty: true,
+            sourceDraftDirty: false,
+            sceneHash: 'a'.repeat(64),
+            savedSceneHash: 'a'.repeat(64),
+            updatedAt: new Date().toISOString(),
+        }))
+
+        await expect(publishFromDisk(root, {
+            slug: 'matching-scene-hash',
+            backendUrl: backend.url,
+            noCheck: true,
+            noVerify: true,
+        })).resolves.toMatchObject({release_hash: expect.any(String)})
     })
 
     it('rejects project symlinks before creating a remote game', async () => {

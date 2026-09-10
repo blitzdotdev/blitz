@@ -1,7 +1,7 @@
 import {Color, Material, WebGLRenderTarget} from 'three'
 import {RenderPass} from 'three/examples/jsm/postprocessing/RenderPass.js'
 import {IPassID, IPipelinePass} from './Pass'
-import {ICamera, IMaterial, IObject3D, IRenderManager, IScene, IWebGLRenderer, PhysicalMaterial} from '../core'
+import {ICamera, IMaterial, IObject3D, IScene, IWebGLRenderer, PhysicalMaterial} from '../core'
 import {uiFolderContainer, UiObjectConfig, uiToggle} from 'uiconfig.js'
 import {getOrCall, ValOrFunc} from 'ts-browser-helpers'
 
@@ -28,8 +28,10 @@ export class GBufferRenderPass<TP extends IPassID=IPassID, T extends WebGLRender
     preprocessMaterial = (material: IMaterial, renderToGBuffer?: boolean) => {
         renderToGBuffer = renderToGBuffer ?? material.userData.renderToGBuffer
         if (material.userData.pluginsDisabled) renderToGBuffer = false
+        const renderTransparentToGBuffer = renderToGBuffer === true ||
+            renderToGBuffer === undefined && material.opacity > 0.99 && !material.map && !material.alphaMap
         if (
-            material.transparent && (renderToGBuffer || material.opacity > 0.99 && !material.map && !material.alphaMap) || // transparent and render to gbuffer
+            material.transparent && renderTransparentToGBuffer || // transparent and render to gbuffer
             !material.transparent && !material.transmission && renderToGBuffer === false // opaque and dont render to gbuffer
         ) {
             this._transparentMats.add(material)
@@ -119,7 +121,7 @@ export class GBufferRenderPass<TP extends IPassID=IPassID, T extends WebGLRender
         objects.forEach(o => this.postprocessObject(o))
     }
 
-    beforeRender(scene: IScene, camera: ICamera, _: IRenderManager): void {
+    beforeRender(scene: IScene, camera: ICamera): void {
         this.scene = scene
         this.camera = camera
     }
