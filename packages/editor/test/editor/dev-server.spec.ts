@@ -339,6 +339,15 @@ test('loads the restored panels, watches generators, and saves text glTF without
     test.setTimeout(90_000)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
+    await page.route('https://blitz-asset-library-proxy.blitzapp.workers.dev/assets/v1/list', async (route) => {
+        await route.fulfill({json: {assets: [{
+            id: '@polyhaven/rock',
+            name: 'Polyhaven Rock',
+            type: 'model',
+            fileUrl: 'https://assets.example.test/polyhaven-rock.glb',
+            thumbnailUrl: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>',
+        }]}})
+    })
     await page.route('**/api/files', async (route) => {
         const response = await route.fetch()
         const files = await response.json() as Array<Record<string, unknown>>
@@ -352,10 +361,13 @@ test('loads the restored panels, watches generators, and saves text glTF without
 
     await expect(page.getByRole('heading', {name: 'blitz-editor-e2e-'})).toBeVisible()
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
-    for (const panel of ['Objects', 'Materials', 'Textures', 'Geometries', 'Scene', 'Inspector', 'Settings', 'Project', 'Files', 'Timeline']) {
+    for (const panel of ['Objects', 'Materials', 'Textures', 'Geometries', 'Scene', 'Inspector', 'Settings', 'Project', 'Files', 'Library', 'Timeline']) {
         await expect(page.getByRole('tab', {name: panel})).toBeVisible()
     }
     await expect(page.getByTestId('project-files').getByRole('button', {name: 'assets/main.scene.gltf'})).toBeVisible()
+    await page.getByRole('tab', {name: 'Library'}).click()
+    await expect(page.getByTestId('asset-library-item')).toContainText('Polyhaven Rock')
+    await page.getByRole('tab', {name: 'Files'}).click()
 
     const hierarchy = page.getByTestId('scene-hierarchy')
     await expect(hierarchy).toContainText('RoundTripObject')
