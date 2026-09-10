@@ -83,7 +83,11 @@ describe('blitz CLI', () => {
     })
 
     it('publishes the explicit slug, name, and message', async () => {
-        const backend = await startMockBackend()
+        const backend = await startMockBackend({
+            previewUrl: (slug, response) => response === 'release'
+                ? `https://${slug}.app.blitz.dev/`
+                : `https://gateway.example/${slug}/`,
+        })
         cleanup.push(() => backend.close())
         const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-'))
         cleanup.push(() => rm(root, {recursive: true, force: true}))
@@ -97,13 +101,16 @@ describe('blitz CLI', () => {
             '--name', 'Agent Picked Name',
             '--message', 'agent release',
             '--no-check',
+            '--no-verify',
         ], {cwd: root, env: {...process.env, BLITZ_BACKEND_URL: backend.url}})
 
-        expect(result.stdout).toContain(`${backend.url}/preview/agent-picked-slug/`)
+        expect(result.stdout.trim().split('\n').at(-1)).toBe('https://agent-picked-slug.app.blitz.dev/')
         expect(backend.games.get('agent-picked-slug')?.name).toBe('Agent Picked Name')
         expect(backend.requests.find(({path}) => path.endsWith('/releases'))?.body).toMatchObject({message: 'agent release'})
-        const deploys = JSON.parse(await readFile(resolve(root, '.blitz/deploys.json'), 'utf8')) as {games: Record<string, unknown>}
-        expect(deploys.games).toHaveProperty('agent-picked-slug')
+        const deploys = JSON.parse(await readFile(resolve(root, '.blitz/deploys.json'), 'utf8')) as {
+            games: Record<string, {preview_url?: string}>
+        }
+        expect(deploys.games['agent-picked-slug'].preview_url).toBe('https://agent-picked-slug.app.blitz.dev/')
     })
 
     it('never prints deploy tokens or claim secrets from a failed publish', async () => {

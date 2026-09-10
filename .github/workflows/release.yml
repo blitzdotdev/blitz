@@ -39,4 +39,5 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           RUNTIME_UPLOAD_TOKEN: ${{ secrets.RUNTIME_UPLOAD_TOKEN }}
+          # Configure this repository secret as https://blitz.dev.
           BLITZ_BACKEND_URL: ${{ secrets.BLITZ_BACKEND_URL }}

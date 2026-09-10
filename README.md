@@ -42,4 +42,4 @@ The root workspace is `packages/*`. See `docs/layout.md`, `docs/local-dev-server
 
 ## Cloud
 
-The cloud workers (API and store, game gateway, asset library proxy) live in the private repo `blitzdotdev/blitz-cloud`, checked out at `/Users/minjunes/blitz-cloud`. `docs/publish-api.md` in this repo is the contract they implement.
+The production API, storefront, and agent guides are served from `https://blitz.dev`. Published games use `https://<slug>.app.blitz.dev/`; the CLI prints the exact preview URL returned by the backend. The cloud services live in the private repo `blitzdotdev/blitz-cloud`, checked out at `/Users/minjunes/blitz-cloud`. `docs/publish-api.md` in this repo is the contract they implement.

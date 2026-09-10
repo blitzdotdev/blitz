@@ -25,7 +25,6 @@ type Availability = 'checking' | 'available' | 'taken' | 'reserved' | 'invalid' 
 type RetryAction = 'publish' | 'claim'
 const GOOGLE_SIGN_IN_ORIGINS = new Set([
     'https://blitz.dev',
-    'https://blitz-backend.blitzapp.workers.dev',
 ])
 
 export function PublishDialog({isOpen, name, source, beforePublish, onClose}: PublishDialogProps) {

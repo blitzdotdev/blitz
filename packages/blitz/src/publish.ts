@@ -143,11 +143,12 @@ export async function publishProject({
             ? {description: packageJson.description}
             : undefined,
     })
+    const previewUrl = release.preview_url || entry.preview_url
     entry.last_release_hash = release.release_hash
+    entry.preview_url = previewUrl
     deploys.games[slug] = entry
     await writeDeploys(dirHandle, deploys)
     onProgress?.({phase: 'releasing', done: 1, total: 1})
-    const previewUrl = release.preview_url || entry.preview_url
     if (verify) await verifyRelease(api, previewUrl, manifest, onProgress)
     onProgress?.({phase: 'complete', done: 1, total: 1})
     return {preview_url: previewUrl, release_hash: release.release_hash}

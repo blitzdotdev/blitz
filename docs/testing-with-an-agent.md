@@ -27,7 +27,8 @@ What to expect today:
 
 - The editor URL opens in your browser and shows the project in the upstream editor layout, with Play, Check, Checkpoint, and Open game at the top right. Script saves by the agent hot-reload, including modules they import. The scene is a deterministic text glTF at `assets/main.scene.gltf` with an external `.bin`; the agent edits it with scripts, and generated content lives under Generator nodes.
 - `npx blitz check` is the required step before publish. It resolves scripts, plugins, and generators, then reports Playable, Editable, and Persisted, headless or through the open editor. Results go to `.blitz/check.json` and `.blitz/console.log`. Publish repeats the check unless `--no-check` is supplied, refuses while the editor is playing or has an unsaved draft, and verifies every public asset after release.
-- The live URL is `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/`, valid for 12 hours unless claimed. Claim from the editor's Open game dialog or with `npx blitz claim`.
+- The live URL is `https://<slug>.app.blitz.dev/`, valid for 12 hours unless claimed. Claim from the editor's Open game dialog or with `npx blitz claim`.
+- The legacy workers.dev path form `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/` still works for unclaimed test games.
 - You can open the project in the editor while the agent works, edit the scene or a script in the Inspector, and save. The agent's next `npx blitz publish` includes your edits, because both work on the same folder. Run `npx blitz checkpoint` before handing the folder to an agent and `npx blitz restore` to undo its work.
 - `npx blitz doctor` checks Node, the version pin, installed packages, a free port, the backend, the runtime registry, and Playwright. `npx blitz status` shows the running dev server.
-- Known gaps: the store at `https://blitz-backend.blitzapp.workers.dev/` lists claimed games only, and `<game>.app.blitz.dev` waits for the domain cutover.
+- The store at `https://blitz.dev/` lists claimed games only.

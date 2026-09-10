@@ -86,7 +86,7 @@ Form fields:
 
 The request must also carry a `g_csrf_token` cookie whose value exactly matches the form field. A missing form value returns `400`; a missing or mismatched cookie returns `403`. Let GIS perform its form POST directly, or use a credentialed request that preserves the cookie. On success the JSON includes the platform `token`, `refresh_token`, and user `record`. This backend does not currently configure teenybase `authCookie`, so clients must use the returned token as the Bearer token.
 
-The Google Cloud OAuth client must list the sign-in page origins as authorized JavaScript origins: `https://blitz.dev`, plus `https://blitz-backend.blitzapp.workers.dev` for workers.dev testing.
+The Google Cloud OAuth client must list `https://blitz.dev` as an authorized JavaScript origin for production sign-in.
 
 ### Current user
 
@@ -119,8 +119,8 @@ Success: `200`.
     "name":"My Game",
     "description":"A tiny adventure",
     "author":"player_one",
-    "thumbnail_url":"https://blitz-game-gateway.<subdomain>.workers.dev/my-game/thumbnail.png",
-    "preview_url":"https://blitz-game-gateway.<subdomain>.workers.dev/my-game/",
+    "thumbnail_url":"https://my-game.app.blitz.dev/thumbnail.png",
+    "preview_url":"https://my-game.app.blitz.dev/",
     "updated_at":"YYYY-MM-DD HH:MM:SS"
   }],
   "next_cursor":null
@@ -166,7 +166,7 @@ Success: `201`.
   "name":"My Game",
   "state":"open",
   "expires_at":"YYYY-MM-DD HH:MM:SS",
-  "preview_url":"https://blitz-game-gateway.<subdomain>.workers.dev/my-game/",
+  "preview_url":"https://my-game.app.blitz.dev/",
   "deploy_token":"tp_...",
   "claim_secret":"...",
   "claim_url":"https://<backend>/api/v1/games/my-game/claim"
@@ -536,7 +536,7 @@ Errors: `400 claim_secret_required`, `403 invalid_claim_secret`, `404 game_not_f
 
 ## Gateway
 
-Production path form: `https://<slug>.app.blitz.dev/<path>`.
+Production host form: `https://<slug>.app.blitz.dev/<path>`.
 
 workers.dev and local path form: `https://<gateway>/<slug>/<path>`.
 
@@ -550,11 +550,10 @@ Known extensions include HTML, JavaScript, CSS, JSON, GLB, glTF, BIN, KTX2, Basi
 
 ## Complete curl walkthrough
 
-Set the deployed origins. Do not add a trailing slash.
+Set the production backend origin. Do not add a trailing slash. Use the `preview_url` returned by the backend for the game origin; clients must not construct it themselves.
 
 ```sh
-BACKEND_URL='https://blitz-backend.<your-subdomain>.workers.dev'
-GATEWAY_URL='https://blitz-game-gateway.<your-subdomain>.workers.dev'
+BACKEND_URL='https://blitz.dev'
 SLUG="walkthrough-$(date +%s)"
 ```
 
@@ -612,12 +611,12 @@ RELEASE_JSON=$(curl -fsS -X PUT "$BACKEND_URL/api/v1/games/$GAME_ID/releases" \
 printf '%s\n' "$RELEASE_JSON" | jq
 ```
 
-Open or inspect the game. In workers.dev mode, the slug is the first path segment.
+Open or inspect the game at the backend-provided preview URL.
 
 ```sh
 open "$PREVIEW_URL"
 curl -i "$PREVIEW_URL"
-curl -i -H 'Range: bytes=0-3' "$GATEWAY_URL/$SLUG/scene.glb"
+curl -i -H 'Range: bytes=0-3' "${PREVIEW_URL}scene.glb"
 curl -i -H "If-None-Match: \"$INDEX_HASH\"" "$PREVIEW_URL"
 ```
 

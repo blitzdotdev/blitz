@@ -6,6 +6,7 @@ import {dirname, relative, resolve, sep} from 'node:path'
 import {pathToFileURL} from 'node:url'
 import openBrowser from 'open'
 import {BlitzApi, sanitizeDiagnostic} from './api.ts'
+import {resolveBackendUrl} from './backend.ts'
 import {readDeploys, writeDeploys} from './deploys.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {publishProject, pullProject} from './publish.ts'
@@ -16,7 +17,6 @@ import {BLITZ_VERSION} from './versions.ts'
 import {checkProject} from './check.ts'
 import {gitRepositoryRoot, initializeGitRepository} from './git.ts'
 
-const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
 const commandRequire = createRequire(import.meta.url)
 
 export interface PublishFromDiskOptions {
@@ -147,14 +147,15 @@ export async function runDev(options: {
         console.warn(`[blitz] A development server is already running for this project (pid ${existing.pid}, port ${existing.port}).`)
         throw new Error('Use blitz open to open it, or pass --force to start another server.')
     }
+    const backendUrl = resolveBackendUrl(options.backendUrl)
     const server = await createDevServer({
         projectRoot,
         port: options.port,
         strictPort: options.strictPort,
-        backendUrl: options.backendUrl || backendUrl(),
+        backendUrl,
         publish: async (publishOptions, emit) => publishFromDisk(projectRoot, {
             ...publishOptions,
-            backendUrl: options.backendUrl || backendUrl(),
+            backendUrl,
         }, emit),
         pull: async () => pullFromDisk(projectRoot),
     })
@@ -201,7 +202,7 @@ export async function publishFromDisk(
         }
         const result = await publishProject({
             dirHandle: directory,
-            api: new BlitzApi({baseUrl: options.backendUrl || backendUrl()}),
+            api: new BlitzApi({baseUrl: resolveBackendUrl(options.backendUrl)}),
             slug,
             name: options.name,
             message: options.message,
@@ -297,7 +298,7 @@ export async function claimFromDisk(
     const deploys = await readDeploys(directory)
     const games = Object.entries(deploys.games)
     if (!games.length) throw new Error('No deploy exists yet. Run blitz publish first.')
-    const api = new BlitzApi({baseUrl: backendUrl()})
+    const api = new BlitzApi({baseUrl: resolveBackendUrl()})
     const auth = options.login
         ? await api.login({identity: options.email, password: options.password})
         : await api.register({email: options.email, username: usernameFromEmail(options.email), password: options.password})
@@ -319,7 +320,7 @@ export async function pullFromDisk(projectRoot = process.cwd(), options: {force?
     const [, entry] = existing
     return pullProject({
         dirHandle: directory,
-        api: new BlitzApi({baseUrl: backendUrl()}),
+        api: new BlitzApi({baseUrl: resolveBackendUrl()}),
         entry,
         force: options.force === true,
     })
@@ -500,10 +501,6 @@ export function slugify(name: string): string {
     let slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/--+/g, '-')
     if (slug.length < 3) slug = `${slug || 'game'}-game`
     return slug.slice(0, 49).replace(/-+$/, '')
-}
-
-function backendUrl(): string {
-    return process.env.BLITZ_BACKEND_URL || DEFAULT_BACKEND_URL
 }
 
 function usernameFromEmail(email: string): string {

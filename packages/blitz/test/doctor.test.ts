@@ -146,6 +146,28 @@ describe('blitz doctor', () => {
         expect(row(result, 'runtime')).toMatchObject({status: 'warn', detail: expect.stringContaining('not checked')})
     })
 
+    it('uses https://blitz.dev when BLITZ_BACKEND_URL is unset', async () => {
+        const fixture = await readyProject()
+        const configuredBackendUrl = process.env.BLITZ_BACKEND_URL
+        const requests: string[] = []
+        delete process.env.BLITZ_BACKEND_URL
+        try {
+            await doctorProject(fixture.root, {
+                port: 0,
+                fetch: async (input) => {
+                    requests.push(String(input))
+                    return new Response(null, {status: 503})
+                },
+                checkPlaywright: async () => 'fixture browser',
+            })
+        } finally {
+            if (configuredBackendUrl === undefined) delete process.env.BLITZ_BACKEND_URL
+            else process.env.BLITZ_BACKEND_URL = configuredBackendUrl
+        }
+
+        expect(requests).toEqual(['https://blitz.dev/health'])
+    })
+
     it('fails runtime registration when the installed engine hash is absent', async () => {
         const fixture = await readyProject({registeredRuntime: false})
         expect(row(await runDoctor(fixture.root, fixture.backendUrl), 'runtime'))

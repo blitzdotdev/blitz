@@ -21,7 +21,7 @@ This spec covers three things:
 
 ## 2. What exists today
 
-The full API contract, with error codes and a curl walkthrough, is in `docs/publish-api.md`, written by the backend agent. Until the routes attach to blitz.dev, `preview_url` uses the workers.dev path form `https://<gateway>/<slug>/`. The backend also has `DELETE /api/v1/games/:id` and deploy-token management routes. This spec does not use them.
+The full API contract, with error codes and a curl walkthrough, is in `docs/publish-api.md`, written by the backend agent. The backend returns `preview_url`; production responses use `https://<slug>.app.blitz.dev/`, while the compatibility route can still return a path-form URL. The backend also has `DELETE /api/v1/games/:id` and deploy-token management routes. This spec does not use them.
 
 Backend, `blitz-backend`, route `blitz.dev/api/*`. Auth header is `Authorization: Bearer <token>`.
 
