@@ -428,4 +428,3 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     </div>
 
 }
-

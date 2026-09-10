@@ -9,4 +9,3 @@ export const VisibilityIcon: FC<{ obj: { visible: boolean, setDirty?: () => void
         setIcon(icon === 'eye-open' ? 'eye-off' : 'eye-open')
     }} style={{cursor: 'pointer'}} icon={icon}/>)
 }
-

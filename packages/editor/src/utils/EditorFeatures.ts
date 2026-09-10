@@ -178,7 +178,6 @@ export const editorFeatures = {
         },
     },
 }
-
 export class EditorFeatures {
     get viewer() {
         return this.manager.get()
@@ -214,4 +213,3 @@ export class EditorFeatures {
     }
 
 }
-

@@ -109,7 +109,6 @@ const extraUiData: {
         icon: 'font',
     },
 }
-
 export function Object3DGenerationMenu({onGenerate}: {onGenerate?: (obj: IObject3D)=>void}) {
     const manager = useManager()
     const generator = manager.get().getPlugin(Object3DGeneratorPlugin)!
@@ -165,4 +164,3 @@ export function Object3DGenerationMenu({onGenerate}: {onGenerate?: (obj: IObject
         </MenuItem>)}
     </>
 }
-

@@ -47,7 +47,6 @@ function filterTopLevelPropUiConfig(obj: IObject3D|IMaterial, sProps: string[], 
     }, [obj.uiConfig])
     return config;
 }
-
 // for root asset object instances - i.e objects that are clone of object assets. only sProperties are editable (right now fixed to name, visible and transform)
 function AssetObjRootInstanceIns({obj, ...props}: {obj: IObject3D} & PanelActions & InspectorPanelProps){
     // todo only show editable properties  (that are in userData.sProperties and ways to add and remove them and deep prop access
@@ -473,4 +472,3 @@ export async function changeMaterialForObject(manager: ViewerInstanceManager, ob
         }
     }
 }
-

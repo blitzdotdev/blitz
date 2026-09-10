@@ -34,7 +34,7 @@ export class GridMaterial extends ShaderMaterial {
                     vec3 gridColor = mix(color.xyz, vec3(0.0), isLine);
                     gl_FragColor = vec4(gridColor, isLine);
                     #include <colorspace_fragment>
-                    
+
                 }
             `,
         })

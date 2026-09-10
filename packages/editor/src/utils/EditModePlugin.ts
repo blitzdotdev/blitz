@@ -526,4 +526,3 @@ export class EditModePlugin extends AViewerPluginSync<{
     }
 
 }
-

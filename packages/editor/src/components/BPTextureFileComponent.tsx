@@ -23,7 +23,6 @@ WebGLCubeRenderTarget.prototype._ui_isPrimitive = true
 type BPTextureFileComponentProps = {
     fileLoader: ThreeViewer
 }
-
 export class BPTextureFileComponent<T extends TextureType = TextureType, TP = {}> extends BPFileComponent<T, BPTextureFileComponentProps & TP, ITexture> {
     // todo types
     constructor(props: any, context: any) {
@@ -140,4 +139,3 @@ export function TexturePreview({
         style={{width: width, maxWidth: "100%", maxHeight: height, objectFit: objectFit}}
     />
 }
-
