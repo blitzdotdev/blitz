@@ -17,7 +17,7 @@ interface MockGame {
 export interface MockBackend {
     url: string
     games: Map<string, MockGame>
-    requests: Array<{method: string, path: string, body: unknown, authorization?: string}>
+    requests: Array<{method: string, path: string, body: unknown, authorization?: string, cookie?: string}>
     maxActiveUploads: number
     releaseCount(slug: string): number
     close(): Promise<void>
@@ -59,6 +59,7 @@ export async function startMockBackend(options: {
             path: `${url.pathname}${url.search}`,
             body,
             authorization: request.headers.authorization,
+            cookie: request.headers.cookie,
         })
 
         if (request.method === 'GET' && url.pathname === '/health') {
@@ -75,6 +76,22 @@ export async function startMockBackend(options: {
         }
         if (request.method === 'POST' && url.pathname === '/api/v1/auth/login') {
             return sendJson(response, 200, {user: {id: 'user-login', username: 'player'}, token: 'jwt-login', refresh_token: 'refresh-login'})
+        }
+        if (request.method === 'POST' && url.pathname === '/api/v1/table/users/auth/google-login') {
+            const form = new URLSearchParams(Buffer.isBuffer(body) ? body.toString('utf8') : '')
+            const credential = form.get('credential')
+            const csrfToken = form.get('g_csrf_token')
+            if (!credential || !csrfToken) {
+                return sendJson(response, 400, {error: {code: 'invalid_google_login', message: 'Missing Google login fields.'}})
+            }
+            if (cookieValue(request.headers.cookie, 'g_csrf_token') !== csrfToken) {
+                return sendJson(response, 403, {error: {code: 'invalid_google_csrf', message: 'Google CSRF cookie does not match.'}})
+            }
+            return sendJson(response, 200, {
+                record: {id: 'user-google', username: 'google-player'},
+                token: 'jwt-google',
+                refresh_token: 'refresh-google',
+            })
         }
         const newGame = request.method === 'POST' && /^\/api\/v1\/new-game\/([^/]+)$/.exec(url.pathname)
         if (newGame) {
@@ -242,7 +259,7 @@ export async function startMockBackend(options: {
                 response.writeHead(200, {'Content-Type': 'application/octet-stream'}).end('corrupt bytes')
                 return
             }
-            response.writeHead(200, {'Content-Type': 'application/octet-stream'}).end(bytes)
+            response.writeHead(200, {'Content-Type': previewContentType(path)}).end(bytes)
             return
         }
         return sendJson(response, 404, {error: {code: 'not_found', message: 'Mock route not found.'}})
@@ -291,6 +308,12 @@ function value(body: unknown, key: string): string {
     return typeof result === 'string' ? result : ''
 }
 
+function cookieValue(header: string | undefined, name: string): string | undefined {
+    const prefix = `${encodeURIComponent(name)}=`
+    const entry = header?.split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix))
+    return entry ? decodeURIComponent(entry.slice(prefix.length)) : undefined
+}
+
 function slugReason(slug: string, games: Map<string, MockGame>): string | undefined {
     if (!/^[a-z0-9](?:[a-z0-9-]{1,47}[a-z0-9])$/.test(slug) || slug.includes('--')) return 'invalid_slug'
     if (slug === 'admin') return 'reserved_slug'
@@ -304,6 +327,15 @@ function findGame(id: string, games: Map<string, MockGame>): MockGame | undefine
 
 function sqlDate(milliseconds: number): string {
     return new Date(milliseconds).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '')
+}
+
+function previewContentType(path: string): string {
+    if (path.endsWith('.html')) return 'text/html; charset=utf-8'
+    if (path.endsWith('.js') || path.endsWith('.mjs')) return 'text/javascript; charset=utf-8'
+    if (path.endsWith('.json')) return 'application/json; charset=utf-8'
+    if (path.endsWith('.gltf')) return 'model/gltf+json'
+    if (path.endsWith('.glb')) return 'model/gltf-binary'
+    return 'application/octet-stream'
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {

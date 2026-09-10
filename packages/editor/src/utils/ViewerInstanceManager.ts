@@ -30,6 +30,7 @@ import {
     GeneratorComponent,
     HtmlUiComponent,
     isDependencyModuleSpecifier,
+    assetUrlPrefix,
     parseAssetsJSONManifest,
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
@@ -60,6 +61,7 @@ import {writeEditorState, type EditorState} from './editorState.ts'
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 const encode = (text: string) => new TextEncoder().encode(text)
+const assetInstanceProperties = ['visible', 'name', 'position', 'quaternion', 'scale']
 
 export interface EditorProject {
     name: string
@@ -116,6 +118,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     game?: CreatedGame
     project?: EditorProject
     manifest: ProjectFileEntry[] = []
+    assetsManifest: AssetsJSONManifest = {version: 1, files: {}}
     sceneText = ''
     scenePath = 'assets/main.scene.gltf'
     generatorStates: ProjectGeneratorState[] = []
@@ -242,6 +245,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         const packageJson = parsePackageJSON(decode(packageFile.bytes))
         const config = await parsePackageJsonSettingsConfig(packageJson)
         const assetsManifest = parseAssetsJSONManifest(decode(assetsFile.bytes))
+        this.assetsManifest = assetsManifest
         const scenePath = packageJson.mainScene
         const scene = await this.source.read(scenePath)
         const sceneText = decode(scene.bytes)
@@ -830,14 +834,43 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             const path = uniqueImportPath(file.name, this.manifest)
             const result = await this.source.write(path, new Uint8Array(await file.arrayBuffer()), '*')
             this.hashes.set(path, result.sha256)
-            const loaded = await this.get().load(this.source.fileUrl(path, result.sha256))
-            if (loaded?.isObject3D && loaded.parent !== this.get().scene.modelRoot) {
+            const assetId = await this.registerAsset(path)
+            const rootPath = assetIdUrl(assetId, path)
+            const imported = await this.get().assetManager.importer.import(rootPath)
+            const loaded = imported.find((item) => item?.isObject3D)
+            if (loaded?.isObject3D) {
+                loaded.userData ||= {}
+                delete loaded.userData.rootSceneModelRoot
+                loaded.userData.rootPath = rootPath
+                loaded.userData.sProperties = [...assetInstanceProperties]
+                loaded.name = file.name
                 this.get().scene.addObject(loaded as IObject3D)
             }
             this.loadedNeedsSave = true
             this.setStatus(`Imported ${file.name}`)
         }
         this.replaceManifest(await this.source.list())
+    }
+
+    private async registerAsset(path: string): Promise<string> {
+        const existing = Object.entries(this.assetsManifest.files)
+            .find(([, asset]) => asset.path === path)?.[0]
+        if (existing) return existing
+
+        const assetId = uniqueAssetId(path, this.assetsManifest)
+        const next: AssetsJSONManifest = {
+            ...this.assetsManifest,
+            files: {...this.assetsManifest.files, [assetId]: {path}},
+        }
+        const written = await this.source.write(
+            'assets.json',
+            encode(`${JSON.stringify(next, null, 2)}\n`),
+            this.hashes.get('assets.json') || '*',
+        )
+        this.assetsManifest.files = next.files
+        this.assetsManifest.version = next.version
+        this.hashes.set('assets.json', written.sha256)
+        return assetId
     }
 
     async importUrl(url: string) {
@@ -1203,6 +1236,22 @@ function uniqueImportPath(name: string, entries: ProjectFileEntry[]) {
     const extension = dot < 0 ? '' : safe.slice(dot)
     while (used.has(path)) path = `assets/imports/${stem}-${suffix++}${extension}`
     return path
+}
+
+function uniqueAssetId(path: string, manifest: AssetsJSONManifest): string {
+    const filename = path.split('/').pop() || 'asset'
+    const extension = filename.lastIndexOf('.')
+    const stem = extension < 0 ? filename : filename.slice(0, extension)
+    const base = stem.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'asset'
+    let id = base
+    let suffix = 1
+    while (manifest.files[id]) id = `${base}-${suffix++}`
+    return id
+}
+
+function assetIdUrl(id: string, path: string): string {
+    const extension = path.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'bin'
+    return `${assetUrlPrefix}@${id}/f.${extension}`
 }
 
 function selectedNames(viewer?: ThreeViewer): string[] {

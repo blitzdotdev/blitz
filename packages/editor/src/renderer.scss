@@ -130,6 +130,71 @@ body{
   inset: 0;
 }
 
+.asset-library,
+.asset-library > .bp5-tabs {
+  height: 100%;
+}
+
+.asset-library .bp5-tab-panel {
+  height: calc(100% - 30px);
+  margin-top: 0;
+  overflow: auto;
+}
+
+.asset-library-status {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: 80px;
+}
+
+.asset-library-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  padding: 8px;
+}
+
+.asset-library-item {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  color: inherit;
+  cursor: copy;
+  min-width: 0;
+  padding: 6px;
+}
+
+.asset-library-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.asset-library-item img {
+  aspect-ratio: 1;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.asset-library-item span {
+  display: block;
+  overflow: hidden;
+  padding-top: 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-library-empty {
+  margin: 12px;
+}
+
+.google-sign-in {
+  align-items: center;
+  display: flex;
+  min-height: 40px;
+}
+
 .hierarchy-stack .folderContent{
   flex: 1 1 auto;
   max-width: 100%;

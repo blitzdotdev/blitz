@@ -36,6 +36,7 @@ import {FilesPanel} from './FilesPanel.tsx'
 import {CameraSelectionMenu} from './CameraSelectionMenu.tsx'
 import {FileMetadataPanel, SourceEditorPanel} from './SourceEditorPanel.tsx'
 import {isEditableSourceFile} from '../utils/sourceFiles.ts'
+import {ExternalFilesPanel} from './ExternalFilesPanel.tsx'
 
 export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
     const manager = useManagerVersion()
@@ -168,6 +169,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                 }],
                 bottom: [
                     {title: 'Files', key: 'files', content: <FilesPanel onSelectFile={() => setRightPanel('inspector')}/>},
+                    {title: 'Library', key: 'library', content: <ExternalFilesPanel/>},
                     {title: 'Timeline', key: 'timeline', content: <TimelinePanel/>},
                 ],
                 right: [

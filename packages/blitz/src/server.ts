@@ -191,6 +191,36 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             return jsonResponse({user: payload.user, token: payload.token}, backendResponse.status)
         })
     }
+    app.post('/api/auth/google', async (c) => {
+        const body = await readJsonBody(c.req.raw)
+        const credential = typeof body.credential === 'string' ? body.credential : ''
+        const csrfToken = typeof body.g_csrf_token === 'string' ? body.g_csrf_token : ''
+        const selectBy = typeof body.select_by === 'string' ? body.select_by : undefined
+        if (!credential || !csrfToken) {
+            return jsonResponse({error: {code: 'invalid_google_login', message: 'Google credential and CSRF token are required.'}}, 400)
+        }
+        if (getCookie(c, 'g_csrf_token') !== csrfToken) {
+            return jsonResponse({error: {code: 'invalid_google_csrf', message: 'Google CSRF cookie does not match.'}}, 403)
+        }
+
+        const form = new URLSearchParams({credential, g_csrf_token: csrfToken})
+        if (selectBy) form.set('select_by', selectBy)
+        const backendResponse = await fetch(`${backendUrl}/api/v1/table/users/auth/google-login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Cookie: `g_csrf_token=${encodeURIComponent(csrfToken)}`,
+            },
+            body: form,
+        })
+        const payload = await readBackendPayload(backendResponse)
+        if (!backendResponse.ok) return backendJson(backendResponse, payload)
+        if (!isRecord(payload) || typeof payload.token !== 'string') {
+            return jsonResponse({error: {code: 'invalid_backend_response', message: 'The Blitz backend returned an invalid authentication response.'}}, 502)
+        }
+        platformToken = payload.token
+        return jsonResponse({user: payload.record, token: payload.token}, backendResponse.status)
+    })
     app.post('/api/claim', async (c) => {
         if (!platformToken) return jsonResponse({error: {code: 'authentication_required', message: 'Sign in before claiming a game.'}}, 401)
         const body = await readJsonBody(c.req.raw)

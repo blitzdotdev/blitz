@@ -25,6 +25,10 @@ The last command prints a tokenized editor URL. Edit project files directly; the
 
 All public packages use Apache-2.0 and ship source for agent inspection. Cloud services are a separate concern and are not part of the root workspace build.
 
+## Editor asset library
+
+The editor's Library panel reads Polyhaven entries through the deployed read-only proxy at `https://blitz-asset-library-proxy.blitzapp.workers.dev`. The proxy URL is a public editor constant; it is not a per-project or local-server option.
+
 ## Repository checks
 
 ```sh
