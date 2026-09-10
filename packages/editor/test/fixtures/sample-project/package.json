@@ -11,7 +11,8 @@
     "imports": {},
     "scripts": ["Spinner.script.js"],
     "viewer": {
-      "msaa": false
+      "msaa": false,
+      "tonemap": false
     }
   }
 }
