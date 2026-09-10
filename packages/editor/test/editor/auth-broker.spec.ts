@@ -9,12 +9,14 @@ import {
 } from '../../src/authBroker.ts'
 
 test('creates independent 32-byte state and verifier values', async () => {
-    const request = await createEditorAuthRequest()
-    expect(request.state).toMatch(/^[A-Za-z0-9_-]{43}$/)
-    expect(request.codeVerifier).toMatch(/^[A-Za-z0-9_-]{43}$/)
-    expect(request.codeChallenge).toMatch(/^[A-Za-z0-9_-]{43}$/)
-    expect(request.state).not.toBe(request.codeVerifier)
-    expect(request.codeChallenge).toBe(await s256Challenge(request.codeVerifier))
+    for (let index = 0; index < 64; index += 1) {
+        const request = await createEditorAuthRequest()
+        for (const value of [request.state, request.codeVerifier, request.codeChallenge]) {
+            expect(value).toMatch(/^[A-Za-z0-9_-]{42}[AQgw]$/)
+        }
+        expect(request.state).not.toBe(request.codeVerifier)
+        expect(request.codeChallenge).toBe(await s256Challenge(request.codeVerifier))
+    }
 })
 
 test('computes the RFC 7636 appendix B S256 challenge', async () => {

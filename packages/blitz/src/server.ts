@@ -1060,6 +1060,7 @@ function editorExchangeError(backendResponse: Response, payload: unknown): Respo
         expired_code: 'The sign-in code expired. Try again.',
         origin_mismatch: 'The sign-in code belongs to a different editor origin.',
         invalid_verifier: 'The sign-in verifier did not match. Try again.',
+        rate_limited: 'Too many sign-in attempts. Wait a minute, then try again.',
     } as Record<string, string>)[code] || 'Google sign-in is temporarily unavailable. Try again.'
     const status = backendResponse.status >= 400 && backendResponse.status <= 599 ? backendResponse.status : 502
     const retryAfter = backendResponse.headers.get('Retry-After')

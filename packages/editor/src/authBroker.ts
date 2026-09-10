@@ -36,11 +36,18 @@ export async function createEditorAuthRequest(cryptoImplementation: Crypto = cry
     const stateBytes = new Uint8Array(32)
     const verifierBytes = new Uint8Array(32)
     cryptoImplementation.getRandomValues(stateBytes)
-    cryptoImplementation.getRandomValues(verifierBytes)
+    stateBytes[stateBytes.length - 1] &= 0xfc
     const state = base64url(stateBytes)
-    const codeVerifier = base64url(verifierBytes)
-    const digest = await cryptoImplementation.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier))
-    return {state, codeVerifier, codeChallenge: base64url(new Uint8Array(digest))}
+    let codeVerifier = ''
+    let codeChallenge = ''
+    do {
+        cryptoImplementation.getRandomValues(verifierBytes)
+        verifierBytes[verifierBytes.length - 1] &= 0xfc
+        codeVerifier = base64url(verifierBytes)
+        const digest = await cryptoImplementation.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier))
+        codeChallenge = base64url(new Uint8Array(digest))
+    } while (!/[AQgw]$/.test(codeChallenge))
+    return {state, codeVerifier, codeChallenge}
 }
 
 export async function s256Challenge(codeVerifier: string, cryptoImplementation: Crypto = crypto): Promise<string> {

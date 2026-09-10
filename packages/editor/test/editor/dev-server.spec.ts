@@ -886,9 +886,25 @@ document.querySelector('#complete').addEventListener('click', () => {
         await expect(page.getByTestId('live-url')).toBeVisible({timeout: 30_000})
         await expect(page.getByTestId('google-sign-in')).toBeEnabled()
 
-        const authPopupPromise = page.waitForEvent('popup')
+        await page.route('**/api/auth/editor/exchange', async (route) => {
+            await route.fulfill({
+                status: 429,
+                contentType: 'application/json',
+                body: JSON.stringify({error: {
+                    code: 'rate_limited',
+                    message: 'Too many sign-in attempts. Wait a minute, then try again.',
+                }}),
+            })
+        }, {times: 1})
+        let authPopupPromise = page.waitForEvent('popup')
         await page.getByTestId('google-sign-in').click()
-        const authPopup = await authPopupPromise
+        let authPopup = await authPopupPromise
+        await authPopup.getByRole('button', {name: 'Complete Google sign-in'}).click()
+        await expect(page.getByText('Too many sign-in attempts. Wait a minute, then try again.')).toBeVisible()
+
+        authPopupPromise = page.waitForEvent('popup')
+        await page.getByTestId('google-sign-in').click()
+        authPopup = await authPopupPromise
         const authUrl = new URL(authPopup.url())
         const state = authUrl.searchParams.get('state') || ''
         const challenge = authUrl.searchParams.get('code_challenge') || ''

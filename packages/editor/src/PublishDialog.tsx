@@ -406,6 +406,7 @@ function progressLabel(phase: string, done: number, total: number): string {
 function errorMessage(error: unknown): string {
     if (error instanceof DevServerRequestError) {
         if (error.status === 413) return 'A file exceeds 100 MiB, or the game exceeds the 500 MiB or 2,000 file limit.'
+        if (error.code === 'rate_limited') return 'Too many sign-in attempts. Wait a minute, then try again.'
         if (error.status === 429 || error.status === 503) return 'Publishing is temporarily unavailable. Try again in a minute.'
         if (error.status === 409 && error.code === 'slug_taken') return 'That slug was just taken. Choose another slug and try again.'
         return error.message

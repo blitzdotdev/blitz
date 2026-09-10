@@ -146,19 +146,21 @@ describe('Blitz dev server', () => {
     })
 
     it('maps cloud editor exchange errors to safe local errors', async () => {
-        const backend = await startMockBackend({editorExchangeStatus: 400, editorExchangeError: 'expired_code'})
-        cleanup.push(() => backend.close())
-        const {server, headers} = await startServer({backendUrl: backend.url})
-        const response = await fetch(`${base(server)}/api/auth/editor/exchange`, {
-            method: 'POST',
-            headers: {...headers, 'Content-Type': 'application/json', Origin: base(server)},
-            body: JSON.stringify({code: 'expired', code_verifier: 'verifier'}),
-        })
-        expect(response.status).toBe(400)
-        expect(await response.json()).toEqual({error: {
-            code: 'expired_code',
-            message: 'The sign-in code expired. Try again.',
-        }})
+        for (const [status, code, message] of [
+            [400, 'expired_code', 'The sign-in code expired. Try again.'],
+            [429, 'rate_limited', 'Too many sign-in attempts. Wait a minute, then try again.'],
+        ] as const) {
+            const backend = await startMockBackend({editorExchangeStatus: status, editorExchangeError: code})
+            cleanup.push(() => backend.close())
+            const {server, headers} = await startServer({backendUrl: backend.url})
+            const response = await fetch(`${base(server)}/api/auth/editor/exchange`, {
+                method: 'POST',
+                headers: {...headers, 'Content-Type': 'application/json', Origin: base(server)},
+                body: JSON.stringify({code: 'expired', code_verifier: 'verifier'}),
+            })
+            expect(response.status).toBe(status)
+            expect(await response.json()).toEqual({error: {code, message}})
+        }
     })
 
     it('claims with the in-memory JWT and local claim secret, then omits secrets from deploys', async () => {
