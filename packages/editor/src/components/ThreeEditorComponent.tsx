@@ -289,7 +289,8 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                         <PlayModeButtonGroup
                             key="playmode"
                             onPlay={() => setPlayOverlay(true)}
-                            onStop={() => void stopPlaying()}/>
+                            onStop={() => void stopPlaying()}
+                            onOpenGame={onOpenGame}/>
                         <Navbar.Divider/>
                         <Popover targetProps={{style: {}}}
                                  minimal
@@ -300,7 +301,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                             <Button aria-label="Settings" icon="cog" size={"small"} variant={"minimal"} text=""/>
                         </Popover>
                     </Navbar.Group>
-                    <BlitzToolbarControls onOpenGame={onOpenGame}/>
+                    <BlitzToolbarControls/>
                 </Navbar>
 
                 <BlitzCheckResults/>

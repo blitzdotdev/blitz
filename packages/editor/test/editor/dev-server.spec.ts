@@ -542,9 +542,24 @@ test('loads the restored panels, watches generators, and saves text glTF without
     expect(errors).toEqual([])
 })
 
-test('creates a checkpoint beside Check and restores the last checkpoint from Settings', async ({page}) => {
+test('places Open game beside Play, checkpoints beside Check, and restores from Settings', async ({page}) => {
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    const openGame = page.getByTestId('open-game')
+    const placement = await page.evaluate(() => {
+        const play = document.querySelector('[data-testid="play"]')
+        const open = document.querySelector('[data-testid="open-game"]')
+        const buttons = [...(play?.closest('.bp5-button-group')?.querySelectorAll('button') || [])]
+        return {
+            sameGroup: play?.closest('.bp5-button-group') === open?.closest('.bp5-button-group'),
+            immediatelyAfter: buttons.indexOf(open as HTMLButtonElement) === buttons.indexOf(play as HTMLButtonElement) + 1,
+        }
+    })
+    expect(placement).toEqual({sameGroup: true, immediatelyAfter: true})
+    await expect(openGame).toHaveText('')
+    await expect(openGame.locator('.bp5-icon-open-application')).toBeVisible()
+    await openGame.hover()
+    await expect(page.getByText('Open game in a new tab', {exact: true})).toBeVisible()
     await expect(page.locator('[data-testid="check-game"] + [data-testid="checkpoint-game"]')).toBeVisible()
 
     const mainPath = resolve(root, 'main.js')

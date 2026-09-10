@@ -2,11 +2,13 @@ import {FC} from "react";
 import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
 import {useManagerVersion} from "../utils/UseManager.ts";
+import {BlitzOpenGameButton} from "../adapters/BlitzToolbarControls.tsx";
 
 export const PlayModeButtonGroup: FC<{
     onPlay(): void
     onStop(): void
-}> = ({onPlay, onStop}) => {
+    onOpenGame(): void
+}> = ({onPlay, onStop, onOpenGame}) => {
     const manager = useManagerVersion()
     const isPlaying = manager.isPlaying || manager.isStartingPlay
     const isPausedRunning = false
@@ -65,6 +67,7 @@ export const PlayModeButtonGroup: FC<{
 
                     );
                 })}
+                <BlitzOpenGameButton onOpenGame={onOpenGame}/>
             </ButtonGroup>
         </div>
     )
