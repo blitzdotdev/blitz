@@ -135,6 +135,8 @@ Components live in node extras. The shape is:
 
 Preserve every extras field you do not own. Preserve unknown glTF extensions too. You may wire a component without the editor UI by writing its `{type, state}` entry under `extras.EntityComponentPlugin`, but its module must also be listed under `blitz.scripts`. Open the editor after a scripted edit. Read `.blitz/console.log` for parse and load errors.
 
+For example, list a project component as `{"blitz":{"scripts":["./scripts/X.script.js"]}}`. In `blitz.scripts` and `blitz.plugins`, an entry is a bare module only when it exactly matches a key in `package.json`'s `dependencies`; every other entry is a project file, whether or not it starts with `./`.
+
 # Procedural content
 
 Put procedural content under a node with a `Generator` component. Its state is `{module, params}`. `module` is a project-relative ES module path. The path must resolve on the project origin.
@@ -416,9 +418,27 @@ The `ThreeViewer` is the main class in threepipe to manage a scene, render, and 
 
 ## Project viewer settings and materials
 
-`package.json` passes `blitz.viewer` into `ThreeViewer`. Supported JSON settings are `msaa`, `rgbm`, `zPrepass`, `renderScale`, `maxRenderScale`, `backgroundColor`, `modelRootScale`, `stencil`, `debug`, `tonemap`, `camera`, `maxHDRIntensity`, and `powerPreference`. For example: `{"blitz":{"viewer":{"msaa":true,"tonemap":false}}}`.
+`package.json` passes `blitz.viewer` into `ThreeViewer`. Supported JSON settings are `msaa`, `rgbm`, `zPrepass`, `renderScale`, `maxRenderScale`, `backgroundColor`, `modelRootScale`, `stencil`, `debug`, `tonemap`, `camera`, `maxHDRIntensity`, and `powerPreference`. For example: `{"blitz":{"viewer":{"msaa":true,"tonemap":false}}}`. The editor applies these defaults too; a viewer configuration saved inside the scene wins when present.
 
-Tonemapping is on by default. A new project has no environment map, so `PhysicalMaterial` can look very dark without image-based lighting even when scene lights exist. Use `UnlitMaterial` for flat colours. For lit procedural meshes, use `Mesh2` with `PhysicalMaterial`; `MeshStandardMaterial2` and `MeshBasicMaterial2` are deprecated and log errors. Add image-based lighting after the scene starts in `main.js`:
+### Lighting quickstart
+
+The default look has no environment map and has tonemapping enabled. For a clear neutral starting point, use a cool hemisphere fill at intensity `1.5`, a warm directional key at intensity `2.5`, and tonemap exposure `1`:
+
+```js
+import {DirectionalLight, HemisphereLight, TonemapPlugin} from 'threepipe'
+
+export function main({viewer}) {
+  const fill = new HemisphereLight(0xb8d8ff, 0x30343f, 1.5)
+  const key = new DirectionalLight(0xfff1d6, 2.5)
+  key.position.set(5, 8, 4)
+  key.target.position.set(0, 0, 0)
+  viewer.scene.addObject(fill)
+  viewer.scene.addObject(key)
+  viewer.getPlugin(TonemapPlugin).exposure = 1
+}
+```
+
+Use `Mesh2` with `PhysicalMaterial` when lights should shape the object. Use `UnlitMaterial` for UI-like meshes, markers, and other flat colours that should ignore lighting. `MeshStandardMaterial2` and `MeshBasicMaterial2` are deprecated and log errors. Add image-based lighting after the scene starts in `main.js` when reflections or more natural ambient light are important:
 
 ```js
 export async function main({viewer}) {
