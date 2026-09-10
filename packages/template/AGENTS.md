@@ -25,8 +25,113 @@ node_modules/uiconfig-blueprint/src   editor UI kit
 
 The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Read `.blitz/state.json` and `.blitz/console.log` for the editor and runtime feedback loop. Keep secrets from `.blitz/deploys.json` private.
 
+# The scene file
+
+`package.json` names the scene in `mainScene`. The default is `assets/main.scene.gltf`. This text glTF file is the scene source of truth. Edit it with a script. Never edit it by hand.
+
+The editor writes stable, pretty JSON. Buffer bytes go in a sibling `.bin` file. Embedded images go in `assets/textures/`. Existing project image paths stay unchanged. Keep node and material names stable. Use names or `extras.gltfUUID` to find objects.
+
+Use glTF Transform from JavaScript when possible:
+
+```sh
+npm install --save-dev @gltf-transform/core
+```
+
+```js
+import {NodeIO} from '@gltf-transform/core'
+
+const scenePath = 'assets/main.scene.gltf'
+const io = new NodeIO()
+const document = await io.read(scenePath)
+const node = document.getRoot().listNodes().find((item) => item.getName() === 'Player')
+if (!node) throw new Error('Player node not found')
+
+// Merge extras. Do not replace them. Components and stable ids live here.
+node.setExtras({...node.getExtras(), agentTag: 'updated'})
+await io.write(scenePath, document)
+```
+
+Use `pygltflib` from Python when Python is a better fit:
+
+```py
+from pygltflib import GLTF2
+
+scene_path = "assets/main.scene.gltf"
+gltf = GLTF2().load(scene_path)
+node = next(node for node in gltf.nodes if node.name == "Player")
+extras = dict(node.extras or {})
+extras["agentTag"] = "updated"
+node.extras = extras
+gltf.save(scene_path)
+```
+
+Components live in node extras. The shape is:
+
+```json
+{
+  "extras": {
+    "gltfUUID": "stable-object-id",
+    "EntityComponentPlugin": {
+      "stable-component-id": {
+        "type": "Generator",
+        "state": {
+          "module": "generators/forest.js",
+          "params": {"count": 20}
+        }
+      }
+    }
+  }
+}
+```
+
+Preserve every extras field you do not own. Preserve unknown glTF extensions too. Open the editor after a scripted edit. Read `.blitz/console.log` for parse and load errors.
+
+# Procedural content
+
+Put procedural content under a node with a `Generator` component. Its state is `{module, params}`. `module` is a project-relative ES module path. The path must resolve on the project origin.
+
+The module has one default export:
+
+```js
+export default async function generate({node, params, viewer, engine}) {
+  for (let index = 0; index < params.count; index += 1) {
+    const child = new engine.Group()
+    child.name = `Tree ${index + 1}`
+    node.add(child)
+  }
+}
+```
+
+The function may attach children or return one child or an array. Each run removes the prior generated children. It runs on scene load. It runs when `module` or `params` changes. A dev-server change event for the module reruns it in the editor.
+
+Generated objects have a `generated` badge. Their transforms are read-only. Generated objects do not enter the saved scene.
+
+# Bake
+
+Bake only when generated results should become authored scene objects. Select a Generator node and use Bake. Agents can run:
+
+```sh
+npx blitz bake "Forest"
+```
+
+The editor must be open and connected to `blitz dev`. Bake removes the Generator component. It keeps the old module and params in `extras.blitzBakedFrom`. It saves the generated children as real children under the same node.
+
+Bake refuses when the node already has non-generated children. It also refuses after human edits under a previously baked node. Use `--force` only after checking those edits. The editor asks for confirmation before a forced bake.
+
+# Human edits
+
+The local server appends every scene write to `.blitz/journal.jsonl`. Read it before changing a scene that a human edited. Use `npx blitz journal -n 10` or `npx blitz journal --since 2026-09-09T10:00:00Z`.
+
+Each line has `{ts, client, summary}`. `summary` contains node additions, removals, and renames. It also contains transform, component, and material changes.
+
+```json
+{"ts":"2026-09-09T18:42:10.000Z","client":"52fa...","summary":{"nodesAdded":[{"name":"Player","uuid":"a1"}],"nodesRemoved":[],"nodesRenamed":[],"transforms":[{"node":{"name":"Player","uuid":"a1"},"property":"position","old":[0,0,0],"new":[1,0,0]}],"components":[],"materials":[]}}
+```
+
+Editor writes use the editor client id. API writes use `X-Blitz-Client`. Watcher-detected writes use `external`.
+
 - The game is using Blitz game engine built on top of threepipe and three.js.
-- The scene path is declared by `mainScene` in `package.json`. A `.gltf` scene is JSON and a `.glb` scene is binary; keep the saved format consistent with that extension.
+- The scene path is declared by `mainScene` in `package.json`. Keep the main scene as text glTF.
 - The game dependencies, packages, scripts etc are defined in the package.json file in the game project. Any script or dependency required in the scene or the editor must be added to package.json.
 - The game consists of objects in the scene like player, trees, enemies, weapons, etc. Each object is a three.js `Object3D` with `Object3DComponents` that extend the functionality of the objects
 - Custom components are used to add game-specific behavior to objects. For example, the `PlayerComponent` handles player movement and actions, while the `EnemyComponent` manages enemy AI. These components are defined in their dedicated .script.js files in the game folder and can be attached to the objects using the UI.
@@ -795,5 +900,10 @@ Run `npx blitz pull` before every publish. Resolve any local/remote difference, 
 # Limits
 
 - Source scripts are native ES modules. Bare imports must be declared in `package.json`.
+- Generator modules must use project-relative, same-origin paths.
+- The main glTF must not contain data URLs. Keep its sibling `.bin` and texture files.
+- Generated children are transient until an explicit bake.
+- `blitz bake` needs a connected local editor.
+- Scene tools must preserve node extras and unknown extensions.
 - Keep generated output, dependencies, secrets, logs, and transient editor data under excluded paths (`dist/`, `node_modules/`, and `.blitz/`).
 - The editor is served only by `blitz dev` on localhost. Keep its random token private.
