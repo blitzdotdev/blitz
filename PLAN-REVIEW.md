@@ -31,7 +31,7 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | Storefront (phase D): listed and description columns, listing rule, server-rendered grid with 60 s edge cache, public JSON list, PATCH unlist, thumbnail convention, `agents.md` and `llms.txt` served by the backend, runtime DELETE | BUILT, merged | commit `c059f4e`; live at https://blitz.dev/ ; verified: anonymous games never listed |
 | Runtime handler API: scripted input, tick stepping (plan DEFER) | UNBUILT | |
 | Agent connection: websocket or CLI (plan DEFER) | UNBUILT | |
-| Open-source split: `@blitzdev/engine`, `@blitzdev/editor`, `@blitzdev/blitz`, `@blitzdev/template`, Apache-2.0, `src/` shipped | BUILT as packages, NOT on npm yet | packaging proof: `npm pack` + local install + `blitz init` + `blitz dev` + `blitz sources` (threepipe src present); publishing to npm is one command on your go |
+| Open-source split: `@blitzdev/engine`, `@blitzdev/editor`, `@blitzdev/blitz`, `@blitzdev/template`, Apache-2.0, `src/` shipped | PUBLISHED 0.12.0 on npm (2026-09-10, tag `v0.12.0`) | packaging proof: `npm pack` + local install + `blitz init` + `blitz dev` + `blitz sources` (threepipe src present); publishing to npm is one command on your go |
 | `services/asset-library-proxy` deployed for the editor's asset library | UNBUILT | worker not created |
 | Blitz logo and artwork | UNBUILT | editor still shows the kite artwork |
 | Per-game backend logic on D1 (auth, economy) | UNBUILT | later |
