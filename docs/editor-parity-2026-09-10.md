@@ -249,7 +249,7 @@ The editor presentation was restored from reference commit `9a3c7c24e2f9f7d41b48
 | right-publish-vs-blitz-publish | AGREED (3) | 5.0292% | 0.0000% | 3.9426% | 0.0000% |
 | bottom-timeline-extra | DRIFT | 98.5112% | 0.0000% | 98.8523% | 0.0000% |
 
-All ordinary DRIFT states are 0.0000%. The only unmasked cluster is the required runtime-version label described below. The committed guard in `packages/editor/test/parity` compares all 40 captures with `pixelmatch` threshold 0 after applying its reviewed masks.
+All ordinary DRIFT states are 0.0000%. The only unmasked cluster is the required runtime-version label described below. The measurement harness in the session scratch directory compared all 40 captures with pixelmatch at threshold 0 after applying the reviewed masks. No standing screenshot test is committed: this restoration is a one-time step and the editor may change afterwards.
 
 ### Residual cluster
 
