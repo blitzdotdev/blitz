@@ -92,6 +92,7 @@ export interface PersistenceReport {
 
 type ViewerLike = Pick<ThreeViewer, 'scene'>
 type SceneLike = IObject3D & {modelRoot: IObject3D, mainCamera?: IObject3D, defaultCamera?: IObject3D}
+const CAMERA_BOUNDS_EPSILON = 1e-6
 
 interface SourceRecord {
     object: IObject3D
@@ -156,18 +157,24 @@ export function authoringQualityReport(viewer: ViewerLike): AuthoringQualityRepo
     }
     issues.push(...runtimeRelationshipIssues(scene, sources))
 
+    const emptyScene = authoredObjectCount === 0 && generators.length === 0
     if (visibleRenderableCount === 0 || selectableCount === 0) {
         issues.push({
             code: 'NO_VISIBLE_AUTHORED_CONTENT',
-            severity: 'error',
-            message: visibleRenderableCount === 0
+            severity: emptyScene ? 'warning' : 'error',
+            message: emptyScene
+                ? 'The scene is empty; add authored content when you are ready.'
+                : visibleRenderableCount === 0
                 ? 'No visible renderable authored content exists beneath modelRoot.'
                 : 'Visible authored renderables are not selectable.',
         })
     }
 
-    const camera = scene.mainCamera || scene.defaultCamera
-    const cameraResult = validateCamera(camera, visibleBounds, issues)
+    const camera = scene.defaultCamera || scene.mainCamera
+    const cameraSource = scene.defaultCamera ? 'scene.defaultCamera' : 'scene.mainCamera'
+    const cameraResult = emptyScene
+        ? {useful: false, framed: 0, inside: 0}
+        : validateCamera(camera, cameraSource, visibleBounds, issues)
     const errors = issues.filter(({severity}) => severity === 'error')
     const relationshipsValid = !errors.some(({code}) =>
         code === 'MISSING_AUTHORING_SOURCE' || code === 'RUNTIME_SOURCE_DRIFT')
@@ -422,13 +429,15 @@ function runtimeRelationshipIssues(scene: SceneLike, sources: Map<string, Source
 
 function validateCamera(
     camera: IObject3D | undefined,
+    cameraSource: 'scene.defaultCamera' | 'scene.mainCamera',
     renderables: Array<{object: IObject3D, bounds: Box3}>,
     issues: AuthoringValidationIssue[],
 ): {useful: boolean, framed: number, inside: number} {
     let framed = 0
     let inside = 0
     let facing = false
-    let problem = 'The saved camera must be finite and face visible authored content.'
+    const cameraLabel = `${cameraSource}${camera?.name ? ` "${camera.name}"` : ''}`
+    let problem = `${cameraLabel} must be finite and face visible authored content.`
     const projectionMatrix = (camera as IObject3D & {projectionMatrix?: Matrix4, matrixWorldInverse?: Matrix4})?.projectionMatrix
     const matrixWorldInverse = (camera as IObject3D & {projectionMatrix?: Matrix4, matrixWorldInverse?: Matrix4})?.matrixWorldInverse
     if (camera && finiteVector(camera.position) && projectionMatrix && matrixWorldInverse && renderables.length) {
@@ -445,7 +454,7 @@ function validateCamera(
         framed = renderables.filter(({bounds}) => frustum.intersectsBox(bounds)).length
 
         for (const {object, bounds} of renderables) {
-            if (cameraInsideAllowed(object) || !bounds.containsPoint(cameraPosition)) continue
+            if (cameraInsideAllowed(object) || !containsInteriorPoint(bounds, cameraPosition)) continue
             const mesh = object as IObject3D & {
                 isMesh?: boolean
                 isInstancedMesh?: boolean
@@ -465,17 +474,26 @@ function validateCamera(
             }
             geometry.computeBoundingBox?.()
             const localPosition = object.worldToLocal(cameraPosition.clone())
-            if (!geometry.boundingBox?.containsPoint(localPosition)) continue
+            if (!geometry.boundingBox || !containsInteriorPoint(geometry.boundingBox, localPosition)) continue
             if (mesh.isMesh && geometry.type === 'BoxGeometry') inside += 1
             else addContainmentWarning(issues, object)
         }
-        if (inside) problem = `The saved camera is inside ${inside} visible authored mesh(es).`
-        else if (!framed) problem = 'No visible authored renderable intersects the saved camera frustum.'
-        else if (!facing) problem = 'The saved camera faces away from visible authored content.'
+        if (inside) problem = `${cameraLabel} is inside ${inside} visible authored mesh(es).`
+        else if (!framed) problem = `No visible authored renderable intersects ${cameraLabel}'s frustum.`
+        else if (!facing) problem = `${cameraLabel} faces away from visible authored content.`
     }
     const useful = Boolean(camera && renderables.length && framed > 0 && inside === 0 && facing)
     if (!useful) issues.push({code: 'CAMERA_NOT_USEFUL', severity: 'error', message: problem})
     return {useful, framed, inside}
+}
+
+function containsInteriorPoint(bounds: Box3, point: Vector3): boolean {
+    return point.x > bounds.min.x + CAMERA_BOUNDS_EPSILON
+        && point.x < bounds.max.x - CAMERA_BOUNDS_EPSILON
+        && point.y > bounds.min.y + CAMERA_BOUNDS_EPSILON
+        && point.y < bounds.max.y - CAMERA_BOUNDS_EPSILON
+        && point.z > bounds.min.z + CAMERA_BOUNDS_EPSILON
+        && point.z < bounds.max.z - CAMERA_BOUNDS_EPSILON
 }
 
 function addContainmentWarning(issues: AuthoringValidationIssue[], object: IObject3D): void {

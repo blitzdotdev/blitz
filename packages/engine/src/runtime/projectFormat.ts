@@ -78,6 +78,15 @@ export interface ProjectConfigSettingsJSON {
     viewer?: ProjectViewerSettings
 }
 
+/** A configured script or plugin is package-backed only when it names a declared dependency exactly. */
+export function isDependencyModuleSpecifier(
+    specifier: string,
+    packageJson: ProjectPackageJSON,
+): boolean {
+    const dependencies = packageJson.dependencies
+    return isRecord(dependencies) && Object.prototype.hasOwnProperty.call(dependencies, specifier)
+}
+
 export function parsePackageJSON(text: string): ProjectPackageJSON {
     const json = parse(text) as unknown
     if (!json || typeof json !== 'object' || Array.isArray(json)) {

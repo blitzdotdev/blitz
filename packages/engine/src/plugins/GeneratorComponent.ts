@@ -151,8 +151,10 @@ export async function runGenerator({
         engine: ThreePipe as unknown as Record<string, unknown>,
     })
     const returnedObjects = normalizeGeneratedResult(returned)
-    for (const child of returnedObjects) {
-        if (child.parent !== node) node.add(child)
+    for (const [index, child] of returnedObjects.entries()) {
+        if (child.parent === node) continue
+        markGenerated(child, source.id, index)
+        node.add(child)
     }
 
     const generated = node.children.filter((child) => !existingChildren.has(child)) as IObject3D[]

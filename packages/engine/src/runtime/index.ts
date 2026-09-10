@@ -1,4 +1,4 @@
-export {createGame} from './createGame.ts'
+export {createGame, createStoppedGame} from './createGame.ts'
 export type {CreatedGame, CreateGameOptions, RuntimeProject} from './createGame.ts'
 export {RUNTIME_VERSION} from './version.ts'
 export * from './projectFormat.ts'

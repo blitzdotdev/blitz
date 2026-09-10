@@ -30,7 +30,7 @@ import {isExternalObject} from "./projectUtils.ts";
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
 export class EditModePlugin extends AViewerPluginSync<{
-    enableChanged: {}
+    enableChanged: object
 } & AViewerPluginEventMap>{
     public static readonly PluginType = 'EditModePlugin';
 
@@ -70,7 +70,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         // this.grid.material.transparent = true
         // this.grid.material.opacity = 1
         // console.log(this.grid.material)
-        // @ts-ignore
+        // @ts-expect-error GridHelper does not declare the widget marker used by the editor.
         this.grid.isWidget = true;
 //         this.grid.material.onBeforeCompile = (shader) => {
 //             console.log(shader.vertexShader)
@@ -97,7 +97,6 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.cameraPerspective.target.set(0,0,0)
         this.cameraPerspective.userData.disableWidgets = true
         this.cameraPerspective.autoNearFar = false
-        this.cameraPerspective.autoAspect = true
         this.cameraPerspective.autoLookAtTarget = true
         this.cameraOrtho.name = 'EditMode Orthographic Camera'
         this.cameraOrtho.position.set(0,0,10)
@@ -105,7 +104,6 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.cameraOrtho.frustumSize = 10
         this.cameraOrtho.userData.disableWidgets = true
         this.cameraOrtho.autoNearFar = false
-        this.cameraOrtho.autoAspect = true
         this.cameraOrtho.autoLookAtTarget = true
 
     }
@@ -126,6 +124,10 @@ export class EditModePlugin extends AViewerPluginSync<{
     }
 
     onAdded(viewer: ThreeViewer) {
+        this.cameraPerspective.setCanvas?.(viewer.canvas, false)
+        this.cameraOrtho.setCanvas?.(viewer.canvas, false)
+        this.cameraPerspective.autoAspect = true
+        this.cameraOrtho.autoAspect = true
         super.onAdded(viewer);
 
         // this.grid.material.color.set(0xff0000)
@@ -343,7 +345,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         // Can be customized based on requirements
     }
 
-    setDirty(): any {
+    setDirty(): void {
         if(!this._viewer) return
         if(!this.isDisabled() !== this._lastEnabled){
             this._lastEnabled = !this._lastEnabled
@@ -375,7 +377,11 @@ export class EditModePlugin extends AViewerPluginSync<{
     // backgroundColor = new Color(0x3f3f3f)
     // backgroundColor = new Color(0x1e1e1e)
 
-    private _settings: any = {}
+    private _settings: {
+        viewerCursorStyle?: string
+        sceneMainCamera?: IObject3D & {activateMain(): void}
+        pickingWidgetEnabled?: boolean
+    } = {}
 
     private _settingsSet = false
 
@@ -471,9 +477,9 @@ export class EditModePlugin extends AViewerPluginSync<{
         // delete this._settings.minNearPlane
         // this._viewer.scene.mainCamera.maxFarPlane = this._settings.maxFarPlane
         // delete this._settings.maxFarPlane
-        this._viewer.canvas.style.cursor = this._settings.viewerCursorStyle
+        this._viewer.canvas.style.cursor = this._settings.viewerCursorStyle!
         delete this._settings.viewerCursorStyle
-        this._settings.sceneMainCamera.activateMain()
+        this._settings.sceneMainCamera!.activateMain()
         delete this._settings.sceneMainCamera
 
         const controls = this._viewer.scene.mainCamera.controls as OrbitControls3|undefined
@@ -482,7 +488,7 @@ export class EditModePlugin extends AViewerPluginSync<{
 
         const picking = this._viewer.getPlugin(PickingPlugin)
         if(picking) {
-            picking.widgetEnabled = this._settings.pickingWidgetEnabled
+            picking.widgetEnabled = this._settings.pickingWidgetEnabled!
             delete this._settings.pickingWidgetEnabled
         }
         const editViewWidget = this._viewer.getPlugin(EditorViewWidgetPlugin)
@@ -497,7 +503,7 @@ export class EditModePlugin extends AViewerPluginSync<{
         if(!this._viewer) return next
         if(_current === next) return next
         this.grid.visible = next
-        // @ts-ignore
+        // @ts-expect-error GridHelper does not expose setDirty in its Three.js base type.
         this.grid.setDirty()
         return next
     }

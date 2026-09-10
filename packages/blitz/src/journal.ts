@@ -24,8 +24,20 @@ export async function appendSceneJournal(
     afterText: string,
     client = BLITZ_SERVER_CLIENT_ID,
     ts = new Date().toISOString(),
-): Promise<JournalEntry> {
-    return appendJournalEntry(projectRoot, client, diffSceneGltfText(beforeText, afterText), ts)
+): Promise<JournalEntry | undefined> {
+    const summary = diffSceneGltfText(beforeText, afterText)
+    if (sceneDiffIsEmpty(summary)) return undefined
+    return appendJournalEntry(projectRoot, client, summary, ts)
+}
+
+function sceneDiffIsEmpty(diff: SceneDiff): boolean {
+    return !diff.errors?.length
+        && diff.nodesAdded.length === 0
+        && diff.nodesRemoved.length === 0
+        && diff.nodesRenamed.length === 0
+        && diff.transforms.length === 0
+        && diff.components.length === 0
+        && diff.materials.length === 0
 }
 
 export async function appendJournalEntry(

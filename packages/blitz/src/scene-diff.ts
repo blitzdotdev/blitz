@@ -50,6 +50,7 @@ interface GltfNode {
     translation?: number[]
     rotation?: number[]
     scale?: number[]
+    matrix?: number[]
 }
 
 interface GltfMaterial {
@@ -93,9 +94,9 @@ export function diffSceneGltf(beforeValue: unknown, afterValue: unknown): SceneD
         if (oldNode.name !== newNode.name) {
             diff.nodesRenamed.push({uuid: identity.uuid, oldName: oldNode.name, newName: newNode.name})
         }
-        compareTransform(diff, identity, 'position', oldNode.translation, newNode.translation)
-        compareTransform(diff, identity, 'rotation', oldNode.rotation, newNode.rotation)
-        compareTransform(diff, identity, 'scale', oldNode.scale, newNode.scale)
+        compareNodeTransform(diff, identity, 'position', oldNode, newNode)
+        compareNodeTransform(diff, identity, 'rotation', oldNode, newNode)
+        compareNodeTransform(diff, identity, 'scale', oldNode, newNode)
         compareComponents(diff, identity, oldNode, newNode)
     }
 
@@ -125,6 +126,79 @@ function compareTransform(
 ): void {
     if (jsonEqual(oldValue, newValue)) return
     diff.transforms.push({node, property, old: oldValue, new: newValue})
+}
+
+function compareNodeTransform(
+    diff: SceneDiff,
+    node: SceneIdentity,
+    property: SceneTransformChange['property'],
+    before: GltfNode,
+    after: GltfNode,
+): void {
+    const field = property === 'position' ? 'translation' : property
+    const usesMatrix = Boolean(before.matrix || after.matrix)
+    const defaults = property === 'rotation' ? [0, 0, 0, 1] : property === 'scale' ? [1, 1, 1] : [0, 0, 0]
+    const oldValue = before[field] || (before.matrix ? decomposeMatrix(before.matrix)[property] : usesMatrix ? defaults : undefined)
+    const newValue = after[field] || (after.matrix ? decomposeMatrix(after.matrix)[property] : usesMatrix ? defaults : undefined)
+    compareTransform(diff, node, property, oldValue, newValue)
+}
+
+function decomposeMatrix(matrix: number[]): Record<SceneTransformChange['property'], number[]> {
+    if (matrix.length !== 16 || matrix.some((value) => !Number.isFinite(value))) {
+        return {position: [], rotation: [], scale: []}
+    }
+    let sx = Math.hypot(matrix[0], matrix[1], matrix[2])
+    const sy = Math.hypot(matrix[4], matrix[5], matrix[6])
+    const sz = Math.hypot(matrix[8], matrix[9], matrix[10])
+    const determinant = matrix[0] * (matrix[5] * matrix[10] - matrix[6] * matrix[9])
+        - matrix[4] * (matrix[1] * matrix[10] - matrix[2] * matrix[9])
+        + matrix[8] * (matrix[1] * matrix[6] - matrix[2] * matrix[5])
+    if (determinant < 0) sx = -sx
+    const rotationMatrix = [
+        matrix[0] / sx, matrix[4] / sy, matrix[8] / sz,
+        matrix[1] / sx, matrix[5] / sy, matrix[9] / sz,
+        matrix[2] / sx, matrix[6] / sy, matrix[10] / sz,
+    ]
+    return {
+        position: [matrix[12], matrix[13], matrix[14]],
+        rotation: quaternionFromRotationMatrix(rotationMatrix),
+        scale: [sx, sy, sz],
+    }
+}
+
+function quaternionFromRotationMatrix(matrix: number[]): number[] {
+    const [m11, m12, m13, m21, m22, m23, m31, m32, m33] = matrix
+    const trace = m11 + m22 + m33
+    let x: number
+    let y: number
+    let z: number
+    let w: number
+    if (trace > 0) {
+        const s = 0.5 / Math.sqrt(trace + 1)
+        x = (m32 - m23) * s
+        y = (m13 - m31) * s
+        z = (m21 - m12) * s
+        w = 0.25 / s
+    } else if (m11 > m22 && m11 > m33) {
+        const s = 2 * Math.sqrt(1 + m11 - m22 - m33)
+        x = 0.25 * s
+        y = (m12 + m21) / s
+        z = (m13 + m31) / s
+        w = (m32 - m23) / s
+    } else if (m22 > m33) {
+        const s = 2 * Math.sqrt(1 + m22 - m11 - m33)
+        x = (m12 + m21) / s
+        y = 0.25 * s
+        z = (m23 + m32) / s
+        w = (m13 - m31) / s
+    } else {
+        const s = 2 * Math.sqrt(1 + m33 - m11 - m22)
+        x = (m13 + m31) / s
+        y = (m23 + m32) / s
+        z = 0.25 * s
+        w = (m21 - m12) / s
+    }
+    return [x, y, z, w]
 }
 
 function compareComponents(diff: SceneDiff, node: SceneIdentity, before: GltfNode, after: GltfNode): void {
@@ -267,7 +341,13 @@ function materialNodes(document: GltfDocument, materialIndex: number): SceneIden
 }
 
 function jsonEqual(left: unknown, right: unknown): boolean {
-    return JSON.stringify(left) === JSON.stringify(right)
+    return JSON.stringify(canonicalValue(left)) === JSON.stringify(canonicalValue(right))
+}
+
+function canonicalValue(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(canonicalValue)
+    if (!isRecord(value)) return value
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalValue(value[key])]))
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

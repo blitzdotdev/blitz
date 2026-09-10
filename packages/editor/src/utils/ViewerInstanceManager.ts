@@ -29,6 +29,7 @@ import {
     createGame,
     GeneratorComponent,
     HtmlUiComponent,
+    isDependencyModuleSpecifier,
     parseAssetsJSONManifest,
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
@@ -136,6 +137,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     private _loadedNeedsSave = false
     private _sourceDraftDirty = false
+    private savedSceneHash: string | null = null
     private initializing?: Promise<void>
     private playPromise?: Promise<void>
     private checkPromise?: Promise<EditorCheckResult>
@@ -283,8 +285,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             position: 'relative',
             zIndex: '0',
         })
+        document.body.append(container)
         const entityComponents = new EntityComponentPlugin(false)
         const physics = new CannonPhysicsPlugin(true, false)
+        const transformControls = new TransformControlsPlugin(true)
         physics.running = false
         EntityComponentPlugin.AddObjectUiConfig = false
 
@@ -317,13 +321,21 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             new STLLoadPlugin(),
             new USDZLoadPlugin(),
             new PickingPlugin(undefined, false),
-            new TransformControlsPlugin(true),
+            transformControls,
             new EditorViewWidgetPlugin('bottom-right', 100),
             new Object3DWidgetsPlugin(true),
             new Object3DGeneratorPlugin(),
             new CanvasSnapshotPlugin(),
             new AssetExporterPlugin(),
         ])
+        transformControls.transformControls?.traverse((object) => {
+            const material = (object as IObject3D).material
+            const materials = Array.isArray(material) ? material : material ? [material] : []
+            for (const item of materials) {
+                item.userData.renderToGBuffer = false
+                item.userData.renderToDepth = false
+            }
+        })
         viewer.addPluginSync(EditModePlugin)
         entityComponents.addComponentType(HtmlUiComponent)
         entityComponents.addComponentType(GeneratorComponent)
@@ -338,6 +350,18 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         const viewer = this.get()
         const base = new URL('/files/', location.origin)
         GeneratorComponent.configureViewer(viewer, {base, onError: (error) => void this.reportError(error)})
+
+        const configuredCamera = config.viewer.camera
+        if (configuredCamera) {
+            const camera = viewer.scene.defaultCamera
+            if (configuredCamera.position) camera.position.fromArray(configuredCamera.position)
+            if (configuredCamera.target) camera.target.fromArray(configuredCamera.target)
+            if (configuredCamera.controlsMode !== undefined) camera.controlsMode = configuredCamera.controlsMode
+            camera.setDirty()
+        }
+        if (config.viewer.backgroundColor !== undefined) {
+            viewer.scene.setBackgroundColor(config.viewer.backgroundColor)
+        }
 
         if (this.assetUrlModifier) viewer.assetManager.importer.removeURLModifier(this.assetUrlModifier)
         this.assetUrlModifier = createURLModifier(base, assetsManifest)
@@ -373,7 +397,9 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     private importProjectModule(path: string, moduleRevision = this.moduleRevision): Promise<ModuleExports> {
-        if (isBareModule(path)) return import(/* @vite-ignore */ path) as Promise<ModuleExports>
+        if (this.project && isDependencyModuleSpecifier(path, this.project.packageJson)) {
+            return import(/* @vite-ignore */ path) as Promise<ModuleExports>
+        }
         const normalized = normalizeProjectPath(path)
         return import(
             /* @vite-ignore */ this.source.fileUrl(normalized, this.hashes.get(normalized), moduleRevision)
@@ -397,6 +423,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.loadedNeedsSave = false
             viewer.getPlugin(EditModePlugin)?.resetView()
             this.selectInitialGenerator()
+            this.savedSceneHash = await hashBytes((await serializeSceneGltf(viewer, {scenePath: this.scenePath})).gltf)
         } finally {
             this.loadingScene = false
             this.changed()
@@ -411,7 +438,11 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     private onEditSceneUpdate = (event: {object?: IObject3D}) => {
-        if (!this.loadingScene && !this.savingScene && event.object?.userData.blitzGenerated !== true) {
+        const generatorParent = event.object?.parent
+            ? EntityComponentPlugin.GetComponent(event.object.parent, GeneratorComponent)
+            : undefined
+        if (!this.loadingScene && !this.savingScene
+            && event.object?.userData.blitzGenerated !== true && !generatorParent) {
             this.loadedNeedsSave = true
         }
         this.changed()
@@ -510,6 +541,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.hashes.get(this.scenePath) || '*',
         )
         this.hashes.set(this.scenePath, result.sha256)
+        this.savedSceneHash = await hashBytes(serialized.gltf)
         this.sceneText = decode(serialized.gltf)
         this.generatorStates = readProjectGeneratorStates(this.sceneText)
         this.manifest = await this.source.list()
@@ -636,7 +668,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         await this.ready
         if (this.isPlaying || this.isStartingPlay) await this.stopPlay()
         const before = semanticSceneSnapshot(this.get())
-        this.loadedNeedsSave = true
         const saved = await this.saveScene()
         const editableStarted = performance.now()
         const editable = authoringQualityReport(this.get())
@@ -843,7 +874,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     unlistedScripts(): ProjectFileEntry[] {
         const listed = new Set([
             ...(this.project?.config.scripts || []).map(({import: path}) => normalizeProjectPath(path)),
-            ...(this.project?.config.plugins || []).filter(({import: path}) => !isBareModule(path))
+            ...(this.project?.config.plugins || []).filter(({import: path}) =>
+                !this.project || !isDependencyModuleSpecifier(path, this.project.packageJson))
                 .map(({import: path}) => normalizeProjectPath(path)),
         ])
         return this.manifest.filter(({path}) =>
@@ -853,12 +885,20 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     async writeState(error?: string) {
         const write = this.stateWriteQueue.then(async () => {
+            const savedSceneHash = this.savedSceneHash
+            const sceneHash = this.projectLoaded && this.viewer && this.loadedNeedsSave
+                ? await hashBytes((await serializeSceneGltf(this.viewer, {scenePath: this.scenePath})).gltf)
+                : savedSceneHash
+            const sceneDirty = this.loadedNeedsSave && sceneHash !== savedSceneHash
             const state: EditorState = {
                 editorVersion: this.editorVersion,
                 engineVersion: RUNTIME_VERSION,
                 projectLoaded: this.projectLoaded,
                 playState: this.isPlaying ? 'playing' : 'stopped',
-                dirty: this.loadedNeedsSave || this.sourceDraftDirty,
+                dirty: sceneDirty || this.sourceDraftDirty,
+                sourceDraftDirty: this.sourceDraftDirty,
+                sceneHash,
+                savedSceneHash,
                 selectionNames: selectedNames(this.viewer),
                 lastLoadError: error || this.error || null,
                 updatedAt: new Date().toISOString(),
@@ -959,6 +999,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             }
             return
         }
+        if (event.type !== 'change' && event.type !== 'add' && event.type !== 'unlink') return
         if (event.client === this.source.clientId || !event.path) return
         if (event.sha256 && this.hashes.get(event.path) === event.sha256) return
 
@@ -1116,12 +1157,13 @@ function isPluginType(value: unknown): value is Class<IViewerPlugin> {
         && typeof (value as {PluginType?: unknown}).PluginType === 'string'
 }
 
-function isBareModule(path: string) {
-    return !path.startsWith('.') && !path.startsWith('/') && !/^[a-z][a-z\d+.-]*:/i.test(path)
-}
-
 function normalizeProjectPath(path: string) {
     return path.replace(/^\.\//, '').replace(/\\/g, '/').split(/[?#]/, 1)[0]
+}
+
+async function hashBytes(bytes: Uint8Array): Promise<string> {
+    const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource)
+    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
 }
 
 function versionedPath(path: string, sha256?: string, reloadRevision?: string) {

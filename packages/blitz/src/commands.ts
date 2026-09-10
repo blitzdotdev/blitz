@@ -329,7 +329,14 @@ const EDITOR_HEARTBEAT_FRESH_MS = 15_000
 const PUBLISH_LOCK_STALE_MS = 10 * 60_000
 
 async function assertEditorAllowsPublish(root: string): Promise<void> {
-    let state: {playState?: unknown, dirty?: unknown, updatedAt?: unknown}
+    let state: {
+        playState?: unknown
+        dirty?: unknown
+        sourceDraftDirty?: unknown
+        sceneHash?: unknown
+        savedSceneHash?: unknown
+        updatedAt?: unknown
+    }
     try {
         state = JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')) as typeof state
     } catch {
@@ -344,7 +351,10 @@ async function assertEditorAllowsPublish(root: string): Promise<void> {
             code: 'editor_playing',
         })
     }
-    if (state.dirty === true) {
+    const sceneHashesMatch = typeof state.sceneHash === 'string'
+        && typeof state.savedSceneHash === 'string'
+        && state.sceneHash === state.savedSceneHash
+    if (state.sourceDraftDirty === true || state.dirty === true && !sceneHashesMatch) {
         throw Object.assign(new Error('Save the unsaved editor draft before publishing.'), {
             status: 409,
             code: 'editor_dirty',

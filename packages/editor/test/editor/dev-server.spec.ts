@@ -18,15 +18,19 @@ test.beforeAll(async () => {
 
     const packagePath = resolve(root, 'package.json')
     const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
-        blitz: {plugins?: string[], scripts?: string[]}
+        blitz: {plugins?: string[], scripts?: string[], viewer?: Record<string, unknown>}
     }
-    packageJson.blitz.plugins = ['./Hot.plugin.js:HotPlugin']
+    packageJson.blitz.plugins = ['Hot.plugin.js:HotPlugin']
     packageJson.blitz.scripts = [
-        './Hot.script.js',
-        './reload/Reexport.script.js',
-        './reload/Cycle.script.js',
-        './reload/Dynamic.script.js',
+        'Hot.script.js',
+        'reload/Reexport.script.js',
+        'reload/Cycle.script.js',
+        'reload/Dynamic.script.js',
     ]
+    packageJson.blitz.viewer = {
+        backgroundColor: '#224466',
+        camera: {position: [0, 5, 17], target: [0, 0, 0]},
+    }
     await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
     await writeFile(resolve(root, 'main.js'), `
 export async function main({viewer}) {
@@ -55,6 +59,17 @@ import {Object3DComponent} from 'threepipe'
 export class UnlistedComponent extends Object3DComponent { static ComponentType = 'UnlistedComponent' }
 `)
     await writeFile(resolve(root, 'Generator.js'), generatorModule('Tree', 0))
+    await writeFile(resolve(root, 'FloorGenerator.js'), `
+export default function generate({node, engine}) {
+    const floor = new engine.Mesh(
+        new engine.BoxGeometry(40, 1, 40),
+        new engine.MeshStandardMaterial({color: 0x6688aa}),
+    )
+    floor.name = 'Floor Preview'
+    floor.position.y = -0.5
+    node.add(floor)
+}
+`)
 
     const scenePath = resolve(root, 'assets/main.scene.gltf')
     const scene = JSON.parse(await readFile(scenePath, 'utf8')) as {
@@ -94,13 +109,26 @@ export class UnlistedComponent extends Object3DComponent { static ComponentType 
         name: 'Dynamic reload target',
         extras: {EntityComponentPlugin: {'dynamic-component': {type: 'DynamicScript', state: {}}}},
     })
-    scene.scenes[0].nodes.push(0, 1, 2, 3, 4, 5)
+    scene.nodes.push({
+        name: 'Floor Generator',
+        extras: {EntityComponentPlugin: {'floor-generator': {
+            type: 'Generator', state: {module: 'FloorGenerator.js', params: {}},
+        }}},
+    })
+    scene.scenes[0].nodes.push(0, 1, 2, 3, 4, 5, 6)
     scene.buffers = [{
         byteLength: 36,
         uri: 'data:application/octet-stream;base64,Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/',
     }]
     scene.bufferViews = [{buffer: 0, byteOffset: 0, byteLength: 36, target: 34962}]
-    scene.accessors = [{bufferView: 0, componentType: 5126, count: 3, type: 'VEC3'}]
+    scene.accessors = [{
+        bufferView: 0,
+        componentType: 5126,
+        count: 3,
+        type: 'VEC3',
+        min: [0, 0, 0],
+        max: [1, 1, 1],
+    }]
     scene.meshes = [{primitives: [{attributes: {POSITION: 0}}]}]
     await writeFile(scenePath, `${JSON.stringify(scene, null, 2)}\n`)
 
@@ -121,14 +149,34 @@ test.afterAll(async () => {
 
 test('runs Playable, Editable, and Persisted checks through the connected editor', async ({page}) => {
     test.setTimeout(90_000)
+    const loadWarnings: string[] = []
+    page.on('console', (message) => {
+        if (message.type() === 'warning' && !message.text().includes('GPU stall due to ReadPixels')) {
+            loadWarnings.push(message.text())
+        }
+    })
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    expect(await page.evaluate(() => {
+        const scene = (window as unknown as {viewer: {scene: {
+            backgroundColor: {getHexString(): string} | null
+            defaultCamera: {position: {toArray(): number[]}}
+        }}}).viewer.scene
+        return {background: scene.backgroundColor?.getHexString(), camera: scene.defaultCamera.position.toArray()}
+    })).toEqual({background: '224466', camera: [0, 5, 17]})
+    expect(loadWarnings).toEqual([])
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
+    await expect(page.getByTestId('save-scene')).toBeDisabled()
+    const sceneBeforeCheck = await readFile(resolve(root, 'assets/main.scene.gltf'))
 
     await page.getByTestId('check-game').click()
     const results = page.getByTestId('check-results')
     await expect(results).toContainText('Playable PASS', {timeout: 45_000})
     await expect(results).toContainText('Editable PASS')
     await expect(results).toContainText('Persisted PASS')
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
+    await expect(page.getByTestId('save-scene')).toBeDisabled()
+    expect(await readFile(resolve(root, 'assets/main.scene.gltf'))).toEqual(sceneBeforeCheck)
 
     const written = JSON.parse(await readFile(resolve(root, '.blitz/check.json'), 'utf8')) as {
         ok: boolean
@@ -145,6 +193,33 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
 
     const cliResult = await checkProject(root)
     expect(cliResult).toMatchObject({ok: true, mode: 'editor'})
+})
+
+test('writes byte-identical unchanged saves across editor sessions', async ({page}) => {
+    test.setTimeout(90_000)
+    const saveWithoutEdit = async () => {
+        await page.goto(server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.evaluate(() => {
+            const scene = (window as unknown as {viewer: {scene: {
+                modelRoot: {name: string, setDirty(event: {change: string}): void}
+            }}}).viewer.scene
+            const originalName = scene.modelRoot.name
+            scene.modelRoot.name = 'Temporary name'
+            scene.modelRoot.setDirty({change: 'name'})
+            scene.modelRoot.name = originalName
+            scene.modelRoot.setDirty({change: 'name'})
+        })
+        await expect(page.getByTestId('save-scene')).toBeEnabled()
+        await page.getByTestId('save-scene').click()
+        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+        return readFile(resolve(root, 'assets/main.scene.gltf'))
+    }
+
+    const first = await saveWithoutEdit()
+    const second = await saveWithoutEdit()
+
+    expect(second).toEqual(first)
 })
 
 test('reports leaked runtime content after Stop in a toast and the console log', async ({page}) => {
@@ -245,14 +320,18 @@ test('loads the restored panels, watches generators, and saves text glTF without
     await expect(page.getByText('Baked RoundTripObject')).toBeVisible({timeout: 20_000})
     const bakedSceneText = await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')
     const bakedScene = JSON.parse(bakedSceneText) as {
-        nodes: Array<{name?: string, children?: number[], extras?: Record<string, unknown>}>
+        nodes: Array<{name?: string, children?: number[], extras?: {
+            EntityComponentPlugin?: Record<string, {type?: string}>
+            [key: string]: unknown
+        }}>
     }
     const bakedRoot = bakedScene.nodes.find(({name}) => name === 'RoundTripObject')
     expect(bakedRoot?.children).toHaveLength(4)
     expect(bakedRoot?.extras).toHaveProperty('blitzBakedFrom')
     expect(bakedSceneText).not.toContain('blitzGenerated')
     expect(bakedSceneText).not.toContain('excludeFromExport')
-    expect(bakedSceneText).not.toContain('"type": "Generator"')
+    expect(Object.values(bakedRoot?.extras?.EntityComponentPlugin || {}).map(({type}) => type))
+        .not.toContain('Generator')
     expect(errors).toEqual([])
 })
 
@@ -458,6 +537,7 @@ test('reports a corrupt scene in the editor and console log', async ({page}) => 
 })
 
 test('opens the game dialog, publishes, updates, and claims a live game', async ({page}) => {
+    test.setTimeout(90_000)
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
     await page.getByTestId('open-game').click()
@@ -467,14 +547,24 @@ test('opens the game dialog, publishes, updates, and claims a live game', async 
     await expect(page.getByText('Available', {exact: true})).toBeVisible()
 
     const popupPromise = page.waitForEvent('popup')
+    const initialResponse = page.waitForResponse((response) =>
+        response.url().endsWith('/api/publish') && response.request().method() === 'POST')
     await page.getByTestId('create-live-game').click()
     const popup = await popupPromise
+    const initialPublish = await initialResponse
+    expect(initialPublish.status()).toBe(200)
     await expect(page.getByTestId('live-url')).toHaveAttribute('href', `${backend.url}/preview/${slug}/`, {timeout: 20_000})
     await expect.poll(() => backend.releaseCount(slug)).toBe(1)
     await expect(popup).toHaveURL(`${backend.url}/preview/${slug}/`)
-
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
+    const updateResponse = page.waitForResponse((response) =>
+        response.url().endsWith('/api/publish') && response.request().method() === 'POST')
     await page.getByTestId('publish-update').click()
-    await expect.poll(() => backend.releaseCount(slug)).toBe(2)
+    const response = await updateResponse
+    expect(response.status()).toBe(200)
+    await expect.poll(() => backend.releaseCount(slug), {timeout: 20_000}).toBe(2)
+    await expect(page.getByTestId('publish-update')).toBeEnabled()
+    await expect(page.getByRole('dialog', {name: 'Open game'})).not.toContainText('Publishing could not finish')
     await page.locator('#claim-email').fill('editor@example.com')
     await page.locator('#claim-password').fill('password123')
     await page.getByTestId('claim-game').click()
@@ -523,18 +613,31 @@ test('shows a popup fallback and preserves a failed publish for retry', async ({
         await page.goto(fixture.server.url)
         await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
         await page.getByTestId('open-game').click()
+        const dialog = page.getByRole('dialog', {name: 'Open game'})
+        await expect(dialog).toBeVisible()
         await expect(page.getByText('Available', {exact: true})).toBeVisible()
+        await expect(page.getByTestId('create-live-game')).toBeEnabled()
+        const failedPublish = page.waitForResponse((response) =>
+            response.url().endsWith('/api/publish') && response.request().method() === 'POST')
         await page.getByTestId('create-live-game').click()
+        expect((await failedPublish).status()).toBe(200)
 
         await expect(page.getByText('Publishing is temporarily unavailable. Try again in a minute.')).toBeVisible({timeout: 20_000})
         await expect(page.getByRole('link', {name: 'Open the live game'})).toBeVisible()
+        await expect(dialog.getByRole('button', {name: 'Retry'})).toBeEnabled()
         expect(releaseStatuses).toHaveLength(0)
         await page.reload()
         await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
         await page.getByTestId('open-game').click()
+        await expect(dialog).toBeVisible()
         await expect(page.getByText('Publishing is temporarily unavailable. Try again in a minute.')).toBeVisible()
         await expect(page.getByText('Your game is live')).toHaveCount(0)
-        await page.getByRole('button', {name: 'Retry'}).click()
+        const retry = dialog.getByRole('button', {name: 'Retry'})
+        await expect(retry).toBeEnabled()
+        const successfulRetry = page.waitForResponse((response) =>
+            response.url().endsWith('/api/publish') && response.request().method() === 'POST')
+        await retry.click()
+        expect((await successfulRetry).status()).toBe(200)
         await expect(page.getByTestId('live-url')).toBeVisible({timeout: 20_000})
     } finally {
         await page.close()
