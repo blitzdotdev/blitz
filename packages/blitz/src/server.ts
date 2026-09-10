@@ -54,6 +54,7 @@ interface PendingEvent {
 }
 
 const SERVER_VERSION = '0.12.0'
+const SERVER_CLIENT_ID = 'blitz-server'
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
 
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
@@ -65,6 +66,8 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const pendingEvents = new Map<string, PendingEvent>()
     const recentWrites = new Map<string, number>()
     const knownHashes = new Map<string, string>()
+    let serverMutationActive = false
+    let mutationQueue = Promise.resolve()
     let watcher: FSWatcher | undefined
     let closing = false
 
@@ -111,14 +114,15 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             if (request.method === 'POST' && url.pathname === '/api/publish') {
                 if (!options.publish) return json(response, 501, {error: {code: 'publish_unavailable', message: 'Publish is not configured.'}})
                 const body = await readJsonBody(request)
-                const result = await options.publish(typeof body.message === 'string' ? body.message : undefined, (data) => {
-                    broadcast('publish', data)
-                })
+                const result = await runServerMutation(() => options.publish!(
+                    typeof body.message === 'string' ? body.message : undefined,
+                    (data) => { broadcast('publish', data) },
+                ))
                 return json(response, 200, result)
             }
             if (request.method === 'POST' && url.pathname === '/api/pull') {
                 if (!options.pull) return json(response, 501, {error: {code: 'pull_unavailable', message: 'Pull is not configured.'}})
-                return json(response, 200, await options.pull())
+                return json(response, 200, await runServerMutation(options.pull))
             }
             if (url.pathname.startsWith('/files/')) {
                 const relativePath = decodeFilePath(url.pathname)
@@ -223,6 +227,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             if (!filename) return
             const path = normalizeRelativePath(filename.toString())
             if (!path || !isIncludedPath(path)) return
+            if (serverMutationActive) return
             if (Date.now() - (recentWrites.get(path) || 0) < 600) return
             void scheduleWatchedFile(path)
         })
@@ -265,6 +270,37 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         }
         scheduleEvent(path)
     }
+
+    function runServerMutation<T>(operation: () => Promise<T>): Promise<T> {
+        const run = mutationQueue.then(async () => {
+            const before = manifestHashes(await buildManifest(projectRoot))
+            serverMutationActive = true
+            try {
+                return await operation()
+            } finally {
+                try {
+                    const after = manifestHashes(await buildManifest(projectRoot))
+                    const changedPaths = new Set([...before.keys(), ...after.keys()])
+                    const now = Date.now()
+                    for (const path of changedPaths) {
+                        const previous = before.get(path)
+                        const current = after.get(path)
+                        if (previous === current) continue
+                        recentWrites.set(path, now)
+                        scheduleEvent(path, SERVER_CLIENT_ID, current ? (previous ? 'change' : 'add') : 'unlink')
+                    }
+                } finally {
+                    serverMutationActive = false
+                }
+            }
+        })
+        mutationQueue = run.then(() => undefined, () => undefined)
+        return run
+    }
+}
+
+function manifestHashes(entries: ManifestEntry[]): Map<string, string> {
+    return new Map(entries.map(({path, sha256}) => [path, sha256]))
 }
 
 export async function buildManifest(root: string): Promise<ManifestEntry[]> {

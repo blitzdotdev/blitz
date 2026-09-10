@@ -4,7 +4,7 @@ import {request} from 'node:http'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, describe, expect, it} from 'vitest'
-import {createDevServer, type DevServer} from '../src/server.ts'
+import {createDevServer, type DevServer, type DevServerOptions} from '../src/server.ts'
 import {NodeProjectDirectory} from '../src/node-filesystem.ts'
 import {readProjectFile, walkProject, writeProjectFile} from '../src/filesystem.ts'
 
@@ -90,6 +90,29 @@ describe('Blitz dev server', () => {
         expect(event.data.sha256).toMatch(/^[a-f0-9]{64}$/)
     })
 
+    it('labels files written by a server mutation', async () => {
+        let root = ''
+        const started = await startServer({
+            pull: async () => {
+                await writeFile(resolve(root, 'pulled.txt'), 'from server')
+                return {release_hash: 'release', updated: ['pulled.txt']}
+            },
+        })
+        root = started.root
+        const {server, headers} = started
+        const controller = new AbortController()
+        const eventsResponse = await fetch(`${base(server)}/api/events`, {headers, signal: controller.signal})
+        const eventPromise = readEvent(eventsResponse, controller, 'pulled.txt')
+
+        const pulled = await fetch(`${base(server)}/api/pull`, {method: 'POST', headers})
+        expect(pulled.status).toBe(200)
+        const event = await eventPromise
+        expect(event).toMatchObject({
+            type: 'add',
+            data: {path: 'pulled.txt', client: 'blitz-server'},
+        })
+    })
+
     it('starts a real server and serves the editor and runtime from one origin', async () => {
         const {server} = await startServer()
         expect((await fetch(server.url)).status).toBe(200)
@@ -106,14 +129,21 @@ async function temporaryProject(): Promise<string> {
     return root
 }
 
-async function startServer() {
+async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull'> = {}) {
     const root = await temporaryProject()
     const editor = resolve(root, 'editor')
     await mkdir(editor)
     await writeFile(resolve(editor, 'index.html'), '<!doctype html><title>test editor</title>')
     const runtimePath = resolve(root, 'runtime.js')
     await writeFile(runtimePath, 'export const runtime = true')
-    const server = await createDevServer({projectRoot: root, port: 0, token: 'test-token', editorDirectory: editor, runtimePath})
+    const server = await createDevServer({
+        projectRoot: root,
+        port: 0,
+        token: 'test-token',
+        editorDirectory: editor,
+        runtimePath,
+        ...options,
+    })
     cleanup.push(() => server.close())
     return {server, root, headers: {'X-Blitz-Token': server.token}}
 }
