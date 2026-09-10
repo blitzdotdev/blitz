@@ -71,6 +71,22 @@ export async function checkpointProject(
     return {hash: await shortHead(root), label: normalizedLabel}
 }
 
+export async function latestCheckpointProject(projectRoot = process.cwd()): Promise<CheckpointResult | undefined> {
+    const root = resolve(projectRoot)
+    if (await gitRepositoryRoot(root) !== root) return undefined
+    const {stdout} = await git(root, [
+        'log', '-n', '1', '--format=%h%x00%s', `--grep=^${CHECKPOINT_PREFIX}`,
+    ])
+    const entry = stdout.trim()
+    if (!entry) return undefined
+    const [hash, subject] = entry.split('\0', 2)
+    const labelPrefix = `${CHECKPOINT_PREFIX}: `
+    return {
+        hash,
+        ...(subject.startsWith(labelPrefix) ? {label: subject.slice(labelPrefix.length)} : {}),
+    }
+}
+
 export async function restoreProject(
     projectRoot = process.cwd(),
     requestedHash?: string,

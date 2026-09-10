@@ -112,6 +112,11 @@ export interface EditorCheckResult {
     outcomes: EditorCheckOutcome[]
 }
 
+export interface EditorCheckpoint {
+    hash: string
+    label?: string
+}
+
 type ModuleExports = Record<string, unknown>
 
 /** Owns the persistent edit viewer and the disposable published-game viewer. */
@@ -139,6 +144,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     isStartingPlay = false
     isChecking = false
     checkResult?: EditorCheckResult
+    lastCheckpoint?: EditorCheckpoint
     welcomeOpen = false
     loadedProject: EditorProject | null = null
     loadedProjectFile: LoadedProjectFile | null = null
@@ -242,11 +248,13 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     async loadProject(): Promise<void> {
         this.setStatus('Loading project…')
-        const [serverState, entries, packageFile] = await Promise.all([
+        const [serverState, entries, packageFile, lastCheckpoint] = await Promise.all([
             this.source.state() as unknown as Promise<ServerState>,
             this.source.list(),
             this.source.read('package.json'),
+            this.source.latestCheckpoint(),
         ])
+        this.lastCheckpoint = lastCheckpoint
         const assetsFile = entries.some(({path}) => path === 'assets.json')
             ? await this.source.read('assets.json')
             : undefined
@@ -533,15 +541,16 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
-    async createCheckpoint(label = 'editor'): Promise<{hash: string} | undefined> {
+    async createCheckpoint(label?: string): Promise<EditorCheckpoint | undefined> {
         if (!this.source.checkpoint) throw new Error('Project checkpoints are unavailable.')
         if (!await this.saveScene()) return undefined
         this.setStatus('Creating checkpoint…')
         try {
             const result = await this.source.checkpoint(label)
+            this.lastCheckpoint = result
             this.setStatus(`Checkpoint ${result.hash}`)
             AppToaster().show({
-                message: `Checkpoint ${result.hash} created.`,
+                message: `Checkpoint ${result.hash}${result.label ? ` ${result.label}` : ''} created.`,
                 intent: 'success',
                 icon: 'git-commit',
                 timeout: 3000,
@@ -553,14 +562,15 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
-    async restoreLastCheckpoint(): Promise<{hash: string} | undefined> {
+    async restoreLastCheckpoint(discardUnsavedChanges = false): Promise<{hash: string} | undefined> {
         if (!this.source.restore) throw new Error('Project restore is unavailable.')
-        if (this.loadedNeedsSave && !window.confirm('Restore the last checkpoint and discard unsaved scene edits?')) return undefined
+        if (this.loadedNeedsSave && !discardUnsavedChanges
+            && !window.confirm('Restore the last checkpoint and discard unsaved scene edits?')) return undefined
         if (this.isPlaying || this.isStartingPlay) await this.stopPlay()
         this.loadedNeedsSave = false
         this.setStatus('Restoring checkpoint…')
         try {
-            const result = await this.source.restore()
+            const result = await this.source.restore(this.lastCheckpoint?.hash)
             this.setStatus(`Restored checkpoint ${result.hash}`)
             AppToaster().show({
                 message: `Restored checkpoint ${result.hash}.`,

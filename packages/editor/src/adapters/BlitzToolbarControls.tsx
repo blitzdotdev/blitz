@@ -1,9 +1,12 @@
-import {useEffect, useState} from 'react'
+import {useEffect, useState, type FormEvent} from 'react'
 import {
     Button,
+    Callout,
     Classes,
+    InputGroup,
     Intent,
     Menu,
+    MenuDivider,
     MenuItem,
     Popover,
     PopoverInteractionKind,
@@ -13,7 +16,7 @@ import {
 import {ThemeSettingsMenuComponent} from 'uiconfig-blueprint/lib/esm/lib'
 import {useManagerVersion} from '../utils/UseManager.ts'
 import {InteractionIconButton} from '../components/InteractionIconButton.tsx'
-import type {EditorCheckResult} from '../utils/ViewerInstanceManager.ts'
+import type {EditorCheckResult, ViewerInstanceManager} from '../utils/ViewerInstanceManager.ts'
 
 export function BlitzSaveSceneButton() {
     const manager = useManagerVersion()
@@ -43,6 +46,15 @@ export function BlitzSaveSceneButton() {
                  targetTagName="div"
                  content={
                      <Menu className={Classes.ELEVATION_0}>
+                         <MenuItem
+                             disabled={!manager.loadedNeedsSave || saving}
+                             icon="git-repo"
+                             label="⌘S"
+                             text="Save Scene"
+                             onClick={() => void save()}/>
+                         <CheckpointMenuItem manager={manager}/>
+                         <RestoreCheckpointMenuItem manager={manager}/>
+                         <MenuDivider/>
                          <MenuItem text="Save and Close" onClick={() => void save()}/>
                          <MenuItem text="Close Project" onClick={() => undefined}/>
                      </Menu>
@@ -51,6 +63,89 @@ export function BlitzSaveSceneButton() {
                     variant="minimal" size="small" text=""/>
         </Popover>
     </>
+}
+
+function CheckpointMenuItem({manager}: {manager: ViewerInstanceManager}) {
+    const [checkpointing, setCheckpointing] = useState(false)
+    const [label, setLabel] = useState('')
+    const create = async (event: FormEvent) => {
+        event.preventDefault()
+        setCheckpointing(true)
+        try {
+            const result = await manager.createCheckpoint(label.trim() || undefined)
+            if (result) setLabel('')
+        } finally {
+            setCheckpointing(false)
+        }
+    }
+    return <MenuItem
+        data-testid="checkpoint-game"
+        icon="git-commit"
+        popoverProps={{interactionKind: PopoverInteractionKind.CLICK, placement: 'right-start'}}
+        shouldDismissPopover={false}
+        text="Checkpoint..."
+    >
+        <li className="blitz-checkpoint-menu-popover" role="none">
+            <form data-testid="checkpoint-popover" onSubmit={(event) => void create(event)}>
+                <InputGroup
+                    aria-label="Checkpoint label"
+                    disabled={checkpointing}
+                    onChange={(event) => setLabel(event.target.value)}
+                    placeholder="Label (optional)"
+                    value={label}/>
+                <Button
+                    className={Classes.POPOVER_DISMISS}
+                    disabled={checkpointing}
+                    intent={Intent.PRIMARY}
+                    loading={checkpointing}
+                    size="small"
+                    text="Create"
+                    type="submit"/>
+            </form>
+        </li>
+    </MenuItem>
+}
+
+function RestoreCheckpointMenuItem({manager}: {manager: ViewerInstanceManager}) {
+    const [restoring, setRestoring] = useState(false)
+    const checkpoint = manager.lastCheckpoint
+    const restore = async () => {
+        setRestoring(true)
+        try {
+            await manager.restoreLastCheckpoint(true)
+        } finally {
+            setRestoring(false)
+        }
+    }
+    return <MenuItem
+        data-testid="restore-checkpoint"
+        disabled={!checkpoint}
+        icon="history"
+        popoverProps={{interactionKind: PopoverInteractionKind.CLICK, placement: 'right-start'}}
+        shouldDismissPopover={false}
+        text="Restore last checkpoint"
+    >
+        {checkpoint && <li className="blitz-restore-menu-popover" role="none">
+            <div data-testid="restore-checkpoint-popover">
+                <strong>Restore checkpoint?</strong>
+                <p>
+                    Checkpoint <code>{checkpoint.hash}</code>
+                    {checkpoint.label && <> <span>{checkpoint.label}</span></>}
+                </p>
+                <Callout compact={true} icon="warning-sign" intent={Intent.WARNING}>
+                    Unsaved changes will be lost.
+                </Callout>
+                <Button
+                    className={Classes.POPOVER_DISMISS}
+                    disabled={restoring}
+                    intent={Intent.DANGER}
+                    loading={restoring}
+                    onClick={() => void restore()}
+                    size="small"
+                    text="Restore"/>
+            </div>
+        </li>}
+    </MenuItem>
 }
 
 export function BlitzOpenGameButton({onOpenGame}: {onOpenGame(): void}) {
@@ -149,28 +244,9 @@ function useRelativeTime(checkedAt: string) {
     return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
 }
 
-export function BlitzToolbarControls() {
+export function BlitzToolbarHooks() {
     const manager = useManagerVersion()
-    const [checkpointing, setCheckpointing] = useState(false)
-    const checkpoint = async () => {
-        setCheckpointing(true)
-        try {
-            await manager.createCheckpoint()
-        } finally {
-            setCheckpointing(false)
-        }
-    }
-
-    // AGREED-3: Blitz's centered owner controls do not participate in reference navbar layout.
-    return <div className="blitz-toolbar-controls">
-        <Button className="blitz-open-game-spacer" icon="share" aria-hidden={true} tabIndex={-1}>Open game</Button>
-        <Button
-            data-testid="checkpoint-game"
-            icon="git-commit"
-            loading={checkpointing}
-            disabled={checkpointing}
-            onClick={() => void checkpoint()}
-        >Checkpoint</Button>
+    return <>
         <span className="blitz-status-hook" aria-live="polite">{manager.status}</span>
         {/* Compatibility roles keep the unchanged integration assertions while the
             non-reference Scene and Timeline panels remain absent. */}
@@ -181,20 +257,9 @@ export function BlitzToolbarControls() {
         <button className="blitz-semantic-hook" title="Fullscreen" type="button"
                 onClick={() => void manager.get().container.parentElement?.requestFullscreen()}/>
         {manager.error && <div className="blitz-project-error" role="alert">{manager.error}</div>}
-    </div>
+    </>
 }
 
 export function BlitzThemeSettingsMenu() {
-    const manager = useManagerVersion()
-    // The transparent target preserves the reference menu pixels while retaining the
-    // existing restore contract exercised by the editor integration suite.
-    return <div className="blitz-theme-settings-menu">
-        <ThemeSettingsMenuComponent/>
-        <button
-            type="button"
-            className="blitz-restore-checkpoint-target"
-            data-testid="restore-checkpoint"
-            onClick={() => void manager.restoreLastCheckpoint()}
-        >Restore last checkpoint</button>
-    </div>
+    return <ThemeSettingsMenuComponent/>
 }

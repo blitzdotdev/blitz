@@ -7,7 +7,7 @@ import {strFromU8, unzipSync} from 'fflate'
 import {afterEach, describe, expect, it} from 'vitest'
 import {archiveProject} from '../src/archive.ts'
 import {initProject} from '../src/commands.ts'
-import {checkpointProject, initializeGitRepository, restoreProject} from '../src/git.ts'
+import {checkpointProject, initializeGitRepository, latestCheckpointProject, restoreProject} from '../src/git.ts'
 import {BLITZ_VERSION} from '../src/versions.ts'
 
 const execute = promisify(execFile)
@@ -79,6 +79,7 @@ describe('Git project commands', () => {
         const path = resolve(root, 'main.js')
         await writeFile(path, 'checkpoint contents\n')
         const checkpoint = await checkpointProject(root, 'before agent work')
+        expect(await latestCheckpointProject(root)).toEqual(checkpoint)
         const head = (await execute('git', ['rev-parse', 'HEAD'], {cwd: root})).stdout.trim()
 
         await writeFile(path, 'later contents\n')

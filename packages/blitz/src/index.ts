@@ -39,7 +39,7 @@ export {
 export type {PublicDeployEntry, PublicDevServer, PublishFromDiskOptions, UpgradeProjectOptions} from './commands.ts'
 export {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 export {enforceVersionPin, findPinnedProject} from './version-pin.ts'
-export {checkpointProject, gitHead, gitRepositoryRoot, restoreProject} from './git.ts'
+export {checkpointProject, gitHead, gitRepositoryRoot, latestCheckpointProject, restoreProject} from './git.ts'
 export type {CheckpointResult} from './git.ts'
 export type {PublishProjectOptions, PullProjectOptions} from './publish.ts'
 export type {
