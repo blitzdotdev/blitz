@@ -189,6 +189,12 @@ body{
   margin: 12px;
 }
 
+.google-sign-in {
+  align-items: center;
+  display: flex;
+  min-height: 40px;
+}
+
 .hierarchy-stack .folderContent{
   flex: 1 1 auto;
   max-width: 100%;

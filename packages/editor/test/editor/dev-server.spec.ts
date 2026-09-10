@@ -11,6 +11,7 @@ import {startMockBackend, type MockBackend} from '../../../blitz/test/mockBacken
 let root: string
 let server: DevServer
 let backend: MockBackend
+const googleScriptUrl = 'https://accounts.google.com/gsi/client'
 
 test.beforeAll(async () => {
     root = await mkdtemp(resolve(tmpdir(), 'blitz-editor-e2e-'))
@@ -151,6 +152,23 @@ test.afterAll(async () => {
     await server.close()
     await backend.close()
     await rm(root, {recursive: true, force: true})
+})
+
+test.beforeEach(async ({page}) => {
+    await page.route(googleScriptUrl, async (route) => {
+        await route.fulfill({
+            contentType: 'text/javascript',
+            body: `window.google = {accounts: {id: {
+  initialize() {},
+  renderButton(parent) {
+    const button = document.createElement('button')
+    button.textContent = 'Continue with Google'
+    parent.replaceChildren(button)
+  },
+  prompt() {},
+}}}`,
+        })
+    })
 })
 
 test('runs Playable, Editable, and Persisted checks through the connected editor', async ({page}) => {
@@ -678,6 +696,70 @@ test('opens the game dialog, publishes, updates, and claims a live game', async 
     await page.getByTestId('claim-game').click()
     await expect(page.getByTestId('claimed-notice')).toContainText('does not expire')
     expect(backend.games.get(slug)?.claimed).toBe(true)
+})
+
+test('signs in with GIS and claims through the documented Google backend route', async ({page}) => {
+    test.setTimeout(90_000)
+    const fixture = await startPublishEditor()
+    await page.unroute(googleScriptUrl)
+    await page.route(googleScriptUrl, async (route) => {
+        await route.fulfill({
+            contentType: 'text/javascript',
+            body: `
+document.cookie = 'g_csrf_token=gis-csrf; Path=/'
+let credentialCallback
+window.google = {accounts: {id: {
+  initialize(config) {
+    window.__googleClientId = config.client_id
+    credentialCallback = config.callback
+  },
+  renderButton(parent) {
+    const button = document.createElement('button')
+    button.textContent = 'Continue with Google'
+    button.addEventListener('click', () => credentialCallback({credential: 'gis-credential', select_by: 'btn'}))
+    parent.replaceChildren(button)
+  },
+  prompt(listener) {
+    listener({isNotDisplayed: () => true, getNotDisplayedReason: () => 'unregistered_origin'})
+  },
+}}}
+`,
+        })
+    })
+    try {
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.getByTestId('open-game').click()
+        await expect(page.getByText('Available', {exact: true})).toBeVisible()
+        const slug = await page.locator('#publish-slug').inputValue()
+        const popupPromise = page.waitForEvent('popup')
+        await page.getByTestId('create-live-game').click()
+        const popup = await popupPromise
+        await expect(page.getByTestId('live-url')).toBeVisible({timeout: 30_000})
+
+        await expect(page.getByTestId('google-origin-error')).toContainText(
+            `Add the editor origin ${new URL(fixture.server.url).origin}`,
+        )
+        expect(await page.evaluate(() => (window as unknown as {__googleClientId: string}).__googleClientId))
+            .toBe('118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com')
+        await page.getByTestId('google-sign-in').getByRole('button', {name: 'Continue with Google'}).click()
+        await expect(page.getByTestId('claimed-notice')).toContainText('does not expire')
+        expect(fixture.backend.games.get(slug)?.claimed).toBe(true)
+
+        const googleRequest = fixture.backend.requests.find(({path}) => path.endsWith('/google-login'))!
+        expect(Object.fromEntries(new URLSearchParams((googleRequest.body as Buffer).toString('utf8')))).toEqual({
+            credential: 'gis-credential',
+            g_csrf_token: 'gis-csrf',
+            select_by: 'btn',
+        })
+        expect(googleRequest.cookie).toBe('g_csrf_token=gis-csrf')
+        expect(fixture.backend.requests.findLast(({path}) => path.endsWith('/claim'))?.authorization)
+            .toBe('Bearer jwt-google')
+        await popup.close()
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
 })
 
 test('returns a raced slug conflict to the field and copies a secret-free agent prompt', async ({page, context}) => {

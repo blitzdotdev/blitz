@@ -33,7 +33,7 @@ describe('NodeProjectDirectory', () => {
 })
 
 describe('Blitz dev server', () => {
-    it('proxies slug checks, registration, and login through the configured backend', async () => {
+    it('proxies slug checks and account authentication through the configured backend', async () => {
         const backend = await startMockBackend()
         cleanup.push(() => backend.close())
         const {server, headers} = await startServer({backendUrl: backend.url})
@@ -59,11 +59,27 @@ describe('Blitz dev server', () => {
         })
         expect(login.status).toBe(200)
         expect(await login.json()).toMatchObject({token: 'jwt-login'})
+
+        const google = await fetch(`${base(server)}/api/auth/google`, {
+            method: 'POST',
+            headers: {...headers, Cookie: 'g_csrf_token=google-csrf', 'Content-Type': 'application/json'},
+            body: JSON.stringify({credential: 'google-credential', g_csrf_token: 'google-csrf', select_by: 'btn'}),
+        })
+        expect(google.status).toBe(200)
+        expect(await google.json()).toMatchObject({token: 'jwt-google', user: {username: 'google-player'}})
         expect(backend.requests.map(({path}) => path)).toEqual(expect.arrayContaining([
             '/api/v1/slugs/proxy-game',
             '/api/v1/auth/register',
             '/api/v1/auth/login',
+            '/api/v1/table/users/auth/google-login',
         ]))
+        const googleRequest = backend.requests.find(({path}) => path.endsWith('/google-login'))!
+        expect(Object.fromEntries(new URLSearchParams((googleRequest.body as Buffer).toString('utf8')))).toEqual({
+            credential: 'google-credential',
+            g_csrf_token: 'google-csrf',
+            select_by: 'btn',
+        })
+        expect(googleRequest.cookie).toBe('g_csrf_token=google-csrf')
     })
 
     it('claims with the in-memory JWT and local claim secret, then omits secrets from deploys', async () => {

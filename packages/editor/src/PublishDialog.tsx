@@ -23,9 +23,34 @@ interface PublishDialogProps {
 
 type Availability = 'checking' | 'available' | 'taken' | 'reserved' | 'invalid' | 'error'
 type RetryAction = 'publish' | 'claim'
-const GOOGLE_SIGN_IN_ORIGINS = new Set([
-    'https://blitz.dev',
-])
+const GOOGLE_CLIENT_ID = '118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com'
+const GOOGLE_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
+
+interface GoogleCredentialResponse {
+    credential?: string
+    select_by?: string
+}
+
+interface GooglePromptNotification {
+    isNotDisplayed?(): boolean
+    getNotDisplayedReason?(): string
+}
+
+interface GoogleIdentity {
+    initialize(config: {client_id: string, callback(response: GoogleCredentialResponse): void}): void
+    renderButton(parent: HTMLElement, options: Record<string, string>): void
+    prompt?(listener: (notification: GooglePromptNotification) => void): void
+}
+
+declare global {
+    interface Window {
+        google?: {accounts?: {id?: GoogleIdentity}}
+    }
+}
+
+let googleIdentityPromise: Promise<GoogleIdentity> | undefined
+let googleInitialized = false
+let googleCredentialHandler: ((response: GoogleCredentialResponse) => void) | undefined
 
 export function PublishDialog({isOpen, name, source, beforePublish, onClose}: PublishDialogProps) {
     const [deploys, setDeploys] = useState<DeployView[]>()
@@ -43,7 +68,9 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
     const [password, setPassword] = useState('')
     const [authToken, setAuthToken] = useState<string>()
     const [claiming, setClaiming] = useState(false)
+    const [googleError, setGoogleError] = useState('')
     const slugInput = useRef<HTMLInputElement | null>(null)
+    const googleButton = useRef<HTMLDivElement | null>(null)
     const popup = useRef<Window | null>(null)
 
     const entry = deploys?.[0]
@@ -51,7 +78,6 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
     const pendingInitialRelease = Boolean(entry && !expired && !entry.last_release_hash)
     const showCreate = deploys !== undefined && (!entry || expired || pendingInitialRelease)
     const progressValue = progress.total > 0 ? progress.done / progress.total : 0
-    const showGoogleSignIn = GOOGLE_SIGN_IN_ORIGINS.has(window.location.origin)
 
     const refreshDeploys = useCallback(async () => {
         const result = await source.deploys()
@@ -164,14 +190,13 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
         await navigator.clipboard.writeText(prompt)
     }
 
-    const claim = async (event?: FormEvent) => {
-        event?.preventDefault()
+    const authenticateAndClaim = useCallback(async (authenticate: () => Promise<{token: string}>) => {
         if (!entry) return
         setClaiming(true)
         setError('')
         setRetryAction(undefined)
         try {
-            const auth = await source.authenticate(authMode, email, password)
+            const auth = await authenticate()
             setAuthToken(auth.token)
             await source.claim(entry.slug)
             await refreshDeploys()
@@ -181,7 +206,58 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
         } finally {
             setClaiming(false)
         }
+    }, [entry, refreshDeploys, source])
+
+    const claim = async (event?: FormEvent) => {
+        event?.preventDefault()
+        await authenticateAndClaim(() => source.authenticate(authMode, email, password))
     }
+
+    const handleGoogleCredential = useCallback((response: GoogleCredentialResponse) => {
+        const credential = response.credential
+        if (!credential) {
+            setGoogleError('Google sign-in did not return a credential.')
+            return
+        }
+        setGoogleError('')
+        void authenticateAndClaim(() => source.authenticateWithGoogle(credential, response.select_by))
+    }, [authenticateAndClaim, source])
+
+    useEffect(() => {
+        if (!isOpen || !entry?.last_release_hash || expired || entry.claimed) return
+        let cancelled = false
+        googleCredentialHandler = handleGoogleCredential
+        setGoogleError('')
+        void loadGoogleIdentity().then((identity) => {
+            if (cancelled || !googleButton.current) return
+            if (!googleInitialized) {
+                identity.initialize({
+                    client_id: GOOGLE_CLIENT_ID,
+                    callback: (response) => googleCredentialHandler?.(response),
+                })
+                googleInitialized = true
+            }
+            googleButton.current.replaceChildren()
+            identity.renderButton(googleButton.current, {
+                type: 'standard',
+                theme: 'outline',
+                size: 'large',
+                text: 'continue_with',
+            })
+            identity.prompt?.((notification) => {
+                if (notification.isNotDisplayed?.()
+                    && notification.getNotDisplayedReason?.() === 'unregistered_origin') {
+                    setGoogleError(googleOriginMessage())
+                }
+            })
+        }).catch((caught) => {
+            if (!cancelled) setGoogleError(isOriginError(caught) ? googleOriginMessage() : errorMessage(caught))
+        })
+        return () => {
+            cancelled = true
+            if (googleCredentialHandler === handleGoogleCredential) googleCredentialHandler = undefined
+        }
+    }, [entry?.claimed, entry?.last_release_hash, expired, handleGoogleCredential, isOpen])
 
     const retry = () => {
         if (retryAction === 'claim') void claim()
@@ -262,9 +338,10 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
                         <Button data-testid="claim-game" type="submit" intent={Intent.SUCCESS} loading={claiming}>
                             {authMode === 'register' ? 'Register and claim' : 'Log in and claim'}
                         </Button>
-                        {showGoogleSignIn && <Button data-testid="google-sign-in" type="button">
-                            Continue with Google
-                        </Button>}
+                        <div className="google-sign-in" data-testid="google-sign-in" ref={googleButton}>
+                            <span>Continue with Google</span>
+                        </div>
+                        {googleError && <Callout data-testid="google-origin-error" intent={Intent.WARNING}>{googleError}</Callout>}
                     </form>
                 </>}
                 {entry.claimed && <Callout data-testid="claimed-notice" intent={Intent.SUCCESS}>
@@ -305,4 +382,39 @@ function errorMessage(error: unknown): string {
     }
     if (error instanceof TypeError) return 'The network connection was lost. Check your connection and retry.'
     return error instanceof Error ? error.message : String(error)
+}
+
+function loadGoogleIdentity(): Promise<GoogleIdentity> {
+    const available = window.google?.accounts?.id
+    if (available) return Promise.resolve(available)
+    if (googleIdentityPromise) return googleIdentityPromise
+
+    googleIdentityPromise = new Promise<GoogleIdentity>((resolveIdentity, reject) => {
+        const existing = document.querySelector<HTMLScriptElement>(`script[src="${GOOGLE_SCRIPT_URL}"]`)
+        const script = existing || document.createElement('script')
+        const loaded = () => {
+            const identity = window.google?.accounts?.id
+            if (identity) resolveIdentity(identity)
+            else reject(new Error('Google Identity Services did not initialize.'))
+        }
+        script.addEventListener('load', loaded, {once: true})
+        script.addEventListener('error', () => reject(new Error('Google Identity Services could not be loaded.')), {once: true})
+        if (!existing) {
+            script.src = GOOGLE_SCRIPT_URL
+            script.async = true
+            document.head.append(script)
+        }
+    }).catch((error) => {
+        googleIdentityPromise = undefined
+        throw error
+    })
+    return googleIdentityPromise
+}
+
+function isOriginError(error: unknown): boolean {
+    return /origin/i.test(error instanceof Error ? error.message : String(error))
+}
+
+function googleOriginMessage(): string {
+    return `Add the editor origin ${window.location.origin} to the Google OAuth client's authorized JavaScript origins. Google permits http://localhost and http://127.0.0.1 origins for development once they are listed.`
 }
