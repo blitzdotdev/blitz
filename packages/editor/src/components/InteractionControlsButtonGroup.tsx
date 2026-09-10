@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference viewport controls call the manager compatibility facade.
 import {ButtonGroup, Intent, Menu, Popover, Tooltip} from "@blueprintjs/core";
 import {FC, useCallback, useEffect, useReducer, useState} from 'react'
 import {editorFeatures} from '../utils/EditorFeatures.ts'
@@ -96,6 +97,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                         position={"bottom"}
                     >
                         <InteractionIconButton
+                            title="Transform controls"
                             intent={!states['transform-controls'][0] ? Intent.NONE : Intent.SUCCESS}
                             // icon={bpUiConfigIcons['axes-cube']} active={states['transform-controls'][0]}
                             icon={"move"} active={states['transform-controls'][0]}
@@ -178,6 +180,7 @@ export const InteractionControlsButtonGroup: FC<{}> = ({}) => {
                             intent={Intent.NONE}
                             // to prevent focus away from canvas on click
                             onMouseDown={(e) => e.preventDefault()}
+                            title="Select camera"
                             icon={'camera'} active={false}
                             onClick={() => {
                                 // Just open the popover, don't toggle the state

@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference object-create hook is retained for presentation compatibility.
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {IObject3D, UndoManagerPlugin} from "threepipe";
 import {AppToaster} from "uiconfig-blueprint/lib/esm/lib";

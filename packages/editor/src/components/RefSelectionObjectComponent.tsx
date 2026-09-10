@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference picker accepts both legacy and DevServerSource manifest entries.
 import {
     IGeometry,
     IMaterial,

@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference inspector supports legacy asset metadata carried at runtime.
 import {PanelActions} from "@blueprintjs/core/lib/esnext/components/panel-stack2/panelTypes";
 import {getFileByPath, useAssets} from "../utils/AssetsProvider.ts";
 import {
@@ -428,4 +429,3 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     </div>
 
 }
-

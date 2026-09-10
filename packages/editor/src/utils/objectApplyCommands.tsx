@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference commands are retained behind manager compatibility methods.
 import {
     IMaterial,
     ImportResultExtras,

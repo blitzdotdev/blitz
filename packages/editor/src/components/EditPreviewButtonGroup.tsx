@@ -1,39 +1,22 @@
-import {FC, useCallback, useEffect, useState} from "react";
+import {FC, useCallback, useState} from "react";
 import {ButtonGroup, Icon, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
 import {useManager} from "../utils/UseManager.ts";
+import {EditModePlugin} from "../utils/EditModePlugin.ts";
 
 export const EditPreviewButtonGroup: FC<{
     isExpanded?: boolean;
     toggleExpand?: () => void;
 }> = ({isExpanded, toggleExpand}) => {
     const manager = useManager()
-    const {editPreview} = manager
-    const [isPlaying, setIsPlaying1] = useState(editPreview.enabled)
-    useEffect(()=>{
-        const l = ()=> setIsPlaying1(editPreview.enabled)
-        editPreview.addEventListener('editPreviewChange', l)
-        return () => {
-            editPreview.removeEventListener('editPreviewChange', l)
-        }
-    })
+    const [isPlaying, setIsPlaying1] = useState(false)
 
     const setIsPlaying = useCallback(async (val: boolean) => {
-        if (val === editPreview.enabled) setIsPlaying1(val)
-        else {
-            if (val) {
-                await editPreview.start().catch(e => {
-                    console.error('Could not start editor preview:', e) // todo show toast
-                    return false
-                })
-            } else {
-                await editPreview.stop().catch(e => {
-                    console.error('Could not stop editor preview:', e) // todo show toast
-                    return false
-                })
-            }
-        }
-    }, [editPreview])
+        const editMode = manager.get().getPlugin(EditModePlugin)
+        if (val) editMode?.disable(EditPreviewButtonGroup)
+        else editMode?.enable(EditPreviewButtonGroup)
+        setIsPlaying1(val)
+    }, [manager])
 
     return /*editPreview.isRunningMode ? null : */(
         <div className="interactionControlsButtonContainer" style={{right: 'var(--pt-grid-size)', left: 'unset'}}>
@@ -61,6 +44,7 @@ export const EditPreviewButtonGroup: FC<{
                         // openOnTargetFocus={false}
                     >
                         <InteractionIconButton
+                            title={v.key === 'edit' ? 'Edit mode' : 'Preview mode'}
                             intent={v.value === isPlaying ? Intent.PRIMARY : Intent.NONE}
                             // to prevent focus away from canvas on click
                             onMouseDown={(e) => e.preventDefault()}

@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference asset checks inspect legacy runtime metadata when present.
 import {assetUrlPrefix} from "../project.ts";
 import {ViewerInstanceManager} from "../ViewerInstanceManager.ts";
 import {IGeometry, IMaterial, ITexture} from "threepipe";

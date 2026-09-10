@@ -739,3 +739,205 @@ body{
     min-height: 16px !important;
   }
 }
+
+// AGREED-3/4 adapters. These selectors are scoped to Blitz-only controls and
+// dev-server surfaces; the reference rules above remain byte-for-byte.
+.blitz-toolbar-controls {
+  display: flex;
+  gap: 4px;
+  left: 62%;
+  position: absolute;
+  top: 7px;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.blitz-theme-settings-menu {
+  position: relative;
+}
+
+.blitz-restore-checkpoint-target,
+.blitz-semantic-hook {
+  border: 0;
+  height: 1px;
+  left: 0;
+  margin: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  top: 0;
+  width: 1px;
+}
+
+.blitz-reference-add-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 8px;
+}
+
+.blitz-status-hook {
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.blitz-project-error {
+  background: var(--pt-intent-danger);
+  color: white;
+  left: 50%;
+  max-width: min(720px, calc(100vw - 40px));
+  padding: 8px 12px;
+  position: fixed;
+  top: 54px;
+  transform: translateX(-50%);
+  white-space: pre-wrap;
+  z-index: 30;
+}
+
+.blitz-reference-add-row > span {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.blitz-reference-dependency-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.editor-canvas-mount {
+  inset: 0;
+  position: absolute;
+}
+
+.game-canvas-overlay {
+  background: #101216;
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+  z-index: 20;
+}
+
+.check-result-cards {
+  background: var(--app-background-color);
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 6px;
+}
+
+.check-result-cards .bp5-card {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+}
+
+.source-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-height: 0;
+}
+
+.source-editor-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.source-editor-toolbar strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-editor-status {
+  color: var(--pt-text-color-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.source-editor-input {
+  background: var(--pt-input-background-color);
+  border: 1px solid var(--pt-divider-black);
+  border-radius: 2px;
+  display: grid;
+  flex: 1;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 160px;
+  overflow: hidden;
+}
+
+.source-line-numbers,
+.source-textarea {
+  box-sizing: border-box;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin: 0;
+  tab-size: 4;
+}
+
+.source-line-numbers {
+  background: rgba(127, 127, 127, 0.08);
+  border-right: 1px solid var(--pt-divider-black);
+  color: var(--pt-text-color-muted);
+  min-width: 3ch;
+  overflow: hidden;
+  padding: 8px 6px;
+  text-align: right;
+  user-select: none;
+}
+
+.source-textarea {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  height: 100%;
+  min-height: 0;
+  padding: 8px !important;
+  resize: none;
+  white-space: pre;
+  width: 100%;
+}
+
+.source-editor-placeholder,
+.no-project {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.source-editor-placeholder {
+  gap: 8px;
+  min-height: 120px;
+}
+
+.no-project {
+  height: 100%;
+}
+
+.no-project-detail,
+.file-metadata dt {
+  color: var(--pt-text-color-muted);
+}
+
+.file-metadata dl {
+  display: grid;
+  gap: 6px 12px;
+  grid-template-columns: auto 1fr;
+}
+
+.file-metadata dd {
+  margin: 0;
+}

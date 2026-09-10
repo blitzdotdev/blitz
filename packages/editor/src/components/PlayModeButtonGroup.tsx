@@ -1,38 +1,15 @@
-import {FC, useCallback, useState} from "react";
+import {FC} from "react";
 import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
-import {useListenProperty} from "./UseListenProperty.tsx";
-import {useManager} from "../utils/UseManager.ts";
+import {useManagerVersion} from "../utils/UseManager.ts";
 
-let changingPlayState = false
-export const PlayModeButtonGroup: FC<{}> = ({}) => {
-    const {playMode} = useManager()
-    const [isPlaying, setIsPlaying1] = useState(playMode.isRunningMode)
-    const isPausedRunning = useListenProperty(playMode, 'isPausedRunning', 'runModePauseChange')
-
-    // todo listed to isRunningMode change from outside?
-    const setIsPlaying = useCallback(async (val: boolean) => {
-        if (changingPlayState) return
-        changingPlayState = true
-        if (val === playMode.isRunningMode && !playMode.isPausedRunning) {
-            setIsPlaying1(val)
-        }
-        else {
-            if (val) {
-                await playMode.startRunMode().catch(e => {
-                    console.error('Could not start run mode:', e) // todo show toast
-                    return false
-                })
-            } else {
-                await playMode.stopRunMode().catch(e => {
-                    console.error('Could not stop run mode:', e) // todo show toast
-                    return false
-                })
-            }
-            setIsPlaying1(playMode.isRunningMode)
-        }
-        changingPlayState = false
-    }, [playMode])
+export const PlayModeButtonGroup: FC<{
+    onPlay(): void
+    onStop(): void
+}> = ({onPlay, onStop}) => {
+    const manager = useManagerVersion()
+    const isPlaying = manager.isPlaying || manager.isStartingPlay
+    const isPausedRunning = false
 
     // todo on playing change
     //  set picking enabled
@@ -76,11 +53,13 @@ export const PlayModeButtonGroup: FC<{}> = ({}) => {
                         >
                             <InteractionIconButton
                                 disabled={v.key === 'pause' && !isPlaying}
+                                data-testid={v.key === 'play' ? 'play' : undefined}
                                 intent={active ? Intent.PRIMARY : Intent.NONE}
                                 endIcon={v.icon}
                                 active={active}
                                 onClick={() => {
-                                    typeof v.value === 'boolean' ? setIsPlaying(v.value) : playMode.isPausedRunning ? playMode.unpauseRunMode() : playMode.pauseRunMode()
+                                    if (v.value === true) isPlaying ? onStop() : onPlay()
+                                    else if (v.value === false) onStop()
                                 }}/>
                         </Tooltip>
 

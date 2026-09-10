@@ -13,7 +13,6 @@ import {getOrCall, ISceneEventMap, ObjectPickerEventMap, PickingPlugin, ThreeVie
 import {EditorModes, EditorModesButtonGroup, editorModesInspectorConfig} from './EditorModes.tsx'
 import {Alignment, Button, Card, Divider, IconName, Navbar, Panel, PanelStack2, Popover, TabId} from '@blueprintjs/core'
 import {BPHierarchyComponent} from './BPHierarchyComponent.tsx'
-import {SaveFileButton, SaveProjectButton, useFileNeedsSave} from './SaveFileButton.tsx'
 import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
 import {BPMaterialsTreeComponent, MaterialHierarchyComponent} from "./BPMaterialsTreeComponent.tsx";
 import {BPTexturesTreeComponent, TextureHierarchyComponent} from "./BPTexturesTreeComponent.tsx";
@@ -28,9 +27,6 @@ import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
 import {BPTreeFolderComponent} from "./BPTreeFolderComponent.tsx";
 import {iconForSelectionObject} from "../utils/icons.tsx";
 import {MemoryTab} from "./MemoryTab.tsx";
-import {AIAgentTab} from "./AIAgentTab.tsx";
-import {AIMCPTab} from "./AIMCPTab.tsx";
-import {PublishGameTab} from "./PublishGameTab.tsx";
 import {objToSelectItemRef, RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
 import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
@@ -38,9 +34,23 @@ import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 import {useAssets} from "../utils/AssetsProvider.ts";
 import {ExternalFilesPanel} from "./ExternalFilesPanel.tsx";
-import {DependenciesSectionComp, PluginsSectionComp, ScriptsSectionComp } from './ProjectSettingsComponents.tsx';
-import {isEditableSourceFile, SourceEditorPanel} from './SourceEditorPanel.tsx';
-import {ExportGameTab} from './ExportGameTab.tsx';
+import {
+    DependenciesSectionComp,
+    PluginsSectionComp,
+    ScriptsSectionComp,
+} from '../adapters/DevServerProjectSettings.tsx';
+import {
+    FileMetadataPanel,
+    SourceEditorPanel,
+} from '../adapters/DevServerSourceEditorPanel.tsx';
+import {isEditableSourceFile} from '../utils/sourceFiles.ts';
+import {DevServerInspectorControls} from '../adapters/DevServerInspectorControls.tsx';
+import {
+    BlitzCheckResults,
+    BlitzSaveSceneButton,
+    BlitzThemeSettingsMenu,
+    BlitzToolbarControls,
+} from '../adapters/BlitzToolbarControls.tsx';
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){
@@ -99,28 +109,20 @@ ConfigObjectGenerators.materials = BPMaterialsTreeComponent
 ConfigObjectGenerators.textures = BPTexturesTreeComponent
 ConfigObjectGenerators.tree = BPTreeFolderComponent
 
-export function ThreeEditorComponent() {
+export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
     const [viewer, setViewer] = useState<ThreeViewer | null>(null)
     // const uiConfigRenderer = viewer.getPlugin(BlueprintJsUiPlugin2)!
     const [uiConfigRenderer, setUiConfigRenderer] = useState<BlueprintJsUiPlugin2 | null>(null)
     const manager = useManager()
     const {selectedFiles, setSelectedFiles} = useAssets()
     const { project } = useProject()
-    const [mcpBridge, setMcpBridge] = useState(manager.mcpBridge)
     const [rightTabId, setRightTabId] = useState<TabId>('inspector')
     const [bottomTabId, setBottomTabId] = useState<TabId>('files')
-    const [agentWorking, setAgentWorking] = useState(false)
-    const [sourceDraftDirty, setSourceDraftDirty] = useState(false)
+    const [playOverlay, setPlayOverlay] = useState(false)
+    const selectedFile = selectedFiles.length === 1 ? selectedFiles[0] : null
     const selectedSourceFile = selectedFiles.length === 1 && isEditableSourceFile(selectedFiles[0])
         ? selectedFiles[0]
         : null
-
-    useEffect(() => {
-        const syncBridge = () => setMcpBridge(manager.mcpBridge)
-        manager.addEventListener('mcpBridgeChange', syncBridge)
-        syncBridge()
-        return () => manager.removeEventListener('mcpBridgeChange', syncBridge)
-    }, [manager])
 
     useEffect(() => {
         if (selectedFiles.length) setRightTabId('inspector')
@@ -223,6 +225,7 @@ export function ThreeEditorComponent() {
     // }, []);
 
     const canvasContainer = useRef<HTMLDivElement>(null)
+    const playCanvas = useRef<HTMLCanvasElement>(null)
     // add viewer.container to canvasContainer when it changes
     useEffect(() => {
         if(canvasContainer.current && viewer && viewer.container.parentElement !== canvasContainer.current){
@@ -231,6 +234,15 @@ export function ThreeEditorComponent() {
             viewer.resize()
         }
     }, [canvasContainer.current, viewer])
+
+    useEffect(() => {
+        if (playOverlay && playCanvas.current) void manager.startPlay(playCanvas.current)
+    }, [manager, playOverlay])
+
+    const stopPlaying = async () => {
+        await manager.stopPlay()
+        setPlayOverlay(false)
+    }
 
     return !uiConfigRenderer || !viewer ? null : (
         <UiConfigRendererContext.Provider value={uiConfigRenderer}>
@@ -270,32 +282,28 @@ export function ThreeEditorComponent() {
                     </Navbar.Group>
                     {project && (
                     <Navbar.Group align={Alignment.START}>
-                        {isPackageProject(project) ? <SaveProjectButton/> : <SaveFileButton /> }
-                        <span
-                            className={`kite-agent-working-indicator${agentWorking ? ' is-active' : ''}`}
-                            role="status"
-                            aria-live="polite"
-                            aria-label="Agent is working"
-                            aria-hidden={!agentWorking}
-                        >
-                            <span className="kite-agent-working-dot" aria-hidden="true"/>
-                            <span>Agent is working</span>
-                        </span>
+                        <BlitzSaveSceneButton/>
                     </Navbar.Group>
                     )}
                     <Navbar.Group align={Alignment.END}>
-                        <PlayModeButtonGroup key="playmode" />
+                        <PlayModeButtonGroup
+                            key="playmode"
+                            onPlay={() => setPlayOverlay(true)}
+                            onStop={() => void stopPlaying()}/>
                         <Navbar.Divider/>
                         <Popover targetProps={{style: {}}}
                                  minimal
                                  targetTagName={"div"}
                                  content={
-                                     <ThemeSettingsMenuComponent/>
+                                     <BlitzThemeSettingsMenu/>
                                  } placement="bottom">
-                            <Button icon="cog" size={"small"} variant={"minimal"} text=""/>
+                            <Button aria-label="Settings" icon="cog" size={"small"} variant={"minimal"} text=""/>
                         </Popover>
                     </Navbar.Group>
+                    <BlitzToolbarControls onOpenGame={onOpenGame}/>
                 </Navbar>
+
+                <BlitzCheckResults/>
 
                 <WindowPanesLayout
                     key={viewer.scene.uuid} // force rerender when viewer change, because we might add events to the viewer in sub components like BPHierarchyComponent
@@ -317,9 +325,20 @@ export function ThreeEditorComponent() {
                             display: "flex",
                             flexDirection: "column",
                         }, content: <>
-                                <div className={"editorCanvasContainer"} key={"editorCanvasContainer"} ref={canvasContainer}></div>
+                                <div
+                                    className={"editorCanvasContainer"}
+                                    key={"editorCanvasContainer"}
+                                    onDragOver={(event) => event.preventDefault()}
+                                    onDrop={(event) => {
+                                        event.preventDefault()
+                                        void manager.importFiles(event.dataTransfer.files)
+                                    }}
+                                >
+                                    <div className="editor-canvas-mount" ref={canvasContainer}/>
+                                    {playOverlay && <canvas ref={playCanvas} className="game-canvas-overlay" data-testid="game-canvas"/>}
+                                </div>
                             </>}],
-                        bottom: isPackageProject(manager.loadedProject) ? [{title: 'Files', key: 'files', content: <FilesPanel />},
+                        bottom: manager.loadedProject ? [{title: 'Files', key: 'files', content: <FilesPanel />},
                             {title: 'Library', key: 'library', content: <ExternalFilesPanel />}]: null,
                         right: [
                             {
@@ -332,10 +351,12 @@ export function ThreeEditorComponent() {
                                     flexDirection: "row",
                                 },
                                 content: <>
-                                    <SourceEditorPanel selectedFile={selectedSourceFile} mcpBridge={mcpBridge} onDirtyChange={setSourceDraftDirty}/>
-                                    {!selectedSourceFile && <EditInspectorComponent
+                                    <SourceEditorPanel selectedFile={selectedSourceFile}/>
+                                    {selectedFile && !selectedSourceFile && <FileMetadataPanel entry={selectedFile}/>} 
+                                    {!selectedFile && <EditInspectorComponent
                                         className={'inspector-stack'}
                                     />}
+                                    {!selectedFile && <DevServerInspectorControls/>}
                                 </>
                             },
                             {
@@ -379,49 +400,6 @@ export function ThreeEditorComponent() {
                                     flexDirection: "column",
                                 },
                                 content: <MemoryTab/>
-                            },
-                            {
-                                title: 'Create Game — Alpha',
-                                key: 'create-game-alpha',
-                                keepMounted: true,
-                                style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                },
-                                content: <AIAgentTab mcpBridge={mcpBridge} onWorkingChange={setAgentWorking}/>
-                            },
-                            {
-                                title: 'Export',
-                                key: 'export',
-                                keepMounted: true,
-                                style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                },
-                                content: <ExportGameTab mcpBridge={mcpBridge} sourceDraftDirty={sourceDraftDirty}/>
-                            },
-                            {
-                                title: 'Publish',
-                                key: 'publish',
-                                keepMounted: true,
-                                style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                },
-                                content: <PublishGameTab mcpBridge={mcpBridge} sourceDraftDirty={sourceDraftDirty}/>
-                            },
-                            {
-                                title: 'AI MCP Bridge',
-                                key: 'ai-mcp-bridge',
-                                style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                },
-                                content: <AIMCPTab mcpBridge={mcpBridge}/>
                             },
                         ],
                     }}
@@ -506,10 +484,10 @@ export function NavProjectFileName(){
     const projectIcon: IconName = pkgProject ? 'folder-close' : 'cubes'
     const fileIcon: IconName|MaybeElement = !!manager.loadedScene ? 'cubes' : !!manager.loadedAssetObj ? iconForSelectionObject(manager.loadedAssetObj) : 'document'
 
-    const [fileNeedsSave] = useFileNeedsSave()
+    const fileNeedsSave = manager.loadedNeedsSave
     if(!project) return null
     return <>
-        {project && <Button variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>}
+        {project && <Button role="heading" variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>}
         {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.glb$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
     </>
 }
