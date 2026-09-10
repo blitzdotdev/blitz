@@ -1,19 +1,23 @@
 import {useManager} from "../utils/UseManager.ts";
 import {libAssetTypes} from "../data/LibAssetTypes.tsx";
-import {useLiveQuery} from "@tanstack/react-db";
-import {libAssetCollection} from "../tsdb/libAsset.ts";
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import {PopupMenuButton} from "./PopupMenuButton.tsx";
 import {Tab, Tabs} from "@blueprintjs/core";
 import {ExternalFilesGrid} from "./ExternalFilesGrid.tsx";
 import {SliderMenuItem} from "./FilesPanel.tsx";
-import {FileManifestEntry} from "../utils/AssetsProvider.ts";
 
-export type TExternalFile = Omit<FileManifestEntry, 'handle'|'isFSEntry'|'children'>& {
+export type TExternalFile = {
+    name: string
+    path: string
+    type: 'file' | 'directory'
     children: TExternalFile[],
     assetType?: string,
     libFileId?: string // if this file is linked to a lib asset, store its id here}
     isFSEntry?: false,
+    icon?: string,
+    size?: number,
+    sha256?: string,
+    mtime?: number,
 }
 
 export function ExternalFilesPanel({}: {}) {
@@ -22,11 +26,26 @@ export function ExternalFilesPanel({}: {}) {
 
     const files: TExternalFile[] = libAssetTypes.map(p => ({...p, children: []}))
 
-    const {data: libAssets} = useLiveQuery((q) =>
-        q.from({libAsset: libAssetCollection})
-            // .where(({ todo }) => eq(todo.completed, false))
-            .orderBy(({libAsset}) => libAsset.name, 'asc')
-    )
+    const [libAssets, setLibAssets] = useState<Array<{
+        id: string
+        name: string
+        fileUrl: string
+        thumbnailUrl: string
+        type: string
+    }>>([])
+    useEffect(() => {
+        const controller = new AbortController()
+        void fetch('https://blitz-asset-library-proxy.blitzapp.workers.dev/assets/v1/list', {
+            signal: controller.signal,
+        }).then(async (response) => {
+            if (!response.ok) throw new Error(`Asset library returned ${response.status}`)
+            const body = await response.json() as {assets?: typeof libAssets}
+            setLibAssets(Array.isArray(body.assets) ? body.assets : [])
+        }).catch((error) => {
+            if (!controller.signal.aborted) console.error('Unable to load asset library', error)
+        })
+        return () => controller.abort()
+    }, [])
 
     libAssets.forEach(f => {
         const f1 = {
@@ -38,7 +57,7 @@ export function ExternalFilesPanel({}: {}) {
             // variants: f.files || {},
             libFileId: f.id,
             children: []
-        } as TExternalFile
+        } as unknown as TExternalFile
         const group = files.find(f2 => f2.assetType === f.type)
         if (!f1.path) {
             console.log('No fileUrl for asset:', f, f.type)
@@ -81,7 +100,7 @@ export function ExternalFilesPanel({}: {}) {
             renderActiveTabPanelOnly={true}
             size={"medium"}
             vertical={false}
-            defaultSelectedTabId={"a"}
+            defaultSelectedTabId={files[0]?.path}
             // style={{zIndex: 0}}
         >
             {files.map((f, i) => <Tab key={f.path} id={f.path} title={f.name} panel={<ExternalFilesGrid group={f}/>}/>)}

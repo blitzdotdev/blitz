@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference drop helper is retained behind the DevServerSource drop adapter.
 import {
     AViewerPluginSync,
     Box3B,

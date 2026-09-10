@@ -1,132 +1,72 @@
-import {IGeometry, IMaterial, IObject3D, ITexture, TypedClass} from "threepipe";
-import {assetUrlPrefix, SavedSceneFile, SavedSceneFileMeta, SavedSceneFileMetaStored, settingsKey} from "./project.ts";
-import {typesExts} from "../data/fileTypes.ts";
-import {FileManifestEntry} from "./AssetsProvider.ts";
+import type {IGeometry, IMaterial, IObject3D, ITexture, TypedClass} from 'threepipe'
+import type {FileManifestEntry} from './AssetsProvider.ts'
+import type {SavedSceneFile} from './project.ts'
 
 export type SelObjectType = 'object' | 'material' | 'texture' | 'geometry' | 'unknown' | 'none' | 'plugin'
 
-export interface SelectFileRef{
+export interface SelectFileRef {
     uuid: string
     name: string
-    // path: string
-    type: SelObjectType|'image'|'script'|[TypedClass]
+    type: SelObjectType | 'image' | 'script' | TypedClass[]
     entry: FileManifestEntry
-    userData?: Record<string, any>
-
-    // _isViewerPlugin: true
-
-    // /**
-    //  * to be able to disable running the plugin at runtime
-    //  * not implemented
-    //  * @default true
-    //  */
-    // runtime?: boolean,
-    // /**
-    //  * to be able to disable the plugin in the editor
-    //  * @default true
-    //  */
-    // editor?: boolean
+    userData?: Record<string, unknown>
 }
 
-export const assetableFileTypes = ['.glb', '.mat', '.json'] // we can write asset ids into these files.
+export const assetableFileTypes = ['.glb', '.mat', '.json']
 export const notAssetableFileTypes = ['.scene.glb']
 
 export function isLoadableFile(file: string) {
-    let loadable = true
-    // const loadableFiles = ['.mat', '.glb']
-    const loadableFiles = [...assetableFileTypes]
-    loadableFiles.push(...typesExts.image!)
-    if (!loadableFiles.some(ext => file.endsWith(ext))) loadable = false
-
-    // const notLoadableFiles = ['.scene.glb']
-    if (notAssetableFileTypes.some(ext => file.endsWith(ext))) loadable = false
-    return loadable;
+    return /\.(glb|mat|json|png|jpe?g|gif|bmp|tiff|webp|hdr|exr|ktx2|svg)$/i.test(file)
+        && !notAssetableFileTypes.some((extension) => file.endsWith(extension))
 }
 
-export const canMakeAsset = (obj: IObject3D|IMaterial)=>{
-    return ((obj as IObject3D).isObject3D || (obj as IMaterial).isMaterial)
-        && obj.userData
-        && !obj.userData.sProperties // already an instance of an asset
-        && !obj.userData.rootPath
-        // && !obj._tpAssetId
-        && !obj._tpRootPath
-        // && !obj.userData.tpAssetId
-        && !(obj as IObject3D).isScene
-        && !(obj as IObject3D)._sChildren
-        // todo
-        && !(obj as IObject3D).material && !(obj as IObject3D).geometry
-    // && !((obj as IObject3D).isObject3D ?
-    //         iObjectCommons.getMapsForObject3D.call(obj as IObject3D) :
-    //         iMaterialCommons.getMapsForMaterial.call(obj as IMaterial)
-    // ).size
+export function logAsset(data: unknown, object: unknown) {
+    console.log(object, data)
 }
 
-export const canSaveAsset = (obj: IObject3D|IMaterial)=>{
-    return ((obj as IObject3D).isObject3D || (obj as IMaterial).isMaterial)
-        // && obj._isTpAsset
-        // && obj.userData.tpAssetId
-        && obj.userData.rootPath && obj.userData.rootPath.startsWith(assetUrlPrefix+'@')
-    // && obj._tpAssetId
+export function isPackageProject(project?: SavedSceneFile | {file?: unknown} | null) {
+    return Boolean(project && (project.file === 'package.json' || (project.file as File | undefined)?.name === 'package.json'))
 }
 
-export function logAsset(data: any, obj: IObject3D|IMaterial|ITexture|IGeometry){
-    console.log(obj, data)
-}
+export const assetUrlPrefix = '/blitz/'
 
-export function isPackageProject(meta?: SavedSceneFile|SavedSceneFileMeta|SavedSceneFileMetaStored|null){
-    return meta && (meta.file as string === 'package.json' || (meta.file as any as File)?.name === 'package.json')
-}
+export const canMakeAsset = (object: IObject3D | IMaterial) =>
+    Boolean((object as IObject3D).isObject3D || (object as IMaterial).isMaterial)
+    && !object.userData?.rootPath
 
-export function isExternalObject(obj: IObject3D){
-    let external = false
-    let obj1 = obj
-    while(obj1 && !external){
-        if(obj1.parent){
-            if(obj1.parent.isScene) break
-            if(obj1.parent._sChildren){
-                if(!obj1.parent._sChildren.includes(obj1)){
-                    external = true
-                    break
-                }
-            }
-            obj1 = obj1.parent
-        } else {
-            // not external but not part of the scene
-            // external = true
-            break
-        }
-    }
-    return external
-}
+export const canSaveAsset = (object: IObject3D | IMaterial) =>
+    typeof object.userData?.rootPath === 'string' && object.userData.rootPath.startsWith('/blitz/@')
 
-export function isExternalMaterial(mat: IMaterial){
-    const meshes = Array.from(mat.appliedMeshes)
-    for (const mesh of meshes) {
-        // todo check sproperties
-        if(!isExternalObject(mesh)) return false
-    }
-    return true
-}
-
-export function isExternalGeometry(mat: IGeometry){
-    const meshes = Array.from(mat.appliedMeshes)
-    for (const mesh of meshes) {
-        // todo check sproperties
-        if(isExternalObject(mesh)) return true
+export function isExternalObject(object: IObject3D) {
+    let current = object
+    while (current.parent) {
+        if (current.parent.isScene) return false
+        if (current.parent._sChildren && !current.parent._sChildren.includes(current)) return true
+        current = current.parent
     }
     return false
 }
 
-export function isExternalTexture(tex: ITexture){
-    const mats = Array.from(tex.appliedObjects||[])
-    for (const mat of mats) {
-        if((mat as IMaterial).isMaterial ? isExternalMaterial(mat as IMaterial) : isExternalObject(mat as IObject3D)) return true
-    }
+export function isExternalMaterial(material: IMaterial) {
+    return [...material.appliedMeshes].every((mesh) => isExternalObject(mesh))
 }
 
-export function thumbPath(path: string){
-    return `.${settingsKey}/thumbs/${path}.png`
+export function isExternalGeometry(geometry: IGeometry) {
+    return [...geometry.appliedMeshes].some((mesh) => isExternalObject(mesh))
 }
-export function backupPath(path: string, time: string){
-    return `.${settingsKey}/backups/${path}/${time}/${path.split('/').pop()}`
+
+export function isExternalTexture(texture: ITexture) {
+    return [...texture.appliedObjects || []].some((value) =>
+        (value as IMaterial).isMaterial
+            ? isExternalMaterial(value as IMaterial)
+            : isExternalObject(value as IObject3D)
+    )
+}
+
+export function thumbPath(path: string) {
+    return `.blitz/thumbs/${path}.png`
+}
+
+export function backupPath(path: string, time: string) {
+    return `.blitz/backups/${path}/${time}/${path.split('/').pop()}`
 }

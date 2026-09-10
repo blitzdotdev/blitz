@@ -38,10 +38,10 @@ export async function fetchQueryFunc(queryUrl: string, {
 
 // const queryKey = 'libAssets'
 // const queryUrl = 'http://localhost:8787/assets/v1/list'
-const basePath = 'https://asset-cdn.threepipe.org'
+const basePath = 'https://blitz-asset-library-proxy.blitzapp.workers.dev'
 export const libAssetEndpoints = {
-    list: {key: 'libAssets', url: 'https://asset-cdn.threepipe.org/assets/v1/list', schema: libAssetSchema},
-    info: {key: 'libAssetInfo', url: 'https://asset-cdn.threepipe.org/assets/v1/info/', schema: libAssetInfoSchema},
+    list: {key: 'libAssets', url: `${basePath}/assets/v1/list`, schema: libAssetSchema},
+    info: {key: 'libAssetInfo', url: `${basePath}/assets/v1/info/`, schema: libAssetInfoSchema},
 }
 export const libAssetCollection = createCollection(
     queryCollectionOptions({
