@@ -1,0 +1,45 @@
+{
+  "name": "@blitzdev/editor",
+  "version": "0.12.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "files": ["dist", "src"],
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "deploy": "wrangler deploy && node ./scripts/register-runtime.mjs",
+    "deploy:r2-legacy": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist blitz-threepipe-v0/ && git tag v$npm_package_version",
+    "deploy-tp": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/ && git tag v$npm_package_version"
+  },
+  "dependencies": {
+    "@blitzdev/engine": "0.12.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@rollup/plugin-replace": "^5.0.7",
+    "@types/node": "^22.1.0",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "dotenv": "^16.4.5",
+    "eslint": "^8.55.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "importmap-vite-plugin": "^0.1.0",
+    "rclone.js": "^0.6.6",
+    "sass": "^1.69.5",
+    "typescript": "^5.7.2",
+    "vite": "^6.3.5"
+  }
+}
