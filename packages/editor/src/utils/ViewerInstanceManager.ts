@@ -242,19 +242,24 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     async loadProject(): Promise<void> {
         this.setStatus('Loading project…')
-        const [serverState, entries, packageFile, assetsFile] = await Promise.all([
+        const [serverState, entries, packageFile] = await Promise.all([
             this.source.state() as unknown as Promise<ServerState>,
             this.source.list(),
             this.source.read('package.json'),
-            this.source.read('assets.json'),
         ])
+        const assetsFile = entries.some(({path}) => path === 'assets.json')
+            ? await this.source.read('assets.json')
+            : undefined
         this.replaceManifest(entries)
         this.hashes.set('package.json', packageFile.sha256)
-        this.hashes.set('assets.json', assetsFile.sha256)
+        if (assetsFile) this.hashes.set('assets.json', assetsFile.sha256)
+        else this.hashes.delete('assets.json')
 
         const packageJson = parsePackageJSON(decode(packageFile.bytes))
         const config = await parsePackageJsonSettingsConfig(packageJson)
-        const assetsManifest = parseAssetsJSONManifest(decode(assetsFile.bytes))
+        const assetsManifest = assetsFile
+            ? parseAssetsJSONManifest(decode(assetsFile.bytes))
+            : {version: 1, files: {}}
         this.assetsManifest = assetsManifest
         const scenePath = packageJson.mainScene
         const scene = await this.source.read(scenePath)
