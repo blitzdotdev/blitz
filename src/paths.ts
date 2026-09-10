@@ -6,3 +6,4 @@ export const CONSOLE_PATH = `${BLITZ_DIRECTORY}/console.log`
 export const THUMBS_DIRECTORY = `${BLITZ_DIRECTORY}/thumbs`
 export const BACKUPS_DIRECTORY = `${BLITZ_DIRECTORY}/backups`
 export const RUNNING_DIRECTORY = `${BLITZ_DIRECTORY}/running`
+export const BLITZ_SERVER_CLIENT_ID = 'blitz-server'

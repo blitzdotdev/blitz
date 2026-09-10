@@ -16,6 +16,8 @@
     "./paths": {"types": "./dist/paths.d.ts", "import": "./dist/paths.js"},
     "./sceneSerialization": {"types": "./dist/sceneSerialization.d.ts", "import": "./dist/sceneSerialization.js"},
     "./version": {"types": "./dist/runtime/version.d.ts", "import": "./dist/version.js"},
+    "./projectFormat": {"types": "./dist/runtime/projectFormat.d.ts", "import": "./dist/projectFormat.js"},
+    "./migrations": {"types": "./dist/runtime/migrations.d.ts", "import": "./dist/migrations.js"},
     "./runtime.js": "./dist/runtime.js",
     "./package.json": "./package.json",
     "./src/*": "./src/*"
