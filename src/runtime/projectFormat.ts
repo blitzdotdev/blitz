@@ -4,7 +4,15 @@ export const settingsKey = 'blitz'
 export const assetUrlPrefix = `/${settingsKey}/`
 
 export type JSONValue = string | number | boolean | null | JSONValue[] | {[key: string]: JSONValue}
-export type ProjectPackageJSON = Record<string, JSONValue>
+export type ProjectPackageJSON = Record<string, JSONValue> & {mainScene: string}
+
+export interface ProjectGeneratorState {
+    componentId: string
+    module: string
+    nodeIndex: number
+    nodeName: string
+    params: Record<string, unknown>
+}
 
 export interface AssetsJSONManifest {
     files: Record<string, {
@@ -59,7 +67,9 @@ export function parsePackageJSON(text: string): ProjectPackageJSON {
         throw new Error('Invalid package.json file: expected an object')
     }
     const packageJson = json as ProjectPackageJSON
-    if (!packageJson.mainScene) packageJson.mainScene = 'assets/main.scene.glb'
+    if (typeof packageJson.mainScene !== 'string' || !packageJson.mainScene.toLowerCase().endsWith('.gltf')) {
+        throw new Error('package.json mainScene must name a text .gltf file')
+    }
     return packageJson
 }
 
@@ -80,11 +90,51 @@ export function parseAssetsJSONManifest(text: string): AssetsJSONManifest {
 }
 
 export function validateSceneSource(path: string, text: string): void {
-    if (!path.toLowerCase().endsWith('.gltf')) return
     const document = JSON.parse(text) as {asset?: unknown}
     if (!document || typeof document !== 'object' || !document.asset) {
         throw new Error(`${path} is not a JSON glTF document`)
     }
+}
+
+export function readProjectGeneratorStates(text: string): ProjectGeneratorState[] {
+    try {
+        const document = JSON.parse(text) as {
+            nodes?: Array<{
+                name?: unknown
+                extras?: {EntityComponentPlugin?: Record<string, {type?: unknown, state?: unknown}>}
+            }>
+        }
+        const generators: ProjectGeneratorState[] = []
+        for (const [nodeIndex, node] of (document.nodes || []).entries()) {
+            for (const [componentId, component] of Object.entries(node.extras?.EntityComponentPlugin || {})) {
+                if (component.type !== 'Generator' || !isRecord(component.state)) continue
+                generators.push({
+                    componentId,
+                    module: typeof component.state.module === 'string' ? component.state.module : '',
+                    nodeIndex,
+                    nodeName: typeof node.name === 'string' ? node.name : `Node ${nodeIndex}`,
+                    params: isRecord(component.state.params) ? component.state.params : {},
+                })
+            }
+        }
+        return generators
+    } catch {
+        return []
+    }
+}
+
+export function updateProjectGeneratorState(
+    text: string,
+    generator: Pick<ProjectGeneratorState, 'componentId' | 'nodeIndex' | 'nodeName'>,
+    update: Partial<Pick<ProjectGeneratorState, 'module' | 'params'>>,
+): {text: string, state: Record<string, unknown>} {
+    const document = JSON.parse(text) as {
+        nodes?: Array<{extras?: {EntityComponentPlugin?: Record<string, {state?: unknown}>}}>
+    }
+    const state = document.nodes?.[generator.nodeIndex]?.extras?.EntityComponentPlugin?.[generator.componentId]?.state
+    if (!isRecord(state)) throw new Error(`Generator component is missing on ${generator.nodeName}`)
+    Object.assign(state, update)
+    return {text: JSON.stringify(document, null, 2), state}
 }
 
 export async function parsePackageJsonSettingsConfig(json: ProjectPackageJSON, _project?: unknown): Promise<ProjectConfigSettings> {
@@ -150,4 +200,8 @@ export async function parsePackageJsonSettingsConfig(json: ProjectPackageJSON, _
         dependencies,
         viewer: config.viewer || {},
     }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
