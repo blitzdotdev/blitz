@@ -1,13 +1,25 @@
 # E2E gate before the blitz.dev cutover
 
-Status: plan. Run it on the test domains after Phase B, the GC pass, and the asset proxy deploy land. Every line is a pass or fail with evidence (URL, status, screenshot, or log line). The cutover waits for a full pass.
+Status: plan, revised late 2026-09-09 for the final architecture: the editor runs only from `blitz dev`, blitz.dev is the store, the cloud lives in the private repo. Every row is a pass or fail with evidence. The cutover waits for a full pass.
 
 ## Test domains
 
-- Editor: local, from `blitz dev` at `http://127.0.0.1:4321/` (the workers.dev copy is a temporary test artifact)
-- Backend: `https://blitz-backend.blitzapp.workers.dev`
-- Gateway, path mode: `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/`
-- Gateway, host mode: needs a staging wildcard. Proposed `*.games.blitz.dev/*` routed to `blitz-game-gateway` with `APP_DOMAIN=games.blitz.dev`, plus `editor-staging.blitz.dev` as a custom domain for the editor. Both are additive on the blitz.dev zone. They do not touch the teenybase routes.
+- Editor: local, from `blitz dev` at `http://127.0.0.1:<port>/?t=<token>`. No hosted editor. The `blitz-editor` worker on workers.dev is a leftover test artifact to delete.
+- Backend and store: `https://blitz-backend.blitzapp.workers.dev` (repo blitz-cloud).
+- Gateway, path mode: `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/`.
+- Gateway, host mode: needs one custom domain on the blitz.dev zone, for example `<slug>.games.blitz.dev` with `APP_DOMAIN=games.blitz.dev`. A wildcard needs a DNS record the wrangler token cannot create; a single custom domain wrangler can create itself. Additive, does not touch the teenybase routes.
+
+## Automated suites that count as evidence
+
+| Suite | Command | Repo |
+|---|---|---|
+| Server: manifest, MIME, ETag and If-Match, path guards, token and Host rejection, SSE classification | `npm run test:blitz` | blitz |
+| Publish module: walk exclusions, manifest parity golden, index.html import map, deploys.json, publish order, pull | `npm run test:publish` | blitz |
+| Runtime: createGame boots scripts, main, nested assets | `npm run test:runtime` | blitz |
+| Editor against a real `blitz dev`: project load, script hot reload, scene save round trip at `mainScene`, play mode, state file | `npm run test:editor` | blitz |
+| Backend: anonymous games, blobs, releases, GC, retention, reconciliation, slug check, runtime registry, claim, storefront listing rule, PATCH | `npm run test:backend` | blitz-cloud |
+| Gateway: MIME, range, ETag, spinner, CORS | `npm run test:gateway` | blitz-cloud |
+| Live agent path: curl-only publish of the sample project plays on workers.dev, stale base 409, pull | `packages/blitz/test/live-e2e.sh` | blitz |
 
 ## 1. Editor
 
