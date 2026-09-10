@@ -13,7 +13,15 @@ npx blitz dev
 
 `blitz dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx blitz pull`; then run `npx blitz publish` and report the live URL it prints. Run `npx blitz <command> --help` for command-specific usage.
 
-`blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except `--help` and `--version` checks the resolved version. A different command version delegates to the installed project binary, or tells you to install dependencies or run the pinned exact package through `npx`.
+`blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, and `doctor` checks the resolved version. `doctor` reports a mismatch as a FAIL row; other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
+
+`blitz init` also initializes a Git repository and commits the generated template. Use `blitz init --no-git` only when Git is deliberately managed elsewhere; initialization does not create a nested repository when the project folder is already inside one.
+
+Run `npx blitz doctor` to check Node, the project version pin, installed Blitz package versions, the development port or live project server, backend and runtime registration, Playwright Chromium, and Git. Fix every FAIL row before relying on the affected workflow.
+
+Create a recoverable point before agent work with `npx blitz checkpoint "before agent work"`. It commits all project files, including the saved scene, and prints the short Git hash. Restore files without rewriting history with `npx blitz restore <hash>`, or omit the hash to restore the latest Blitz checkpoint. Restore is refused while publish holds its lock. The editor exposes the same actions as Checkpoint beside Check and Restore last checkpoint under Settings.
+
+Run `npx blitz archive` to write `<project-name>-source.zip`. The archive uses the publish exclusion rules, omits `node_modules`, `.blitz`, and `.git`, and includes `BLITZ-PROJECT.txt` with the creation date, Git commit, and installed Blitz package versions.
 
 Upgrade the project with `npx blitz upgrade`, or select an exact target with `npx blitz upgrade --to x.y.z`. Upgrade rewrites both version fields, runs `npm install --ignore-scripts`, applies engine migrations, validates the scene, and records a `blitz-upgrade` journal entry.
 

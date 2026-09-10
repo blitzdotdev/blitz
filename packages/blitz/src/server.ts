@@ -32,6 +32,7 @@ import {readDeploys, writeDeploys} from './deploys.ts'
 import {sanitizeDiagnostic} from './api.ts'
 import type {PublishProgress} from './types.ts'
 import {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
+import {checkpointProject, restoreProject} from './git.ts'
 
 export interface ManifestEntry {
     path: string
@@ -253,6 +254,28 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         return result.ok
             ? jsonResponse(result)
             : jsonResponse({error: {code: 'check_failed', message: result.error || 'Check failed.'}, ...result}, 409)
+    })
+    app.post('/api/checkpoint', async (c) => {
+        const body = await readJsonBody(c.req.raw)
+        if (body.label !== undefined && typeof body.label !== 'string') {
+            return jsonResponse({error: {code: 'invalid_label', message: 'label must be a string.'}}, 400)
+        }
+        return jsonResponse(await checkpointProject(projectRoot, typeof body.label === 'string' ? body.label : undefined))
+    })
+    app.post('/api/restore', async (c) => {
+        const body = await readJsonBody(c.req.raw)
+        if (body.hash !== undefined && typeof body.hash !== 'string') {
+            return jsonResponse({error: {code: 'invalid_hash', message: 'hash must be a string.'}}, 400)
+        }
+        if (publishActive || await fileExists(resolve(projectRoot, '.blitz/publish.lock'))) {
+            return jsonResponse({
+                error: {code: 'publish_locked', message: 'Cannot restore while a publish is in progress.'},
+            }, 409)
+        }
+        return jsonResponse(await runServerMutation(() => restoreProject(
+            projectRoot,
+            typeof body.hash === 'string' ? body.hash : undefined,
+        )))
     })
     app.post('/api/commands/:id', async (c) => {
         const id = c.req.param('id')

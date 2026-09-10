@@ -181,6 +181,22 @@ export class DevServerSource implements ProjectSource {
         })
     }
 
+    async checkpoint(label?: string): Promise<{hash: string, label?: string}> {
+        return this.json('/api/checkpoint', {
+            method: 'POST',
+            headers: this.headers({'Content-Type': 'application/json'}),
+            body: JSON.stringify(label ? {label} : {}),
+        })
+    }
+
+    async restore(hash?: string): Promise<{hash: string}> {
+        return this.json('/api/restore', {
+            method: 'POST',
+            headers: this.headers({'Content-Type': 'application/json'}),
+            body: JSON.stringify(hash ? {hash} : {}),
+        })
+    }
+
     async commandResult(id: string, result: Record<string, unknown>): Promise<void> {
         await this.json(`/api/commands/${encodeURIComponent(id)}`, {
             method: 'POST',

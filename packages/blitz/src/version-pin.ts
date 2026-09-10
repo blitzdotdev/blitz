@@ -39,12 +39,10 @@ export async function enforceVersionPin(
     const commandVersion = options.commandVersion || BLITZ_VERSION
     if (!project) return undefined
 
-    const exactPin = EXACT_VERSION.test(project.version)
-    const installedVersion = exactPin ? undefined : await readInstalledVersion(project.root)
-    if (!exactPin && !installedVersion) {
+    const resolvedVersion = await resolvePinnedVersion(project)
+    if (!resolvedVersion) {
         throw new Error(`Project uses @blitzdev/blitz ${project.version}, but it is not installed. Run npm install before blitz ${command}.`)
     }
-    const resolvedVersion = installedVersion || project.version
     if (resolvedVersion === commandVersion) return undefined
 
     const localBin = resolve(project.root, 'node_modules/.bin/blitz')
@@ -57,10 +55,14 @@ export async function enforceVersionPin(
         })
     }
 
-    if (!exactPin) {
+    if (!EXACT_VERSION.test(project.version)) {
         throw new Error(`Installed @blitzdev/blitz is ${resolvedVersion}, but this command is ${commandVersion}. Run npm install and use the project binary.`)
     }
     throw new Error(`Project pins @blitzdev/blitz ${project.version}. Run npm install, or npx @blitzdev/blitz@${project.version} ${command}`)
+}
+
+export async function resolvePinnedVersion(project: PinnedProject): Promise<string | undefined> {
+    return EXACT_VERSION.test(project.version) ? project.version : readInstalledVersion(project.root)
 }
 
 async function readInstalledVersion(projectRoot: string): Promise<string | undefined> {

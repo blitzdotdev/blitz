@@ -17,7 +17,10 @@ afterEach(async () => {
 
 describe('blitz CLI', () => {
     it('prints command-specific help without performing the command', async () => {
-        const commands = ['init', 'dev', 'publish', 'pull', 'status', 'claim', 'bake', 'check', 'journal', 'open', 'sources', 'upgrade']
+        const commands = [
+            'init', 'dev', 'doctor', 'checkpoint', 'restore', 'archive', 'publish', 'pull', 'status', 'claim',
+            'bake', 'check', 'journal', 'open', 'sources', 'upgrade',
+        ]
         const results = await Promise.all(commands.map(async (command) => ({
             command,
             result: await execute(process.execPath, [cli, command, '--help']),
@@ -31,6 +34,47 @@ describe('blitz CLI', () => {
     it('prints its package version without applying the project version rule', async () => {
         const result = await execute(process.execPath, [cli, '--version'])
         expect(result.stdout.trim()).toBe(BLITZ_VERSION)
+    })
+
+    it('supports init --no-git', async () => {
+        const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-no-git-'))
+        cleanup.push(() => rm(root, {recursive: true, force: true}))
+
+        await execute(process.execPath, [cli, 'init', root, '--no-git'])
+
+        await expect(readFile(resolve(root, '.git/HEAD'), 'utf8')).rejects.toMatchObject({code: 'ENOENT'})
+    })
+
+    it('runs doctor itself so a version mismatch is reported as a row', async () => {
+        const root = await pinnedProject('9.9.9')
+        await expect(execute(process.execPath, [cli, 'doctor', '--port', '0'], {
+            cwd: root,
+            env: {...process.env, BLITZ_BACKEND_URL: 'http://127.0.0.1:1'},
+        })).rejects.toMatchObject({
+            code: 1,
+            stdout: expect.stringMatching(/version-pin\s+FAIL\s+Project resolves to 9\.9\.9/),
+            stderr: expect.not.stringContaining('delegating'),
+        })
+    })
+
+    it('checkpoints, restores, and archives through the CLI', async () => {
+        const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-conveniences-'))
+        cleanup.push(() => rm(root, {recursive: true, force: true}))
+        await execute(process.execPath, [cli, 'init', root])
+        const mainPath = resolve(root, 'main.js')
+        await writeFile(mainPath, 'checkpoint version\n')
+
+        const checkpoint = await execute(process.execPath, [cli, 'checkpoint', 'before agent'], {cwd: root})
+        expect(checkpoint.stdout).toMatch(/^Checkpoint [a-f\d]+ before agent/m)
+        await writeFile(mainPath, 'later version\n')
+        const restore = await execute(process.execPath, [cli, 'restore'], {cwd: root})
+        expect(restore.stdout).toMatch(/^Restored checkpoint [a-f\d]+/m)
+        expect(await readFile(mainPath, 'utf8')).toBe('checkpoint version\n')
+
+        const archive = await execute(process.execPath, [cli, 'archive'], {cwd: root})
+        const archivePath = resolve(root, `${root.split('/').at(-1)!.toLowerCase()}-source.zip`)
+        expect(archive.stdout).toContain(archivePath)
+        expect((await readFile(archivePath)).byteLength).toBeGreaterThan(0)
     })
 
     it('rejects unknown flags with a clear message and nonzero exit code', async () => {

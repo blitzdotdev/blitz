@@ -60,6 +60,10 @@ export async function startMockBackend(options: {
             authorization: request.headers.authorization,
         })
 
+        if (request.method === 'GET' && url.pathname === '/health') {
+            return sendJson(response, 200, {status: 'ok', service: 'blitz-backend'})
+        }
+
         if (request.method === 'GET' && url.pathname.startsWith('/api/v1/slugs/')) {
             const slug = decodeURIComponent(url.pathname.slice('/api/v1/slugs/'.length))
             const reason = slugReason(slug, games)
