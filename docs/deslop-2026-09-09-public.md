@@ -1,4 +1,4 @@
-# Public Blitz deslop pass — 2026-09-09
+# Public Blitz deslop pass - 2026-09-09
 
 ## Outcome
 
@@ -55,13 +55,13 @@ Final required validation used `/usr/bin/time -p`; durations are its `real` valu
 |---|---:|---:|
 | `npm run typecheck` | PASS | 5.52 s |
 | `npm run build` | PASS | 32.72 s |
-| `npm run test:runtime` | PASS — 6 Vitest tests and 1 Playwright test | 8.78 s |
-| `npm test -w packages/blitz` | PASS — 53 tests | 4.66 s |
-| `npm test -w packages/engine` | NOT PRESENT — package has `test:runtime`, covered above | N/A |
-| `npm run test:editor` | PASS — 4 Playwright tests using the configured SwiftShader flags | 11.26 s |
-| `npx eslint packages/blitz/src/commands.ts packages/blitz/src/index.ts packages/blitz/src/publish.ts packages/blitz/src/server.ts packages/blitz/test/mockBackend.ts packages/blitz/test/publish.test.ts packages/blitz/test/server.test.ts packages/blitz/test/upgrade.test.ts packages/editor/src/App.tsx packages/editor/src/DevServerSource.ts packages/editor/src/PublishDialog.tsx packages/editor/src/publishing.ts packages/editor/src/vite-env.d.ts packages/editor/test/editor/dev-server.spec.ts packages/engine/src/plugins/GeneratorComponent.ts packages/engine/src/runtime/createGame.ts packages/engine/src/runtime/migrations.ts packages/engine/src/runtime/projectFormat.ts packages/engine/src/sceneSerialization.ts packages/engine/test/unit/generator.test.ts` | PASS — 0 errors | 1.63 s |
-| `npx eslint --config packages/template/.eslintrc.cjs packages/template/template/main.js` | PASS — 0 errors | 0.43 s |
-| `npx eslint --no-eslintrc --env es2022,node --parser-options '{"sourceType":"module","ecmaVersion":"latest"}' scripts/register-runtime.mjs scripts/release.mjs scripts/set-version.mjs scripts/set-version.test.mjs` | PASS — 0 errors | 0.67 s |
+| `npm run test:runtime` | PASS - 6 Vitest tests and 1 Playwright test | 8.78 s |
+| `npm test -w packages/blitz` | PASS - 53 tests | 4.66 s |
+| `npm test -w packages/engine` | NOT PRESENT - package has `test:runtime`, covered above | N/A |
+| `npm run test:editor` | PASS - 4 Playwright tests using the configured SwiftShader flags | 11.26 s |
+| `npx eslint packages/blitz/src/commands.ts packages/blitz/src/index.ts packages/blitz/src/publish.ts packages/blitz/src/server.ts packages/blitz/test/mockBackend.ts packages/blitz/test/publish.test.ts packages/blitz/test/server.test.ts packages/blitz/test/upgrade.test.ts packages/editor/src/App.tsx packages/editor/src/DevServerSource.ts packages/editor/src/PublishDialog.tsx packages/editor/src/publishing.ts packages/editor/src/vite-env.d.ts packages/editor/test/editor/dev-server.spec.ts packages/engine/src/plugins/GeneratorComponent.ts packages/engine/src/runtime/createGame.ts packages/engine/src/runtime/migrations.ts packages/engine/src/runtime/projectFormat.ts packages/engine/src/sceneSerialization.ts packages/engine/test/unit/generator.test.ts` | PASS - 0 errors | 1.63 s |
+| `npx eslint --config packages/template/.eslintrc.cjs packages/template/template/main.js` | PASS - 0 errors | 0.43 s |
+| `npx eslint --no-eslintrc --env es2022,node --parser-options '{"sourceType":"module","ecmaVersion":"latest"}' scripts/register-runtime.mjs scripts/release.mjs scripts/set-version.mjs scripts/set-version.test.mjs` | PASS - 0 errors | 0.67 s |
 
 The final build exited 0 with the known pre-existing ThreePipe declaration diagnostics. Deleted files are not lint targets; manifests, lockfiles, and workflow YAML have no applicable repository ESLint parser.
 
@@ -69,7 +69,7 @@ Deployment-path verification (run from `packages/editor`):
 
 | Command | Result | Duration |
 |---|---:|---:|
-| `npx wrangler deploy --dry-run` | PASS — Wrangler 4.130.0 read 27 built assets and exited without deploying | 1.34 s |
+| `npx wrangler deploy --dry-run` | PASS - Wrangler 4.130.0 read 27 built assets and exited without deploying | 1.34 s |
 
 The resulting scripts are:
 

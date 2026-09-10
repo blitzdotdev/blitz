@@ -5,8 +5,8 @@ Branch head 9a3c7c2, compared with Blitz ab86a2c on 2026-09-09. Read-only analys
 
 Compared prototype `9a3c7c2` with Blitz `ab86a2c`; both worktrees remain clean. Paths below use:
 
-- `P/` — [threepipe-blueprint-editor prototype](/private/tmp/claude-501/-Users-minjunes-blitz/278f5f97-7e16-4722-b1bc-c061014966db/scratchpad/tbe-proto)
-- `B/` — [current Blitz repository](/Users/minjunes/blitz)
+- `P/` - [threepipe-blueprint-editor prototype](/private/tmp/claude-501/-Users-minjunes-blitz/278f5f97-7e16-4722-b1bc-c061014966db/scratchpad/tbe-proto)
+- `B/` - [current Blitz repository](/Users/minjunes/blitz)
 
 ## 1. Prototype inventory
 
@@ -145,15 +145,15 @@ Fragility/slop:
 
 ## 6. Top 10 items worth taking
 
-1. **3B authoring contract and negative validator fixtures** — highest value/effort; about 3–4 engine/test files.
-2. **Condensed AGENTS representation and cleanup rules** — very high value/effort; 1 template file plus 1 init test.
-3. **Transitive re-export/cycle hot-reload regression** — very high value/effort; 1–2 test/implementation files.
-4. **Save/reopen/play/stop semantic persistence gate** — high value/effort; 2–3 engine/editor test files.
-5. **Source-editor draft/conflict state machine** — high value, moderate integration; about 3 editor files plus 1 test.
-6. **Publish retry, uncertain-write, symlink, and hash-verification matrix** — high value/effort; 2–3 Blitz publish/test files.
-7. **Runtime-root ownership and mandatory cleanup helper** — high value/effort; 2 engine files plus tests.
-8. **Genre-neutral telemetry and project validation hooks** — good value/effort; 2–3 engine/template files.
-9. **Crystal Vault as a nontrivial `createGame` fixture** — strong integration coverage, higher effort; roughly 8–12 fixture/test files.
-10. **Doctor-style CLI diagnostics** — useful onboarding improvement; about 2 CLI/test files.
+1. **3B authoring contract and negative validator fixtures** - highest value/effort; about 3–4 engine/test files.
+2. **Condensed AGENTS representation and cleanup rules** - very high value/effort; 1 template file plus 1 init test.
+3. **Transitive re-export/cycle hot-reload regression** - very high value/effort; 1–2 test/implementation files.
+4. **Save/reopen/play/stop semantic persistence gate** - high value/effort; 2–3 engine/editor test files.
+5. **Source-editor draft/conflict state machine** - high value, moderate integration; about 3 editor files plus 1 test.
+6. **Publish retry, uncertain-write, symlink, and hash-verification matrix** - high value/effort; 2–3 Blitz publish/test files.
+7. **Runtime-root ownership and mandatory cleanup helper** - high value/effort; 2 engine files plus tests.
+8. **Genre-neutral telemetry and project validation hooks** - good value/effort; 2–3 engine/template files.
+9. **Crystal Vault as a nontrivial `createGame` fixture** - strong integration coverage, higher effort; roughly 8–12 fixture/test files.
+10. **Doctor-style CLI diagnostics** - useful onboarding improvement; about 2 CLI/test files.
 
 No files were modified.

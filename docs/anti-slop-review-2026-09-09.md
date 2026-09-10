@@ -1,4 +1,4 @@
-# Anti-slop review — 2026-09-09
+# Anti-slop review - 2026-09-09
 
 - Scope: 28 findings in our code; 3 findings marked INHERITED.
 - S1 4 · S2 2 · S3 1 · S4 3 · S5 2.
@@ -37,7 +37,7 @@ S9 scripts/set-version.mjs:73 - runCommand is an injection seam used only by set
 S7 packages/blitz/src/commands.ts:157 - publishFromDisk accepts a legacy string-or-options union, but every caller passes an options object - accept only PublishFromDiskOptions and delete the normalization branch - ~1 line removable
 S7 scripts/register-runtime.mjs:37 - rootDirectory and fetchImplementation are options no real caller varies; release passes the same repository root already used by default - use repositoryDirectory and global fetch directly - ~1 line removable
 
-## INHERITED — repalash/threepipe-blueprint-editor remainder
+## INHERITED - repalash/threepipe-blueprint-editor remainder
 
 S10 packages/editor/package.json:18 - two legacy R2 deployment commands retain their own shell runner, rclone config, build/delete/sync pipeline, and dependency after the root release path replaced them - delete deploy:r2-legacy, deploy-tp, .rclone.conf, upload-r2.mjs, its utils, and rclone.js - ~72 lines removable
 S4 packages/editor/scripts/register-runtime.mjs:1 - the inherited editor-local runtime registrar duplicates the root registrar/release owner and targets the obsolete editor dist/runtime.js path - delete it and remove the editor deploy hook in favor of scripts/register-runtime.mjs - ~33 lines removable

@@ -32,4 +32,4 @@ GitHub Actions and laptop releases use `NPM_TOKEN`, `RUNTIME_UPLOAD_TOKEN`, and 
 
 ## Laptop fallback
 
-From a clean `main` or release branch, install with Node 22, run `npm run release:dry`, export `NPM_TOKEN`, and make sure `.env.local` contains `RUNTIME_UPLOAD_TOKEN` and `BLITZ_BACKEND_URL`. Then run `npm run release`. The command publishes engine, template, editor, and CLI in dependency order, registers `packages/engine/dist/runtime.js`, uploads `docs/agents.md`, creates `vX.Y.Z`, and prints—but never runs—the `git push` command. The upload verifies both the API response hash and the public `/agents.md` ETag.
+From a clean `main` or release branch, install with Node 22, run `npm run release:dry`, export `NPM_TOKEN`, and make sure `.env.local` contains `RUNTIME_UPLOAD_TOKEN` and `BLITZ_BACKEND_URL`. Then run `npm run release`. The command publishes engine, template, editor, and CLI in dependency order, registers `packages/engine/dist/runtime.js`, uploads `docs/agents.md`, creates `vX.Y.Z`, and prints the `git push` command without running it. The upload verifies both the API response hash and the public `/agents.md` ETag.
