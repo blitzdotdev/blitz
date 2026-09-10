@@ -6,6 +6,8 @@ export {RuntimeNestedAssetLoader} from './nestedAssets.ts'
 export {registerScripts, walkScriptExports} from '../scripts.ts'
 export {HtmlUiComponent} from '../plugins/HtmlUiComponent.ts'
 export {CannonPhysicsPlugin} from '../plugins/cannon/CannonPhysicsPlugin.ts'
+export {serializeSceneGltf, serializeSceneGltfDocument} from '../sceneSerialization.ts'
+export type {SerializeSceneGltfOptions, SerializedSceneFile, SerializedSceneGltf} from '../sceneSerialization.ts'
 
 export * from 'threepipe'
 export * from 'uiconfig.js'

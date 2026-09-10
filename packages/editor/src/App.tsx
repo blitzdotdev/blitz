@@ -1,5 +1,12 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
-import {createGame, registerScripts, RUNTIME_VERSION, walkScriptExports, type CreatedGame} from '@blitzdev/engine'
+import {
+    createGame,
+    registerScripts,
+    RUNTIME_VERSION,
+    serializeSceneGltfDocument,
+    walkScriptExports,
+    type CreatedGame,
+} from '@blitzdev/engine'
 import {DevServerSource} from './DevServerSource.ts'
 import {ProjectConflictError, type ProjectEvent, type ProjectFileEntry} from './ProjectSource.ts'
 
@@ -95,6 +102,7 @@ export default function App() {
         const packageJson = JSON.parse(decode(packageFile.bytes)) as {mainScene?: string}
         const nextScenePath = packageJson.mainScene || 'assets/main.scene.glb'
         const scene = await source.read(nextScenePath)
+        validateSceneSource(nextScenePath, decode(scene.bytes))
         hashes.current.set(nextScenePath, scene.sha256)
         setServerState(state)
         setManifest(entries)
@@ -142,10 +150,21 @@ export default function App() {
             saveTimer.current = undefined
         }
         try {
-            const bytes = serializeScene(scenePath, sceneTextRef.current)
-            const result = await source.write(scenePath, bytes, hashes.current.get(scenePath) || '*')
+            const serialized = await serializeScene(scenePath, sceneTextRef.current)
+            for (const file of serialized.files) {
+                const written = await source.write(file.path, file.bytes, hashes.current.get(file.path) || '*')
+                hashes.current.set(file.path, written.sha256)
+            }
+            const binPath = scenePath.replace(/\.gltf$/i, '.bin')
+            const hasBin = (serialized.document.buffers as Array<{uri?: string}> | undefined)
+                ?.some(({uri}) => uri === binPath.split('/').pop())
+            if (!hasBin && hashes.current.has(binPath)) {
+                await source.delete(binPath)
+                hashes.current.delete(binPath)
+            }
+            const result = await source.write(scenePath, serialized.gltf, hashes.current.get(scenePath) || '*')
             hashes.current.set(scenePath, result.sha256)
-            sceneTextRef.current = decode(bytes)
+            sceneTextRef.current = decode(serialized.gltf)
             setSceneText(sceneTextRef.current)
             setDirty(false)
             setStatus('Scene saved')
@@ -168,6 +187,7 @@ export default function App() {
 
     const onProjectEvent = useCallback(async (event: ProjectEvent) => {
         if (event.client === source.clientId || !event.path) return
+        if (event.sha256 && hashes.current.get(event.path) === event.sha256) return
         if (event.sha256) hashes.current.set(event.path, event.sha256)
         else hashes.current.delete(event.path)
         const entries = await source.list()
@@ -184,6 +204,7 @@ export default function App() {
                 return
             }
             const disk = await source.read(scenePath)
+            validateSceneSource(scenePath, decode(disk.bytes))
             sceneTextRef.current = decode(disk.bytes)
             setSceneText(sceneTextRef.current)
             setDirty(false)
@@ -250,13 +271,19 @@ export default function App() {
     </main>
 }
 
-function serializeScene(path: string, text: string): Uint8Array {
-    if (!path.toLowerCase().endsWith('.gltf')) return encode(text)
+async function serializeScene(path: string, text: string) {
+    if (!path.toLowerCase().endsWith('.gltf')) {
+        return {document: {}, gltf: encode(text), files: []}
+    }
+    return serializeSceneGltfDocument(JSON.parse(text), {scenePath: path})
+}
+
+function validateSceneSource(path: string, text: string): void {
+    if (!path.toLowerCase().endsWith('.gltf')) return
     const document = JSON.parse(text) as {asset?: unknown}
     if (!document || typeof document !== 'object' || !document.asset) {
         throw new Error(`${path} is not a JSON glTF document`)
     }
-    return encode(`${JSON.stringify(document, null, 2)}\n`)
 }
 
 function readSceneObjectNames(path: string, text: string): string[] {

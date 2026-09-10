@@ -1,5 +1,5 @@
 import {expect, test} from '@playwright/test'
-import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
+import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {initProject, runDev} from '../../../blitz/src/commands.ts'
@@ -40,10 +40,17 @@ export class LiveComponent extends Object3DComponent { static ComponentType = 'L
     const before = await manifestHash(packageJson.mainScene)
     const scene = JSON.parse(await readFile(resolve(root, packageJson.mainScene), 'utf8')) as {
         scenes: Array<{nodes: number[]}>
-        nodes: Array<{name?: string}>
+        nodes: Array<{name?: string, mesh?: number}>
+        [key: string]: unknown
     }
     scene.nodes.push({name: 'RoundTripObject'})
     scene.scenes[0].nodes.push(scene.nodes.length - 1)
+    scene.buffers = [{byteLength: 36, uri: 'data:application/octet-stream;base64,Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/'}]
+    scene.bufferViews = [{buffer: 0, byteOffset: 0, byteLength: 36, target: 34962}]
+    scene.accessors = [{bufferView: 0, componentType: 5126, count: 3, type: 'VEC3'}]
+    scene.meshes = [{primitives: [{attributes: {POSITION: 0}}]}]
+    scene.nodes[scene.nodes.length - 1].mesh = 0
+    scene.images = [{uri: 'data:image/png;base64,iVBORw0KGgo='}]
     await page.getByTestId('scene-source').fill(JSON.stringify(scene))
     await expect(page.getByTestId('scene-objects')).toContainText('RoundTripObject')
     await page.getByTestId('save-scene').click()
@@ -54,7 +61,14 @@ export class LiveComponent extends Object3DComponent { static ComponentType = 'L
     expect(savedScene.startsWith('{')).toBe(true)
     expect(JSON.parse(savedScene)).toHaveProperty('asset')
     expect(savedScene).toContain('RoundTripObject')
+    expect(savedScene).not.toContain('data:')
+    expect(JSON.parse(savedScene)).toMatchObject({buffers: [{uri: 'main.scene.bin'}]})
+    expect((await readFile(resolve(root, 'assets/main.scene.bin'))).byteLength).toBe(36)
+    expect((await readdir(resolve(root, 'assets/textures'))).length).toBe(1)
     await expect(page.getByText('Scene saved')).toBeVisible()
+
+    await page.getByTestId('save-scene').click()
+    await expect.poll(() => readFile(resolve(root, packageJson.mainScene), 'utf8')).toBe(savedScene)
 
     await page.reload()
     await expect(page.getByText('Project loaded')).toBeVisible()
@@ -71,6 +85,19 @@ export class UpdatedComponent extends Object3DComponent { static ComponentType =
     await expect(page.getByTestId('component-types')).toContainText('UpdatedComponent', {timeout: 15_000})
     await expect.poll(async () => Boolean(await readFile(resolve(root, '.blitz/state.json'), 'utf8'))).toBe(true)
     expect(errors).toEqual([])
+})
+
+test('reports a corrupt scene in the editor and console log', async ({page}) => {
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible()
+    const scenePath = 'assets/main.scene.gltf'
+    const valid = await readFile(resolve(root, scenePath), 'utf8')
+    await writeFile(resolve(root, scenePath), '{not gltf')
+
+    await expect(page.getByRole('alert')).toContainText('JSON', {timeout: 10_000})
+    await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8')).includes('JSON')).toBe(true)
+
+    await writeFile(resolve(root, scenePath), valid)
 })
 
 async function manifestHash(path: string): Promise<string | undefined> {
