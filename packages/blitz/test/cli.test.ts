@@ -17,6 +17,42 @@ afterEach(async () => {
 })
 
 describe('blitz CLI', () => {
+    it.each(['dev', 'check', 'publish', 'doctor', 'checkpoint', 'restore', 'archive', 'status'])(
+        'refuses %s outside a Blitz project root',
+        async (command) => {
+            const emptyRoot = await mkdtemp(resolve(tmpdir(), 'blitz-cli-empty-root-'))
+            cleanup.push(() => rm(emptyRoot, {recursive: true, force: true}))
+            const packageOnlyRoot = await mkdtemp(resolve(tmpdir(), 'blitz-cli-package-only-root-'))
+            cleanup.push(() => rm(packageOnlyRoot, {recursive: true, force: true}))
+            await writeFile(resolve(packageOnlyRoot, 'package.json'), JSON.stringify({
+                devDependencies: {'@blitzdev/blitz': BLITZ_VERSION},
+            }))
+
+            const run = (cwd: string) => execute(process.execPath, [cli, command, ...(command === 'dev' ? ['--no-open'] : [])], {
+                cwd,
+                timeout: 5_000,
+            })
+            const [emptyResult, packageOnlyResult] = await Promise.all([
+                run(emptyRoot).catch((error: unknown) => error),
+                run(packageOnlyRoot).catch((error: unknown) => error),
+            ])
+
+            expect(emptyResult).toMatchObject({
+                code: 1,
+                stderr: expect.stringContaining(
+                    'missing package.json with an @blitzdev/blitz dependency and assets/main.scene.gltf',
+                ),
+            })
+            expect(packageOnlyResult).toMatchObject({
+                code: 1,
+                stderr: expect.stringContaining('missing assets/main.scene.gltf'),
+            })
+            for (const result of [emptyResult, packageOnlyResult] as Array<{stderr: string}>) {
+                expect(result.stderr).toContain('cd into a Blitz project or run blitz init')
+            }
+        },
+    )
+
     it('prints command-specific help without performing the command', async () => {
         const commands = [
             'init', 'dev', 'doctor', 'checkpoint', 'restore', 'archive', 'publish', 'pull', 'status', 'claim',
@@ -103,7 +139,8 @@ describe('blitz CLI', () => {
     })
 
     it('rejects unknown flags with a clear message and nonzero exit code', async () => {
-        await expect(execute(process.execPath, [cli, 'publish', '--bogus']))
+        const root = await pinnedProject(BLITZ_VERSION)
+        await expect(execute(process.execPath, [cli, 'publish', '--bogus'], {cwd: root}))
             .rejects.toMatchObject({code: 1, stderr: expect.stringContaining('Unknown flag: --bogus')})
     })
 
@@ -316,6 +353,8 @@ describe('blitz CLI', () => {
 async function pinnedProject(version: string): Promise<string> {
     const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-pin-'))
     cleanup.push(() => rm(root, {recursive: true, force: true}))
+    await mkdir(resolve(root, 'assets'), {recursive: true})
+    await writeFile(resolve(root, 'assets/main.scene.gltf'), '{}')
     await writeFile(resolve(root, 'package.json'), JSON.stringify({
         name: 'pin-test',
         devDependencies: {'@blitzdev/blitz': version},

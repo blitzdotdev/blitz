@@ -20,6 +20,7 @@ import {sanitizeDiagnostic} from './api.ts'
 import {archiveProject} from './archive.ts'
 import {doctorProject, formatDoctorTable} from './doctor.ts'
 import {checkpointProject, gitRepositoryRoot, restoreProject} from './git.ts'
+import {assertBlitzProjectRoot} from './project-root.ts'
 
 const ROOT_USAGE = `Usage: blitz <command> [options]
 
@@ -63,9 +64,16 @@ const COMMAND_USAGE: Record<string, string> = {
     upgrade: 'Usage: blitz upgrade [--to <x.y.z>]',
 }
 
+const PROJECT_ROOT_COMMANDS = new Set([
+    'dev', 'check', 'publish', 'doctor', 'checkpoint', 'restore', 'archive', 'status',
+])
+
 const [command = 'help', ...args] = process.argv.slice(2)
 
 try {
+    if (PROJECT_ROOT_COMMANDS.has(command) && !args.includes('--help') && !args.includes('-h')) {
+        await assertBlitzProjectRoot(process.cwd())
+    }
     const skipsVersionRule = command === 'help' || command === '--help' || command === '-h' || command === 'doctor'
         || command === '--version' || command === '-v'
         || args.includes('--help') || args.includes('-h')

@@ -383,6 +383,39 @@ test('registers a dropped GLB as an asset and loads it from the published projec
     }
 })
 
+test('creates a missing assets.json registry when the first asset is dropped', async ({page}) => {
+    test.setTimeout(90_000)
+    const fixture = await startPublishEditor()
+    try {
+        await rm(resolve(fixture.root, 'assets.json'))
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+
+        const glb = minimalTriangleGlb('Missing registry fixture')
+        await page.locator('.editorCanvasContainer').dispatchEvent('drop', {
+            dataTransfer: await page.evaluateHandle(({bytes}) => {
+                const transfer = new DataTransfer()
+                transfer.items.add(new File(
+                    [Uint8Array.from(bytes)],
+                    'missing-registry.glb',
+                    {type: 'model/gltf-binary'},
+                ))
+                return transfer
+            }, {bytes: [...glb]}),
+        })
+
+        await expect(page.getByText('Imported missing-registry.glb')).toBeVisible({timeout: 20_000})
+        await expect.poll(async () => {
+            const assets = JSON.parse(await readFile(resolve(fixture.root, 'assets.json'), 'utf8')) as {
+                files: Record<string, {path: string}>
+            }
+            return assets.files
+        }).toEqual({'missing-registry': {path: 'assets/imports/missing-registry.glb'}})
+    } finally {
+        await fixture.close()
+    }
+})
+
 test('reports leaked runtime content after Stop in a toast and the console log', async ({page}) => {
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
@@ -509,9 +542,24 @@ test('loads the restored panels, watches generators, and saves text glTF without
     expect(errors).toEqual([])
 })
 
-test('creates a checkpoint beside Check and restores the last checkpoint from Settings', async ({page}) => {
+test('places Open game beside Play, checkpoints beside Check, and restores from Settings', async ({page}) => {
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    const openGame = page.getByTestId('open-game')
+    const placement = await page.evaluate(() => {
+        const play = document.querySelector('[data-testid="play"]')
+        const open = document.querySelector('[data-testid="open-game"]')
+        const buttons = [...(play?.closest('.bp5-button-group')?.querySelectorAll('button') || [])]
+        return {
+            sameGroup: play?.closest('.bp5-button-group') === open?.closest('.bp5-button-group'),
+            immediatelyAfter: buttons.indexOf(open as HTMLButtonElement) === buttons.indexOf(play as HTMLButtonElement) + 1,
+        }
+    })
+    expect(placement).toEqual({sameGroup: true, immediatelyAfter: true})
+    await expect(openGame).toHaveText('')
+    await expect(openGame.locator('.bp5-icon-open-application')).toBeVisible()
+    await openGame.hover()
+    await expect(page.getByText('Open game in a new tab', {exact: true})).toBeVisible()
     await expect(page.locator('[data-testid="check-game"] + [data-testid="checkpoint-game"]')).toBeVisible()
 
     const mainPath = resolve(root, 'main.js')

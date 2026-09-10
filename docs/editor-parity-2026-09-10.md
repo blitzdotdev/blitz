@@ -270,7 +270,7 @@ Memory stays. The reference `src/components/MemoryTab.tsx` imports `AssetTracker
 
 | File | Boundary carried |
 |---|---|
-| `src/adapters/BlitzToolbarControls.tsx` | Open game, Check, Checkpoint, Save Scene backing, theme restore hook, and semantic test compatibility. |
+| `src/adapters/BlitzToolbarControls.tsx` | Open game in the top-right play group, centered Check and Checkpoint controls, Save Scene backing, the theme restore hook, and semantic test compatibility. |
 | `src/adapters/DevServerAssetTracker.ts` | Read-only Memory-tab asset tracking over the dev-server project. |
 | `src/adapters/DevServerInspectorControls.tsx` | Dev-server source-view and nested-asset controls behind the restored Inspector surface. |
 | `src/adapters/DevServerProjectBridge.tsx` | Reference project/provider props backed by the active DevServerSource project. |

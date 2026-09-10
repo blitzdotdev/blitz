@@ -6,10 +6,13 @@ import {
     Menu,
     MenuItem,
     Popover,
+    Position,
     Tag,
+    Tooltip,
 } from '@blueprintjs/core'
 import {ThemeSettingsMenuComponent} from 'uiconfig-blueprint/lib/esm/lib'
 import {useManagerVersion} from '../utils/UseManager.ts'
+import {InteractionIconButton} from '../components/InteractionIconButton.tsx'
 
 export function BlitzSaveSceneButton() {
     const manager = useManagerVersion()
@@ -49,7 +52,23 @@ export function BlitzSaveSceneButton() {
     </>
 }
 
-export function BlitzToolbarControls({onOpenGame}: {onOpenGame(): void}) {
+export function BlitzOpenGameButton({onOpenGame}: {onOpenGame(): void}) {
+    return <Tooltip
+        content="Open game in a new tab"
+        intent={Intent.PRIMARY}
+        position={Position.BOTTOM}
+        usePortal={true}
+    >
+        <InteractionIconButton
+            aria-label="Open game in a new tab"
+            data-testid="open-game"
+            endIcon="open-application"
+            onClick={onOpenGame}
+        />
+    </Tooltip>
+}
+
+export function BlitzToolbarControls() {
     const manager = useManagerVersion()
     const [checkpointing, setCheckpointing] = useState(false)
     const checkpoint = async () => {
@@ -61,9 +80,9 @@ export function BlitzToolbarControls({onOpenGame}: {onOpenGame(): void}) {
         }
     }
 
-    // AGREED-3: Blitz's three owner controls do not participate in reference navbar layout.
+    // AGREED-3: Blitz's centered owner controls do not participate in reference navbar layout.
     return <div className="blitz-toolbar-controls">
-        <Button data-testid="open-game" icon="share" onClick={onOpenGame}>Open game</Button>
+        <Button className="blitz-open-game-spacer" icon="share" aria-hidden={true} tabIndex={-1}>Open game</Button>
         <Button
             data-testid="check-game"
             icon="diagnosis"

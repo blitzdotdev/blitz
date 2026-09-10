@@ -752,6 +752,11 @@ body{
   z-index: 2;
 }
 
+.blitz-open-game-spacer {
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .blitz-theme-settings-menu {
   position: relative;
 }
