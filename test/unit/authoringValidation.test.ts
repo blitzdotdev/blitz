@@ -8,11 +8,13 @@ vi.hoisted(() => {
 })
 import {
     BoxGeometry,
+    DirectionalLight2,
     Group,
     Mesh,
     MeshStandardMaterial,
     PerspectiveCamera,
     Scene,
+    SpotLight2,
     TorusGeometry,
 } from 'threepipe'
 import {
@@ -194,9 +196,35 @@ describe('authoring validation fixture matrix', () => {
 
         expect(report.ok).toBe(false)
         expect(report.changes).toEqual([{
-            path: '/scene/0/children/1/position/x', before: 0, after: 3,
+            path: '/scene/Room/children/Marker/position/x', before: 0, after: 3,
         }])
         expect(report.issues[0]).toMatchObject({code: 'PERSISTENCE_DRIFT'})
+    })
+
+    it('uses indexes only when a persisted child has no name', () => {
+        const fixture = createFixture()
+        const {room, marker} = addDirectRoom(fixture.modelRoot)
+        marker.name = ''
+        const before = semanticSceneSnapshot(fixture.viewer)
+        marker.position.x = 3
+
+        expect(persistenceReport(before, semanticSceneSnapshot(fixture.viewer)).changes).toEqual([{
+            path: '/scene/Room/children/1/position/x', before: 0, after: 3,
+        }])
+        expect(room.name).toBe('Room')
+    })
+
+    it('omits excluded directional light targets from persisted semantics', () => {
+        const fixture = createFixture()
+        const light = new DirectionalLight2()
+        light.name = 'KeyLight'
+        fixture.modelRoot.add(light)
+
+        expect(light.target.userData.excludeFromExport).toBe(true)
+        expect(new SpotLight2().target.userData.excludeFromExport).toBe(true)
+        expect(semanticSceneSnapshot(fixture.viewer).scene).toEqual([
+            expect.objectContaining({name: 'KeyLight', children: []}),
+        ])
     })
 
     it('rejects a camera inside a solid box', () => {

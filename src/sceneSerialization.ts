@@ -68,6 +68,7 @@ export async function serializeSceneGltfDocument(
     }
     const document = cloneJson(input) as GltfDocument
     removeVolatileViewerIds(document)
+    removeUnreferencedUuids(document)
     const scenePath = normalizeProjectPath(options.scenePath || 'assets/main.scene.gltf')
     const sceneDirectory = directoryName(scenePath)
     const files: SerializedSceneFile[] = []
@@ -98,6 +99,32 @@ function removeVolatileViewerIds(value: unknown): void {
         if (isRecord(object)) delete object.uuid
     }
     Object.values(value).forEach(removeVolatileViewerIds)
+}
+
+function removeUnreferencedUuids(document: GltfDocument): void {
+    const uses = new Map<string, number>()
+    visitJson(document, (key, value) => {
+        uses.set(key, (uses.get(key) || 0) + 1)
+        if (typeof value === 'string') uses.set(value, (uses.get(value) || 0) + 1)
+    })
+    visitJson(document, (key, value, owner) => {
+        if (key === 'uuid' && typeof value === 'string' && uses.get(value) === 1) delete owner[key]
+    })
+}
+
+function visitJson(
+    value: unknown,
+    visit: (key: string, value: unknown, owner: Record<string, unknown>) => void,
+): void {
+    if (Array.isArray(value)) {
+        value.forEach((child) => visitJson(child, visit))
+        return
+    }
+    if (!isRecord(value)) return
+    for (const [key, child] of Object.entries(value)) {
+        visit(key, child, value)
+        visitJson(child, visit)
+    }
 }
 
 function canonicalizeViewerConfig(value: unknown): void {
