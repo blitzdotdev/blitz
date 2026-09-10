@@ -1,6 +1,0 @@
-# Blitz
-
-Blitz is a platform for building, publishing, and playing browser games.
-
-- Agent instructions: https://blitz.dev/agents.md
-- Storefront API: https://blitz.dev/api/v1/games

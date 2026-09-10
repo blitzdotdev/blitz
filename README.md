@@ -7,11 +7,8 @@ This repository is an npm workspace for the Blitz editor and its supporting pack
 - `apps/editor/` is the Blitz browser editor.
 - `packages/threepipe/` is the vendored `repalash/threepipe` `master` branch with full history.
 - `packages/uiconfig-blueprint/` is the vendored `repalash/uiconfig-blueprint` `dev` branch with full history.
-- `services/asset-library-proxy/` is the editor asset-library proxy.
-- `services/backend/` is the Hono and teenybase API worker for game publishing.
-- `services/game-gateway/` is the worker that serves published game assets.
-- `docs/publish-api.md` documents the publishing API contract.
-- `docs/backend-build-report-2026-09-09.md` records the backend build and deployment handoff.
+
+The cloud workers live in the private `blitz-cloud` repository at `/Users/minjunes/blitz-cloud`; `docs/publish-api.md` is the public contract they implement.
 
 ## Commands
 

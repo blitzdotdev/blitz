@@ -3,8 +3,7 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "apps/*",
-    "services/*"
+    "apps/*"
   ],
   "engines": {
     "node": ">=20"
@@ -24,12 +23,7 @@
     "build:editor": "npm run build -w apps/editor",
     "build": "npm run build:threepipe && npm run build:ui && npm run build:editor",
     "typecheck": "npx tsc --noEmit -p apps/editor/tsconfig.json",
-    "typecheck:services": "npm run typecheck -w services/backend && npm run typecheck -w services/game-gateway",
-    "test:backend": "npm test -w services/backend",
-    "test:gateway": "npm test -w services/game-gateway",
     "test:runtime": "npm run test:runtime -w apps/editor",
-    "deploy:backend": "npm run deploy -w services/backend",
-    "deploy:gateway": "npm run deploy -w services/game-gateway",
     "deploy:editor": "npm run build && npm run deploy -w apps/editor",
     "dev:editor": "npm run dev -w apps/editor"
   }
