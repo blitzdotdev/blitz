@@ -4,6 +4,7 @@ import {access, readFile} from 'node:fs/promises'
 import {createRequire} from 'node:module'
 import {createServer} from 'node:net'
 import {resolve} from 'node:path'
+import {resolveBackendUrl} from './backend.ts'
 import {gitRepositoryRoot} from './git.ts'
 import {findPinnedProject, resolvePinnedVersion} from './version-pin.ts'
 import {BLITZ_VERSION} from './versions.ts'
@@ -29,7 +30,6 @@ export interface DoctorOptions {
     checkPlaywright?: () => Promise<string>
 }
 
-const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
 const DEFAULT_DEV_PORT = 4321
 const DEFAULT_DEV_PORT_ATTEMPTS = 20
 const BLITZ_PACKAGES = ['blitz', 'editor', 'engine', 'template'] as const
@@ -92,7 +92,7 @@ export async function doctorProject(
         }
     }
 
-    const backendUrl = (options.backendUrl || process.env.BLITZ_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '')
+    const backendUrl = resolveBackendUrl(options.backendUrl)
     let backendReachable = false
     try {
         const response = await fetchImplementation(`${backendUrl}/health`, {signal: AbortSignal.timeout(5_000)})

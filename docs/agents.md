@@ -11,7 +11,7 @@ npm install
 npx blitz dev
 ```
 
-`blitz dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx blitz pull`; then run `npx blitz publish` and report the live URL it prints. Run `npx blitz <command> --help` for command-specific usage.
+`blitz dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx blitz pull`; then run `npx blitz publish` and report the exact live URL it prints, normally `https://<slug>.app.blitz.dev/`. Run `npx blitz <command> --help` for command-specific usage.
 
 `blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, and `doctor` checks the resolved version. `doctor` reports a mismatch as a FAIL row; other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
 

@@ -25,6 +25,7 @@ import {Hono, type Context, type Next} from 'hono'
 import {getCookie} from 'hono/cookie'
 import {LinearRouter} from 'hono/router/linear-router'
 import {streamSSE, type SSEStreamingApi} from 'hono/streaming'
+import {resolveBackendUrl} from './backend.ts'
 import {checkBakeSafety, type BakeJournalEntry} from './bake.ts'
 import {appendSceneJournal} from './journal.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
@@ -84,7 +85,6 @@ interface PendingCommand {
 
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
 const protectedProjectPaths = new Set(['.blitz/deploys.json', '.blitz/dev.json'])
-const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
 const serverRequire = createRequire(import.meta.url)
 
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
@@ -104,7 +104,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     let closing = false
     let platformToken: string | undefined
     let publishActive = false
-    const backendUrl = (options.backendUrl || process.env.BLITZ_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '')
+    const backendUrl = resolveBackendUrl(options.backendUrl)
     const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
 
     for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)

@@ -37,6 +37,7 @@ export async function startMockBackend(options: {
     corruptPreviewPath?: string
     corruptPreviewReads?: number
     failureMessage?: string
+    previewUrl?: (slug: string, response: 'create' | 'release') => string
 } = {}): Promise<MockBackend> {
     const games = new Map<string, MockGame>()
     const blobs = new Map<string, Buffer>()
@@ -99,7 +100,7 @@ export async function startMockBackend(options: {
                 name: game.name,
                 state: 'open',
                 expires_at: game.expiresAt,
-                preview_url: `${baseUrl}/preview/${slug}/`,
+                preview_url: previewUrl(slug, 'create'),
                 deploy_token: game.deployToken,
                 claim_secret: game.claimSecret,
                 claim_url: `${baseUrl}/api/v1/games/${slug}/claim`,
@@ -197,7 +198,7 @@ export async function startMockBackend(options: {
             game.releases.push(releaseRecord)
             return sendJson(response, game.releases.length === 1 ? 201 : 200, {
                 release_hash: releaseHash,
-                preview_url: `${baseUrl}/preview/${game.slug}/`,
+                preview_url: previewUrl(game.slug, 'release'),
                 files: releaseRecord.files,
             })
         }
@@ -246,6 +247,10 @@ export async function startMockBackend(options: {
         }
         return sendJson(response, 404, {error: {code: 'not_found', message: 'Mock route not found.'}})
     })
+
+    function previewUrl(slug: string, response: 'create' | 'release'): string {
+        return options.previewUrl?.(slug, response) || `${baseUrl}/preview/${slug}/`
+    }
 
     await new Promise<void>((resolve, reject) => {
         server.once('error', reject)
