@@ -136,7 +136,9 @@ export async function doctorProject(
 
     const repository = await gitRepositoryRoot(root)
     rows.push(repository
-        ? row('git', 'pass', `Git repository: ${repository}`)
+        ? repository === root
+            ? row('git', 'pass', `Git repository: ${repository}`)
+            : row('git', 'warn', `Git repository root ${repository} is not the project root ${root}`)
         : row('git', 'fail', 'Project is not in a Git repository; run blitz init or git init'))
 
     return {ok: rows.every(({status}) => status !== 'fail'), rows}

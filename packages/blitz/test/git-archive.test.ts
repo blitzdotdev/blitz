@@ -29,7 +29,7 @@ describe('Git project commands', () => {
         await expect(stat(resolve(noGit, '.git'))).rejects.toMatchObject({code: 'ENOENT'})
     })
 
-    it('does not create a nested repository or commit when the folder is already inside Git', async () => {
+    it('creates a nested repository when an existing parent does not track the project', async () => {
         const parent = await temporaryDirectory('blitz-init-parent-')
         await mkdir(resolve(parent, 'project'))
         await writeFile(resolve(parent, 'parent.txt'), 'parent')
@@ -38,8 +38,39 @@ describe('Git project commands', () => {
 
         await initProject(resolve(parent, 'project'))
 
-        await expect(stat(resolve(parent, 'project/.git'))).rejects.toMatchObject({code: 'ENOENT'})
+        expect((await stat(resolve(parent, 'project/.git'))).isDirectory()).toBe(true)
         expect((await execute('git', ['rev-parse', 'HEAD'], {cwd: parent})).stdout.trim()).toBe(before)
+    })
+
+    it('uses a parent repository when it already tracks files under the project', async () => {
+        const parent = await temporaryDirectory('blitz-init-tracked-parent-')
+        const project = resolve(parent, 'project')
+        await mkdir(project)
+        await writeFile(resolve(project, '.tracked'), 'tracked by parent')
+        await initializeGitRepository(parent)
+        const before = (await execute('git', ['rev-parse', 'HEAD'], {cwd: parent})).stdout.trim()
+
+        await initProject(project)
+
+        await expect(stat(resolve(project, '.git'))).rejects.toMatchObject({code: 'ENOENT'})
+        expect((await execute('git', ['rev-parse', 'HEAD'], {cwd: parent})).stdout.trim()).toBe(before)
+    })
+
+    it('requires an explicit opt-in for checkpoint and restore through a parent repository', async () => {
+        const parent = await temporaryDirectory('blitz-checkpoint-parent-')
+        const project = resolve(parent, 'project')
+        await mkdir(project)
+        await writeFile(resolve(project, '.tracked'), 'tracked by parent')
+        await initializeGitRepository(parent)
+        await initProject(project)
+
+        await expect(checkpointProject(project)).rejects.toThrow('--allow-parent-repo')
+        const checkpoint = await checkpointProject(project, 'parent opt-in', {allowParentRepo: true})
+        await writeFile(resolve(project, 'main.js'), 'later contents\n')
+        await expect(restoreProject(project, checkpoint.hash)).rejects.toThrow('--allow-parent-repo')
+        await restoreProject(project, checkpoint.hash, {allowParentRepo: true})
+
+        expect(await readFile(resolve(project, 'main.js'), 'utf8')).not.toBe('later contents\n')
     })
 
     it('commits all project files with a label and restores an explicit or last checkpoint without moving HEAD', async () => {

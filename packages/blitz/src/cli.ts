@@ -19,7 +19,7 @@ import {BLITZ_VERSION} from './versions.ts'
 import {sanitizeDiagnostic} from './api.ts'
 import {archiveProject} from './archive.ts'
 import {doctorProject, formatDoctorTable} from './doctor.ts'
-import {checkpointProject, restoreProject} from './git.ts'
+import {checkpointProject, gitRepositoryRoot, restoreProject} from './git.ts'
 
 const ROOT_USAGE = `Usage: blitz <command> [options]
 
@@ -48,8 +48,8 @@ const COMMAND_USAGE: Record<string, string> = {
     init: 'Usage: blitz init [dir] [--no-git]',
     dev: 'Usage: blitz dev [--port <port>] [--no-open] [--force]',
     doctor: 'Usage: blitz doctor [--port <port>]',
-    checkpoint: 'Usage: blitz checkpoint [label]',
-    restore: 'Usage: blitz restore [hash]',
+    checkpoint: 'Usage: blitz checkpoint [label] [--allow-parent-repo]',
+    restore: 'Usage: blitz restore [hash] [--allow-parent-repo]',
     archive: 'Usage: blitz archive',
     publish: 'Usage: blitz publish [--slug <slug>] [--name <name>] [--message <message>] [--no-check] [--no-verify]',
     pull: 'Usage: blitz pull [--force]',
@@ -89,6 +89,14 @@ try {
         const directory = parsed.positionals[0] || '.'
         const target = await initProject(directory, {git: parsed.values['--no-git'] !== true})
         console.log(`Created Blitz project at ${target}`)
+        if (parsed.values['--no-git'] === true) {
+            console.log('Git repository: skipped (--no-git)')
+        } else {
+            const repository = await gitRepositoryRoot(target)
+            console.log(repository === target
+                ? `Git repository: project repository at ${repository}`
+                : `Git repository: tracked parent repository at ${repository}`)
+        }
         console.log(`Next: cd ${directory} && npm install && npx blitz dev`)
     } else if (command === 'doctor') {
         const parsed = parseArgs(args, {'--port': 'value'})
@@ -96,12 +104,16 @@ try {
         console.log(formatDoctorTable(result))
         if (!result.ok) process.exitCode = 1
     } else if (command === 'checkpoint') {
-        const parsed = parseArgs(args, {}, 1)
-        const result = await checkpointProject(process.cwd(), parsed.positionals[0])
+        const parsed = parseArgs(args, {'--allow-parent-repo': 'boolean'}, 1)
+        const result = await checkpointProject(process.cwd(), parsed.positionals[0], {
+            allowParentRepo: parsed.values['--allow-parent-repo'] === true,
+        })
         console.log(`Checkpoint ${result.hash}${result.label ? ` ${result.label}` : ''}`)
     } else if (command === 'restore') {
-        const parsed = parseArgs(args, {}, 1)
-        const result = await restoreProject(process.cwd(), parsed.positionals[0])
+        const parsed = parseArgs(args, {'--allow-parent-repo': 'boolean'}, 1)
+        const result = await restoreProject(process.cwd(), parsed.positionals[0], {
+            allowParentRepo: parsed.values['--allow-parent-repo'] === true,
+        })
         console.log(`Restored checkpoint ${result.hash}`)
     } else if (command === 'archive') {
         parseArgs(args, {})
