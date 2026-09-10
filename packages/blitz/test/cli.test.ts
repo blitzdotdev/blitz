@@ -6,6 +6,7 @@ import {promisify} from 'node:util'
 import {afterEach, describe, expect, it} from 'vitest'
 import {startMockBackend} from './mockBackend.ts'
 import {BLITZ_VERSION} from '../src/versions.ts'
+import {initializeGitRepository} from '../src/git.ts'
 
 const execute = promisify(execFile)
 const cli = resolve('dist/cli.js')
@@ -40,9 +41,33 @@ describe('blitz CLI', () => {
         const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-no-git-'))
         cleanup.push(() => rm(root, {recursive: true, force: true}))
 
-        await execute(process.execPath, [cli, 'init', root, '--no-git'])
+        const result = await execute(process.execPath, [cli, 'init', root, '--no-git'])
 
         await expect(readFile(resolve(root, '.git/HEAD'), 'utf8')).rejects.toMatchObject({code: 'ENOENT'})
+        expect(result.stdout).toContain('Git repository: skipped (--no-git)')
+    })
+
+    it('prints a tracked parent decision and requires opt-in for its checkpoints', async () => {
+        const parent = await mkdtemp(resolve(tmpdir(), 'blitz-cli-parent-git-'))
+        cleanup.push(() => rm(parent, {recursive: true, force: true}))
+        const root = resolve(parent, 'project')
+        await mkdir(root)
+        await writeFile(resolve(root, '.tracked'), 'tracked by parent')
+        await initializeGitRepository(parent)
+
+        const initialized = await execute(process.execPath, [cli, 'init', root])
+        expect(initialized.stdout).toContain('Git repository: tracked parent repository at ')
+        await expect(readFile(resolve(root, '.git/HEAD'), 'utf8')).rejects.toMatchObject({code: 'ENOENT'})
+
+        await expect(execute(process.execPath, [cli, 'checkpoint'], {cwd: root}))
+            .rejects.toMatchObject({code: 1, stderr: expect.stringContaining('--allow-parent-repo')})
+        const checkpoint = await execute(process.execPath, [cli, 'checkpoint', '--allow-parent-repo'], {cwd: root})
+        expect(checkpoint.stdout).toMatch(/^Checkpoint [a-f\d]+/m)
+        await writeFile(resolve(root, 'main.js'), 'changed after parent checkpoint\n')
+        await expect(execute(process.execPath, [cli, 'restore'], {cwd: root}))
+            .rejects.toMatchObject({code: 1, stderr: expect.stringContaining('--allow-parent-repo')})
+        await execute(process.execPath, [cli, 'restore', '--allow-parent-repo'], {cwd: root})
+        expect(await readFile(resolve(root, 'main.js'), 'utf8')).not.toBe('changed after parent checkpoint\n')
     })
 
     it('runs doctor itself so a version mismatch is reported as a row', async () => {

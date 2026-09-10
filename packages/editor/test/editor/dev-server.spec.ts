@@ -115,7 +115,13 @@ export default function generate({node, engine}) {
             type: 'Generator', state: {module: 'FloorGenerator.js', params: {}},
         }}},
     })
-    scene.scenes[0].nodes.push(0, 1, 2, 3, 4, 5, 6)
+    scene.nodes.push({
+        name: 'Directional Key',
+        extensions: {KHR_lights_punctual: {light: 0}},
+    })
+    scene.scenes[0].nodes.push(0, 1, 2, 3, 4, 5, 6, 7)
+    scene.extensionsUsed = ['KHR_lights_punctual']
+    scene.extensions = {KHR_lights_punctual: {lights: [{type: 'directional', color: [1, 0.95, 0.85], intensity: 2}]}}
     scene.buffers = [{
         byteLength: 36,
         uri: 'data:application/octet-stream;base64,Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/',
@@ -157,13 +163,27 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
     })
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
-    expect(await page.evaluate(() => {
+    const cameraPose = await page.evaluate(() => {
         const scene = (window as unknown as {viewer: {scene: {
             backgroundColor: {getHexString(): string} | null
             defaultCamera: {position: {toArray(): number[]}}
+            mainCamera: {position: {toArray(): number[]}, target: {toArray(): number[]}}
         }}}).viewer.scene
-        return {background: scene.backgroundColor?.getHexString(), camera: scene.defaultCamera.position.toArray()}
-    })).toEqual({background: '224466', camera: [0, 5, 17]})
+        return {
+            background: scene.backgroundColor?.getHexString(),
+            camera: scene.defaultCamera.position.toArray(),
+            viewportCamera: scene.mainCamera.position.toArray(),
+            viewportTarget: scene.mainCamera.target.toArray(),
+        }
+    })
+    expect(cameraPose.background).toBe('224466')
+    expect(cameraPose.camera).toEqual([0, 5, 17])
+    for (const [actual, expected] of cameraPose.viewportCamera.map((value, index) => [value, cameraPose.camera[index]])) {
+        expect(actual).toBeCloseTo(expected)
+    }
+    for (const [actual, expected] of cameraPose.viewportTarget.map((value, index) => [value, [0, 0, 0][index]])) {
+        expect(actual).toBeCloseTo(expected)
+    }
     expect(loadWarnings).toEqual([])
     await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
     await expect(page.getByTestId('save-scene')).toBeDisabled()
@@ -181,11 +201,15 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
     const written = JSON.parse(await readFile(resolve(root, '.blitz/check.json'), 'utf8')) as {
         ok: boolean
         mode: string
-        outcomes: Array<{name: string, status: string}>
+        outcomes: Array<{name: string, status: string, report?: unknown}>
     }
     expect(written).toMatchObject({ok: true, mode: 'editor'})
     expect(written.outcomes).toEqual([
-        expect.objectContaining({name: 'Playable', status: 'pass'}),
+        expect.objectContaining({
+            name: 'Playable',
+            status: 'pass',
+            report: expect.objectContaining({projectValidation: expect.objectContaining({status: 'pass'})}),
+        }),
         expect.objectContaining({name: 'Editable', status: 'pass'}),
         expect.objectContaining({name: 'Persisted', status: 'pass'}),
     ])
@@ -219,6 +243,7 @@ test('writes byte-identical unchanged saves across editor sessions', async ({pag
     const first = await saveWithoutEdit()
     const second = await saveWithoutEdit()
 
+    expect(first.toString()).not.toMatch(/"uuid"\s*:/)
     expect(second).toEqual(first)
 })
 
@@ -267,6 +292,7 @@ test('loads the restored panels, watches generators, and saves text glTF without
     await expect(hierarchy).toContainText(/Tree 0\s*generated/)
     await expect(hierarchy).toContainText(/Tree 1\s*generated/)
     await expect(page.getByTestId('unlisted-script-warning').filter({hasText: 'Unlisted.script.js'})).toBeVisible()
+    await expect(page.getByTestId('unlisted-script-warning').filter({hasText: 'samples/Spin.script.js'})).toHaveCount(0)
     await expect(page.getByTestId('project-files')).not.toContainText('.blitz/deploys.json')
     await expect(page.getByTestId('project-files')).not.toContainText('.blitz/dev.json')
 

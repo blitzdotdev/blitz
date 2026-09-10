@@ -107,7 +107,9 @@ export class DirectionalLight2 extends DirectionalLight implements ILight<Direct
     constructor(color?: ColorRepresentation, intensity?: number) {
         super(color, intensity)
         this.target.position.set(0, 0, -1) // because of GLTF spec: https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_lights_punctual
-        this.add(this.target) // todo: make sure the child isn't exported in gltf
+        // Blitz upstream note: the helper target is runtime state, not an authored glTF node.
+        this.target.userData.excludeFromExport = true
+        this.add(this.target)
         iLightCommons.upgradeLight.call(this)
         this.shadowFrustum = 10
     }

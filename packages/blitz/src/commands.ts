@@ -15,7 +15,7 @@ import type {DeploysFile, PublishProgress} from './types.ts'
 import {appendJournalEntry, readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
 import {BLITZ_VERSION} from './versions.ts'
 import {checkProject} from './check.ts'
-import {gitRepositoryRoot, initializeGitRepository} from './git.ts'
+import {gitRepositoryRoot, gitTracksProject, initializeGitRepository} from './git.ts'
 
 const commandRequire = createRequire(import.meta.url)
 
@@ -66,7 +66,9 @@ export async function initProject(directory = '.', options: {git?: boolean} = {}
     const target = resolve(directory)
     const name = directory === '.' ? target.split(sep).at(-1)! : directory.split(/[\\/]/).filter(Boolean).at(-1)!
     await mkdir(target, {recursive: true})
-    const shouldInitializeGit = options.git !== false && !await gitRepositoryRoot(target)
+    const repository = await gitRepositoryRoot(target)
+    const shouldInitializeGit = options.git !== false
+        && (!repository || (repository !== target && !await gitTracksProject(target)))
     const packageRoot = dirname(commandRequire.resolve('@blitzdev/template/package.json'))
     const template = resolve(packageRoot, 'template')
     for (const sourceName of await walkTemplate(template)) {

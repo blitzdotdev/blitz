@@ -6,6 +6,7 @@ import {resolve} from 'node:path'
 import {afterEach, describe, expect, it} from 'vitest'
 import {initProject} from '../src/commands.ts'
 import {doctorProject, type DoctorResult} from '../src/doctor.ts'
+import {initializeGitRepository} from '../src/git.ts'
 import {BLITZ_VERSION} from '../src/versions.ts'
 import {startMockBackend} from './mockBackend.ts'
 
@@ -189,12 +190,29 @@ describe('blitz doctor', () => {
         expect(row(await runDoctor(fixture.root, fixture.backendUrl), 'git'))
             .toMatchObject({status: 'fail', detail: expect.stringContaining('git init')})
     })
+
+    it('warns when the repository root is a tracked parent of the project root', async () => {
+        const fixture = await readyProject({parentGit: true})
+        const result = await runDoctor(fixture.root, fixture.backendUrl)
+
+        expect(row(result, 'git')).toMatchObject({
+            status: 'warn',
+            detail: expect.stringMatching(/is not the project root/),
+        })
+        expect(result.ok).toBe(true)
+    })
 })
 
-async function readyProject(options: {registeredRuntime?: boolean, git?: boolean} = {}) {
-    const root = await mkdtemp(resolve(tmpdir(), 'blitz-doctor-'))
-    cleanup.push(() => rm(root, {recursive: true, force: true}))
-    await initProject(root, {git: options.git !== false})
+async function readyProject(options: {registeredRuntime?: boolean, git?: boolean, parentGit?: boolean} = {}) {
+    const temporaryRoot = await mkdtemp(resolve(tmpdir(), 'blitz-doctor-'))
+    cleanup.push(() => rm(temporaryRoot, {recursive: true, force: true}))
+    const root = options.parentGit ? resolve(temporaryRoot, 'project') : temporaryRoot
+    if (options.parentGit) {
+        await mkdir(root)
+        await writeFile(resolve(root, '.tracked'), 'tracked by parent')
+        await initializeGitRepository(temporaryRoot)
+    }
+    await initProject(root, {git: options.parentGit ? false : options.git !== false})
     const runtime = Buffer.from('doctor fixture runtime')
     for (const name of ['blitz', 'editor', 'engine', 'template']) {
         const packageRoot = resolve(root, `node_modules/@blitzdev/${name}`)

@@ -465,10 +465,11 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('Unable to determine dev server address')
     const port = address.port
-    const url = `http://127.0.0.1:${port}/?t=${encodeURIComponent(token)}`
+    const origin = `http://127.0.0.1:${port}`
+    const url = `${origin}/?t=${encodeURIComponent(token)}`
 
     await mkdir(resolve(projectRoot, '.blitz'), {recursive: true})
-    await writeDevFile(projectRoot, {url, port, token, pid: process.pid, started_at: new Date().toISOString()})
+    await writeDevFile(projectRoot, {origin, url, port, token, pid: process.pid, started_at: new Date().toISOString()})
     try {
         watcher = watch(projectRoot, {recursive: true}, (_event, filename) => {
             if (!filename) return
@@ -787,6 +788,7 @@ try {
                 name: 'Playable', status: playableOk ? 'pass' : 'fail',
                 summary: playableOk ? 'The game booted and ran ' + frameCount + ' frames without errors.' : playableReasons.join(' '),
                 codes: codes([...relationshipIssues, ...cleanupErrors]), durationMs: Math.round(performance.now() - started),
+                report: {projectValidation, cleanup, runtimeErrors: errors.length, relationships: relationshipIssues},
             },
             {
                 name: 'Editable', status: editable.ok ? 'pass' : 'fail', summary: editable.summary,

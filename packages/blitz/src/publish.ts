@@ -110,7 +110,7 @@ export async function publishProject({
         runtimeHash,
         dependencies: projectDependencies(packageJson),
     })
-    const indexFile = await writeProjectFile(dirHandle, 'index.html', indexHtml)
+    const indexFile = await writeProjectFile(dirHandle, '.blitz/publish/index.html', indexHtml)
     projectEntries = replaceEntry(projectEntries, {path: 'index.html', file: indexFile})
     projectEntries = replaceEntry(projectEntries, {path: '_blitz/runtime.js', file: installedRuntime})
 

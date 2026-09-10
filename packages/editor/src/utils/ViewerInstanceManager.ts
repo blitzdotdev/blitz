@@ -421,7 +421,22 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.generatorStates = readProjectGeneratorStates(sceneText)
             this.error = undefined
             this.loadedNeedsSave = false
-            viewer.getPlugin(EditModePlugin)?.resetView()
+            const editMode = viewer.getPlugin(EditModePlugin)
+            const savedCamera = this.project?.config.viewer.camera ? viewer.scene.defaultCamera : undefined
+            if (editMode && savedCamera) {
+                editMode.cameraMode = this.project?.config.viewer.camera?.type === 'orthographic'
+                    ? 'orthographic'
+                    : 'perspective'
+                const editCamera = editMode.cameraMode === 'orthographic'
+                    ? editMode.cameraOrtho
+                    : editMode.cameraPerspective
+                editCamera.position.copy(savedCamera.position)
+                editCamera.quaternion.copy(savedCamera.quaternion)
+                editCamera.target.copy(savedCamera.target)
+                editCamera.setDirty({change: 'transform'})
+            } else {
+                editMode?.fitView()
+            }
             this.selectInitialGenerator()
             this.savedSceneHash = await hashBytes((await serializeSceneGltf(viewer, {scenePath: this.scenePath})).gltf)
         } finally {
@@ -879,7 +894,9 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 .map(({import: path}) => normalizeProjectPath(path)),
         ])
         return this.manifest.filter(({path}) =>
-            (path.endsWith('.script.js') || path.endsWith('.plugin.js')) && !listed.has(path)
+            !path.startsWith('samples/')
+            && (path.endsWith('.script.js') || path.endsWith('.plugin.js'))
+            && !listed.has(path)
         )
     }
 

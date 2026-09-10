@@ -1,5 +1,5 @@
 import {execFile} from 'node:child_process'
-import {access} from 'node:fs/promises'
+import {access, realpath} from 'node:fs/promises'
 import {resolve} from 'node:path'
 import {promisify} from 'node:util'
 
@@ -12,13 +12,25 @@ export interface CheckpointResult {
     label?: string
 }
 
+export interface GitProjectOptions {
+    allowParentRepo?: boolean
+}
+
 export async function gitRepositoryRoot(projectRoot = process.cwd()): Promise<string | undefined> {
     try {
         const {stdout} = await git(projectRoot, ['rev-parse', '--show-toplevel'])
-        return resolve(stdout.trim())
+        const requested = resolve(projectRoot)
+        const repository = resolve(stdout.trim())
+        return await realpath(requested) === await realpath(repository) ? requested : repository
     } catch {
         return undefined
     }
+}
+
+export async function gitTracksProject(projectRoot = process.cwd()): Promise<boolean> {
+    if (!await gitRepositoryRoot(projectRoot)) return false
+    const {stdout} = await git(projectRoot, ['ls-files', '--', '.'])
+    return stdout.trim().length > 0
 }
 
 export async function gitHead(projectRoot = process.cwd()): Promise<string | undefined> {
@@ -44,9 +56,10 @@ export async function initializeGitRepository(projectRoot: string): Promise<void
 export async function checkpointProject(
     projectRoot = process.cwd(),
     label?: string,
+    options: GitProjectOptions = {},
 ): Promise<CheckpointResult> {
     const root = resolve(projectRoot)
-    await requireGitRepository(root)
+    await requireGitRepository(root, options)
     const normalizedLabel = label?.trim() || undefined
     const message = normalizedLabel ? `${CHECKPOINT_PREFIX}: ${normalizedLabel}` : CHECKPOINT_PREFIX
     await git(root, ['add', '-A', '--', '.'])
@@ -61,9 +74,10 @@ export async function checkpointProject(
 export async function restoreProject(
     projectRoot = process.cwd(),
     requestedHash?: string,
+    options: GitProjectOptions = {},
 ): Promise<CheckpointResult> {
     const root = resolve(projectRoot)
-    await requireGitRepository(root)
+    await requireGitRepository(root, options)
     try {
         await access(resolve(root, '.blitz/publish.lock'))
         throw Object.assign(new Error('Cannot restore while a publish is in progress. Wait for publish to finish and try again.'), {
@@ -93,9 +107,14 @@ export async function restoreProject(
     return {hash: short.trim()}
 }
 
-async function requireGitRepository(projectRoot: string): Promise<void> {
-    if (await gitRepositoryRoot(projectRoot)) return
-    throw new Error('This project is not a git repository. Run blitz init without --no-git, or run git init.')
+async function requireGitRepository(projectRoot: string, options: GitProjectOptions): Promise<void> {
+    const repository = await gitRepositoryRoot(projectRoot)
+    if (!repository) {
+        throw new Error('This project is not a git repository. Run blitz init without --no-git, or run git init.')
+    }
+    if (repository !== projectRoot && !options.allowParentRepo) {
+        throw new Error(`The Git repository root is ${repository}, not the project root ${projectRoot}. Pass --allow-parent-repo to use it.`)
+    }
 }
 
 async function shortHead(projectRoot: string): Promise<string> {

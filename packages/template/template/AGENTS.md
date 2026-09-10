@@ -15,11 +15,11 @@ npx blitz dev
 
 `blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, and `doctor` checks the resolved version. `doctor` reports a mismatch as a FAIL row; other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
 
-`blitz init` also initializes a Git repository and commits the generated template. Use `blitz init --no-git` only when Git is deliberately managed elsewhere; initialization does not create a nested repository when the project folder is already inside one.
+`blitz init` also initializes a Git repository and commits the generated template. Inside a parent repository it creates a project repository unless that parent already tracks a file below the project directory. Use `blitz init --no-git` only when Git is deliberately managed elsewhere. The command always prints which Git decision it made.
 
-Run `npx blitz doctor` to check Node, the project version pin, installed Blitz package versions, the development port or live project server, backend and runtime registration, Playwright Chromium, and Git. Fix every FAIL row before relying on the affected workflow.
+Run `npx blitz doctor` to check Node, the project version pin, installed Blitz package versions, the development port or live project server, backend and runtime registration, Playwright Chromium, and Git. It warns when the detected repository root is not the project root. Fix every FAIL row before relying on the affected workflow.
 
-Create a recoverable point before agent work with `npx blitz checkpoint "before agent work"`. It commits all project files, including the saved scene, and prints the short Git hash. Restore files without rewriting history with `npx blitz restore <hash>`, or omit the hash to restore the latest Blitz checkpoint. Restore is refused while publish holds its lock. The editor exposes the same actions as Checkpoint beside Check and Restore last checkpoint under Settings.
+Create a recoverable point before agent work with `npx blitz checkpoint "before agent work"`. It commits all project files, including the saved scene, and prints the short Git hash. Restore files without rewriting history with `npx blitz restore <hash>`, or omit the hash to restore the latest Blitz checkpoint. Both commands refuse a parent repository unless `--allow-parent-repo` is supplied. Restore is refused while publish holds its lock. The editor exposes the same actions as Checkpoint beside Check and Restore last checkpoint under Settings.
 
 Run `npx blitz archive` to write `<project-name>-source.zip`. The archive uses the publish exclusion rules, omits `node_modules`, `.blitz`, and `.git`, and includes `BLITZ-PROJECT.txt` with the creation date, Git commit, and installed Blitz package versions.
 
@@ -35,6 +35,46 @@ node_modules/threepipe/src            engine core, glTF, plugins
 node_modules/uiconfig-blueprint/src   editor UI kit
 ```
 
+# Engine quick reference
+
+- `createGame` and `createStoppedGame`: boot Play mode or an authoring-only stopped scene; `@blitzdev/engine/src/runtime/createGame.ts`.
+- `setAuthoringMetadata`, `getAuthoringMetadata`, and `AuthoringRole`: tag and read stable `direct`, `template`, or `generator` sources; `@blitzdev/engine/src/authoring.ts`.
+- `RuntimeObjectOwner`: own Play-only roots, clones, effects, and cleanup; `@blitzdev/engine/src/authoring.ts`.
+- `GeneratorComponent`, `runGenerator`, and `markGenerated`: run deterministic procedural previews excluded from saves; `@blitzdev/engine/src/plugins/GeneratorComponent.ts`.
+- `registerGameValidation`: register a gameplay assertion consumed by `blitz check`; `@blitzdev/engine/src/authoringValidation.ts`.
+- `publishGameTelemetry`: replace `window.blitzGame.telemetry` with an immutable test snapshot; `@blitzdev/engine/src/authoringValidation.ts`.
+- `authoringQualityReport`, `runtimeCleanupReport`, `semanticSceneSnapshot`, and `persistenceReport`: implement the three check outcomes; `@blitzdev/engine/src/authoringValidation.ts`.
+- `serializeSceneGltf` and `serializeSceneGltfDocument`: write deterministic text glTF and external resources; `@blitzdev/engine/src/sceneSerialization.ts`.
+- `HtmlUiComponent`: attach world, screen, or viewport-positioned HTML to an object; `@blitzdev/engine/src/plugins/HtmlUiComponent.ts`.
+- `CannonPhysicsPlugin`, `Cannon3DBodyComponent`, and `Cannon3DShapeComponent`: physics plugin and body components; `@blitzdev/engine/src/plugins/cannon/`.
+- `Mesh2`: supported mesh class; `threepipe/src/core/object/Mesh2.ts`.
+- `PhysicalMaterial`: light-reactive mesh material; `threepipe/src/core/material/PhysicalMaterial.ts`.
+- `UnlitMaterial`: flat mesh material that ignores lighting; `threepipe/src/core/material/UnlitMaterial.ts`.
+- `UnlitLineMaterial`: unlit line material; `threepipe/src/core/material/UnlitLineMaterial.ts`.
+- `LineMaterial2`: configurable line material; `threepipe/src/core/material/LineMaterial2.ts`.
+
+Validation and telemetry belong in `main.js`:
+
+```js
+import {publishGameTelemetry, registerGameValidation} from '@blitzdev/engine'
+
+export function main({viewer}) {
+  publishGameTelemetry({state: 'ready'})
+  registerGameValidation(() => ({
+    status: viewer.scene.modelRoot.getObjectByName('Player') ? 'pass' : 'fail',
+    summary: 'Player exists.',
+  }))
+}
+```
+
+For camera ownership during Play, `camera.controlsMode = ''` disables built-in controls; set `autoLookAtTarget = true` when driving `target`, or false when driving the quaternion. Save `scene.mainCamera` and the changed camera properties in `start()`, call the gameplay camera's `activateMain()`, then reactivate the saved camera and restore its properties in `stop()`.
+
+The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `check-game`, `check-results`, `checkpoint-game`, `restore-checkpoint`, `open-game`, `project-files`, `scene-hierarchy`, `component-types`, `generator-inspector`, `generator-module-<nodeIndex>`, `generator-params-<nodeIndex>`, and `bake-<nodeIndex>`; select them through `page.getByTestId()`.
+
+The token-protected local API is `GET /api/state`, `GET /api/files`, `GET /api/events`, `GET /api/slug/:slug`, `GET /api/import-map`, `POST /api/check`, and `POST /api/publish`.
+
+Editable is measured from the stopped scene using authored visibility and selectability, generator previews and source relationships, plus the saved camera; camera containment uses a small epsilon so a point on a mesh face is outside. Persisted serializes that stopped scene, reloads the serialized files, and compares supported semantics with node names in drift paths when available.
+
 The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Keep secrets from `.blitz/deploys.json` and `.blitz/dev.json` private.
 
 # Local feedback and health
@@ -43,7 +83,7 @@ Read `.blitz/state.json` and `.blitz/console.log` for the editor and runtime fee
 
 The editor creates `.blitz/console.log` with a header when Play starts. It records `console.warn`, `console.error`, uncaught window errors, and unhandled promise rejections during Play. It deliberately does not record `console.log`; use the browser console for that level. Log forwarding is rate-limited.
 
-Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Blitz-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `blitz dev`. Keep that token out of logs and reports.
+Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Blitz-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `blitz dev`. In `.blitz/dev.json`, `origin` is the token-free server origin and `url` includes the session query. Keep that token out of logs and reports.
 
 # Authored versus runtime game content
 
@@ -77,6 +117,8 @@ Keep Play state out of the saved scene. The saved camera must frame authored con
 # The scene file
 
 `package.json` names the scene in `mainScene`. The default is `assets/main.scene.gltf`. This text glTF file is the scene source of truth. Edit it with a script. Never edit it by hand.
+
+Until three guards its browser global, a Node scene-building script must set `globalThis.ImageData ??= class {}` and then use `await import('three')`; a static import is evaluated before the stub.
 
 The editor writes stable, pretty JSON. Buffer bytes go in a sibling `.bin` file. Embedded images go in `assets/textures/`. Existing project image paths stay unchanged. Keep node and material names stable. Use names or `extras.gltfUUID` to find objects. Keep each node's `extras.gltfUUID` and every key inside `extras.EntityComponentPlugin` stable; those are persistent scene and component ids, not reload counters.
 
@@ -446,7 +488,7 @@ export async function main({viewer}) {
 }
 ```
 
-`main({viewer})` runs after the scene and nested assets load, generators finish, and the timeline, components, and physics start. It is the right place for runtime setup that depends on the complete scene.
+`main({viewer})` runs after the scene and nested assets load, generators finish, and the timeline, components, and physics start. It is the right place for runtime setup that depends on the complete scene. `window.viewer` is set by your `main.js` after components start, so tests must wait for it.
 
 ## Core Properties
 - `viewer.scene` - RootScene: Main scene for rendering (extends three.js Scene)
@@ -984,7 +1026,7 @@ class EnemySystemComponent extends Object3DComponent {
 
 # Publishing
 
-Run `npx blitz pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx blitz pull --force` overwrites them. Then run `npx blitz check`. It imports configured scripts in Node, resolves plugins and Generator modules, verifies scene component types, prints a table, and writes `.blitz/check.json`; any failure exits 1. `blitz publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
+Run `npx blitz pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx blitz pull --force` overwrites them. Then run `npx blitz check`. It imports configured scripts in Node, resolves plugins and Generator modules, verifies scene component types, prints the project validation below Playable on pass or fail, and writes `.blitz/check.json`; any failure exits 1. `blitz publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
 
 Create a game with `npx blitz publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `blitz.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@blitzdev/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.blitz/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
 

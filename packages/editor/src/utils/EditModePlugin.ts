@@ -389,6 +389,10 @@ export class EditModePlugin extends AViewerPluginSync<{
         if(!this._viewer) return
         const camera = this.cameraMode === 'perspective' ? this.cameraPerspective : this.cameraOrtho
         const bbox = new Box3B().expandByObject(this._viewer.scene.modelRoot, false, true)
+        if(bbox.isEmpty()) {
+            this.resetView()
+            return
+        }
         const cameraZ = getFittingDistance(camera, bbox)
         const target = bbox.getCenter(new Vector3()) // world position
         // await this.animateToTarget(, center, duration, ease)
