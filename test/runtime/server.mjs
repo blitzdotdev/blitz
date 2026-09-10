@@ -9,6 +9,7 @@ import {fileURLToPath} from 'node:url'
 const runtimeDirectory = fileURLToPath(new URL('.', import.meta.url))
 const engineDirectory = resolve(runtimeDirectory, '../..')
 const fixtureDirectory = resolve(runtimeDirectory, '../../../editor/test/fixtures/sample-project')
+const gateFixtureDirectory = resolve(runtimeDirectory, 'fixtures')
 const port = Number(process.argv[2] || 4177)
 
 const contentTypes = {
@@ -42,10 +43,19 @@ function resolveRequest(pathname) {
     if (pathname === '/' || pathname === '/index.html') {
         return resolve(runtimeDirectory, 'index.html')
     }
+    if (pathname === '/test-shell.html') return resolve(runtimeDirectory, 'test-shell.html')
     if (pathname === '/runtime.js') return resolve(engineDirectory, 'dist/runtime.js')
-    if (!pathname.startsWith('/sample-project/')) return undefined
+    if (pathname.startsWith('/sample-project/')) {
+        return resolveFixture(fixtureDirectory, pathname.slice('/sample-project/'.length))
+    }
+    if (pathname.startsWith('/fixtures/')) {
+        return resolveFixture(gateFixtureDirectory, pathname.slice('/fixtures/'.length))
+    }
+    return undefined
+}
 
-    const relativePath = normalize(decodeURIComponent(pathname.slice('/sample-project/'.length)))
-    if (relativePath.startsWith('..')) return undefined
-    return resolve(fixtureDirectory, relativePath)
+function resolveFixture(root, encodedPath) {
+    const relativePath = normalize(decodeURIComponent(encodedPath))
+    if (relativePath.startsWith('..') || relativePath.startsWith('/')) return undefined
+    return resolve(root, relativePath)
 }
