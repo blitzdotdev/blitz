@@ -207,11 +207,45 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
     await expect(page.getByTestId('save-scene')).toBeDisabled()
     const sceneBeforeCheck = await readFile(resolve(root, 'assets/main.scene.gltf'))
 
-    await page.getByTestId('check-game').click()
+    const check = page.getByTestId('check-game')
+    const checkPlacement = await page.evaluate(() => {
+        const play = document.querySelector('[data-testid="play"]')
+        const open = document.querySelector('[data-testid="open-game"]')
+        const checkButton = document.querySelector('[data-testid="check-game"]')
+        const buttons = [...(play?.closest('.bp5-button-group')?.querySelectorAll('button') || [])]
+        return {
+            buttonCount: buttons.length,
+            sameGroup: play?.closest('.bp5-button-group') === checkButton?.closest('.bp5-button-group'),
+            immediatelyAfterOpen: buttons.indexOf(checkButton as HTMLButtonElement)
+                === buttons.indexOf(open as HTMLButtonElement) + 1,
+        }
+    })
+    expect(checkPlacement).toEqual({buttonCount: 5, sameGroup: true, immediatelyAfterOpen: true})
+    await expect(check).toHaveText('')
+    await expect(check.locator('.bp5-icon-tick')).toBeVisible()
+    await expect(check.locator('.blitz-check-badge')).toHaveCount(0)
+    await check.hover()
+    await expect(page.getByText('Check the game: Playable, Editable, Persisted', {exact: true})).toBeVisible()
+    await expect(page.getByTestId('check-results')).toHaveCount(0)
+    await page.mouse.move(0, 200)
+
+    await check.click()
+    await expect(check).toBeDisabled()
+    await expect(check).toHaveClass(/bp5-loading/)
+    await expect(check).toHaveAttribute('data-check-status', 'pass', {timeout: 45_000})
+    await expect(check.locator('.blitz-check-badge')).toHaveClass(/blitz-check-badge-success/)
+    await page.mouse.move(0, 200)
+    await check.hover()
     const results = page.getByTestId('check-results')
-    await expect(results).toContainText('Playable PASS', {timeout: 45_000})
-    await expect(results).toContainText('Editable PASS')
-    await expect(results).toContainText('Persisted PASS')
+    await expect(results).toBeVisible()
+    await expect(results.getByRole('heading', {name: 'Check', exact: true})).toBeVisible()
+    await expect(results.getByTestId('check-relative-time')).toHaveText(/^(just now|\d+ (second|minute)s? ago)$/)
+    for (const outcomeName of ['Playable', 'Editable', 'Persisted']) {
+        const outcome = results.getByTestId(`check-outcome-${outcomeName.toLowerCase()}`)
+        await expect(outcome).toContainText(outcomeName)
+        await expect(outcome.locator('.blitz-check-status-success')).toBeVisible()
+        await expect(outcome.locator('.blitz-check-summary')).not.toHaveText('')
+    }
     await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
     await expect(page.getByTestId('save-scene')).toBeDisabled()
     expect(await readFile(resolve(root, 'assets/main.scene.gltf'))).toEqual(sceneBeforeCheck)
@@ -232,6 +266,25 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
         expect.objectContaining({name: 'Persisted', status: 'pass'}),
     ])
     expect(await readFile(resolve(root, '.blitz/console.log'), 'utf8')).toContain('[blitz check] Playable=pass Editable=pass Persisted=pass')
+
+    await page.mouse.move(0, 200)
+    await page.evaluate(() => {
+        const viewer = (window as unknown as {viewer: {scene: {modelRoot: {
+            children: Array<{userData: Record<string, unknown>}>
+        }}}}).viewer
+        viewer.scene.modelRoot.children[0].userData.blitzAuthoring = {
+            role: 'generator', id: 'orphan-preview', sourceId: 'missing-generator',
+        }
+    })
+    await check.click()
+    await expect(check).toHaveAttribute('data-check-status', 'fail', {timeout: 45_000})
+    await expect(check.locator('.blitz-check-badge')).toHaveClass(/blitz-check-badge-danger/)
+    await page.mouse.move(0, 200)
+    await check.hover()
+    const failingOutcome = results.locator('[data-status="fail"]').first()
+    await expect(failingOutcome).toBeVisible()
+    await expect(failingOutcome.locator('.blitz-check-codes'))
+        .toContainText(/MISSING_AUTHORING_SOURCE|PERSISTENCE_DRIFT/)
 
     const cliResult = await checkProject(root)
     expect(cliResult).toMatchObject({ok: true, mode: 'editor'})
@@ -542,7 +595,7 @@ test('loads the restored panels, watches generators, and saves text glTF without
     expect(errors).toEqual([])
 })
 
-test('places Open game beside Play, checkpoints beside Check, and restores from Settings', async ({page}) => {
+test('places Open game beside Play and checkpoints and restores from the Save Scene menu', async ({page}) => {
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
     const openGame = page.getByTestId('open-game')
@@ -560,21 +613,48 @@ test('places Open game beside Play, checkpoints beside Check, and restores from 
     await expect(openGame.locator('.bp5-icon-open-application')).toBeVisible()
     await openGame.hover()
     await expect(page.getByText('Open game in a new tab', {exact: true})).toBeVisible()
-    await expect(page.locator('[data-testid="check-game"] + [data-testid="checkpoint-game"]')).toBeVisible()
+    await expect(page.locator('.bp5-navbar > .blitz-toolbar-controls')).toHaveCount(0)
+
+    const saveGroup = page.getByTestId('save-scene').locator('..')
+    const saveMenuButton = saveGroup.getByRole('button').filter({has: page.locator('.bp5-icon-caret-down')})
+    await saveMenuButton.click()
+    const saveMenu = page.getByRole('menu').filter({has: page.getByRole('menuitem', {name: 'Save and Close'})})
+    await expect(saveMenu).toBeVisible()
+    const menuItems = saveMenu.getByRole('menuitem')
+    await expect(menuItems).toHaveCount(5)
+    await expect(menuItems.nth(0)).toContainText('Save Scene')
+    await expect(menuItems.nth(1)).toContainText('Checkpoint...')
+    await expect(menuItems.nth(2)).toContainText('Restore last checkpoint')
+    await expect(menuItems.nth(3)).toHaveText('Save and Close')
+    await expect(menuItems.nth(4)).toHaveText('Close Project')
 
     const mainPath = resolve(root, 'main.js')
     const checkpointContents = await readFile(mainPath, 'utf8')
     await page.getByTestId('checkpoint-game').click()
-    await expect(page.getByText(/Checkpoint [a-f\d]+ created\./)).toBeVisible({timeout: 10_000})
+    const checkpointPopover = page.getByTestId('checkpoint-popover')
+    await expect(checkpointPopover).toBeVisible()
+    await checkpointPopover.getByPlaceholder('Label (optional)').fill('before menu restore')
+    await checkpointPopover.getByRole('button', {name: 'Create', exact: true}).click()
+    const checkpointToast = page.getByText(/Checkpoint [a-f\d]+ before menu restore created\./)
+    await expect(checkpointToast).toBeVisible({timeout: 10_000})
+    const checkpointHash = (await checkpointToast.textContent())?.match(/Checkpoint ([a-f\d]+)/)?.[1]
+    expect(checkpointHash).toBeTruthy()
 
     await writeFile(mainPath, 'export async function main() { window.__restored = false }\n')
     await expect.poll(() => readFile(mainPath, 'utf8')).not.toBe(checkpointContents)
-    await page.getByRole('button', {name: 'Settings', exact: true}).click()
-    await expect(page.getByTestId('restore-checkpoint')).toHaveText('Restore last checkpoint')
+    await saveMenuButton.click()
+    await expect(page.getByTestId('restore-checkpoint')).toContainText('Restore last checkpoint')
     await page.getByTestId('restore-checkpoint').click()
+    const restorePopover = page.getByTestId('restore-checkpoint-popover')
+    await expect(restorePopover).toContainText(`Checkpoint ${checkpointHash}`)
+    await expect(restorePopover).toContainText('before menu restore')
+    await expect(restorePopover).toContainText('Unsaved changes will be lost.')
+    await restorePopover.getByRole('button', {name: 'Restore', exact: true}).click()
 
     await expect(page.getByText(/Restored checkpoint [a-f\d]+\./)).toBeVisible({timeout: 10_000})
     await expect.poll(() => readFile(mainPath, 'utf8')).toBe(checkpointContents)
+    await page.getByRole('button', {name: 'Settings', exact: true}).click()
+    await expect(page.getByTestId('restore-checkpoint')).toHaveCount(0)
 })
 
 test('queues Play during project load and keeps one overlay update loop through reload and Stop', async ({page}) => {

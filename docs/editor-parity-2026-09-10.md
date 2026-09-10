@@ -270,7 +270,7 @@ Memory stays. The reference `src/components/MemoryTab.tsx` imports `AssetTracker
 
 | File | Boundary carried |
 |---|---|
-| `src/adapters/BlitzToolbarControls.tsx` | Open game in the top-right play group, centered Check and Checkpoint controls, Save Scene backing, the theme restore hook, and semantic test compatibility. |
+| `src/adapters/BlitzToolbarControls.tsx` | Option A toolbar placement, Save Scene backing, checkpoint and restore menus, the theme hook, and semantic test compatibility. |
 | `src/adapters/DevServerAssetTracker.ts` | Read-only Memory-tab asset tracking over the dev-server project. |
 | `src/adapters/DevServerInspectorControls.tsx` | Dev-server source-view and nested-asset controls behind the restored Inspector surface. |
 | `src/adapters/DevServerProjectBridge.tsx` | Reference project/provider props backed by the active DevServerSource project. |
@@ -282,3 +282,12 @@ Memory stays. The reference `src/components/MemoryTab.tsx` imports `AssetTracker
 | `src/utils/ViewerInstanceManager.ts` | Dev-server loading, persistence, checks, play mode, imports, asset registration, and checkpoint operations behind reference component props. |
 
 The AI/Prompt and MCP integrations are removed by omitting their tabs, panels, actions, and dependencies. No replacement layout nodes are rendered. The extra Blitz Scene and Timeline tabs are also omitted; hidden semantic hooks retain the unchanged integration-test roles without affecting layout or pixels.
+
+### Option A placement
+
+Fix pass M removes the centered Check and Checkpoint group. Check now follows Open game in the top-right run group, while Checkpoint and Restore last checkpoint follow Save Scene in its dropdown. The 1440x900 focused rerun found one cluster inside the run group for `initial-empty` and `toolbar-settings-menu`, and only that cluster plus the open Save menu for `toolbar-file-menu`. The before and after crops show the complete placement change:
+
+| Surface | Before | After |
+|---|---|---|
+| Run group | ![Run group before Option A](./editor-parity/option-a-run-before.png) | ![Run group after Option A](./editor-parity/option-a-run-after.png) |
+| Save menu | ![Save menu before Option A](./editor-parity/option-a-save-menu-before.png) | ![Save menu after Option A](./editor-parity/option-a-save-menu-after.png) |

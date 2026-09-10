@@ -34,7 +34,7 @@ import {sanitizeDiagnostic} from './api.ts'
 import {ProjectModuleRewriter} from './module-rewriter.ts'
 import type {PublishProgress} from './types.ts'
 import {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
-import {checkpointProject, restoreProject} from './git.ts'
+import {checkpointProject, latestCheckpointProject, restoreProject} from './git.ts'
 
 export interface ManifestEntry {
     path: string
@@ -287,6 +287,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             ? jsonResponse(result)
             : jsonResponse({error: {code: 'check_failed', message: result.error || 'Check failed.'}, ...result}, 409)
     })
+    app.get('/api/checkpoint', async () => jsonResponse({
+        checkpoint: await latestCheckpointProject(projectRoot),
+    }))
     app.post('/api/checkpoint', async (c) => {
         const body = await readJsonBody(c.req.raw)
         if (body.label !== undefined && typeof body.label !== 'string') {

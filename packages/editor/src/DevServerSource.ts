@@ -200,6 +200,11 @@ export class DevServerSource implements ProjectSource {
         })
     }
 
+    async latestCheckpoint(): Promise<{hash: string, label?: string} | undefined> {
+        const result = await this.json<{checkpoint?: {hash: string, label?: string}}>('/api/checkpoint')
+        return result.checkpoint
+    }
+
     async restore(hash?: string): Promise<{hash: string}> {
         return this.json('/api/restore', {
             method: 'POST',

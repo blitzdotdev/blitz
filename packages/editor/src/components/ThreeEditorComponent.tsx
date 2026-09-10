@@ -46,10 +46,9 @@ import {
 import {isEditableSourceFile} from '../utils/sourceFiles.ts';
 import {DevServerInspectorControls} from '../adapters/DevServerInspectorControls.tsx';
 import {
-    BlitzCheckResults,
     BlitzSaveSceneButton,
     BlitzThemeSettingsMenu,
-    BlitzToolbarControls,
+    BlitzToolbarHooks,
 } from '../adapters/BlitzToolbarControls.tsx';
 
 
@@ -301,11 +300,8 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                             <Button aria-label="Settings" icon="cog" size={"small"} variant={"minimal"} text=""/>
                         </Popover>
                     </Navbar.Group>
-                    <BlitzToolbarControls/>
+                    <BlitzToolbarHooks/>
                 </Navbar>
-
-                <BlitzCheckResults/>
-
                 <WindowPanesLayout
                     key={viewer.scene.uuid} // force rerender when viewer change, because we might add events to the viewer in sub components like BPHierarchyComponent
                     selectedTabIds={{right: rightTabId, bottom: bottomTabId}}

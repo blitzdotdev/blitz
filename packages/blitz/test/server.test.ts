@@ -406,6 +406,11 @@ describe('Blitz dev server', () => {
         })
         expect(checkpoint.status).toBe(200)
         expect(await checkpoint.json()).toMatchObject({hash: expect.stringMatching(/^[a-f\d]+$/), label: 'editor route'})
+        const latestCheckpoint = await fetch(`${base(server)}/api/checkpoint`, {headers})
+        expect(latestCheckpoint.status).toBe(200)
+        expect(await latestCheckpoint.json()).toMatchObject({
+            checkpoint: {hash: expect.stringMatching(/^[a-f\d]+$/), label: 'editor route'},
+        })
 
         await writeFile(resolve(root, 'main.js'), 'changed after checkpoint\n')
         const restored = await fetch(`${base(server)}/api/restore`, {
