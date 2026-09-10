@@ -1,8 +1,8 @@
 import {createHash} from 'node:crypto'
 import {describe, expect, it} from 'vitest'
-import {canonicalizeManifest as canonicalizeBackendManifest} from '../../../services/backend/src/utils/manifest.ts'
 import {
     buildManifest,
+    canonicalizeManifest,
     generateIndexHtml,
     manifestHash,
     pullProject,
@@ -46,16 +46,15 @@ describe('walkProject', () => {
 })
 
 describe('release manifests', () => {
-    it('matches the backend canonical hash exactly', async () => {
+    it('matches the fixed cloud contract hash exactly', async () => {
         const entries = [
             {path: 'z.bin', file: new File([Uint8Array.from([1, 2, 3])], 'z.bin')},
             {path: 'index.html', file: new File(['hello'], 'index.html')},
         ]
         const manifest = await buildManifest(entries, {sha256: 'c'.repeat(64), size: 42})
-        const backendCanonical = canonicalizeBackendManifest(manifest.files)
-        const backendHash = createHash('sha256').update(backendCanonical).digest('hex')
-        expect(await manifestHash(manifest)).toBe(backendHash)
-        expect(backendHash).toBe('c62d887c03354202dddb0a3387119f5074702b3037911686645fdde8b674c852')
+        const contractHash = createHash('sha256').update(canonicalizeManifest(manifest)).digest('hex')
+        expect(await manifestHash(manifest)).toBe(contractHash)
+        expect(contractHash).toBe('c62d887c03354202dddb0a3387119f5074702b3037911686645fdde8b674c852')
         expect(Object.keys(manifest.files)).toEqual(['_blitz/runtime.js', 'index.html', 'z.bin'])
     })
 })
