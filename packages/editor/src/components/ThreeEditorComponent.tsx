@@ -11,6 +11,7 @@ import {
     Popover,
     Slider,
     Tag,
+    type TabId,
 } from '@blueprintjs/core'
 import {ConfigObject, ThemeSettingsMenuComponent, UiConfigRendererContext} from 'uiconfig-blueprint/lib/esm/lib'
 import {
@@ -31,6 +32,8 @@ import {WindowPanesLayout} from './WindowPanesLayout.tsx'
 import {PlayModeButtonGroup} from './PlayModeButtonGroup.tsx'
 import {FilesPanel} from './FilesPanel.tsx'
 import {CameraSelectionMenu} from './CameraSelectionMenu.tsx'
+import {FileMetadataPanel, SourceEditorPanel} from './SourceEditorPanel.tsx'
+import {isEditableSourceFile} from '../utils/sourceFiles.ts'
 
 export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
     const manager = useManagerVersion()
@@ -39,6 +42,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
     const canvasContainer = useRef<HTMLDivElement>(null)
     const playCanvas = useRef<HTMLCanvasElement>(null)
     const [playOverlay, setPlayOverlay] = useState(false)
+    const [rightPanel, setRightPanel] = useState<TabId>('inspector')
 
     useEffect(() => {
         if (!canvasContainer.current || viewer.container.parentElement === canvasContainer.current) return
@@ -111,7 +115,12 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                 </Card>)}
             </div>}
 
-            <WindowPanesLayout panels={{
+            <WindowPanesLayout
+                selectedPanels={{right: rightPanel}}
+                onSelectedPanelChange={(position, id) => {
+                    if (position === 'right') setRightPanel(id)
+                }}
+                panels={{
                 left: [
                     {title: 'Objects', key: 'objects', className: 'hierarchy-stack', content: <ObjectsPanel/>},
                     {title: 'Materials', key: 'materials', content: <MaterialsPanel/>},
@@ -137,7 +146,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                     </div>,
                 }],
                 bottom: [
-                    {title: 'Files', key: 'files', content: <FilesPanel/>},
+                    {title: 'Files', key: 'files', content: <FilesPanel onSelectFile={() => setRightPanel('inspector')}/>},
                     {title: 'Timeline', key: 'timeline', content: <TimelinePanel/>},
                 ],
                 right: [
@@ -204,6 +213,8 @@ function InspectorPanel() {
 
     const selected = picking?.getSelectedObject()
     const selection = !Array.isArray(selected) ? selected : undefined
+    const selectedFile = manager.manifest.find(({path}) => path === manager.selectedFilePath)
+    const showingFile = Boolean(selectedFile && !selection)
     const object = (selection as IObject3D | undefined)?.isObject3D
         ? selection as IObject3D
         : undefined
@@ -212,8 +223,10 @@ function InspectorPanel() {
         : manager.generatorStates
 
     return <div className="editor-panel-body inspector-stack" data-testid="generator-inspector">
-        {!object && !generators.length && <p className="empty-panel-message">Select an object to inspect it.</p>}
-        {object && <>
+        <SourceEditorPanel selectedFile={showingFile && isEditableSourceFile(selectedFile) ? selectedFile : null}/>
+        {showingFile && selectedFile && !isEditableSourceFile(selectedFile) && <FileMetadataPanel entry={selectedFile}/>}
+        {!showingFile && !object && !generators.length && <p className="empty-panel-message">Select an object or file to inspect it.</p>}
+        {!showingFile && object && <>
             <FormGroup label="Name" labelFor="inspector-object-name">
                 <InputGroup
                     id="inspector-object-name"
@@ -230,12 +243,12 @@ function InspectorPanel() {
                 closePanel={() => undefined}
             />}
         </>}
-        {selection && !object && selection.uiConfig && <ConfigObject
+        {!showingFile && selection && !object && selection.uiConfig && <ConfigObject
             config={selection.uiConfig}
             openPanel={() => undefined}
             closePanel={() => undefined}
         />}
-        {generators.map((generator) => <GeneratorInspector key={generator.componentId} generator={generator}/>)}
+        {!showingFile && generators.map((generator) => <GeneratorInspector key={generator.componentId} generator={generator}/>)}
     </div>
 }
 

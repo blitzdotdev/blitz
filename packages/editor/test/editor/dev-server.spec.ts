@@ -152,7 +152,7 @@ test('loads the restored panels, watches generators, and saves text glTF without
     for (const panel of ['Objects', 'Materials', 'Textures', 'Geometries', 'Scene', 'Inspector', 'Settings', 'Project', 'Files', 'Timeline']) {
         await expect(page.getByRole('tab', {name: panel})).toBeVisible()
     }
-    await expect(page.getByRole('button', {name: 'assets/main.scene.gltf'})).toBeVisible()
+    await expect(page.getByTestId('project-files').getByRole('button', {name: 'assets/main.scene.gltf'})).toBeVisible()
 
     const hierarchy = page.getByTestId('scene-hierarchy')
     await expect(hierarchy).toContainText('RoundTripObject')

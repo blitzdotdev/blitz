@@ -14,7 +14,7 @@ import {useManagerVersion} from '../utils/UseManager.ts'
 import type {FileManifestEntry} from '../utils/AssetsProvider.ts'
 
 /** The dev-server manifest replaces the upstream directory-handle browser. */
-export function FilesPanel() {
+export function FilesPanel({onSelectFile}: {onSelectFile?(): void}) {
     const manager = useManagerVersion()
     const warnings = manager.unlistedScripts()
     return <div className="files-panel editor-panel-body">
@@ -26,7 +26,21 @@ export function FilesPanel() {
             compact
         >{path} is not listed in package.json blitz.scripts or blitz.plugins and will not be registered.</Callout>)}
         <ul data-testid="project-files" className="file-list">
-            {manager.manifest.filter(({path}) => !isPrivateBlitzFile(path)).map(({path}) => <li key={path}>{path}</li>)}
+            {manager.manifest.filter(({path}) => !isPrivateBlitzFile(path)).map(({path}) => <li key={path}>
+                <Button
+                    alignText="left"
+                    fill
+                    minimal
+                    small
+                    active={manager.selectedFilePath === path}
+                    icon="document"
+                    text={path}
+                    onClick={() => {
+                        manager.selectFile(path)
+                        onSelectFile?.()
+                    }}
+                />
+            </li>)}
         </ul>
     </div>
 }

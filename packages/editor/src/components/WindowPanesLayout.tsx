@@ -1,6 +1,6 @@
 import {ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle} from "react-resizable-panels";
 import {CSSProperties, ReactNode, useCallback, useEffect, useRef, useState} from "react";
-import {Card, Tab, Tabs} from "@blueprintjs/core";
+import {Card, Tab, Tabs, type TabId} from "@blueprintjs/core";
 import {toTitleCase} from "threepipe";
 import {WindowPanelFlap} from "./WindowPanelFlap.tsx";
 import {PopupDialogCard} from "./PopupDialogCard.tsx";
@@ -19,9 +19,11 @@ export interface WindowPanesLayoutProps{
         bottom: null | (WindowPanel|null)[]
         center: (WindowPanel|null)[]
     }
+    selectedPanels?: Partial<Record<'left' | 'right' | 'bottom' | 'center', TabId>>
+    onSelectedPanelChange?: (position: 'left' | 'right' | 'bottom' | 'center', id: TabId) => void
 }
 
-export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
+export function WindowPanesLayout({panels, selectedPanels, onSelectedPanelChange}: WindowPanesLayoutProps){
     const leftPanelRef = useRef<ImperativePanelHandle>(null)
     const rightPanelRef = useRef<ImperativePanelHandle>(null)
     const bottomPanelRef = useRef<ImperativePanelHandle>(null)
@@ -84,15 +86,21 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
         </Card>
     }
 
-    const renderPanels  = (p0: (WindowPanel|null)[], vertical = false)=> {
+    const renderPanels  = (
+        p0: (WindowPanel|null)[],
+        position: 'left' | 'right' | 'bottom' | 'center',
+        vertical = false,
+    )=> {
         const p = p0.filter(p=>!!p)
         if(p.length > 1){
             return <Tabs
                 vertical={vertical}
                 animate={false}
-                renderActiveTabPanelOnly={true}
+                renderActiveTabPanelOnly={position !== 'right'}
                 size={"medium"}
                 className={"window-panels-tabs"}
+                selectedTabId={selectedPanels?.[position]}
+                onChange={(id) => onSelectedPanelChange?.(position, id)}
             >
                 {p.map(({className, ...panel}, i)=>(
                     <Tab id={panel.key || `tab-${i}`} key={panel.key || i} panel={
@@ -117,7 +125,7 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
             onCollapse={triggerUpdate}
             onExpand={triggerUpdate}
         >
-            {renderPanels(panels.left)}
+            {renderPanels(panels.left, 'left')}
         </Panel>
         <PanelResizeHandle className={"window-panes-separator"} />
         <Panel
@@ -130,7 +138,7 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
                         order={0}
                         className="center-top-panel"
                     >
-                        {renderPanels(panels.center)}
+                        {renderPanels(panels.center, 'center')}
                         <PopupDialogCard/>
                         <WindowPanelFlap
                             isCollapsed={panelRefs.left.current?.isCollapsed() ?? false}
@@ -163,7 +171,7 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
                         onCollapse={triggerUpdate}
                         onExpand={triggerUpdate}
                     >
-                        {renderPanels(panels.bottom, true)}
+                        {renderPanels(panels.bottom, 'bottom', true)}
                     </Panel>
                     </>}
                 </PanelGroup>
@@ -180,7 +188,7 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
             onCollapse={triggerUpdate}
             onExpand={triggerUpdate}
         >
-            {renderPanels(panels.right)}
+            {renderPanels(panels.right, 'right')}
         </Panel>
     </PanelGroup>
 }
