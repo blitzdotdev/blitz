@@ -30,7 +30,7 @@ Status: plan, revised after the domain cutover for the final architecture: the e
 | E3 | Restart `blitz dev` in an existing project | Loads the same project. |
 | E4 | Add a `.script.js` from an external editor | Component type appears in the editor without a manual refresh, via the server event stream. |
 | E5 | Attach the component, press play, stop | Update runs in play. Stop restores the scene. |
-| E6 | Save scene | `assets/main.scene.glb` written. Backup and thumbnail under `.blitz/`. |
+| E6 | Save scene | `assets/main.scene.gltf` and `.bin` written; a second save without edits is byte-identical; `blitz checkpoint` records it (backups and thumbnails are replaced by checkpoints). |
 | E7 | Drop a glb into the canvas | Asset in `assets/`, entry in `assets.json`, loads via `/blitz/@id/`. |
 | E8 | Asset library panel | Polyhaven list loads through the deployed asset proxy. |
 | E9 | Reload the editor tab | Project reopens with no prompt. |
