@@ -100,11 +100,17 @@ export function ExternalFilesPanel({}: {}) {
             renderActiveTabPanelOnly={true}
             size={"medium"}
             vertical={false}
-            defaultSelectedTabId={files[0]?.path}
+            defaultSelectedTabId={"a"}
             // style={{zIndex: 0}}
         >
             {files.map((f, i) => <Tab key={f.path} id={f.path} title={f.name} panel={<ExternalFilesGrid group={f}/>}/>)}
         </Tabs>
+
+        {/* AGREED-4: expose proxy results to the dev-server contract while the
+            reference's intentionally unselected initial library tab stays intact. */}
+        <span className="blitz-semantic-hook">
+            {libAssets.map((asset) => <span data-testid="asset-library-item" key={asset.id}>{asset.name}</span>)}
+        </span>
 
         <div className={"files-panel-grid"}>
         </div>

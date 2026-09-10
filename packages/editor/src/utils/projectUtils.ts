@@ -32,7 +32,9 @@ export const assetUrlPrefix = '/blitz/'
 
 export const canMakeAsset = (object: IObject3D | IMaterial) =>
     Boolean((object as IObject3D).isObject3D || (object as IMaterial).isMaterial)
-    && !object.userData?.rootPath
+    // AGREED-4: a dropped DevServerSource asset is already registered, but its
+    // scene instance occupies the same presentation state as a local import.
+    && (!object.userData?.rootPath || object.userData?.blitzImportedInstance === true)
 
 export const canSaveAsset = (object: IObject3D | IMaterial) =>
     typeof object.userData?.rootPath === 'string' && object.userData.rootPath.startsWith('/blitz/@')

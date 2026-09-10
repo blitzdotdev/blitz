@@ -533,7 +533,9 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
 
 export function isDraggableDroppableNode(obj: IObject3D){
     // isComponent means isComponentInstance
-    const isComponent = obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
+    // AGREED-4: registered dropped roots remain ordinary top-level objects in
+    // the reference hierarchy; only their persisted transport is different.
+    const isComponent = !obj.userData.blitzImportedInstance && obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
     const isExternal = isExternalObject(obj)
     const isGroup = !obj.isMesh && !obj.material && !obj.isLine && !obj.isPoints && !obj.isCamera && !obj.isLight && !obj.isWidget // groups, lights, cameras, helpers, etc
     const droppable = !isExternal && !isComponent && isGroup

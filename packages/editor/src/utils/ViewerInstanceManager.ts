@@ -58,6 +58,9 @@ import {DevServerSource} from '../DevServerSource.ts'
 import {ProjectConflictError, type ProjectEvent, type ProjectFileEntry} from '../ProjectSource.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {EditModePlugin} from './EditModePlugin.ts'
+import {EditorFeatures} from './EditorFeatures.ts'
+import {FileTracker} from './FileTracker.ts'
+import {DevServerAssetTracker} from '../adapters/DevServerAssetTracker.ts'
 import {writeEditorState, type EditorState} from './editorState.ts'
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
@@ -114,22 +117,10 @@ type ModuleExports = Record<string, unknown>
 export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     readonly source: DevServerSource
     readonly hashes = new Map<string, string>()
-    /** Compatibility surface used by the restored reference viewport controls. */
-    readonly features = {
-        set: (key: string, value: boolean, owner: unknown) => {
-            const viewer = this.get()
-            if (key === 'transform-controls') {
-                const plugin = viewer.getPlugin(TransformControlsPlugin)
-                value ? plugin?.enable(owner) : plugin?.disable(owner)
-            } else if (key === 'widgets') {
-                const plugin = viewer.getPlugin(Object3DWidgetsPlugin)
-                value ? plugin?.enable(owner) : plugin?.disable(owner)
-            } else if (key === 'picking') {
-                const plugin = viewer.getPlugin(PickingPlugin)
-                value ? plugin?.enable(owner) : plugin?.disable(owner)
-            }
-        },
-    }
+    /** Reference feature controller, backed by Blitz's persistent edit viewer. */
+    readonly features = new EditorFeatures(this)
+    /** AGREED-4: expose DevServerSource blobs through the reference Memory surface. */
+    readonly fileTracker = new FileTracker()
 
     viewer?: ThreeViewer
     game?: CreatedGame
@@ -269,6 +260,11 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         const sceneText = decode(scene.bytes)
         validateSceneSource(scenePath, sceneText)
         this.hashes.set(scenePath, scene.sha256)
+        this.fileTracker.updateFile(scenePath, new File(
+            [scene.bytes as BlobPart],
+            scenePath.split('/').pop() || scenePath,
+            {type: 'model/gltf+json'},
+        ))
 
         this.editorVersion = serverState.versions.editor || RUNTIME_VERSION
         this.project = {
@@ -289,6 +285,9 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
         await this.prepareEditViewer(config, assetsManifest)
         await this.loadEditScene(sceneText)
+        // AGREED-4: attach the reference registry after the project scene is
+        // loaded so the scene itself remains a blob, not a reusable asset.
+        this.get().assetManager.tracker = new DevServerAssetTracker()
         this.projectLoaded = true
         this.loadedNeedsSave = false
         this.setStatus('Project loaded')
@@ -322,6 +321,9 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             zPrepass: false,
             renderScale: 'auto',
             assetManager: {simpleCache: false, storage: false},
+            // AGREED-4: retain the reference settings row while the parent
+            // DevServerSource drop adapter owns persistence and registration.
+            dropzone: {autoImport: false},
             plugins: [],
         })
         viewer.canvas.style.width = '100%'
@@ -481,8 +483,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         const generatorParent = event.object?.parent
             ? EntityComponentPlugin.GetComponent(event.object.parent, GeneratorComponent)
             : undefined
-        if (!this.loadingScene && !this.savingScene
-            && event.object?.userData.blitzGenerated !== true && !generatorParent) {
+        if (!this.loadingScene && !this.savingScene && event.object
+            && event.object.userData.blitzGenerated !== true && !generatorParent) {
             this.loadedNeedsSave = true
         }
         this.changed()
@@ -863,10 +865,24 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 loaded.userData ||= {}
                 delete loaded.userData.rootSceneModelRoot
                 loaded.userData.rootPath = rootPath
+                loaded.userData.blitzImportedInstance = true
                 loaded.userData.sProperties = [...assetInstanceProperties]
                 loaded.name = file.name
                 for (const child of loaded.children) child.userData.excludeFromExport = true
-                this.get().scene.addObject(loaded as IObject3D)
+                await this.get().assetManager.loadImported(loaded, {
+                    autoCenter: true,
+                    importConfig: true,
+                    autoScale: true,
+                    autoScaleRadius: 2,
+                    centerGeometries: false,
+                    centerGeometriesKeepPosition: true,
+                    clearSceneObjects: false,
+                    disposeSceneObjects: false,
+                    autoSetBackground: false,
+                    autoSetEnvironment: true,
+                })
+                delete (loaded as IObject3D & {_tpRootPath?: string})._tpRootPath
+                delete (loaded as IObject3D & {__rootPath?: string}).__rootPath
             }
             this.loadedNeedsSave = true
             this.setStatus(`Imported ${file.name}`)
@@ -921,6 +937,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     async loadAsset(entry?: {path: string} | null) {
         return entry ? this.getAssetFromEntry(entry) : null
+    }
+
+    unloadAsset(asset: Parameters<DevServerAssetTracker['removeAssetItem']>[0]) {
+        this.get().assetManager.tracker.removeAssetItem(asset)
     }
 
     setWelcomeOpen(open: boolean) {

@@ -17,7 +17,9 @@ export function ExtraMenuItems(props: {
     // todo after onObjectCreate is done, expand the current object if a child is added
 
     if(!obj?.isObject3D) return null
-    const isComponent = obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
+    // AGREED-4: the registered transport identity does not change the local
+    // import's reference object-menu presentation.
+    const isComponent = !obj.userData.blitzImportedInstance && obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
     const isExternal = isExternalObject(obj)
     const isGroup = !obj.isMesh && !obj.material && !obj.isLine && !obj.isPoints && !obj.isCamera // groups, lights, cameras, helpers, etc
     const canCreate = !isExternal && !isComponent && isGroup

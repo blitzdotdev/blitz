@@ -488,6 +488,7 @@ export function NavProjectFileName(){
     if(!project) return null
     return <>
         {project && <Button role="heading" variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>}
-        {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.glb$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
+        {/* AGREED-4: Blitz scenes are text glTF; present the stem in the same reference slot. */}
+        {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.(?:glb|gltf)$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
     </>
 }
