@@ -255,7 +255,9 @@ export function semanticSceneSnapshot(source: ViewerLike | SceneLike): SemanticS
     if (!scene?.modelRoot) throw new Error('A semantic snapshot requires scene.modelRoot')
     return {
         schemaVersion: 1,
-        scene: scene.modelRoot.children.map((object) => serializeObject(object)),
+        scene: scene.modelRoot.children
+            .filter((object) => object.userData?.excludeFromExport !== true)
+            .map((object) => serializeObject(object)),
     }
 }
 
@@ -556,7 +558,9 @@ function serializeObject(object: IObject3D): unknown {
         scale: vectorValue(object.scale),
         components: componentValues(object),
         ...(metadata ? {authoring: metadata} : {}),
-        children: object.children.map((child) => serializeObject(child)),
+        children: object.children
+            .filter((child) => child.userData?.excludeFromExport !== true)
+            .map((child) => serializeObject(child)),
     })
 }
 
@@ -633,10 +637,23 @@ function compareValues(left: unknown, right: unknown, path: string, changes: Per
         changes.push({path: path || '/', before: left, after: right})
         return
     }
+    if (Array.isArray(left) && Array.isArray(right)) {
+        const length = Math.max(left.length, right.length)
+        for (let index = 0; index < length; index += 1) {
+            const named = objectName(left[index]) || objectName(right[index])
+            compareValues(left[index], right[index], `${path}/${escapePointer(named || String(index))}`, changes)
+        }
+        return
+    }
     const leftRecord = left as Record<string, unknown>
     const rightRecord = right as Record<string, unknown>
     const keys = [...new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)])].sort()
     for (const key of keys) compareValues(leftRecord[key], rightRecord[key], `${path}/${escapePointer(key)}`, changes)
+}
+
+function objectName(value: unknown): string | undefined {
+    if (!isRecord(value) || typeof value.name !== 'string') return undefined
+    return value.name || undefined
 }
 
 function semanticValue(value: unknown, seen = new WeakSet<object>(), depth = 0): unknown {

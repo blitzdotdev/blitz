@@ -98,4 +98,35 @@ describe('scene serialization', () => {
         )
         expect(serialized.document).toHaveProperty('nodes.0.extras.gltfUUID', 'authored-stable-id')
     })
+
+    it('drops generated UUIDs that are not used as references', async () => {
+        const serialized = await serializeSceneGltfDocument({
+            asset: {version: '2.0'},
+            scene: 0,
+            scenes: [{
+                nodes: [0],
+                extensions: {WEBGI_viewer: {
+                    plugins: {CannonPhysicsPlugin: {defaultMaterial: {uuid: 'unused-cannon-material'}}},
+                    resources: {materials: {'referenced-material': {}}},
+                }},
+            }],
+            nodes: [{
+                name: 'KeyLight',
+                extensions: {WEBGI_light_extras: {shadow: {camera: {uuid: 'unused-shadow-camera'}}}},
+            }],
+            materials: [
+                {name: 'Floor', extras: {uuid: 'unused-material'}},
+                {name: 'Shared', extras: {uuid: 'referenced-material'}},
+            ],
+        })
+
+        expect(serialized.document).not.toHaveProperty('materials.0.extras.uuid')
+        expect(serialized.document).not.toHaveProperty(
+            'nodes.0.extensions.WEBGI_light_extras.shadow.camera.uuid',
+        )
+        expect(serialized.document).not.toHaveProperty(
+            'scenes.0.extensions.WEBGI_viewer.plugins.CannonPhysicsPlugin.defaultMaterial.uuid',
+        )
+        expect(serialized.document).toHaveProperty('materials.1.extras.uuid', 'referenced-material')
+    })
 })
