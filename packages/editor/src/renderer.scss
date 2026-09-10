@@ -28,3 +28,13 @@ pre[role="alert"] { position: fixed; right: 16px; bottom: 16px; max-width: 600px
   font-size: 0.7rem;
   padding: 0.1rem 0.35rem;
 }
+.publish-dialog { width: min(520px, calc(100vw - 32px)); }
+.publish-dialog-body { display: grid; gap: 16px; padding: 20px; }
+.publish-dialog-body a { color: #8abbff; overflow-wrap: anywhere; }
+.publish-notice, .publish-error { margin: 0; }
+.publish-agent-row, .publish-actions { display: flex; align-items: center; gap: 8px; }
+.publish-agent-row { justify-content: space-between; color: #b7c8e8; }
+.publish-progress { display: grid; gap: 8px; color: #b7c8e8; font-size: 12px; }
+.publish-expiry { color: #e9bd6a; }
+.claim-form { display: grid; gap: 8px; padding-top: 4px; border-top: 1px solid #394b6b; }
+.claim-form .bp5-form-group { margin: 0; }
