@@ -130,6 +130,18 @@ describe('authoring validation fixture matrix', () => {
         ]))
     })
 
+    it('warns but passes when a new scene has no authored nodes', () => {
+        const fixture = createFixture()
+
+        const report = authoringQualityReport(fixture.viewer)
+
+        expect(report).toMatchObject({ok: true, status: 'pass'})
+        expect(report.issues).toContainEqual(expect.objectContaining({
+            code: 'NO_VISIBLE_AUTHORED_CONTENT', severity: 'warning',
+        }))
+        expect(codes(report)).not.toContain('CAMERA_NOT_USEFUL')
+    })
+
     it('rejects a leaked runtime object after Stop', () => {
         const fixture = createFixture()
         addDirectRoom(fixture.modelRoot)
@@ -194,6 +206,30 @@ describe('authoring validation fixture matrix', () => {
         const report = authoringQualityReport(fixture.viewer)
         expect(codes(report)).toContain('CAMERA_NOT_USEFUL')
         expect(report.metrics.cameraInsideRenderableCount).toBe(1)
+        expect(report.issues.find(({code}) => code === 'CAMERA_NOT_USEFUL')?.message)
+            .toContain('scene.defaultCamera "Saved Camera"')
+    })
+
+    it('treats a camera exactly on a mesh face as outside', () => {
+        const fixture = createFixture([0, 0, 3], [0, -0.1, 0])
+        const floor = box('Floor', 0x224466, [8, 0.25, 8])
+        floor.position.y = -0.125
+        fixture.modelRoot.add(floor)
+
+        expect(authoringQualityReport(fixture.viewer)).toMatchObject({ok: true, status: 'pass'})
+    })
+
+    it('judges the saved default camera instead of the active viewport camera', () => {
+        const fixture = createFixture([8, 8, 8], [0, 0, 0])
+        fixture.modelRoot.add(box('Solid Room', 0x224466, [10, 10, 10]))
+        const viewport = new PerspectiveCamera(50, 1, 0.1, 100)
+        viewport.name = 'Edit Viewport'
+        viewport.position.set(0, 0, 0)
+        viewport.lookAt(0, 0, -1)
+        fixture.scene.add(viewport)
+        fixture.scene.mainCamera = viewport
+
+        expect(authoringQualityReport(fixture.viewer)).toMatchObject({ok: true, status: 'pass'})
     })
 
     it('passes a camera beside a rotated floor', () => {
@@ -228,7 +264,11 @@ describe('authoring validation fixture matrix', () => {
 })
 
 function createFixture(position: [number, number, number] = [8, 8, 8], target: [number, number, number] = [0, 0, 0]) {
-    const scene = new Scene() as Scene & {modelRoot: Group, mainCamera: PerspectiveCamera}
+    const scene = new Scene() as Scene & {
+        modelRoot: Group
+        mainCamera: PerspectiveCamera
+        defaultCamera: PerspectiveCamera
+    }
     const modelRoot = new Group()
     modelRoot.name = 'Scene'
     const camera = new PerspectiveCamera(50, 1, 0.1, 100)
@@ -238,6 +278,7 @@ function createFixture(position: [number, number, number] = [8, 8, 8], target: [
     scene.add(modelRoot, camera)
     scene.modelRoot = modelRoot
     scene.mainCamera = camera
+    scene.defaultCamera = camera
     scene.updateMatrixWorld(true)
     return {scene, modelRoot, camera, viewer: {scene} as unknown as {scene: Scene}}
 }

@@ -54,4 +54,48 @@ describe('scene serialization', () => {
         expect(serialized.files).toEqual([])
         expect(serialized.document).not.toHaveProperty('buffers')
     })
+
+    it('drops viewer-owned ids while preserving authored object ids', async () => {
+        const serialized = await serializeSceneGltfDocument({
+            asset: {version: '2.0'},
+            scene: 0,
+            scenes: [{
+                nodes: [0],
+                extras: {rootSceneModelRoot: true, gltfUUID: 'volatile-model-root'},
+                extensions: {
+                    WEBGI_viewer: {
+                        scene: {
+                            backgroundRotation: {isEuler: true},
+                            defaultCamera: {
+                                aspect: 1.75,
+                                autoAspect: true,
+                                object: {
+                                    aspect: 1.75,
+                                    uuid: 'volatile-default-camera',
+                                    name: 'Default Camera',
+                                },
+                            },
+                        },
+                    },
+                },
+            }],
+            nodes: [{name: 'Authored', extras: {gltfUUID: 'authored-stable-id'}}],
+        })
+
+        expect(serialized.document).not.toHaveProperty('scenes.0.extras.gltfUUID')
+        expect(serialized.document).not.toHaveProperty(
+            'scenes.0.extensions.WEBGI_viewer.scene.defaultCamera.object.uuid',
+        )
+        expect(serialized.document).not.toHaveProperty(
+            'scenes.0.extensions.WEBGI_viewer.scene.defaultCamera.aspect',
+        )
+        expect(serialized.document).not.toHaveProperty(
+            'scenes.0.extensions.WEBGI_viewer.scene.defaultCamera.object.aspect',
+        )
+        expect(serialized.document).toHaveProperty(
+            'scenes.0.extensions.WEBGI_viewer.scene.backgroundRotation',
+            {isEuler: true, order: 'XYZ', x: 0, y: 0, z: 0},
+        )
+        expect(serialized.document).toHaveProperty('nodes.0.extras.gltfUUID', 'authored-stable-id')
+    })
 })

@@ -4,12 +4,13 @@
   "private": true,
   "mainScene": "assets/main.scene.gltf",
   "dependencies": {
-    "threepipe": "0.5.1"
+    "threepipe": "0.5.1",
+    "fixture-script": "1.0.0"
   },
   "blitz": {
     "plugins": ["Order.plugin.js:OrderPlugin"],
     "imports": {},
-    "scripts": ["LateComponent.script.js"],
+    "scripts": ["LateComponent.script.js", "fixture-script"],
     "viewer": {
       "msaa": false,
       "tonemap": false
