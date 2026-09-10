@@ -17,7 +17,7 @@ blitz/
     layout.md, local-dev-server-plan.md, open-source-split.md, storefront-plan.md, e2e-test-plan.md
   packages/
     engine/                    @blitzdev/engine     runtime, project format, scripting API, game plugins
-    editor/                    @blitzdev/editor     the editor app; from apps/editor
+    editor/                    @blitzdev/editor     the editor app; from packages/editor
     blitz/                     @blitzdev/blitz      bin `blitz`: init, dev, publish, pull, open; the local server
     template/                  @blitzdev/template   files written by `blitz init`
     threepipe/                 vendored upstream subtree; drop once a build against npm threepipe passes

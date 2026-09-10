@@ -1,0 +1,24 @@
+{
+  "name": "@blitzdev/template",
+  "version": "0.12.0",
+  "description": "The files written by blitz init.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "lint": "eslint main.js samples --ext js --report-unused-disable-directives --max-warnings 0"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "AGENTS.md",
+    "assets.json",
+    "main.js",
+    "icon.svg",
+    ".gitignore",
+    "gitignore",
+    "template",
+    "assets",
+    "samples"
+  ]
+}

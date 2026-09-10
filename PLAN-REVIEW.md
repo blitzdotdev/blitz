@@ -10,7 +10,7 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 
 | Item | Status | Evidence |
 |---|---|---|
-| Workspace: one repo, subtrees for threepipe and uiconfig-blueprint, `apps/editor`, `services/*`, root build and typecheck | BUILT | `git log` on main; `npm run build`, `npm run typecheck` pass |
+| Workspace: one repo, subtrees for threepipe and uiconfig-blueprint, `packages/editor`, `services/*`, root build and typecheck | BUILT | `git log` on main; `npm run build`, `npm run typecheck` pass |
 | Rename Kite to Blitz; MCP bridge and in-editor AI chat removed; `.blitz/` gitignore paths fixed | BUILT | commit `42fa7a9`; tsc and vite build pass |
 | Editor online | BUILT | https://blitz-editor.blitzapp.workers.dev/ ; headless load shows zero console errors, service worker registered |
 | Games backend on workers.dev: anonymous 12 h games, rate limits, `tp_` tokens, claim with secret, email sign-in, content-addressed blobs, releases with activate, fork by `source`, delete, expiry and cleanup crons | BUILT | https://blitz-backend.blitzapp.workers.dev ; 17 local tests; curl walkthrough in `docs/backend-build-report-2026-09-09.md` |
@@ -200,7 +200,7 @@ Added 2026-09-09 after the backend shipped. The spec in `docs/publish-dialog.md`
 Things the spec must change or add before build:
 
 1. **Absolute paths break the workers.dev preview.** The generated `index.html` uses `/_blitz/runtime.js` and `base: '/'`. Until the `*.app.blitz.dev` route exists, the gateway serves games at `https://<gateway>/<slug>/`, so those paths resolve to the gateway root and 404. Use relative paths: `./_blitz/runtime.js` in the import map and the module script, and `base: new URL('./', location.href).href`. Relative paths work in both modes.
-2. **Keep runtime code separable.** The spec builds the runtime as a second Vite input inside `apps/editor`. Fine for Phase A, but put the new modules under `apps/editor/src/runtime/` with no imports from React, Blueprint, or uiconfig. Then the later move to `packages/engine` (section 0 of the layout discussion) is a directory move.
+2. **Keep runtime code separable.** The spec builds the runtime as a second Vite input inside `packages/editor`. Fine for Phase A, but put the new modules under `packages/editor/src/runtime/` with no imports from React, Blueprint, or uiconfig. Then the later move to `packages/engine` (section 0 of the layout discussion) is a directory move.
 3. **esm.sh at play time.** The import map pulls `@threepipe/*` plugins from esm.sh. A published game then depends on a third-party CDN. Bundle the runtime plugin set into `runtime.js` for v1 and keep esm.sh only for project-declared extra dependencies.
 4. **main.js contract.** The release requires `main.js` and the runtime calls `main({viewer})`, but the AGENTS.md template tells agents that `main.js` is unused in development. Fix the template text when the Deploy section is written (section 6 there).
 5. **Backend additions are in progress here:** `GET /api/v1/slugs/:slug`, the spinner branch (503 with `X-Blitz-State`), the `runtimes` table and routes with `RUNTIME_UPLOAD_TOKEN`, GC roots for runtimes, and Google sign-in with the existing teenyapp client id. Blob GC itself was a gap in the shipped backend and is being built now (refcounts, release retention, grace-period sweep, bounded reconciliation).

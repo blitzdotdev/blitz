@@ -1,9 +1,14 @@
-# Blitz agent guide
+# Build a Blitz game
 
-Blitz lets an agent create, publish, and update browser games through a small HTTP API.
+Node.js 20 or newer is required.
 
-Run `blitz dev` to open the local editor and create a game. Publishing returns a preview URL and a game-scoped deploy token. Treat deploy tokens and claim secrets as credentials: store them securely and never print them in logs.
+```sh
+npx @blitzdev/blitz init my-game
+cd my-game
+npm install
+npx blitz dev
+```
 
-Published games run at their preview URL. A claimed game is listed in the public store unless its owner sets `listed` to `false`.
+The last command prints `http://127.0.0.1:4321/?t=...`. Edit source files while it runs. Read `.blitz/state.json` and `.blitz/console.log` for feedback. Before publishing, run `npx blitz pull`, then `npx blitz publish --message "what changed"`; report the live URL.
 
-The canonical machine-readable game list is `GET https://blitz.dev/api/v1/games`.
+Installed source is available at `node_modules/@blitzdev/engine/src`, `node_modules/@blitzdev/editor/src`, `node_modules/@blitzdev/blitz/src`, `node_modules/threepipe/src`, and `node_modules/uiconfig-blueprint/src`. The full scripting API, lifecycle guidance, examples, publishing rules, and limits are copied into each new project's `AGENTS.md` by `blitz init`.
