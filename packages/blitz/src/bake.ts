@@ -1,3 +1,5 @@
+import {BLITZ_SERVER_CLIENT_ID} from '@blitzdev/engine/paths'
+
 export interface BakeSafetyResult {
     ok: boolean
     code?: 'node_not_found' | 'node_ambiguous' | 'non_generated_children' | 'human_edits'
@@ -91,7 +93,7 @@ function valueTouchesIdentity(value: unknown, identities: Set<string>): boolean 
 }
 
 function isHumanClient(client: string): boolean {
-    return client !== 'external' && client !== 'blitz-server' && client !== 'blitz-bake'
+    return client !== 'external' && client !== BLITZ_SERVER_CLIENT_ID && client !== 'blitz-bake'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

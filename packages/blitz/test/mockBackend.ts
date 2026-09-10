@@ -1,5 +1,6 @@
 import {createHash, randomUUID} from 'node:crypto'
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http'
+import {BLITZ_VERSION} from '../src/versions.ts'
 
 interface MockGame {
     id: string
@@ -20,7 +21,7 @@ export interface MockBackend {
     close(): Promise<void>
 }
 
-export async function startMockBackend(): Promise<MockBackend> {
+export async function startMockBackend(options: {runtimeVersions?: string[]} = {}): Promise<MockBackend> {
     const games = new Map<string, MockGame>()
     const blobs = new Map<string, Buffer>()
     const requests: MockBackend['requests'] = []
@@ -77,8 +78,9 @@ export async function startMockBackend(): Promise<MockBackend> {
                 claim_url: `${baseUrl}/api/v1/games/${slug}/claim`,
             })
         }
-        if (request.method === 'GET' && url.pathname === '/api/v1/runtimes/0.12.0') {
-            return sendJson(response, 200, {version: '0.12.0', sha256: runtimeHash, size: runtime.byteLength})
+        const runtimeMatch = request.method === 'GET' && /^\/api\/v1\/runtimes\/([^/]+)$/.exec(url.pathname)
+        if (runtimeMatch && (options.runtimeVersions || [BLITZ_VERSION]).includes(decodeURIComponent(runtimeMatch[1]))) {
+            return sendJson(response, 200, {version: decodeURIComponent(runtimeMatch[1]), sha256: runtimeHash, size: runtime.byteLength})
         }
         const claim = request.method === 'POST' && /^\/api\/v1\/games\/([^/]+)\/claim$/.exec(url.pathname)
         if (claim) {

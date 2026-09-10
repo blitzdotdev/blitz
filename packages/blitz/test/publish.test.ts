@@ -21,6 +21,7 @@ import type {
 import type {PublishApi} from '../src/publish.ts'
 import {FakeDirectory} from './fakeDirectory.ts'
 import manifestGoldenFixtures from './fixtures/manifest-golden.json'
+import {BLITZ_VERSION} from '../src/versions.ts'
 
 const MANIFEST_GOLDENS = {
     comprehensive: {
@@ -70,7 +71,7 @@ describe('generateIndexHtml', () => {
     it('uses relative runtime paths and maps only declared extra dependencies', () => {
         const html = generateIndexHtml({
             name: 'A <Game>',
-            version: '0.12.0',
+            version: BLITZ_VERSION,
             dependencies: [
                 {key: 'threepipe', version: '0.5.1'},
                 {key: 'extra-package', version: '1.2.3'},
@@ -127,7 +128,7 @@ describe('publishProject', () => {
         expect(api.maxUploads).toBe(4)
         expect(api.releaseOptions?.base_release).toBeUndefined()
         expect(progress.at(-1)).toBe('complete')
-        expect(JSON.parse(await root.text('package.json')).blitz.version).toBe('0.12.0')
+        expect(JSON.parse(await root.text('package.json')).blitz.version).toBe(BLITZ_VERSION)
         expect(await root.text('index.html')).toContain("./_blitz/runtime.js")
         const stored = await readDeploys(root.asHandle())
         expect(stored.games['sample-game'].last_release_hash).toBe('d'.repeat(64))
@@ -138,6 +139,32 @@ describe('publishProject', () => {
         await publishProject({dirHandle: root.asHandle(), api, slug: 'sample-game', message: 'second'})
         expect(api.order).not.toContain('create')
         expect(api.releaseOptions).toEqual({message: 'second', base_release: 'd'.repeat(64)})
+    })
+
+    it('uses the exact project pin for blitz.version and the runtime lookup', async () => {
+        const root = sampleProject()
+        const pinned = '9.8.7'
+        root.set('package.json', JSON.stringify({
+            name: 'Pinned Game',
+            devDependencies: {'@blitzdev/blitz': pinned},
+            blitz: {version: '1.2.3'},
+        }))
+        const api = new MockPublishApi()
+
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'pinned-game'})
+
+        expect(api.runtimeVersion).toBe(pinned)
+        expect(JSON.parse(await root.text('package.json')).blitz.version).toBe(pinned)
+    })
+
+    it('reports an unregistered pinned runtime clearly', async () => {
+        const root = sampleProject()
+        const api = new MockPublishApi()
+        api.getRuntime = async () => {
+            throw Object.assign(new Error('not found'), {status: 404})
+        }
+        await expect(publishProject({dirHandle: root.asHandle(), api, slug: 'missing-runtime'}))
+            .rejects.toThrow(`Blitz runtime ${BLITZ_VERSION} is not registered`)
     })
 })
 
@@ -200,6 +227,8 @@ function sampleProject(): FakeDirectory {
     const root = new FakeDirectory('sample')
     root.set('package.json', JSON.stringify({
         name: 'Sample Game',
+        devDependencies: {'@blitzdev/blitz': BLITZ_VERSION},
+        blitz: {version: BLITZ_VERSION},
         dependencies: {threepipe: '0.5.1', 'extra-package': '1.0.0'},
     }))
     root.set('assets.json', JSON.stringify({files: {}, version: 1}))
@@ -218,6 +247,7 @@ class MockPublishApi implements PublishApi {
     maxUploads = 0
     nextReleaseHash = 'd'.repeat(64)
     releaseOptions?: {message?: string; base_release?: string}
+    runtimeVersion?: string
 
     useGame(): void {
         this.order.push('use-game')
@@ -237,9 +267,10 @@ class MockPublishApi implements PublishApi {
         }
     }
 
-    async getRuntime(): Promise<RuntimeRecord> {
+    async getRuntime(version: string): Promise<RuntimeRecord> {
         this.order.push('runtime')
-        return {version: '0.12.0', sha256: 'c'.repeat(64), size: 42}
+        this.runtimeVersion = version
+        return {version, sha256: 'c'.repeat(64), size: 42}
     }
 
     async missingBlobs(hashes: string[]): Promise<string[]> {

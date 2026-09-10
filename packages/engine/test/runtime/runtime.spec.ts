@@ -1,4 +1,5 @@
 import {expect, test} from '@playwright/test'
+import enginePackage from '../../package.json' with {type: 'json'}
 
 test('the published runtime boots scripts, main, and nested assets', async ({page}) => {
     const componentMessages: string[] = []
@@ -13,7 +14,7 @@ test('the published runtime boots scripts, main, and nested assets', async ({pag
     await page.goto('/')
     await expect.poll(() => page.evaluate(() => Boolean(window.__blitzReady))).toBe(true)
     expect(await page.evaluate(() => window.__blitzStartupError)).toBeUndefined()
-    expect(await page.evaluate(() => window.__blitzRuntimeVersion)).toBe('0.12.0')
+    expect(await page.evaluate(() => window.__blitzRuntimeVersion)).toBe(enginePackage.version)
     expect(await page.evaluate(() => window.__blitzMainRan)).toBe(true)
 
     const nestedAssetLoaded = await page.evaluate(() =>

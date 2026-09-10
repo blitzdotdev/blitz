@@ -1,12 +1,16 @@
 import {appendFile, mkdir, readFile} from 'node:fs/promises'
 import {dirname, resolve} from 'node:path'
-import {JOURNAL_PATH} from '@blitzdev/engine/paths'
+import {BLITZ_SERVER_CLIENT_ID, JOURNAL_PATH} from '@blitzdev/engine/paths'
 import {diffSceneGltfText, type SceneDiff} from './scene-diff.ts'
 
 export interface JournalEntry {
     ts: string
     client: string
-    summary: SceneDiff
+    summary: SceneDiff | UpgradeSummary
+}
+
+export interface UpgradeSummary {
+    upgrade: {from: string, to: string}
 }
 
 export interface ReadJournalOptions {
@@ -18,10 +22,19 @@ export async function appendSceneJournal(
     projectRoot: string,
     beforeText: string | undefined,
     afterText: string,
-    client: string,
+    client = BLITZ_SERVER_CLIENT_ID,
     ts = new Date().toISOString(),
 ): Promise<JournalEntry> {
-    const entry: JournalEntry = {ts, client, summary: diffSceneGltfText(beforeText, afterText)}
+    return appendJournalEntry(projectRoot, client, diffSceneGltfText(beforeText, afterText), ts)
+}
+
+export async function appendJournalEntry(
+    projectRoot: string,
+    client: string,
+    summary: JournalEntry['summary'],
+    ts = new Date().toISOString(),
+): Promise<JournalEntry> {
+    const entry: JournalEntry = {ts, client, summary}
     const path = resolve(projectRoot, JOURNAL_PATH)
     await mkdir(dirname(path), {recursive: true})
     await appendFile(path, `${JSON.stringify(entry)}\n`, 'utf8')

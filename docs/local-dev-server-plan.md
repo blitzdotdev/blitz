@@ -46,7 +46,7 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Versioning
 
-The project's `devDependencies` pin `@blitzdev/blitz` at one version. `npx blitz` runs that local version. npm is the versioned store for editor, runtime, template, and `agents.md`. No bootstrapper page, no re-exec. See `docs/open-source-split.md` for the packages.
+The project's `devDependencies` pin `@blitzdev/blitz` at one exact version. Every command except help and version compares itself with that pin. A mismatch delegates to the installed local binary or refuses with install and pinned `npx` instructions. `blitz upgrade [--to x.y.z]` updates the pin and `blitz.version`, installs without lifecycle scripts, runs engine migrations, validates the scene, and writes an upgrade journal entry. npm is the versioned store for editor, runtime, template, and `agents.md`. See `docs/open-source-split.md` for the packages.
 
 ## No hosted editor
 

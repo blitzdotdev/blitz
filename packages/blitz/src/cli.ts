@@ -10,7 +10,10 @@ import {
     runDev,
     sourcesInstructions,
     statusFromDisk,
+    upgradeProject,
 } from './commands.ts'
+import {enforceVersionPin} from './version-pin.ts'
+import {BLITZ_VERSION} from './versions.ts'
 
 const ROOT_USAGE = `Usage: blitz <command> [options]
 
@@ -26,6 +29,7 @@ Commands:
   journal [options]           Read the edit journal
   open                        Open the running local editor
   sources                     Locate installed source
+  upgrade [--to <x.y.z>]      Upgrade the project Blitz version
 
 Run blitz <command> --help for command usage.`
 
@@ -40,14 +44,24 @@ const COMMAND_USAGE: Record<string, string> = {
     journal: 'Usage: blitz journal [--since <iso>] [-n <count>]',
     open: 'Usage: blitz open',
     sources: 'Usage: blitz sources',
+    upgrade: 'Usage: blitz upgrade [--to <x.y.z>]',
 }
 
 const [command = 'help', ...args] = process.argv.slice(2)
 
 try {
-    if (command === 'help' || command === '--help' || command === '-h') {
+    const skipsVersionRule = command === 'help' || command === '--help' || command === '-h'
+        || command === '--version' || command === '-v'
+        || args.includes('--help') || args.includes('-h')
+    const delegatedExitCode = skipsVersionRule ? undefined : await enforceVersionPin(command, process.argv.slice(2))
+    if (delegatedExitCode !== undefined) {
+        process.exitCode = delegatedExitCode
+    } else if (command === 'help' || command === '--help' || command === '-h') {
         if (args.length) throw new Error(`Unknown argument: ${args[0]}`)
         console.log(ROOT_USAGE)
+    } else if (command === '--version' || command === '-v') {
+        if (args.length) throw new Error(`Unknown argument: ${args[0]}`)
+        console.log(BLITZ_VERSION)
     } else if (!COMMAND_USAGE[command]) {
         throw new Error(`Unknown command: ${command}\n${ROOT_USAGE}`)
     } else if (args.includes('--help') || args.includes('-h')) {
@@ -117,6 +131,10 @@ try {
             limit: integerOption(parsed.values['-n'], '-n'),
         })
         for (const entry of entries) console.log(JSON.stringify(entry))
+    } else if (command === 'upgrade') {
+        const parsed = parseArgs(args, {'--to': 'value'})
+        const result = await upgradeProject(process.cwd(), {to: valueOption(parsed.values['--to'])})
+        console.log(`Upgraded Blitz from ${result.from} to ${result.to}`)
     }
 } catch (error) {
     console.error(`blitz: ${error instanceof Error ? error.message : error}`)
