@@ -70,9 +70,6 @@ export async function createGame({base, canvas, onError, fileRevisions = {}}: Cr
         const packageJson = parsePackageJSON(packageText)
         const config = await parsePackageJsonSettingsConfig(packageJson)
         const assetsManifest = parseAssetsJSONManifest(assetsText)
-        if (typeof packageJson.mainScene !== 'string') {
-            throw new Error('package.json mainScene must be a string')
-        }
         const project: RuntimeProject = {
             packageJson,
             config,
@@ -285,10 +282,6 @@ function createErrorReporter(onError?: RuntimeErrorHandler) {
             console.error('[blitz] Runtime error', error)
             return
         }
-        try {
-            onError(error)
-        } catch (handlerError) {
-            console.error('[blitz] onError handler failed', handlerError)
-        }
+        onError(error)
     }
 }

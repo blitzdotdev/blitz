@@ -1,42 +1,58 @@
-import {beforeAll, describe, expect, it, vi} from 'vitest'
-import type {IObject3D, ThreeViewer} from 'threepipe'
+import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest'
+import {mkdtemp, rm, writeFile} from 'node:fs/promises'
+import {resolve} from 'node:path'
+import {pathToFileURL} from 'node:url'
+import type {Group as ThreeGroup, ThreeViewer} from 'threepipe'
 import type * as GeneratorExports from '../../src/plugins/GeneratorComponent.ts'
 
 let generator: typeof GeneratorExports
+let Group: typeof ThreeGroup
+let generatorDirectory: string
+let generatorBase: URL
 
 beforeAll(async () => {
     vi.stubGlobal('ImageData', class ImageData {})
     vi.stubGlobal('window', {location: {href: 'https://example.test/'}})
     generator = await import('../../src/plugins/GeneratorComponent.ts')
+    Group = (await import('threepipe')).Group
+    generatorDirectory = await mkdtemp(resolve(import.meta.dirname, 'generator-'))
+    generatorBase = pathToFileURL(`${generatorDirectory}/`)
+    await writeFile(resolve(generatorDirectory, 'forest.mjs'), `
+export default function generate({node}) {
+    node.add(node.userData.attached)
+    return node.userData.returned
+}
+`)
 })
+
+afterAll(async () => rm(generatorDirectory, {recursive: true, force: true}))
 
 describe('Generator', () => {
     it('replaces old generated children and marks returned and attached children', async () => {
-        const node = new FakeObject()
-        const human = new FakeObject('Human')
-        const old = new FakeObject('Old generated')
-        generator.markGenerated(old as unknown as IObject3D)
+        const node = new Group()
+        const human = new Group()
+        human.name = 'Human'
+        const old = new Group()
+        old.name = 'Old generated'
+        generator.markGenerated(old)
         node.add(human, old)
-        const returned = new FakeObject('Returned')
-        const attached = new FakeObject('Attached')
-        const generate = vi.fn(({node: target}: {node: FakeObject}) => {
-            target.add(attached)
-            return returned
-        })
+        const returned = new Group()
+        returned.name = 'Returned'
+        const attached = new Group()
+        attached.name = 'Attached'
+        node.userData.returned = returned
+        node.userData.attached = attached
 
         const generated = await generator.runGenerator({
-            node: node as unknown as IObject3D,
+            node,
             params: {count: 2},
             viewer: {} as ThreeViewer,
-            engine: {},
-            module: 'generators/forest.js',
-            base: new URL('https://example.test/files/'),
-            importModule: async () => ({default: generate as never}),
+            module: 'forest.mjs',
+            base: generatorBase,
         })
 
         expect(node.children.map(({name}) => name)).toEqual(['Human', 'Attached', 'Returned'])
         expect(generated).toEqual([attached, returned])
-        expect(generate).toHaveBeenCalledOnce()
         for (const child of generated) {
             expect(child.userData).toMatchObject({blitzGenerated: true, excludeFromExport: true})
         }
@@ -50,31 +66,3 @@ describe('Generator', () => {
         expect(() => generator.resolveGeneratorModule('https://elsewhere.test/a.js', base)).toThrow('project-relative')
     })
 })
-
-class FakeObject {
-    readonly isObject3D = true
-    readonly children: FakeObject[] = []
-    readonly userData: Record<string, unknown> = {}
-    parent?: FakeObject
-
-    constructor(readonly name = '') {}
-
-    add(...children: FakeObject[]): void {
-        for (const child of children) {
-            child.parent?.remove(child)
-            child.parent = this
-            this.children.push(child)
-        }
-    }
-
-    remove(child: FakeObject): void {
-        const index = this.children.indexOf(child)
-        if (index >= 0) this.children.splice(index, 1)
-        child.parent = undefined
-    }
-
-    traverse(visitor: (object: FakeObject) => void): void {
-        visitor(this)
-        for (const child of this.children) child.traverse(visitor)
-    }
-}

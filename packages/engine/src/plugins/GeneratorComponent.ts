@@ -23,15 +23,11 @@ export interface GeneratorModule {
 
 export interface GeneratorViewerOptions {
     base: string | URL
-    engine?: Record<string, unknown>
-    importModule?: (url: string) => Promise<GeneratorModule>
     onError?: (error: unknown) => void
 }
 
 interface GeneratorViewerConfig {
     base: URL
-    engine: Record<string, unknown>
-    importModule: (url: string) => Promise<GeneratorModule>
     onError?: (error: unknown) => void
     pending: Set<Promise<void>>
 }
@@ -50,8 +46,6 @@ export class GeneratorComponent extends Object3DComponent {
     static configureViewer(viewer: ThreeViewer, options: GeneratorViewerOptions): void {
         viewerConfigs.set(viewer, {
             base: typeof options.base === 'string' ? new URL(options.base) : options.base,
-            engine: options.engine || ThreePipe as unknown as Record<string, unknown>,
-            importModule: options.importModule || importGeneratorModule,
             onError: options.onError,
             pending: new Set(),
         })
@@ -64,9 +58,10 @@ export class GeneratorComponent extends Object3DComponent {
 
     init(object: IObject3D, state: Record<string, unknown>): void {
         super.init(object, state)
-        this.onStateChange('module', () => { void this.run() })
-        this.onStateChange('params', () => { void this.run() })
-        void this.run()
+        const run = () => { void this.run().catch((error) => reportGeneratorError(this.ctx.viewer, error)) }
+        this.onStateChange('module', run)
+        this.onStateChange('params', run)
+        run()
     }
 
     async run(): Promise<void> {
@@ -78,19 +73,31 @@ export class GeneratorComponent extends Object3DComponent {
             node: this.object,
             params: this.params,
             viewer,
-            engine: config.engine,
             module: this.module,
             base: config.base,
-            importModule: config.importModule,
             revision: ++generatorImportRevision,
         }).then(() => {
             if (revision === this.runRevision) viewer.setDirty(this)
-        }).catch((error) => {
-            config.onError?.(error)
-            if (!config.onError) console.error('[blitz] Generator error', error)
         }).finally(() => config.pending.delete(task))
         config.pending.add(task)
         await task
+    }
+
+    async bake(): Promise<number> {
+        await this.run()
+        const node = this.object
+        const generated = node.children.filter((child) => child.userData.blitzGenerated === true)
+        const bakedFrom = {
+            module: this.module,
+            params: JSON.parse(JSON.stringify(this.params)) as GeneratorParams,
+            ts: new Date().toISOString(),
+        }
+        for (const child of generated) unmarkGenerated(child as IObject3D)
+        this.ctx.ecp.removeComponent(node, this.uuid)
+        node.userData.blitzBakedFrom = bakedFrom
+        node._sChildren = [...node.children]
+        node.setDirty?.({change: 'userData.blitzBakedFrom', source: 'blitz bake'})
+        return generated.length
     }
 
     destroy(): Record<string, unknown> {
@@ -100,34 +107,36 @@ export class GeneratorComponent extends Object3DComponent {
     }
 }
 
-export interface RunGeneratorOptions extends GeneratorContext {
+export interface RunGeneratorOptions extends Omit<GeneratorContext, 'engine'> {
     module: string
     base: URL
     revision?: number
-    importModule?: (url: string) => Promise<GeneratorModule>
 }
 
 export async function runGenerator({
     node,
     params,
     viewer,
-    engine,
     module,
     base,
     revision = 0,
-    importModule = importGeneratorModule,
 }: RunGeneratorOptions): Promise<IObject3D[]> {
     removeGeneratedChildren(node)
     if (!module) return []
     const moduleUrl = resolveGeneratorModule(module, base)
     if (revision) moduleUrl.searchParams.set('blitz-generator', String(revision))
-    const loaded = await importModule(moduleUrl.href)
+    const loaded = await importGeneratorModule(moduleUrl.href)
     if (typeof loaded.default !== 'function') {
         throw new Error(`Generator module must have a default generate function: ${module}`)
     }
 
     const existingChildren = new Set(node.children)
-    const returned = await loaded.default({node, params, viewer, engine})
+    const returned = await loaded.default({
+        node,
+        params,
+        viewer,
+        engine: ThreePipe as unknown as Record<string, unknown>,
+    })
     const returnedObjects = normalizeGeneratedResult(returned)
     for (const child of returnedObjects) {
         if (child.parent !== node) node.add(child)
@@ -149,6 +158,13 @@ export function markGenerated(object: IObject3D): void {
     object.traverse((child: IObject3D) => {
         child.userData.blitzGenerated = true
         child.userData.excludeFromExport = true
+    })
+}
+
+function unmarkGenerated(object: IObject3D): void {
+    object.traverse((child: IObject3D) => {
+        delete child.userData.blitzGenerated
+        delete child.userData.excludeFromExport
     })
 }
 
@@ -178,4 +194,10 @@ function normalizeGeneratedResult(value: unknown): IObject3D[] {
 
 async function importGeneratorModule(url: string): Promise<GeneratorModule> {
     return import(/* @vite-ignore */ url) as Promise<GeneratorModule>
+}
+
+function reportGeneratorError(viewer: ThreeViewer, error: unknown): void {
+    const onError = viewerConfigs.get(viewer)?.onError
+    if (onError) onError(error)
+    else console.error('[blitz] Generator error', error)
 }

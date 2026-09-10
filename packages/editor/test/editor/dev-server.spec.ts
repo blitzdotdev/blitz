@@ -108,7 +108,7 @@ export default function generate({node, params, engine}) {
     scene.images = [{uri: 'data:image/png;base64,iVBORw0KGgo='}]
     await page.getByTestId('scene-source').fill(JSON.stringify(scene))
     await expect(page.getByTestId('scene-objects')).toContainText('RoundTripObject')
-    await page.getByTestId('save-scene').click()
+    await page.getByTestId('scene-source').blur()
     await expect(page.getByText('Scene saved')).toBeVisible()
     await expect.poll(() => manifestHash(packageJson.mainScene)).not.toBe(before)
     await expect.poll(async () => (await readFile(resolve(root, packageJson.mainScene), 'utf8')).includes('RoundTripObject')).toBe(true)
@@ -128,9 +128,6 @@ export default function generate({node, params, engine}) {
         })
     expect(journal[0].client).not.toBe('external')
     expect(journal[0].summary.nodesAdded).toContainEqual({name: 'RoundTripObject'})
-
-    await page.getByTestId('save-scene').click()
-    await expect.poll(() => readFile(resolve(root, packageJson.mainScene), 'utf8')).toBe(savedScene)
 
     await page.reload()
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 15_000})

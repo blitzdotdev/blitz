@@ -3,13 +3,17 @@ import {
     createGame,
     EntityComponentPlugin,
     GeneratorComponent,
+    parsePackageJSON,
+    readProjectGeneratorStates,
     registerScripts,
     RUNTIME_VERSION,
     serializeSceneGltf,
     serializeSceneGltfDocument,
+    updateProjectGeneratorState,
     validateSceneSource,
     walkScriptExports,
     type CreatedGame,
+    type ProjectGeneratorState,
     type SerializedSceneGltf,
 } from '@blitzdev/engine'
 import {DevServerSource} from './DevServerSource.ts'
@@ -22,20 +26,11 @@ const encode = (text: string) => new TextEncoder().encode(text)
 interface ServerState {
     name: string
     versions: Record<string, string>
-    asset_library_proxy_url: string
 }
 
 interface HierarchyEntry {
     name: string
     generated: boolean
-}
-
-interface GeneratorEditorState {
-    componentId: string
-    module: string
-    nodeIndex: number
-    nodeName: string
-    params: Record<string, unknown>
 }
 
 interface Deferred {
@@ -48,17 +43,15 @@ export default function App() {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const gameRef = useRef<CreatedGame>()
     const hashes = useRef(new Map<string, string>())
-    const saveTimer = useRef<ReturnType<typeof setTimeout>>()
     const projectReadyRef = useRef<Deferred>(createDeferred())
     const playPromiseRef = useRef<Promise<void>>()
     const playActiveRef = useRef(false)
     const consoleErrorTimesRef = useRef<number[]>([])
     const consoleWriteQueueRef = useRef<Promise<void>>(Promise.resolve())
-    const sceneTextRef = useRef('')
     const editorVersionRef = useRef(RUNTIME_VERSION)
     const [serverState, setServerState] = useState<ServerState>()
     const [manifest, setManifest] = useState<ProjectFileEntry[]>([])
-    const [scenePath, setScenePath] = useState('assets/main.scene.glb')
+    const [scenePath, setScenePath] = useState('assets/main.scene.gltf')
     const [sceneText, setSceneText] = useState('')
     const [dirty, setDirty] = useState(false)
     const [playing, setPlaying] = useState(false)
@@ -146,8 +139,8 @@ export default function App() {
             source.read('package.json'),
         ])
         entries.forEach((entry) => hashes.current.set(entry.path, entry.sha256))
-        const packageJson = JSON.parse(decode(packageFile.bytes)) as {mainScene?: string}
-        const nextScenePath = packageJson.mainScene || 'assets/main.scene.glb'
+        const packageJson = parsePackageJSON(decode(packageFile.bytes))
+        const nextScenePath = packageJson.mainScene
         const scene = await source.read(nextScenePath)
         validateSceneSource(nextScenePath, decode(scene.bytes))
         hashes.current.set(nextScenePath, scene.sha256)
@@ -155,8 +148,7 @@ export default function App() {
         setServerState(state)
         setManifest(entries)
         setScenePath(nextScenePath)
-        sceneTextRef.current = decode(scene.bytes)
-        setSceneText(sceneTextRef.current)
+        setSceneText(decode(scene.bytes))
         setDirty(false)
         await loadScriptTypes(entries)
         setStatus('Project loaded')
@@ -225,18 +217,13 @@ export default function App() {
         }
         const result = await source.write(scenePath, serialized.gltf, hashes.current.get(scenePath) || '*')
         hashes.current.set(scenePath, result.sha256)
-        sceneTextRef.current = decode(serialized.gltf)
-        setSceneText(sceneTextRef.current)
+        setSceneText(decode(serialized.gltf))
         setDirty(false)
     }, [scenePath, source])
 
-    const saveScene = useCallback(async () => {
-        if (saveTimer.current) {
-            clearTimeout(saveTimer.current)
-            saveTimer.current = undefined
-        }
+    const saveScene = useCallback(async (text: string) => {
         try {
-            const serialized = await serializeScene(scenePath, sceneTextRef.current)
+            const serialized = await serializeScene(scenePath, text)
             await writeSerializedScene(serialized)
             setStatus('Scene saved')
         } catch (error) {
@@ -244,8 +231,7 @@ export default function App() {
             const disk = await source.read(scenePath)
             if (window.confirm('The scene changed on disk. Reload the disk version?')) {
                 hashes.current.set(scenePath, disk.sha256)
-                sceneTextRef.current = decode(disk.bytes)
-                setSceneText(sceneTextRef.current)
+                setSceneText(decode(disk.bytes))
                 setDirty(false)
                 setStatus('Reloaded scene from disk')
             } else {
@@ -254,36 +240,28 @@ export default function App() {
         }
     }, [reportError, scenePath, source, writeSerializedScene])
 
-    const sceneObjectNames = useMemo(() => readSceneObjectNames(scenePath, sceneText), [scenePath, sceneText])
-    const generatorStates = useMemo(() => readGeneratorStates(scenePath, sceneText), [scenePath, sceneText])
+    const sceneObjectNames = useMemo(() => readSceneObjectNames(sceneText), [sceneText])
+    const generatorStates = useMemo(() => readProjectGeneratorStates(sceneText), [sceneText])
     const sourceHierarchy = useMemo<HierarchyEntry[]>(() => sceneObjectNames.map((name) => ({name, generated: false})), [sceneObjectNames])
 
     const updateGeneratorState = useCallback(async (
-        generator: GeneratorEditorState,
-        update: Partial<Pick<GeneratorEditorState, 'module' | 'params'>>,
+        generator: ProjectGeneratorState,
+        update: Partial<Pick<ProjectGeneratorState, 'module' | 'params'>>,
     ) => {
-        const document = JSON.parse(sceneTextRef.current) as {
-            nodes?: Array<{extras?: {EntityComponentPlugin?: Record<string, {state?: Record<string, unknown>}>}}>
-        }
-        const state = document.nodes?.[generator.nodeIndex]?.extras?.EntityComponentPlugin?.[generator.componentId]?.state
-        if (!state) throw new Error(`Generator component is missing on ${generator.nodeName}`)
-        Object.assign(state, update)
-        const nextText = JSON.stringify(document, null, 2)
-        sceneTextRef.current = nextText
-        setSceneText(nextText)
+        const updated = updateProjectGeneratorState(sceneText, generator, update)
+        setSceneText(updated.text)
         setDirty(true)
-        await saveScene()
+        await saveScene(updated.text)
 
         const game = gameRef.current
         const object = game?.viewer.scene.modelRoot.getObjectByName(generator.nodeName)
         const component = object && EntityComponentPlugin.GetComponent(object, GeneratorComponent)
         if (component && game) {
-            if (update.module !== undefined) component.module = update.module
-            if (update.params !== undefined) component.params = update.params
+            component.setState(updated.state)
             await GeneratorComponent.waitForViewer(game.viewer)
             setRuntimeHierarchy(readRuntimeHierarchy(game))
         }
-    }, [saveScene])
+    }, [saveScene, sceneText])
 
     const performBake = useCallback(async (nodeName: string) => {
         if (!gameRef.current) await play()
@@ -297,30 +275,13 @@ export default function App() {
         const node = matches[0]
         const component = EntityComponentPlugin.GetComponent(node, GeneratorComponent)
         if (!component) throw new Error(`Generator component not found on ${nodeName}`)
-        await component.run()
-        await GeneratorComponent.waitForViewer(game.viewer)
-        const generated = node.children.filter((child) => child.userData.blitzGenerated === true)
-        const bakedFrom = {
-            module: component.module,
-            params: JSON.parse(JSON.stringify(component.params)) as Record<string, unknown>,
-            ts: new Date().toISOString(),
-        }
-        for (const child of generated) {
-            child.traverse((descendant) => {
-                delete descendant.userData.blitzGenerated
-                delete descendant.userData.excludeFromExport
-            })
-        }
-        game.viewer.getPlugin(EntityComponentPlugin)?.removeComponent(node, component.uuid)
-        node.userData.blitzBakedFrom = bakedFrom
-        node._sChildren = [...node.children]
-        node.setDirty?.({change: 'userData.blitzBakedFrom', source: 'blitz bake'})
+        const children = await component.bake()
 
         const serialized = await serializeSceneGltf(game.viewer, {scenePath})
         await writeSerializedScene(serialized)
         setRuntimeHierarchy(readRuntimeHierarchy(game))
         setStatus(`Baked ${nodeName}`)
-        return {ok: true, nodeName, children: generated.length}
+        return {ok: true, nodeName, children}
     }, [play, scenePath, writeSerializedScene])
 
     const requestBake = useCallback(async (nodeName: string, force = false) => {
@@ -347,7 +308,7 @@ export default function App() {
         else hashes.current.delete(event.path)
         const entries = await source.list()
         setManifest(entries)
-        const generatorModuleChanged = readGeneratorStates(scenePath, sceneTextRef.current)
+        const generatorModuleChanged = readProjectGeneratorStates(sceneText)
             .some(({module}) => normalizeModulePath(module) === event.path)
         if (event.path.endsWith('.script.js') || event.path.endsWith('.plugin.js')) {
             await loadScriptTypes(entries)
@@ -365,12 +326,11 @@ export default function App() {
             }
             const disk = await source.read(scenePath)
             validateSceneSource(scenePath, decode(disk.bytes))
-            sceneTextRef.current = decode(disk.bytes)
-            setSceneText(sceneTextRef.current)
+            setSceneText(decode(disk.bytes))
             setDirty(false)
             setStatus('Scene reloaded from disk')
         }
-    }, [dirty, loadScriptTypes, performBake, play, readProject, reportError, scenePath, source])
+    }, [dirty, loadScriptTypes, performBake, play, readProject, reportError, scenePath, sceneText, source])
 
     const onProjectEventRef = useRef(onProjectEvent)
     onProjectEventRef.current = onProjectEvent
@@ -405,12 +365,11 @@ export default function App() {
         }
     }, [forwardPlayConsoleError, readProject, reportError, source])
 
-    return <main data-asset-library-proxy-url={serverState?.asset_library_proxy_url}>
+    return <main>
         <header>
             <img src="/logo.svg" alt="Blitz"/>
             <div><h1>{serverState?.name || 'Blitz'}</h1><p>{status}</p></div>
             <button data-testid="play" onClick={() => void (playing ? stop() : play())}>{playing ? 'Stop' : 'Play'}</button>
-            <button data-testid="save-scene" disabled={!sceneText} onClick={() => void saveScene()}>Save scene</button>
             <button data-testid="open-game" onClick={() => setPublishDialogOpen(true)}>Open game</button>
         </header>
         <section className="workspace">
@@ -462,14 +421,12 @@ export default function App() {
                     data-testid="scene-source"
                     value={sceneText}
                     onChange={(event) => {
-                        sceneTextRef.current = event.target.value
                         setSceneText(event.target.value)
                         setDirty(true)
                     }}
                     onBlur={() => {
                         if (!dirty) return
-                        if (saveTimer.current) clearTimeout(saveTimer.current)
-                        saveTimer.current = setTimeout(() => { void saveScene() }, 250)
+                        void saveScene(sceneText)
                     }}
                 />
             </section>
@@ -499,47 +456,15 @@ function formatConsoleValue(value: unknown): string {
 }
 
 async function serializeScene(path: string, text: string) {
-    if (!path.toLowerCase().endsWith('.gltf')) {
-        return {document: {}, gltf: encode(text), files: []}
-    }
     return serializeSceneGltfDocument(JSON.parse(text), {scenePath: path})
 }
 
-function readSceneObjectNames(path: string, text: string): string[] {
-    if (!path.toLowerCase().endsWith('.gltf')) return []
+function readSceneObjectNames(text: string): string[] {
     try {
         const document = JSON.parse(text) as {nodes?: Array<{name?: unknown}>}
         return (document.nodes || [])
             .map(({name}) => typeof name === 'string' ? name : '')
             .filter(Boolean)
-    } catch {
-        return []
-    }
-}
-
-function readGeneratorStates(path: string, text: string): GeneratorEditorState[] {
-    if (!path.toLowerCase().endsWith('.gltf')) return []
-    try {
-        const document = JSON.parse(text) as {
-            nodes?: Array<{
-                name?: unknown
-                extras?: {EntityComponentPlugin?: Record<string, {type?: unknown, state?: unknown}>}
-            }>
-        }
-        const generators: GeneratorEditorState[] = []
-        for (const [nodeIndex, node] of (document.nodes || []).entries()) {
-            for (const [componentId, component] of Object.entries(node.extras?.EntityComponentPlugin || {})) {
-                if (component.type !== GeneratorComponent.ComponentType || !isRecord(component.state)) continue
-                generators.push({
-                    componentId,
-                    module: typeof component.state.module === 'string' ? component.state.module : '',
-                    nodeIndex,
-                    nodeName: typeof node.name === 'string' ? node.name : `Node ${nodeIndex}`,
-                    params: isRecord(component.state.params) ? component.state.params : {},
-                })
-            }
-        }
-        return generators
     } catch {
         return []
     }
@@ -557,8 +482,4 @@ function readRuntimeHierarchy(game: CreatedGame): HierarchyEntry[] {
 
 function normalizeModulePath(path: string): string {
     return path.replace(/^\.\//, '').replace(/\\/g, '/')
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }

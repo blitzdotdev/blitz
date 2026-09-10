@@ -2,8 +2,6 @@ import type {ThreeViewer} from 'threepipe'
 
 export interface SerializeSceneGltfOptions {
     scenePath?: string
-    viewerConfig?: boolean
-    textureHashLength?: number
 }
 
 export interface SerializedSceneFile {
@@ -51,7 +49,7 @@ export async function serializeSceneGltf(
     const blob = await viewer.exportScene({
         exportExt: 'gltf',
         preserveUUIDs: true,
-        viewerConfig: options.viewerConfig ?? true,
+        viewerConfig: true,
         embedUrlImages: false,
         onlyVisible: true,
         jsonSpaces: 2,
@@ -74,7 +72,7 @@ export async function serializeSceneGltfDocument(
     const files: SerializedSceneFile[] = []
 
     extractBuffers(document, sceneDirectory, fileStem(scenePath), files)
-    await extractImages(document, sceneDirectory, files, options.textureHashLength ?? 16)
+    await extractImages(document, sceneDirectory, files, 16)
 
     const sorted = sortObjectKeys(document) as GltfDocument
     return {
@@ -152,15 +150,8 @@ function decodeDataUrl(uri: string): {bytes: Uint8Array, mimeType?: string} {
 }
 
 function decodeBase64(value: string): Uint8Array {
-    if (typeof atob === 'function') {
-        const decoded = atob(value)
-        return Uint8Array.from(decoded, (character) => character.charCodeAt(0))
-    }
-    const nodeBuffer = (globalThis as unknown as {
-        Buffer?: {from(value: string, encoding: string): Uint8Array}
-    }).Buffer
-    if (!nodeBuffer) throw new Error('No base64 decoder is available')
-    return new Uint8Array(nodeBuffer.from(value, 'base64'))
+    const decoded = atob(value)
+    return Uint8Array.from(decoded, (character) => character.charCodeAt(0))
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {
