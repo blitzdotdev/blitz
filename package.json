@@ -1,5 +1,6 @@
 {
   "name": "blitz",
+  "version": "0.12.0",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -29,6 +30,13 @@
     "test:blitz": "npm test -w packages/blitz",
     "test:editor": "npm test -w packages/editor",
     "lint": "npm run lint -w packages/engine && npm run lint -w packages/editor && npm run lint -w packages/blitz && npm run lint -w packages/template",
+    "version:set": "node scripts/set-version.mjs",
+    "release:dry": "node scripts/release.mjs --dry-run",
+    "release": "node scripts/release.mjs --publish",
+    "release:patch": "node scripts/set-version.mjs patch && npm run release",
+    "release:minor": "node scripts/set-version.mjs minor && npm run release",
+    "release:major": "node scripts/set-version.mjs major && npm run release",
+    "release:register": "node scripts/register-runtime.mjs",
     "deploy:editor": "npm run build && npm run deploy -w packages/editor",
     "dev:editor": "npm run dev -w packages/editor"
   }

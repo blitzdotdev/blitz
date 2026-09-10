@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF_NAME" != "$expected" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $expected" >&2
+            exit 1
+          fi
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:blitz
+      - run: npm run test:publish
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:runtime
+      - run: npm run test:editor
+      - name: Publish and register runtime
+        run: node scripts/release.mjs --publish --register
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          RUNTIME_UPLOAD_TOKEN: ${{ secrets.RUNTIME_UPLOAD_TOKEN }}
+          BLITZ_BACKEND_URL: ${{ secrets.BLITZ_BACKEND_URL }}

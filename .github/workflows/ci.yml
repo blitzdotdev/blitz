@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:blitz
+      - run: npm run test:publish
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:runtime
+      - run: npm run test:editor
