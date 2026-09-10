@@ -52,6 +52,7 @@ describe('blitz CLI', () => {
             '--slug', 'agent-picked-slug',
             '--name', 'Agent Picked Name',
             '--message', 'agent release',
+            '--no-check',
         ], {cwd: root, env: {...process.env, BLITZ_BACKEND_URL: backend.url}})
 
         expect(result.stdout).toContain(`${backend.url}/preview/agent-picked-slug/`)
@@ -198,7 +199,7 @@ describe('blitz CLI', () => {
         packageJson.blitz.version = '1.2.3'
         await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
 
-        await execute(process.execPath, [cli, 'publish', '--slug', 'pinned-publish'], {
+        await execute(process.execPath, [cli, 'publish', '--slug', 'pinned-publish', '--no-check'], {
             cwd: root,
             env: {...process.env, BLITZ_BACKEND_URL: backend.url, BLITZ_IGNORE_VERSION_PIN: '1'},
         })

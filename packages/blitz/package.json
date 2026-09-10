@@ -38,6 +38,9 @@
     "hono": "^4.13.7",
     "open": "^10.1.2"
   },
+  "optionalDependencies": {
+    "playwright": "^1.57.0"
+  },
   "devDependencies": {
     "@types/node": "^22.1.0",
     "@types/wicg-file-system-access": "^2023.10.5",

@@ -125,7 +125,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
 
     const serveIndex = async (c: Context<AppEnv>) => {
         if (new URL(c.req.url).searchParams.get('t') !== token) return textResponse('Missing or invalid Blitz token', 401)
-        const source = await readFile(resolve(editorDirectory, 'index.html'), 'utf8')
+        const source = new URL(c.req.url).searchParams.get('headless') === 'check'
+            ? headlessCheckHtml()
+            : await readFile(resolve(editorDirectory, 'index.html'), 'utf8')
         const response = new Response(await injectProjectImportMap(source, projectRoot), {
             headers: {'Content-Type': 'text/html; charset=utf-8'},
         })
@@ -225,6 +227,23 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         return result.ok
             ? jsonResponse(result)
             : jsonResponse({error: {code: 'bake_failed', message: result.error || 'Bake failed.'}}, 409)
+    })
+    app.post('/api/check', async () => {
+        if (![...clients.values()].some(Boolean)) {
+            return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected.'}}, 409)
+        }
+        const id = randomBytes(16).toString('hex')
+        const result = await new Promise<CommandResult>((resolveCommand) => {
+            const timer = setTimeout(() => {
+                pendingCommands.delete(id)
+                resolveCommand({ok: false, error: 'The connected editor did not finish the check within 60 seconds.'})
+            }, 60_000)
+            pendingCommands.set(id, {resolve: resolveCommand, timer})
+            void broadcast('command', {id, command: 'check'})
+        })
+        return result.ok
+            ? jsonResponse(result)
+            : jsonResponse({error: {code: 'check_failed', message: result.error || 'Check failed.'}, ...result}, 409)
     })
     app.post('/api/commands/:id', async (c) => {
         const id = c.req.param('id')
@@ -417,7 +436,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             await Promise.all([...clients.keys()].map((client) => client.close()))
             for (const command of pendingCommands.values()) {
                 clearTimeout(command.timer)
-                command.resolve({ok: false, error: 'The development server closed before the bake finished.'})
+                command.resolve({ok: false, error: 'The development server closed before the command finished.'})
             }
             pendingCommands.clear()
             await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()))
@@ -586,6 +605,141 @@ async function projectState(root: string) {
 async function readProjectImportMap(root: string): Promise<{imports: Record<string, string>}> {
     const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown>
     return dependencyImportMap(projectDependencies(packageJson), '/editor-runtime.js')
+}
+
+function headlessCheckHtml(): string {
+    return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Blitz check</title></head>
+<body><canvas id="first" width="640" height="360"></canvas><canvas id="second" width="640" height="360"></canvas>
+<script type="module">
+import {
+    authoringQualityReport,
+    createGame,
+    persistenceReport,
+    semanticSceneSnapshot,
+    serializeSceneGltf,
+} from '@blitzdev/engine'
+
+const started = performance.now()
+const errors = []
+const message = value => value instanceof Error ? value.message : String(value)
+const consoleError = console.error.bind(console)
+console.error = (...values) => {
+    consoleError(...values)
+    errors.push(values.map(message).join(' '))
+}
+addEventListener('error', event => errors.push(message(event.error || event.message)))
+addEventListener('unhandledrejection', event => errors.push(message(event.reason)))
+
+const codes = issues => [...new Set(issues.map(issue => issue.code))]
+const runFrames = (viewer, target) => new Promise((resolve, reject) => {
+    let frames = 0
+    const timeout = setTimeout(() => {
+        viewer.removeEventListener('preFrame', onFrame)
+        reject(new Error('The game did not render ' + target + ' frames within 10 seconds.'))
+    }, 10000)
+    const onFrame = () => {
+        frames += 1
+        if (frames < target) {
+            viewer.setDirty()
+            return
+        }
+        clearTimeout(timeout)
+        viewer.removeEventListener('preFrame', onFrame)
+        resolve()
+    }
+    viewer.addEventListener('preFrame', onFrame)
+    viewer.setDirty()
+})
+
+try {
+    const base = new URL('/files/', location.href).href
+    const first = await createGame({base, canvas: document.getElementById('first'), onError: error => errors.push(message(error))})
+    const before = semanticSceneSnapshot(first.viewer)
+    const editable = authoringQualityReport(first.viewer)
+    const relationshipIssues = editable.issues.filter(issue =>
+        issue.code === 'MISSING_AUTHORING_SOURCE' || issue.code === 'RUNTIME_SOURCE_DRIFT')
+    const frameCount = Math.max(1, Number(new URL(location.href).searchParams.get('frames')) || 30)
+    await runFrames(first.viewer, frameCount)
+    const projectValidation = await first.runGameValidation()
+    let serialized
+    let serializationError
+    try {
+        serialized = await serializeSceneGltf(first.viewer, {scenePath: first.project.mainScene})
+    } catch (error) {
+        serializationError = message(error)
+    }
+    const cleanup = first.dispose()
+
+    let persistence
+    const networkFetch = window.fetch.bind(window)
+    try {
+        const savedFiles = new Map()
+        if (serialized) {
+            savedFiles.set(new URL(first.project.mainScene, base).href, serialized.gltf)
+            for (const file of serialized.files) savedFiles.set(new URL(file.path, base).href, file.bytes)
+            window.fetch = (input, init) => {
+                const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href).href
+                const bytes = savedFiles.get(url)
+                return bytes
+                    ? Promise.resolve(new Response(bytes, {headers: {'Content-Type': url.endsWith('.gltf') ? 'model/gltf+json' : 'application/octet-stream'}}))
+                    : networkFetch(input, init)
+            }
+        }
+        const second = await createGame({base, canvas: document.getElementById('second'), onError: error => errors.push(message(error))})
+        persistence = persistenceReport(before, semanticSceneSnapshot(second.viewer))
+        const secondCleanup = second.dispose()
+        if (!secondCleanup.ok) cleanup.issues.push(...secondCleanup.issues)
+    } catch (error) {
+        persistence = {
+            ok: false,
+            issues: [{code: 'PERSISTENCE_DRIFT', severity: 'error', message: 'Reload failed: ' + message(error)}],
+            summary: 'Reload failed: ' + message(error),
+        }
+    } finally {
+        window.fetch = networkFetch
+    }
+
+    const cleanupErrors = cleanup.issues.filter(issue => issue.severity === 'error')
+    const playableOk = errors.length === 0 && projectValidation.ok && relationshipIssues.length === 0 && cleanupErrors.length === 0
+    const playableReasons = [
+        errors.length ? errors.length + ' runtime error(s).' : '',
+        !projectValidation.ok ? projectValidation.summary : '',
+        relationshipIssues.length ? relationshipIssues.length + ' runtime source issue(s).' : '',
+        cleanupErrors.length ? cleanupErrors.length + ' cleanup issue(s).' : '',
+    ].filter(Boolean)
+    window.__blitzCheckResult = {
+        ok: playableOk && editable.ok && persistence.ok && !serializationError,
+        mode: 'headless',
+        outcomes: [
+            {
+                name: 'Playable', status: playableOk ? 'pass' : 'fail',
+                summary: playableOk ? 'The game booted and ran ' + frameCount + ' frames without errors.' : playableReasons.join(' '),
+                codes: codes([...relationshipIssues, ...cleanupErrors]), durationMs: Math.round(performance.now() - started),
+            },
+            {
+                name: 'Editable', status: editable.ok ? 'pass' : 'fail', summary: editable.summary,
+                codes: codes(editable.issues), report: editable,
+            },
+            {
+                name: 'Persisted', status: persistence.ok && !serializationError ? 'pass' : 'fail',
+                summary: serializationError ? 'Serialization failed: ' + serializationError : persistence.summary,
+                codes: codes(persistence.issues), report: persistence,
+            },
+        ],
+    }
+} catch (error) {
+    const summary = 'Headless check failed: ' + message(error)
+    window.__blitzCheckResult = {
+        ok: false,
+        mode: 'headless',
+        outcomes: ['Playable', 'Editable', 'Persisted'].map(name => ({name, status: 'fail', summary, codes: []})),
+    }
+} finally {
+    window.__blitzCheckDone = true
+}
+</script></body></html>`
 }
 
 async function injectProjectImportMap(html: string, root: string): Promise<string> {
