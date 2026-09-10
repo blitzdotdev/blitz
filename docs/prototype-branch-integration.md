@@ -16,7 +16,7 @@ An in-editor AI prototype. A local companion process owns the project folder, ch
 
 ## Passes, in order
 
-Each pass ends with tests that fail without the change. No time estimates.
+Each pass ends with tests that fail without the change. No time estimates. Decisions recorded at the end of this file.
 
 ### P1. Authoring contract, validator, and `blitz check`
 
@@ -55,18 +55,14 @@ Our fix pass F covers a changed entry script. It does not cover a changed depend
 - `blitz checkpoint <label>` and `blitz restore`: git-based, with an editor button. One checkpoint before agent work, one restore.
 - `blitz archive`: the sanitized source ZIP with a provenance file. Later.
 
-### P7. Crystal Vault as a fixture
 
-Port Lumen Vault to our format: text glTF, `createGame`, `GeneratorComponent`, components as `.script.js`. Reuse `navigation.js` nearly as-is. Ship as `blitz init --template collectathon` and as an engine integration fixture. Higher effort, strong coverage.
+## Decided 2026-09-09, late
 
-## Optional: Prompt Mode without MCP
-
-Not decided. It reverses the earlier no-in-editor-AI decision, so it needs an explicit yes.
-
-- Keep: the Codex adapter (`scripts/codex-app-server.mjs`, 463 lines) as TypeScript in `packages/blitz`, the run coordinator from the companion (one checkpoint before a prompt, restore after, sanitized events, no secrets retained), the Prompt Mode panel in `packages/editor` talking to `blitz dev` over HTTP and SSE.
-- Drop: the MCP relay, capability tokens for tools, mutation revisions, queued-write revocation, the disconnect barrier. Without the relay the agent only writes files, which the dev server watcher already handles.
-- The agent then has what a terminal agent has: shell and file edits in the project, `.blitz/state.json`, `.blitz/console.log`, the journal, `blitz check`, `blitz publish`. After a prompt ends, `blitz dev` asks the editor to run the checks and records the result.
-- Provider policy from their note: Codex through the official App Server with managed login, billing mode labeled from the account type. Claude only through the unmodified Claude Code binary with its own login, never our own token handling. One provider boundary, capabilities advertised explicitly.
+- Prompt Mode and the in-browser AI chat are deleted, not ported. Nothing from `AIAgentTab`, the Codex adapter, the companion's provider lifecycle, or the MCP relay comes over.
+- P4, source editing in the Inspector, is a view over the project files only. Reads and writes go through the dev server with `If-Match`, the draft lives in memory while typing, nothing else persists.
+- Crystal Vault is not ported. Blitz ships its own samples.
+- Routine calls: `blitz init` creates a git repo so checkpoints are commits; `blitz check` runs through the open editor first, headless later; hot reload uses a server-side import rewrite with a real ES module lexer; telemetry and validation hooks ship with P1; Node 20 or newer.
+- Order: P1, then P3 with the publish and claim dialog in the local editor, then P2, P5, P6, P4.
 
 ## Not taken
 
