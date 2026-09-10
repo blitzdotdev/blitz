@@ -65,4 +65,23 @@ describe('Generator', () => {
         expect(() => generator.resolveGeneratorModule('/generators/forest.js', base)).toThrow('project-relative')
         expect(() => generator.resolveGeneratorModule('https://elsewhere.test/a.js', base)).toThrow('project-relative')
     })
+
+    it('drops stale asynchronous output instead of multiplying previews', async () => {
+        const node = new Group()
+        const returned = new Group()
+        node.userData.returned = returned
+        node.userData.attached = new Group()
+
+        const generated = await generator.runGenerator({
+            node,
+            params: {},
+            viewer: {} as ThreeViewer,
+            module: 'forest.mjs',
+            base: generatorBase,
+            isCurrent: () => false,
+        })
+
+        expect(generated).toEqual([])
+        expect(node.children).toEqual([])
+    })
 })
