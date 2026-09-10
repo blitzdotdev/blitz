@@ -1,327 +1,203 @@
-import {Button, ButtonGroup, Callout, Intent, Spinner} from '@blueprintjs/core'
-import {useCallback, useEffect, useMemo, useRef, useState, type UIEvent} from 'react'
-import {ProjectConflictError, type ProjectFileEntry} from '../ProjectSource.ts'
+import {Button, Callout, Spinner} from '@blueprintjs/core'
+import {useCallback, useEffect, useRef, useState} from 'react'
+import {FileManifestEntry, useAssets} from '../utils/AssetsProvider.ts'
+import {MCPBridgeClient} from '../utils/ai'
 import {useManager} from '../utils/UseManager.ts'
-import {editableSourceExtensions, isEditableSourceFile, maxSourceBytes} from '../utils/sourceFiles.ts'
 
-const encode = (text: string) => new TextEncoder().encode(text)
+const editableExtensions = new Set([
+    '.cjs', '.css', '.html', '.js', '.json', '.jsonc', '.jsx', '.md', '.mjs',
+    '.scss', '.ts', '.tsx', '.txt', '.toml', '.yaml', '.yml',
+])
+const editableNames = new Set(['.gitignore', '.prettierignore', '.prettierrc', 'AGENTS.md', 'README.md'])
+const excludedRoots = new Set(['.git', '.kite', 'dist', 'node_modules', 'runtime'])
+const maxSourceBytes = 1024 * 1024
 
-export function FileMetadataPanel({entry}: {entry: ProjectFileEntry}) {
-    return <div className="file-metadata" data-testid="file-metadata">
-        <h3>{entry.path}</h3>
-        <dl>
-            <dt>Size</dt>
-            <dd>{formatBytes(entry.size)}</dd>
-            <dt>Type</dt>
-            <dd>{fileType(entry.path)}</dd>
-        </dl>
-        {isTextExtension(entry.path) && entry.size > maxSourceBytes && <Callout compact intent={Intent.WARNING}>
-            This text file exceeds the 1 MiB source-editor limit.
-        </Callout>}
-    </div>
+export function isEditableSourceFile(entry?: FileManifestEntry | null) {
+    if (!entry || entry.type !== 'file' || excludedRoots.has(entry.path.split('/')[0])) return false
+    const dot = entry.name.lastIndexOf('.')
+    const extension = dot >= 0 ? entry.name.slice(dot).toLowerCase() : ''
+    return editableExtensions.has(extension) || editableNames.has(entry.name)
 }
 
-export function SourceEditorPanel({selectedFile}: {selectedFile?: ProjectFileEntry | null}) {
+async function readSource(entry: FileManifestEntry, mcpBridge?: MCPBridgeClient): Promise<{content: string; fileRevision?: number}> {
+    if (mcpBridge?.isConnected) {
+        const result = await mcpBridge.requestProject('project.readFile', {path: entry.path}) as {
+            contentBase64: string
+            fileRevision: number
+        }
+        const binary = atob(result.contentBase64)
+        const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
+        if (bytes.byteLength > maxSourceBytes) throw new Error('This file is larger than the 1 MB alpha source-editor limit.')
+        return {content: new TextDecoder().decode(bytes), fileRevision: result.fileRevision}
+    }
+    const file = await (entry.handle as FileSystemFileHandle).getFile()
+    if (file.size > maxSourceBytes) throw new Error('This file is larger than the 1 MB alpha source-editor limit.')
+    return {content: await file.text()}
+}
+
+export function SourceEditorPanel({selectedFile, mcpBridge, onDirtyChange}: {
+    selectedFile?: FileManifestEntry | null
+    mcpBridge?: MCPBridgeClient
+    onDirtyChange?: (dirty: boolean) => void
+}) {
     const manager = useManager()
-    const [activeEntry, setActiveEntry] = useState<ProjectFileEntry | null>(null)
-    const [pendingEntry, setPendingEntry] = useState<ProjectFileEntry | null>(null)
+    const {refreshManifest} = useAssets()
+    const [activeEntry, setActiveEntry] = useState<FileManifestEntry | null>(null)
+    const [pendingEntry, setPendingEntry] = useState<FileManifestEntry | null>(null)
     const [savedContent, setSavedContent] = useState('')
     const [draft, setDraft] = useState('')
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
-    const [conflictHash, setConflictHash] = useState<string>()
-    const [conflicted, setConflicted] = useState(false)
-    const [message, setMessage] = useState<string>()
-    const savedRef = useRef('')
-    const draftRef = useRef('')
-    const baseHashRef = useRef('')
-    const activeEntryRef = useRef<ProjectFileEntry | null>(null)
-    const pendingEntryRef = useRef<ProjectFileEntry | null>(null)
-    const savingRef = useRef(false)
+    const [externalConflict, setExternalConflict] = useState(false)
+    const [message, setMessage] = useState<string | null>(null)
+    const savedRef = useRef(savedContent)
+    const draftRef = useRef(draft)
+    const saveInFlightRef = useRef(false)
     const loadGeneration = useRef(0)
-    const externalChangePending = useRef(false)
-    const lineNumbersRef = useRef<HTMLPreElement>(null)
-    const invalidateLoad = useCallback(() => { ++loadGeneration.current }, [])
 
-    const setActive = useCallback((entry: ProjectFileEntry, content: string, sha256: string) => {
-        activeEntryRef.current = entry
-        pendingEntryRef.current = null
-        savedRef.current = content
-        draftRef.current = content
-        baseHashRef.current = sha256
-        setActiveEntry(entry)
-        setPendingEntry(null)
-        setSavedContent(content)
-        setDraft(content)
-        setConflicted(false)
-        setConflictHash(undefined)
-        setMessage(undefined)
-    }, [])
+    useEffect(() => { savedRef.current = savedContent }, [savedContent])
+    useEffect(() => { draftRef.current = draft }, [draft])
 
-    const load = useCallback(async (entry: ProjectFileEntry, discard = false) => {
+    const load = useCallback(async (entry: FileManifestEntry, discard = false) => {
         const generation = ++loadGeneration.current
-        const active = activeEntryRef.current
-        if (!discard && active?.path !== entry.path && draftRef.current !== savedRef.current) {
-            pendingEntryRef.current = entry
+        if (!discard && activeEntry?.path !== entry.path && draftRef.current !== savedRef.current) {
+            setLoading(false)
             setPendingEntry(entry)
             setMessage(`Save the current file or discard its draft before opening ${entry.path}.`)
-            setLoading(false)
             return
         }
         setLoading(true)
-        setMessage(undefined)
+        setMessage(null)
         try {
-            const result = await manager.source.read(entry.path)
+            const {content} = await readSource(entry, mcpBridge)
             if (generation !== loadGeneration.current) return
-            if (result.bytes.byteLength > maxSourceBytes) {
-                throw new Error('This text file exceeds the 1 MiB source-editor limit.')
-            }
-            const content = decodeUtf8(result.bytes)
-            setActive({...entry, size: result.bytes.byteLength, sha256: result.sha256}, content, result.sha256)
+            savedRef.current = content
+            draftRef.current = content
+            setActiveEntry(entry)
+            setPendingEntry(null)
+            setSavedContent(content)
+            setDraft(content)
+            setExternalConflict(false)
         } catch (error) {
-            if (generation === loadGeneration.current) setMessage(errorMessage(error))
+            if (generation === loadGeneration.current) setMessage(error instanceof Error ? error.message : String(error))
         } finally {
             if (generation === loadGeneration.current) setLoading(false)
         }
-    }, [manager.source, setActive])
+    }, [activeEntry?.path, mcpBridge])
 
-    const selectedSource = isEditableSourceFile(selectedFile) ? selectedFile : null
-    const selectedPath = selectedSource?.path
+    const selectedSource = isEditableSourceFile(selectedFile) ? selectedFile! : null
     useEffect(() => {
         if (!selectedSource) {
-            ++loadGeneration.current
             setLoading(false)
-            return
-        }
-        const active = activeEntryRef.current
-        if (active?.path === selectedSource.path) {
-            activeEntryRef.current = selectedSource
-            setActiveEntry(selectedSource)
-            if (pendingEntryRef.current?.path === selectedSource.path) {
-                pendingEntryRef.current = null
-                setPendingEntry(null)
-            }
+        } else if (activeEntry?.path === selectedSource.path) {
             setLoading(false)
-            return
+            if (activeEntry !== selectedSource) setActiveEntry(selectedSource)
+            if (pendingEntry) setPendingEntry(null)
+        } else {
+            void load(selectedSource)
         }
-        void load(selectedSource)
-        return invalidateLoad
-        // File identity is its project-relative path. Manifest updates must not
-        // replace a draft or turn every watcher event into a selection load.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [invalidateLoad, load, selectedPath])
+        // Invalidate reads even when selection returns to the already-open
+        // file or leaves source editing, neither of which starts another load.
+        return () => { ++loadGeneration.current }
+    }, [activeEntry, load, pendingEntry, selectedSource])
 
     const reload = useCallback(async () => {
-        const active = activeEntryRef.current
-        if (active) await load(active, true)
-    }, [load])
-
-    const checkExternalChange = useCallback(async () => {
-        const active = activeEntryRef.current
-        if (!active) return
-        const generation = ++loadGeneration.current
-        try {
-            const result = await manager.source.read(active.path)
-            if (activeEntryRef.current?.path !== active.path) return
-            if (result.sha256 === baseHashRef.current) return
-            if (generation !== loadGeneration.current) {
-                if (draftRef.current !== savedRef.current) {
-                    setConflictHash(result.sha256)
-                    setConflicted(true)
-                    setMessage('This file changed on disk. Your unsaved draft has been preserved.')
-                }
-                return
-            }
-            if (draftRef.current !== savedRef.current) {
-                setConflictHash(result.sha256)
-                setConflicted(true)
-                setMessage('This file changed on disk. Your unsaved draft has been preserved.')
-                return
-            }
-            const content = decodeUtf8(result.bytes)
-            setActive({...active, size: result.bytes.byteLength, sha256: result.sha256}, content, result.sha256)
-        } catch (error) {
-            if (activeEntryRef.current?.path === active.path) setMessage(errorMessage(error))
-        }
-    }, [manager.source, setActive])
+        if (activeEntry) await load(activeEntry, true)
+    }, [activeEntry, load])
 
     const save = useCallback(async (overwrite = false) => {
-        const active = activeEntryRef.current
-        if (!active || savingRef.current) return
-        const contentToSave = draftRef.current
-        const hashToMatch = overwrite ? conflictHash : baseHashRef.current
-        if (!hashToMatch) {
-            setMessage('Reload this file before overwriting it.')
-            return
-        }
-        savingRef.current = true
+        if (!activeEntry || saving) return
         setSaving(true)
-        setMessage(undefined)
+        saveInFlightRef.current = true
+        setMessage(null)
         try {
-            const result = await manager.source.write(active.path, encode(contentToSave), hashToMatch)
-            savedRef.current = contentToSave
-            baseHashRef.current = result.sha256
-            setSavedContent(contentToSave)
-            setConflicted(false)
-            setConflictHash(undefined)
-            const newerDraft = draftRef.current !== contentToSave
-            setMessage(newerDraft ? 'Saved the earlier draft. Your newer edits are still unsaved.' : 'Saved.')
-            await manager.sourceFileSaved(active.path, result.sha256)
-            const pending = pendingEntryRef.current
-            if (!newerDraft && pending && pending.path !== active.path) await load(pending, true)
-        } catch (error) {
-            if (error instanceof ProjectConflictError) {
-                setConflictHash(error.sha256)
-                setConflicted(true)
-                setMessage('This file changed on disk. Reload it or overwrite the current disk version.')
-            } else {
-                setMessage(errorMessage(error))
-            }
-        } finally {
-            savingRef.current = false
-            setSaving(false)
-            if (externalChangePending.current) {
-                externalChangePending.current = false
-                void checkExternalChange()
-            }
-        }
-    }, [checkExternalChange, conflictHash, load, manager])
-
-    useEffect(() => {
-        const onProjectFileChange = (event: {path: string}) => {
-            if (event.path !== activeEntryRef.current?.path) return
-            if (savingRef.current) {
-                externalChangePending.current = true
+            const contentToSave = draftRef.current
+            const {content: current, fileRevision} = await readSource(activeEntry, mcpBridge)
+            if (!overwrite && current !== savedRef.current) {
+                setExternalConflict(true)
+                setMessage('This file changed outside the source editor. Reload it or explicitly overwrite the disk version.')
                 return
             }
-            void checkExternalChange()
+            if (mcpBridge?.isConnected) {
+                await mcpBridge.requestProject('project.writeFiles', {
+                    operationId: `source-save-${Date.now()}-${crypto.randomUUID()}`,
+                    expectedFileRevision: fileRevision,
+                    files: [{path: activeEntry.path, content: contentToSave}],
+                })
+            }
+            const writable = await (activeEntry.handle as FileSystemFileHandle).createWritable()
+            await writable.write(contentToSave)
+            await writable.close()
+            const newerDraft = draftRef.current !== contentToSave
+            savedRef.current = contentToSave
+            setSavedContent(contentToSave)
+            setExternalConflict(false)
+            setMessage(newerDraft ? 'Saved the earlier draft. Your newer edits are still unsaved.' : 'Saved.')
+            await manager.refreshProjectFiles([activeEntry.path])
+            await refreshManifest(true)
+            if (!newerDraft && pendingEntry && pendingEntry.path !== activeEntry.path) await load(pendingEntry, true)
+        } catch (error) {
+            setMessage(error instanceof Error ? error.message : String(error))
+        } finally {
+            saveInFlightRef.current = false
+            setSaving(false)
         }
-        manager.addEventListener('projectFileChange', onProjectFileChange)
-        return () => manager.removeEventListener('projectFileChange', onProjectFileChange)
-    }, [checkExternalChange, manager])
+    }, [activeEntry, load, manager, mcpBridge, pendingEntry, refreshManifest, saving])
 
-    const dirty = draft !== savedContent
     useEffect(() => {
-        manager.setSourceDraftDirty(dirty)
-    }, [dirty, manager])
-    useEffect(() => () => manager.setSourceDraftDirty(false), [manager])
-
-    const activePath = activeEntry?.path
-    useEffect(() => {
-        if (!selectedPath || !activePath) return
-        const keydown = (event: KeyboardEvent) => {
-            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
-                event.preventDefault()
-                void save()
+        const onFilesChanged = async (event: {paths?: string[]}) => {
+            await refreshManifest(true)
+            if (!activeEntry || (event.paths?.length && !event.paths.includes(activeEntry.path) && !event.paths.includes('*'))) return
+            if (saveInFlightRef.current) return
+            try {
+                const {content: current} = await readSource(activeEntry, mcpBridge)
+                if (current === savedRef.current) return
+                if (draftRef.current !== savedRef.current) {
+                    setExternalConflict(true)
+                    setMessage('This file changed outside the source editor. Your unsaved draft has been preserved.')
+                } else {
+                    savedRef.current = current
+                    draftRef.current = current
+                    setSavedContent(current)
+                    setDraft(current)
+                    setMessage('Reloaded an external change.')
+                }
+            } catch (error) {
+                setMessage(error instanceof Error ? error.message : String(error))
             }
         }
-        window.addEventListener('keydown', keydown)
-        return () => window.removeEventListener('keydown', keydown)
-    }, [activePath, save, selectedPath])
+        manager.addEventListener('projectFilesChanged', onFilesChanged)
+        return () => manager.removeEventListener('projectFilesChanged', onFilesChanged)
+    }, [activeEntry, manager, mcpBridge, refreshManifest])
 
-    const lineNumbers = useMemo(() => {
-        const count = draft.split('\n').length
-        return Array.from({length: count}, (_, index) => index + 1).join('\n')
-    }, [draft])
+    const dirty = draft !== savedContent
+    useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
+    useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
 
     if (!selectedSource) return null
-    if (!activeEntry) return <div className="source-editor-placeholder">
-        {loading && <Spinner size={24}/>}
-        {message && <Callout compact intent={Intent.WARNING}>{message}</Callout>}
-    </div>
+    if (!activeEntry) return <div className="kite-source-placeholder"><Spinner size={24}/></div>
 
-    const pendingDifferentFile = pendingEntry && pendingEntry.path !== activeEntry.path
-    return <div className="source-editor" data-testid="source-editor">
-        <div className="source-editor-toolbar">
+    return <div className="kite-source-editor kite-source-inspector">
+        <div className="kite-source-toolbar">
             <strong title={activeEntry.path}>{activeEntry.path}</strong>
-            <span className="source-editor-status" data-testid="source-editor-status">{dirty ? 'Unsaved changes' : 'Saved'}</span>
-            <ButtonGroup>
-                <Button
-                    small
-                    icon="undo"
-                    text="Revert"
-                    disabled={!dirty || loading || saving}
-                    onClick={() => {
-                        ++loadGeneration.current
-                        draftRef.current = savedRef.current
-                        setDraft(savedRef.current)
-                        setMessage(undefined)
-                    }}
-                />
-                <Button
-                    small
-                    intent={Intent.PRIMARY}
-                    icon="floppy-disk"
-                    text="Save"
-                    loading={saving}
-                    disabled={!dirty || conflicted}
-                    onClick={() => void save()}
-                />
-            </ButtonGroup>
+            <span className="kite-source-status">{dirty ? 'Unsaved changes' : 'Saved'}</span>
+            <Button small icon="refresh" text="Reload" disabled={loading || saving} onClick={() => void reload()}/>
+            {pendingEntry && <Button small intent="warning" text="Discard & open selected" disabled={saving} onClick={() => void load(pendingEntry, true)}/>}
+            {externalConflict && dirty && <Button small intent="danger" text="Overwrite disk" disabled={saving} onClick={() => void save(true)}/>}
+            <Button small intent="primary" icon="floppy-disk" text="Save" loading={saving} disabled={!dirty || externalConflict} onClick={() => void save()}/>
         </div>
-        {message && <Callout compact intent={conflicted || pendingDifferentFile ? Intent.WARNING : Intent.NONE}>{message}</Callout>}
-        {conflicted && <ButtonGroup className="source-conflict-actions">
-            <Button small icon="refresh" text="Reload" disabled={saving} onClick={() => void reload()}/>
-            <Button small intent={Intent.DANGER} text="Overwrite" disabled={saving} onClick={() => void save(true)}/>
-        </ButtonGroup>}
-        {pendingDifferentFile && <Button
-            small
-            intent={Intent.WARNING}
-            text="Discard & open selected"
-            disabled={saving}
-            onClick={() => void load(pendingEntry, true)}
-        />}
-        <div className="source-editor-input">
-            <pre ref={lineNumbersRef} className="source-line-numbers" aria-hidden="true">{lineNumbers}</pre>
-            <textarea
-                aria-label={`Source editor: ${activeEntry.path}`}
-                className="bp5-input source-textarea"
-                value={draft}
-                spellCheck={false}
-                onScroll={(event: UIEvent<HTMLTextAreaElement>) => {
-                    if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop
-                }}
-                onChange={(event) => {
-                    ++loadGeneration.current
-                    setLoading(false)
-                    draftRef.current = event.target.value
-                    setDraft(event.target.value)
-                    if (!conflicted) setMessage(undefined)
-                }}
-            />
-        </div>
+        {message && <Callout compact intent={externalConflict || pendingEntry ? 'warning' : 'none'}>{message}</Callout>}
+        <textarea
+            aria-label={`Source editor: ${activeEntry.path}`}
+            className="kite-source-textarea"
+            value={draft}
+            disabled={loading}
+            spellCheck={false}
+            onChange={event => {
+                draftRef.current = event.target.value
+                setDraft(event.target.value)
+                setMessage(null)
+            }}
+        />
     </div>
-}
-
-function decodeUtf8(bytes: Uint8Array): string {
-    try {
-        return new TextDecoder('utf-8', {fatal: true}).decode(bytes)
-    } catch {
-        throw new Error('This file is not valid UTF-8 and cannot be edited as source text.')
-    }
-}
-
-function isTextExtension(path: string): boolean {
-    const dot = path.lastIndexOf('.')
-    return dot >= 0 && editableSourceExtensions.has(path.slice(dot).toLowerCase())
-}
-
-function fileType(path: string): string {
-    const extension = path.includes('.') ? path.slice(path.lastIndexOf('.') + 1).toLowerCase() : ''
-    return ({
-        css: 'text/css', glb: 'model/gltf-binary', gltf: 'model/gltf+json', html: 'text/html',
-        jpeg: 'image/jpeg', jpg: 'image/jpeg', js: 'text/javascript', json: 'application/json',
-        md: 'text/markdown', mjs: 'text/javascript', png: 'image/png', txt: 'text/plain',
-        webp: 'image/webp',
-    } as Record<string, string>)[extension] || 'application/octet-stream'
-}
-
-function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
-}
-
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error)
 }

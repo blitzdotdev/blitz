@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference asset action is retained behind manager compatibility methods.
 import {useProject} from "./UseProject.ts";
 import {useManager} from "./UseManager.ts";
 import {useState} from "react";

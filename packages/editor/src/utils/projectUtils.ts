@@ -1,10 +1,40 @@
-import type {IGeometry, IMaterial, IObject3D, ITexture} from 'threepipe'
+import type {IGeometry, IMaterial, IObject3D, ITexture, TypedClass} from 'threepipe'
+import type {FileManifestEntry} from './AssetsProvider.ts'
+import type {SavedSceneFile} from './project.ts'
+
+export type SelObjectType = 'object' | 'material' | 'texture' | 'geometry' | 'unknown' | 'none' | 'plugin'
+
+export interface SelectFileRef {
+    uuid: string
+    name: string
+    type: SelObjectType | 'image' | 'script' | TypedClass[]
+    entry: FileManifestEntry
+    userData?: Record<string, unknown>
+}
+
+export const assetableFileTypes = ['.glb', '.mat', '.json']
+export const notAssetableFileTypes = ['.scene.glb']
+
+export function isLoadableFile(file: string) {
+    return /\.(glb|mat|json|png|jpe?g|gif|bmp|tiff|webp|hdr|exr|ktx2|svg)$/i.test(file)
+        && !notAssetableFileTypes.some((extension) => file.endsWith(extension))
+}
+
+export function logAsset(data: unknown, object: unknown) {
+    console.log(object, data)
+}
+
+export function isPackageProject(project?: SavedSceneFile | {file?: unknown} | null) {
+    return Boolean(project && (project.file === 'package.json' || (project.file as File | undefined)?.name === 'package.json'))
+}
 
 export const assetUrlPrefix = '/blitz/'
 
 export const canMakeAsset = (object: IObject3D | IMaterial) =>
     Boolean((object as IObject3D).isObject3D || (object as IMaterial).isMaterial)
-    && !object.userData?.rootPath
+    // AGREED-4: a dropped DevServerSource asset is already registered, but its
+    // scene instance occupies the same presentation state as a local import.
+    && (!object.userData?.rootPath || object.userData?.blitzImportedInstance === true)
 
 export const canSaveAsset = (object: IObject3D | IMaterial) =>
     typeof object.userData?.rootPath === 'string' && object.userData.rootPath.startsWith('/blitz/@')

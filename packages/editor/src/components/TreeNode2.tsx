@@ -100,7 +100,8 @@ export class TreeNode2<T = {}> extends React.Component<TreeNodeProps<T>> {
         // console.log('render TreeNode2', label, isExpanded);
         return (
             <li className={classes}>
-                <div className={contentClasses} ref={this.handleContentRef} {...eventHandlers}>
+                {/* AGREED-4: keep the dev-server hierarchy's keyboard/test contract on the restored node. */}
+                <div role="button" className={contentClasses} ref={this.handleContentRef} {...eventHandlers}>
                     {this.maybeRenderCaret()}
                     <Icon className={Classes.TREE_NODE_ICON} icon={icon} aria-hidden={true} tabIndex={-1} intent={intent} />
                     <span className={Classes.TREE_NODE_LABEL}

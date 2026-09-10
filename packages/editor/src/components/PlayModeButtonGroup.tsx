@@ -1,16 +1,71 @@
-import {Button, ButtonGroup, Intent} from '@blueprintjs/core'
-import {useManagerVersion} from '../utils/UseManager.ts'
+import {FC} from "react";
+import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
+import {InteractionIconButton} from "./InteractionIconButton.tsx";
+import {useManagerVersion} from "../utils/UseManager.ts";
 
-export function PlayModeButtonGroup({onPlay, onStop}: {onPlay(): void, onStop(): void}) {
+export const PlayModeButtonGroup: FC<{
+    onPlay(): void
+    onStop(): void
+}> = ({onPlay, onStop}) => {
     const manager = useManagerVersion()
-    const stopping = manager.isPlaying
+    const isPlaying = manager.isPlaying || manager.isStartingPlay
+    const isPausedRunning = false
 
-    return <ButtonGroup>
-        <Button
-            data-testid="play"
-            icon={stopping ? 'stop' : 'play'}
-            intent={stopping ? Intent.DANGER : Intent.PRIMARY}
-            onClick={stopping ? onStop : onPlay}
-        >{stopping ? 'Stop' : 'Play'}</Button>
-    </ButtonGroup>
+    // todo on playing change
+    //  set picking enabled
+    //  set playing in viewer
+    //  disable save button
+    //  disable loading another file
+    //  when playing stopped, reload scene
+    //  dont track object/material updates when playing
+
+    return (
+        <div className="isPlayingContainer">
+            <ButtonGroup
+                onContextMenu={e=> e.preventDefault()}
+                vertical={false} style={{width: "max-content"}}>
+                {([{
+                    key: 'edit',
+                    label: 'Edit',
+                    icon: 'edit' as IconName,
+                    value: false,
+                }, {
+                    key: 'pause',
+                    label: 'Pause',
+                    icon: 'pause' as IconName,
+                    value: null,
+                }, {
+                    key: 'play',
+                    label: 'Run',
+                    icon: 'play' as IconName,
+                    value: true,
+                }]).map((v) => {
+                    const active = v.value === isPlaying || (isPausedRunning && v.value === null)
+                    return (
+                        <Tooltip
+                            content={v.label}
+                            key={v.key}
+                            intent={Intent.PRIMARY}
+                            position={Position.BOTTOM}
+                            usePortal={true}
+                            // disabled={isPopoverOpen}
+                            // openOnTargetFocus={false}
+                        >
+                            <InteractionIconButton
+                                disabled={v.key === 'pause' && !isPlaying}
+                                data-testid={v.key === 'play' ? 'play' : undefined}
+                                intent={active ? Intent.PRIMARY : Intent.NONE}
+                                endIcon={v.icon}
+                                active={active}
+                                onClick={() => {
+                                    if (v.value === true) isPlaying ? onStop() : onPlay()
+                                    else if (v.value === false) onStop()
+                                }}/>
+                        </Tooltip>
+
+                    );
+                })}
+            </ButtonGroup>
+        </div>
+    )
 }

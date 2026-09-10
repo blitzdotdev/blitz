@@ -830,3 +830,4 @@ export function cloneAssetItem<T extends IObject3D|IMaterial|ITexture= IObject3D
 
 export const defSPropsObj = ['visible', 'name', 'position', 'quaternion', 'scale']
 export const defSPropsMat = ['name']
+

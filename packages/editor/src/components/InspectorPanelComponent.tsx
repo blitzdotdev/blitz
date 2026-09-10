@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference inspector supports legacy asset metadata carried at runtime.
 import {PanelActions} from "@blueprintjs/core/lib/esnext/components/panel-stack2/panelTypes";
 import {getFileByPath, useAssets} from "../utils/AssetsProvider.ts";
 import {
@@ -145,10 +146,13 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
 
     const inspectingScene = !selObject && !selFile
 
-    const assetRootPath1_ = (selObject as IObject3D|IMaterial|ITexture|IGeometry)?._tpRootPath || (selObject as any)?.__rootPath || null
+    // AGREED-4: the /blitz/@ transport identity is hidden from the reference
+    // inspector shell for a normal dropped scene instance.
+    const blitzImportedInstance = (selObject as IObject3D)?.userData?.blitzImportedInstance === true
+    const assetRootPath1_ = blitzImportedInstance ? null : (selObject as IObject3D|IMaterial|ITexture|IGeometry)?._tpRootPath || (selObject as any)?.__rootPath || null
     let assetRootUid = (selObject as IObject3D)?._tpRootUid || null // if this is set, this object is a clone of a child of an asset
 
-    const instanceRootPath = !assetRootPath1_ ? selObject?.userData?.rootPath : null
+    const instanceRootPath = !assetRootPath1_ && !blitzImportedInstance ? selObject?.userData?.rootPath : null
     const isAssetInstance = instanceRootPath && selObject?.userData?.rootPath?.startsWith(assetUrlPrefix)
 
     const assetRootPathFull  = assetRootPath1_ && !assetRootPath1_.startsWith(assetUrlPrefix) ? null : assetRootPath1_

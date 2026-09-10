@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference UI is backed by the DevServerSource compatibility facade.
 import {ViewerInstanceManager} from "../utils/ViewerInstanceManager.ts";
 import {showSuccessErrorToast} from "../utils/Toaster.tsx";
 

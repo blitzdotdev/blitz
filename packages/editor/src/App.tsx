@@ -7,10 +7,15 @@ import {
     VisualStyleProvider,
 } from 'uiconfig-blueprint/lib/esm/lib'
 import {ThreeEditorComponent} from './components/ThreeEditorComponent.tsx'
-import {WelcomeScreenDialog} from './components/WelcomeScreenDialog.tsx'
 import {DevServerSource} from './DevServerSource.ts'
 import {PublishDialog} from './PublishDialog.tsx'
 import {ManagerProvider, useManagerVersion} from './utils/UseManager.ts'
+import {AssetsProvider} from './utils/AssetsProvider.ts'
+import {ProjectProvider} from './utils/UseProject.ts'
+import {ContextMenuProvider} from './components/ContextMenuProvider.tsx'
+import {DevServerProjectBridge} from './adapters/DevServerProjectBridge.tsx'
+import {QueryClientProvider} from '@tanstack/react-query'
+import {queryClient} from './tsdb/client.ts'
 
 export default function App() {
     const sourceResult = useMemo(() => {
@@ -29,15 +34,25 @@ export default function App() {
     }
 
     const source = sourceResult.source
-    return <BlueprintProvider>
+    return <QueryClientProvider client={queryClient}>
+        <BlueprintProvider>
         <VisualStyleProvider>
             <DialogProvider>
                 <ManagerProvider source={source}>
-                    <EditorApp source={source}/>
+                    <ProjectProvider>
+                        <DevServerProjectBridge>
+                            <AssetsProvider>
+                                <ContextMenuProvider>
+                                    <EditorApp source={source}/>
+                                </ContextMenuProvider>
+                            </AssetsProvider>
+                        </DevServerProjectBridge>
+                    </ProjectProvider>
                 </ManagerProvider>
             </DialogProvider>
         </VisualStyleProvider>
-    </BlueprintProvider>
+        </BlueprintProvider>
+    </QueryClientProvider>
 }
 
 function EditorApp({source}: {source: DevServerSource}) {
@@ -45,7 +60,6 @@ function EditorApp({source}: {source: DevServerSource}) {
     const [publishDialogOpen, setPublishDialogOpen] = useState(false)
     return <>
         <ThreeEditorComponent onOpenGame={() => setPublishDialogOpen(true)}/>
-        <WelcomeScreenDialog/>
         <PublishDialog
             isOpen={publishDialogOpen}
             name={manager.project?.name || 'Blitz game'}

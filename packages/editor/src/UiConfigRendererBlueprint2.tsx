@@ -1,5 +1,6 @@
 import {Root} from 'react-dom/client'
-import type {THREE} from 'uiconfig-blueprint/lib/esm/lib'
+import type {THREE} from 'uiconfig-blueprint/lib/esm/lib';
+import {BPComponent} from 'uiconfig-blueprint/lib/esm/lib'
 // import rendererCss from './renderer.scss?inline'
 import {FocusStyleManager} from '@blueprintjs/core'
 import {
@@ -11,6 +12,7 @@ import {
     IViewerPlugin,
     IViewerPluginSync,
     JSUndoManager,
+    Texture,
     ThreeViewer,
     UiObjectConfig,
     UndoManagerPlugin,
@@ -19,6 +21,7 @@ import {
     Vector4
 } from 'threepipe'
 import {UiConfigRenderer} from 'uiconfig.js'
+import {RefSelectionObjectComponentTex} from "./components/RefSelectionObjectComponent.tsx";
 
 export class UiConfigRendererBlueprint2 extends UiConfigRenderer {
 
@@ -53,8 +56,7 @@ export class UiConfigRendererBlueprint2 extends UiConfigRenderer {
     }
 
     protected _refreshUiConfigObject(config: UiObjectConfig): void {
-        const component = config.uiRef as {refreshConfigState?(): void} | undefined
-        component?.refreshConfigState?.()
+        ;(config.uiRef as BPComponent<any, any>)?.refreshConfigState()
     }
 
     renderUiConfig(_: UiObjectConfig): void {
@@ -62,7 +64,7 @@ export class UiConfigRendererBlueprint2 extends UiConfigRenderer {
     }
 
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    THREE: THREE|undefined = (window as Window & {THREE?: THREE}).THREE
+    THREE: THREE|undefined = (window as any).THREE
 
     unmount() {
         this._root?.unmount()
@@ -79,7 +81,7 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
         super(container ?? document.getElementById(BlueprintJsUiPlugin2.CONTAINER_SLOT) ?? document.body, {
             autoPostFrame: false,
         })
-        this.THREE = {Color, Vector4, Vector3, Vector2} as unknown as THREE
+        this.THREE = {Color, Vector4, Vector3, Vector2, Texture} as any
     }
 
     protected _viewer?: ThreeViewer
@@ -178,6 +180,13 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
     get fileLoader() {
         return this._viewer || this.__viewer
     }
+    /**
+     * Required for loading files in BPFileComponent
+     */
+    get AssetPicker() {
+        return RefSelectionObjectComponentTex
+    }
+
     // when unmounting components the viewer instance might be required, but by then the
     // viewer might have been removed from the context, so we store it here.
     // like in BPHierarchyComponent
@@ -203,3 +212,4 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
     // prompt = async(message?: string, _default?: string, cancel = true): Promise<string | null> =>this._viewer ? this._viewer.dialog.prompt(message, _default, cancel) : window?.prompt(message, _default)
 
 }
+

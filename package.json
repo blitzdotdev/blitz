@@ -9,6 +9,7 @@
     "node": ">=20"
   },
   "overrides": {
+    "@blueprintjs/colors": "5.1.9",
     "three": "https://github.com/repalash/three.js-modded/releases/download/v0.163.10003/package.tgz",
     "threepipe": {
       "@types/three": "$@types/three"
@@ -20,6 +21,7 @@
     "zod": "4.1.13"
   },
   "devDependencies": {
+    "@blueprintjs/colors": "5.1.9",
     "@types/three": "https://github.com/repalash/three-ts-types/releases/download/v0.163.10003/package.tgz"
   },
   "scripts": {

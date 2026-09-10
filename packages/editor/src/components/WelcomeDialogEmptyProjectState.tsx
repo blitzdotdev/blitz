@@ -1,11 +1,14 @@
 import {Alignment, NonIdealState} from '@blueprintjs/core'
 import {WelcomeDialogCreateProjectActions} from './WelcomeDialogCreateProjectActions'
+import {WelcomeDialogGameActions} from './WelcomeDialogGameActions.tsx'
+import {isWorkspaceLaunch} from '../utils/ai/workspaceLaunch.ts'
 
 export function WelcomeDialogEmptyProjectState() {
+    if (isWorkspaceLaunch()) return <WelcomeDialogGameActions/>
     return <NonIdealState
         // icon={'projects'}
         icon={<img src={'/logo.svg'} height={100}/>}
-        title={'Blitz Editor'}
+        title={'Kite 3D Editor'}
         description={(
             <p style={{textAlign: 'justify'}}>
                 <br/>

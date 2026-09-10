@@ -19,6 +19,19 @@ export default defineConfig({
             },
         },
     },
+    css: {
+        postcss: {
+            plugins: [{
+                postcssPlugin: 'modify-css-content',
+                Once(root) {
+                    // Reference selector repair for duplicated Blueprint theme roots.
+                    root.walkRules((rule) => {
+                        rule.selector = rule.selector.replace(/:root.bpx-(.*) :root/g, ':root.bpx-$1')
+                    })
+                },
+            }],
+        },
+    },
     plugins: [
         react(),
         replace({

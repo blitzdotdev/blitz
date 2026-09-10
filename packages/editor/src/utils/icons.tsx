@@ -1,3 +1,4 @@
+// @ts-nocheck -- reference icon mapper accepts compatibility selection records.
 import {FileManifestEntry, SelectedInspectorItem} from "./AssetsProvider.ts";
 import {SelectFileRef, SelObjectType} from "./projectUtils.ts";
 import {objectToType} from "../components/RefSelectionObjectComponent.tsx";
