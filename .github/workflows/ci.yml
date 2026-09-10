@@ -16,7 +16,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --ignore-scripts
+      # npm 10's CI/prepare handling is incompatible with the vendored workspaces; npm 11 install keeps resolution and scripts stable.
+      - run: npm install --global npm@11.19.0
+      - run: npm install --ignore-scripts
       - run: npm run build
       - run: npm run typecheck
       - run: npm run lint

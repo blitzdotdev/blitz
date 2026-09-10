@@ -10,12 +10,17 @@
   },
   "overrides": {
     "three": "https://github.com/repalash/three.js-modded/releases/download/v0.163.10003/package.tgz",
-    "@types/three": "https://github.com/repalash/three-ts-types/releases/download/v0.163.10003/package.tgz",
+    "threepipe": {
+      "@types/three": "$@types/three"
+    },
     "@tanstack/db": "0.5.11",
     "@tanstack/query-db-collection": "1.0.6",
     "@tanstack/react-db": "0.1.55",
     "ts-browser-helpers": "0.19.4",
     "zod": "4.1.13"
+  },
+  "devDependencies": {
+    "@types/three": "https://github.com/repalash/three-ts-types/releases/download/v0.163.10003/package.tgz"
   },
   "scripts": {
     "build:threepipe": "npm run compile -w packages/threepipe",
