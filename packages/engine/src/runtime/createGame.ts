@@ -45,6 +45,8 @@ export interface CreateGameOptions {
     onError?: (error: unknown) => void
     /** Content hashes for cache-safe project module imports in development. */
     fileRevisions?: Readonly<Record<string, string>>
+    /** Identifies one module-graph load so transitive imports bypass the browser module map together. */
+    moduleRevision?: string
 }
 
 export interface RuntimeProject {
@@ -66,7 +68,13 @@ export interface CreatedGame {
 type ModuleExports = Record<string, unknown>
 type RuntimeErrorHandler = (error: unknown) => void
 
-export async function createGame({base, canvas, onError, fileRevisions = {}}: CreateGameOptions): Promise<CreatedGame> {
+export async function createGame({
+    base,
+    canvas,
+    onError,
+    fileRevisions = {},
+    moduleRevision,
+}: CreateGameOptions): Promise<CreatedGame> {
     const reportError = createErrorReporter(onError)
     let viewer: ThreeViewer | undefined
     let nestedAssets: RuntimeNestedAssetLoader | undefined
@@ -130,8 +138,8 @@ export async function createGame({base, canvas, onError, fileRevisions = {}}: Cr
 
         nestedAssets = new RuntimeNestedAssetLoader(viewer, reportError)
 
-        await registerProjectScripts(viewer, config, baseUrl, fileRevisions)
-        await registerProjectPlugins(viewer, config, baseUrl, fileRevisions)
+        await registerProjectScripts(viewer, config, baseUrl, fileRevisions, moduleRevision)
+        await registerProjectPlugins(viewer, config, baseUrl, fileRevisions, moduleRevision)
 
         const sceneUrl = new URL(project.mainScene, baseUrl).href
         const loadedScene = await viewer.load(sceneUrl, {importAsModelRoot: true})
@@ -147,7 +155,7 @@ export async function createGame({base, canvas, onError, fileRevisions = {}}: Cr
         entityComponents.start()
         physics.running = true
 
-        const mainUrl = versionedProjectUrl('main.js', baseUrl, fileRevisions)
+        const mainUrl = versionedProjectUrl('main.js', baseUrl, fileRevisions, moduleRevision)
         const mainModule = await importModule(mainUrl.href)
         if (mainModule.main !== undefined) {
             if (typeof mainModule.main !== 'function') {
@@ -194,10 +202,11 @@ async function registerProjectPlugins(
     config: ProjectConfigSettings,
     base: URL,
     fileRevisions: Readonly<Record<string, string>>,
+    moduleRevision?: string,
 ) {
     for (const definition of config.plugins) {
         if (definition.active === false) continue
-        const specifier = resolvePluginSpecifier(definition, config, base, fileRevisions)
+        const specifier = resolvePluginSpecifier(definition, config, base, fileRevisions, moduleRevision)
         const module = await importModule(specifier)
         const plugin = findPluginExport(module, definition)
         if (viewer.getPlugin(plugin)) continue
@@ -210,11 +219,12 @@ async function registerProjectScripts(
     config: ProjectConfigSettings,
     base: URL,
     fileRevisions: Readonly<Record<string, string>>,
+    moduleRevision?: string,
 ) {
     const modules: ModuleExports[] = []
     for (const definition of config.scripts) {
         if (definition.active === false) continue
-        const scriptUrl = versionedProjectUrl(definition.import, base, fileRevisions)
+        const scriptUrl = versionedProjectUrl(definition.import, base, fileRevisions, moduleRevision)
         modules.push(await importModule(scriptUrl.href))
     }
     await registerScripts(viewer, modules)
@@ -241,19 +251,26 @@ function resolvePluginSpecifier(
     config: ProjectConfigSettings,
     base: URL,
     fileRevisions: Readonly<Record<string, string>>,
+    moduleRevision?: string,
 ) {
     const isDependency = config.dependencies.some(({key}) =>
         definition.import === key || definition.import.startsWith(`${key}/`)
     )
     if (isDependency) return definition.import
-    return versionedProjectUrl(definition.import, base, fileRevisions).href
+    return versionedProjectUrl(definition.import, base, fileRevisions, moduleRevision).href
 }
 
-function versionedProjectUrl(path: string, base: URL, fileRevisions: Readonly<Record<string, string>>): URL {
+function versionedProjectUrl(
+    path: string,
+    base: URL,
+    fileRevisions: Readonly<Record<string, string>>,
+    moduleRevision?: string,
+): URL {
     const url = assertSameOrigin(new URL(path, base), base)
     const normalized = path.replace(/^\.\//, '')
     const revision = fileRevisions[normalized]
     if (revision) url.searchParams.set('v', revision)
+    if (moduleRevision) url.searchParams.set('r', moduleRevision)
     return url
 }
 

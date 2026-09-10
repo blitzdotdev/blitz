@@ -167,9 +167,10 @@ export class DevServerSource implements ProjectSource {
         return () => source.close()
     }
 
-    fileUrl(path: string, sha256?: string): string {
+    fileUrl(path: string, sha256?: string, reloadRevision?: string): string {
         const url = new URL(`/files/${encodePath(path)}`, this.base)
         if (sha256) url.searchParams.set('v', sha256)
+        if (reloadRevision) url.searchParams.set('r', reloadRevision)
         return url.href
     }
 

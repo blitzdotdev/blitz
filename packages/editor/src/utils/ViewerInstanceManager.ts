@@ -146,6 +146,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     private savingScene = false
     private consoleErrorTimes: number[] = []
     private runtimeErrorCount = 0
+    private moduleReloadSequence = 0
+    private moduleRevision?: string
     private consoleWriteQueue: Promise<void> = Promise.resolve()
     private stateWriteQueue: Promise<void> = Promise.resolve()
     private originalConsoleError?: typeof console.error
@@ -331,11 +333,11 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
-    private async registerProjectScripts(config: ProjectConfigSettings) {
+    private async registerProjectScripts(config: ProjectConfigSettings, moduleRevision = this.moduleRevision) {
         const modules: ModuleExports[] = []
         for (const definition of config.scripts) {
             if (definition.active === false) continue
-            modules.push(await this.importProjectModule(definition.import))
+            modules.push(await this.importProjectModule(definition.import, moduleRevision))
         }
         const registered = await registerScripts(this.get(), modules)
         this.componentTypes = [
@@ -346,10 +348,12 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.changed()
     }
 
-    private importProjectModule(path: string): Promise<ModuleExports> {
+    private importProjectModule(path: string, moduleRevision = this.moduleRevision): Promise<ModuleExports> {
         if (isBareModule(path)) return import(/* @vite-ignore */ path) as Promise<ModuleExports>
         const normalized = normalizeProjectPath(path)
-        return import(/* @vite-ignore */ this.source.fileUrl(normalized, this.hashes.get(normalized))) as Promise<ModuleExports>
+        return import(
+            /* @vite-ignore */ this.source.fileUrl(normalized, this.hashes.get(normalized), moduleRevision)
+        ) as Promise<ModuleExports>
     }
 
     private async loadEditScene(sceneText: string) {
@@ -513,6 +517,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 base: new URL('/files/', location.origin).href,
                 canvas: this.playCanvas,
                 fileRevisions,
+                moduleRevision: this.moduleRevision,
                 onError: (error) => void this.reportError(error),
             })
             this.isPlaying = true
@@ -893,30 +898,27 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             return
         }
 
-        const isListedModule = this.project && [
-            ...this.project.config.scripts.map(({import: path}) => normalizeProjectPath(path)),
-            ...this.project.config.plugins.filter(({import: path}) => !isBareModule(path))
-                .map(({import: path}) => normalizeProjectPath(path)),
-        ].includes(event.path)
+        const isJavaScript = /\.m?js$/i.test(event.path)
         const generator = this.generatorStates.find(({module}) => normalizeProjectPath(module) === event.path)
 
-        if (isListedModule) {
-            await this.registerProjectScripts(this.project!.config)
-            if (this.isPlaying) await this.restartPlay()
-            this.setStatus(`${event.path} reloaded`)
-        } else if (generator) {
-            const object = this.get().scene.modelRoot.getObjectByName(generator.nodeName)
-            if (object) {
-                await runGenerator({
-                    node: object as IObject3D,
-                    params: generator.params,
-                    viewer: this.get(),
-                    module: versionedPath(generator.module, nextHash),
-                    base: new URL('/files/', location.origin),
-                })
+        if (isJavaScript) {
+            const moduleRevision = String(++this.moduleReloadSequence)
+            this.moduleRevision = moduleRevision
+            await this.registerProjectScripts(this.project!.config, moduleRevision)
+            if (generator) {
+                const object = this.get().scene.modelRoot.getObjectByName(generator.nodeName)
+                if (object) {
+                    await runGenerator({
+                        node: object as IObject3D,
+                        params: generator.params,
+                        viewer: this.get(),
+                        module: versionedPath(generator.module, nextHash, moduleRevision),
+                        base: new URL('/files/', location.origin),
+                    })
+                }
             }
             if (this.isPlaying) await this.restartPlay()
-            this.setStatus(`${event.path} regenerated`)
+            this.setStatus(`${event.path} ${generator ? 'regenerated' : 'reloaded'}`)
         }
         this.changed()
     }
@@ -1017,10 +1019,14 @@ function normalizeProjectPath(path: string) {
     return path.replace(/^\.\//, '').replace(/\\/g, '/').split(/[?#]/, 1)[0]
 }
 
-function versionedPath(path: string, sha256?: string) {
-    if (!sha256) return path
-    const separator = path.includes('?') ? '&' : '?'
-    return `${path}${separator}v=${encodeURIComponent(sha256)}`
+function versionedPath(path: string, sha256?: string, reloadRevision?: string) {
+    const [withoutFragment, fragment = ''] = path.split('#', 2)
+    const [pathname, query = ''] = withoutFragment.split('?', 2)
+    const parameters = new URLSearchParams(query)
+    if (sha256) parameters.set('v', sha256)
+    if (reloadRevision) parameters.set('r', reloadRevision)
+    const suffix = parameters.size ? `?${parameters}` : ''
+    return `${pathname}${suffix}${fragment ? `#${fragment}` : ''}`
 }
 
 function uniqueImportPath(name: string, entries: ProjectFileEntry[]) {
