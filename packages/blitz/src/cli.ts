@@ -1,17 +1,69 @@
 #!/usr/bin/env node
-import {bakeFromEditor, initProject, journalFromDisk, openCurrentProject, publishFromDisk, pullFromDisk, runDev, sourcesInstructions} from './commands.ts'
+import {
+    bakeFromEditor,
+    claimFromDisk,
+    initProject,
+    journalFromDisk,
+    openCurrentProject,
+    publishFromDisk,
+    pullFromDisk,
+    runDev,
+    sourcesInstructions,
+    statusFromDisk,
+} from './commands.ts'
+
+const ROOT_USAGE = `Usage: blitz <command> [options]
+
+Commands:
+  init [dir]                  Create a Blitz project
+  dev [--port <port>]         Start the local editor
+  publish [options]           Publish the project
+  pull                        Pull the active release
+  status                      Show local deploy status
+  claim --email <email> --password <password> [--login]
+                              Register or sign in, then claim local deploys
+  bake <nodeName> [--force]   Bake a Generator node
+  journal [options]           Read the edit journal
+  open                        Open the running local editor
+  sources                     Locate installed source
+
+Run blitz <command> --help for command usage.`
+
+const COMMAND_USAGE: Record<string, string> = {
+    init: 'Usage: blitz init [dir]',
+    dev: 'Usage: blitz dev [--port <port>] [--no-open]',
+    publish: 'Usage: blitz publish [--slug <slug>] [--name <name>] [--message <message>]',
+    pull: 'Usage: blitz pull',
+    status: 'Usage: blitz status',
+    claim: 'Usage: blitz claim --email <email> --password <password> [--login]',
+    bake: 'Usage: blitz bake <nodeName> [--force]',
+    journal: 'Usage: blitz journal [--since <iso>] [-n <count>]',
+    open: 'Usage: blitz open',
+    sources: 'Usage: blitz sources',
+}
 
 const [command = 'help', ...args] = process.argv.slice(2)
 
 try {
-    if (command === 'init') {
-        const directory = args.find((value) => !value.startsWith('-')) || '.'
+    if (command === 'help' || command === '--help' || command === '-h') {
+        if (args.length) throw new Error(`Unknown argument: ${args[0]}`)
+        console.log(ROOT_USAGE)
+    } else if (!COMMAND_USAGE[command]) {
+        throw new Error(`Unknown command: ${command}\n${ROOT_USAGE}`)
+    } else if (args.includes('--help') || args.includes('-h')) {
+        const extras = args.filter((argument) => argument !== '--help' && argument !== '-h')
+        if (extras.length) throw new Error(`--help cannot be combined with other arguments.\n${COMMAND_USAGE[command]}`)
+        console.log(COMMAND_USAGE[command])
+    } else if (command === 'init') {
+        const parsed = parseArgs(args, {}, 1)
+        const directory = parsed.positionals[0] || '.'
         const target = await initProject(directory)
         console.log(`Created Blitz project at ${target}`)
         console.log(`Next: cd ${directory} && npm install && npx blitz dev`)
     } else if (command === 'dev') {
-        const port = numberOption(args, '--port') ?? 4321
-        const server = await runDev({port, noOpen: args.includes('--no-open')})
+        const parsed = parseArgs(args, {'--port': 'value', '--no-open': 'boolean'})
+        const port = portOption(parsed.values['--port']) ?? 4321
+        const server = await runDev({port, noOpen: parsed.values['--no-open'] === true})
         console.log(`Blitz editor: ${server.url}`)
         console.log(`Project: ${server.projectRoot}`)
         const shutdown = async () => {
@@ -21,55 +73,119 @@ try {
         process.once('SIGINT', shutdown)
         process.once('SIGTERM', shutdown)
     } else if (command === 'publish') {
-        const result = await publishFromDisk(process.cwd(), stringOption(args, '--message'), (value) => {
+        const parsed = parseArgs(args, {'--slug': 'value', '--name': 'value', '--message': 'value'})
+        const result = await publishFromDisk(process.cwd(), {
+            slug: valueOption(parsed.values['--slug']),
+            name: valueOption(parsed.values['--name']),
+            message: valueOption(parsed.values['--message']),
+        }, (value) => {
             const progress = value as {phase?: string, completed?: number, total?: number, path?: string}
             console.log(`[${progress.phase}] ${progress.completed}/${progress.total}${progress.path ? ` ${progress.path}` : ''}`)
         })
         console.log(`Published ${result.release_hash}`)
         console.log(result.preview_url)
     } else if (command === 'pull') {
+        parseArgs(args, {})
         const result = await pullFromDisk()
         console.log(`Pulled ${result.release_hash}; updated ${result.updated.length} file(s).`)
+    } else if (command === 'status') {
+        parseArgs(args, {})
+        const entries = await statusFromDisk()
+        if (!entries.length) console.log('No deploys. Run blitz publish first.')
+        for (const entry of entries) console.log(JSON.stringify({...entry, time_left: timeLeft(entry)}))
+    } else if (command === 'claim') {
+        const parsed = parseArgs(args, {'--email': 'value', '--password': 'value', '--login': 'boolean'})
+        const email = requiredOption(parsed.values['--email'], '--email')
+        const password = requiredOption(parsed.values['--password'], '--password')
+        const entries = await claimFromDisk({email, password, login: parsed.values['--login'] === true})
+        for (const entry of entries.filter(({claimed}) => claimed)) console.log(`Claimed ${entry.slug}: ${entry.preview_url}`)
     } else if (command === 'open') {
+        parseArgs(args, {})
         console.log(await openCurrentProject())
     } else if (command === 'sources') {
+        parseArgs(args, {})
         console.log(await sourcesInstructions())
     } else if (command === 'bake') {
-        const nodeName = args.find((value) => !value.startsWith('-')) || ''
-        const result = await bakeFromEditor(nodeName, {force: args.includes('--force')})
+        const parsed = parseArgs(args, {'--force': 'boolean'}, 1)
+        const nodeName = parsed.positionals[0] || ''
+        const result = await bakeFromEditor(nodeName, {force: parsed.values['--force'] === true})
         console.log(`Baked ${String(result.nodeName || nodeName)}`)
     } else if (command === 'journal') {
+        const parsed = parseArgs(args, {'--since': 'value', '-n': 'value'})
         const entries = await journalFromDisk(process.cwd(), {
-            since: stringOption(args, '--since'),
-            limit: integerOption(args, '-n'),
+            since: valueOption(parsed.values['--since']),
+            limit: integerOption(parsed.values['-n'], '-n'),
         })
         for (const entry of entries) console.log(JSON.stringify(entry))
-    } else {
-        console.log('Usage: blitz <init [dir] | dev [--port 4321] [--no-open] | publish [--message text] | pull | bake <nodeName> [--force] | journal [--since iso] [-n count] | open | sources>')
-        if (command !== 'help' && command !== '--help' && command !== '-h') process.exitCode = 1
     }
 } catch (error) {
     console.error(`blitz: ${error instanceof Error ? error.message : error}`)
     process.exitCode = 1
 }
 
-function stringOption(args: string[], name: string): string | undefined {
-    const index = args.indexOf(name)
-    return index < 0 ? undefined : args[index + 1]
+type OptionKind = 'value' | 'boolean'
+
+function parseArgs(
+    args: string[],
+    options: Record<string, OptionKind>,
+    maximumPositionals = 0,
+): {values: Record<string, string | boolean>, positionals: string[]} {
+    const values: Record<string, string | boolean> = {}
+    const positionals: string[] = []
+    for (let index = 0; index < args.length; index += 1) {
+        const argument = args[index]
+        if (!argument.startsWith('-')) {
+            positionals.push(argument)
+            continue
+        }
+        const kind = options[argument]
+        if (!kind) throw new Error(`Unknown flag: ${argument}`)
+        if (values[argument] !== undefined) throw new Error(`Flag specified more than once: ${argument}`)
+        if (kind === 'boolean') {
+            values[argument] = true
+            continue
+        }
+        const value = args[index + 1]
+        if (!value || value.startsWith('-')) throw new Error(`${argument} requires a value`)
+        values[argument] = value
+        index += 1
+    }
+    if (positionals.length > maximumPositionals) throw new Error(`Unexpected argument: ${positionals[maximumPositionals]}`)
+    return {values, positionals}
 }
 
-function numberOption(args: string[], name: string): number | undefined {
-    const raw = stringOption(args, name)
-    if (raw === undefined) return undefined
-    const value = Number(raw)
-    if (!Number.isInteger(value) || value < 0 || value > 65535) throw new Error(`${name} must be a valid port`)
-    return value
+function valueOption(value: string | boolean | undefined): string | undefined {
+    return typeof value === 'string' ? value : undefined
 }
 
-function integerOption(args: string[], name: string): number | undefined {
-    const raw = stringOption(args, name)
+function requiredOption(value: string | boolean | undefined, name: string): string {
+    const result = valueOption(value)
+    if (!result) throw new Error(`${name} is required`)
+    return result
+}
+
+function portOption(value: string | boolean | undefined): number | undefined {
+    const raw = valueOption(value)
     if (raw === undefined) return undefined
-    const value = Number(raw)
-    if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`)
-    return value
+    const port = Number(raw)
+    if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('--port must be a valid port')
+    return port
+}
+
+function integerOption(value: string | boolean | undefined, name: string): number | undefined {
+    const raw = valueOption(value)
+    if (raw === undefined) return undefined
+    const integer = Number(raw)
+    if (!Number.isInteger(integer) || integer < 0) throw new Error(`${name} must be a non-negative integer`)
+    return integer
+}
+
+function timeLeft(entry: {claimed: boolean, expires_at: string}): string {
+    if (entry.claimed) return 'claimed'
+    const hasZone = /[zZ]|[+-]\d\d:\d\d$/.test(entry.expires_at)
+    const expires = Date.parse(entry.expires_at.replace(' ', 'T') + (hasZone ? '' : 'Z'))
+    const milliseconds = expires - Date.now()
+    if (!Number.isFinite(milliseconds) || milliseconds <= 0) return 'expired'
+    const minutes = Math.ceil(milliseconds / 60_000)
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }

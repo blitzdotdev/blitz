@@ -41,6 +41,7 @@ function isDeployEntry(value: unknown): value is DeployEntry {
     return ['game_id', 'deploy_token', 'claim_secret', 'preview_url', 'expires_at']
         .every((key) => typeof value[key] === 'string')
         && (value.last_release_hash === undefined || typeof value.last_release_hash === 'string')
+        && (value.claimed === undefined || typeof value.claimed === 'boolean')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

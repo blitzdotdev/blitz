@@ -15,7 +15,20 @@ export {diffSceneGltf, diffSceneGltfText} from './scene-diff.ts'
 export type {SceneComponentChange, SceneDiff, SceneIdentity, SceneMaterialChange, SceneNodeRename, SceneTransformChange} from './scene-diff.ts'
 export {appendSceneJournal, readJournal} from './journal.ts'
 export type {JournalEntry, ReadJournalOptions} from './journal.ts'
-export {bakeFromEditor, initProject, journalFromDisk, runDev, publishFromDisk, pullFromDisk, openCurrentProject, sourcesInstructions} from './commands.ts'
+export {
+    bakeFromEditor,
+    claimFromDisk,
+    initProject,
+    journalFromDisk,
+    openCurrentProject,
+    publishFromDisk,
+    pullFromDisk,
+    runDev,
+    slugify,
+    sourcesInstructions,
+    statusFromDisk,
+} from './commands.ts'
+export type {PublicDeployEntry, PublishFromDiskOptions} from './commands.ts'
 export type {
     ExistingDeployTarget,
     PublishApi,

@@ -5,6 +5,15 @@ import {
     type ProjectReadResult,
     type ProjectSource,
 } from './ProjectSource.ts'
+import type {DeployView, PublishRequest, PublishResult, SlugAvailability} from './publishing.ts'
+
+export class DevServerRequestError extends Error {
+    readonly name = 'DevServerRequestError'
+
+    constructor(readonly status: number, readonly code: string, message: string) {
+        super(message)
+    }
+}
 
 export class DevServerSource implements ProjectSource {
     readonly clientId = crypto.randomUUID()
@@ -25,6 +34,41 @@ export class DevServerSource implements ProjectSource {
 
     async state(): Promise<Record<string, unknown>> {
         return this.json('/api/state')
+    }
+
+    async deploys(): Promise<{games: DeployView[]}> {
+        return this.json('/api/deploys')
+    }
+
+    async checkSlug(slug: string): Promise<SlugAvailability> {
+        return this.json(`/api/slug/${encodeURIComponent(slug)}`)
+    }
+
+    async publish(request: PublishRequest): Promise<PublishResult> {
+        return this.json('/api/publish', {
+            method: 'POST',
+            headers: this.headers({'Content-Type': 'application/json'}),
+            body: JSON.stringify(request),
+        })
+    }
+
+    async authenticate(mode: 'register' | 'login', email: string, password: string): Promise<{token: string}> {
+        const body = mode === 'login'
+            ? {identity: email, password}
+            : {email, password, username: usernameFromEmail(email)}
+        return this.json(`/api/auth/${mode}`, {
+            method: 'POST',
+            headers: this.headers({'Content-Type': 'application/json'}),
+            body: JSON.stringify(body),
+        })
+    }
+
+    async claim(slug: string): Promise<void> {
+        await this.json('/api/claim', {
+            method: 'POST',
+            headers: this.headers({'Content-Type': 'application/json'}),
+            body: JSON.stringify({slug}),
+        })
     }
 
     async read(path: string): Promise<ProjectReadResult> {
@@ -118,8 +162,12 @@ export class DevServerSource implements ProjectSource {
     private async json<T>(path: string, init?: RequestInit): Promise<T> {
         const response = await fetch(this.url(path), init || {headers: this.headers()})
         if (!response.ok) {
-            const body = await response.json().catch(() => ({})) as {error?: {message?: string}}
-            throw new Error(body.error?.message || `${path} failed: ${response.status}`)
+            const body = await response.json().catch(() => ({})) as {error?: {code?: string, message?: string}}
+            throw new DevServerRequestError(
+                response.status,
+                body.error?.code || `http_${response.status}`,
+                body.error?.message || `${path} failed: ${response.status}`,
+            )
         }
         return response.json() as Promise<T>
     }
@@ -131,6 +179,12 @@ export class DevServerSource implements ProjectSource {
     private url(path: string): string {
         return new URL(path, this.base).href
     }
+}
+
+function usernameFromEmail(email: string): string {
+    let username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
+    if (!/^[a-z]/.test(username)) username = `player_${username}`
+    return (username || 'player').slice(0, 30)
 }
 
 function encodePath(path: string): string {
