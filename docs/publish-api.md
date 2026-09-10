@@ -413,13 +413,13 @@ Errors: `404 release_not_found`, plus game-auth errors.
 
 ## Runtime registry
 
-Runtime blobs use the same content-addressed `blobs/<sha256>` R2 namespace. A runtime registry row is a GC root even when its release `ref_count` is zero.
+Runtime blobs use the same content-addressed `blobs/<sha256>` R2 namespace. Every runtime registry row is a GC root, whether or not a release references its hash. The registry is keyed by SHA-256, so one version can retain multiple engine builds.
 
-### Upload or replace a runtime version
+### Upload a runtime build
 
 `PUT /api/v1/runtimes/:version`
 
-Auth: `Authorization: Bearer <RUNTIME_UPLOAD_TOKEN>`. The body is raw bytes and requires an exact `Content-Length`. Versions are 1-128 letters, digits, dots, underscores, or hyphens. The backend computes SHA-256, uploads the object with R2 checksum verification, ensures the blob inventory row exists, and upserts the version.
+Auth: `Authorization: Bearer <RUNTIME_UPLOAD_TOKEN>`. The body is raw bytes and requires an exact `Content-Length`. Versions are 1-128 letters, digits, dots, underscores, or hyphens. The backend computes SHA-256, uploads the content-addressed object, ensures the blob inventory row exists, and upserts the `(sha256, version)` registry row. Uploading the same bytes again is idempotent and preserves `created_at`; uploading different bytes for the same version retains both builds.
 
 Success: `201`.
 
@@ -427,13 +427,28 @@ Success: `201`.
 {"version":"1.2.3","sha256":"<sha256>","size":123456}
 ```
 
-Errors: `400 invalid_runtime_version`, `400 invalid_content_length`, `400 content_length_mismatch`, `400 body_required`, `401 invalid_runtime_token`, `409 runtime_blob_conflict`, `411 content_length_required`, `413 runtime_too_large`, `422 hash_mismatch`.
+Errors: `400 invalid_runtime_version`, `400 invalid_content_length`, `400 content_length_mismatch`, `400 body_required`, `401 invalid_runtime_token`, `409 runtime_blob_conflict`, `411 content_length_required`, `413 runtime_too_large`.
 
 ### Get a runtime version
 
 `GET /api/v1/runtimes/:version`
 
-Auth: none. Success: `200` with `{version, sha256, size}`. Missing: `404 runtime_not_found`.
+Auth: none. Success: `200`. `runtimes` contains every registered hash for the version, newest first. The top-level `sha256` is the newest runtime's hash and remains present for compatibility with current CLI clients.
+
+```json
+{
+  "version":"1.2.3",
+  "sha256":"<newest-sha256>",
+  "runtimes":[
+    {"sha256":"<newest-sha256>","size":123456,"created_at":"YYYY-MM-DD HH:MM:SS"},
+    {"sha256":"<older-sha256>","size":123000,"created_at":"YYYY-MM-DD HH:MM:SS"}
+  ]
+}
+```
+
+Missing: `404 runtime_not_found`.
+
+The CLI's "installed runtime differs from registered" check should consider the installed runtime registered when its SHA-256 matches **any** entry in `runtimes`, not only the compatibility `sha256` field. Until that client change ships, the top-level field can cause a false warning when an installed build is registered but is not the newest build for its version.
 
 ### List runtimes
 
@@ -442,12 +457,24 @@ Auth: none. Success: `200` with `{version, sha256, size}`. Missing: `404 runtime
 Auth: none. Success: `200`.
 
 ```json
-{"runtimes":[{"version":"1.2.3","sha256":"<sha256>","size":123456}]}
+{
+  "versions":[
+    {
+      "version":"1.2.3",
+      "runtimes":[
+        {"sha256":"<newest-sha256>","size":123456,"created_at":"YYYY-MM-DD HH:MM:SS"},
+        {"sha256":"<older-sha256>","size":123000,"created_at":"YYYY-MM-DD HH:MM:SS"}
+      ]
+    }
+  ]
+}
 ```
 
-### Delete a runtime version
+Versions are ordered lexically; each version's runtime builds are newest first.
 
-`DELETE /api/v1/runtimes/:version`
+### Delete a runtime build
+
+`DELETE /api/v1/runtimes/:version/:sha256`
 
 Auth: `Authorization: Bearer <RUNTIME_UPLOAD_TOKEN>`.
 
@@ -459,7 +486,7 @@ Success: `200`.
 
 Deleting the registry row does not immediately remove its R2 blob. If no release references the hash, the blob becomes eligible for the normal grace-period sweep.
 
-Errors: `400 invalid_runtime_version`, `401 invalid_runtime_token`, `404 runtime_not_found`.
+Errors: `400 invalid_runtime_version`, `400 invalid_hash`, `401 invalid_runtime_token`, `404 runtime_not_found`.
 
 ## Blob lifecycle and garbage collection
 
