@@ -46,12 +46,6 @@ interface RuntimeMigration {
 
 export interface UpgradeProjectOptions {
     to?: string
-    commandVersion?: string
-    install?: (projectRoot: string) => Promise<void>
-    loadRuntime?: (projectRoot: string) => Promise<{
-        tools: RuntimeProjectTools
-        migrations: readonly RuntimeMigration[]
-    }>
 }
 
 const TEMPLATE_RENAMES: Readonly<Record<string, string>> = {gitignore: '.gitignore'}
@@ -98,7 +92,7 @@ export async function upgradeProject(
     const devDependencies = record(packageJson.devDependencies)
     const from = devDependencies['@blitzdev/blitz']
     if (typeof from !== 'string' || !from) throw new Error('package.json must pin @blitzdev/blitz in devDependencies')
-    const to = options.to || process.env.BLITZ_UPGRADE_TO || options.commandVersion || BLITZ_VERSION
+    const to = options.to || process.env.BLITZ_UPGRADE_TO || BLITZ_VERSION
     compareVersions(from, to)
     if (compareVersions(from, to) > 0) throw new Error(`Cannot upgrade from ${from} to older version ${to}`)
 
@@ -109,13 +103,9 @@ export async function upgradeProject(
         blitz: {...blitz, version: to},
     }, null, 2)}\n`, 'utf8')
 
-    await (options.install || installProjectDependencies)(root)
-    const runtime = await (options.loadRuntime || loadInstalledRuntime)(root)
-    for (const migration of runtime.migrations) {
-        if (compareVersions(migration.version, from) > 0 && compareVersions(migration.version, to) <= 0) {
-            await migration.migrate(root)
-        }
-    }
+    await installProjectDependencies(root)
+    const runtime = await loadInstalledRuntime(root)
+    for (const migration of selectProjectMigrations(runtime.migrations, from, to)) await migration.migrate(root)
 
     const packageText = await readFile(packagePath, 'utf8')
     const parsedPackage = runtime.tools.parsePackageJSON(packageText)
@@ -154,21 +144,20 @@ export async function runDev(options: {
 
 export async function publishFromDisk(
     projectRoot = process.cwd(),
-    options: PublishFromDiskOptions | string = {},
+    options: PublishFromDiskOptions = {},
     onProgress?: (progress: PublishProgress) => void,
 ): Promise<{preview_url: string, release_hash: string}> {
-    const publishOptions = typeof options === 'string' ? {message: options} : options
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
     const existing = Object.entries(deploys.games)[0]
     const packageJson = JSON.parse(await readFile(resolve(projectRoot, 'package.json'), 'utf8')) as {name?: string}
-    const slug = publishOptions.slug || existing?.[0] || slugify(packageJson.name || projectRoot.split(sep).at(-1) || 'blitz-game')
+    const slug = options.slug || existing?.[0] || slugify(packageJson.name || projectRoot.split(sep).at(-1) || 'blitz-game')
     return publishProject({
         dirHandle: directory,
-        api: new BlitzApi({baseUrl: publishOptions.backendUrl || backendUrl()}),
+        api: new BlitzApi({baseUrl: options.backendUrl || backendUrl()}),
         slug,
-        name: publishOptions.name,
-        message: publishOptions.message,
+        name: options.name,
+        message: options.message,
         onProgress,
     })
 }
@@ -331,6 +320,14 @@ function compareVersions(left: string, right: string): number {
         if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index]
     }
     return 0
+}
+
+export function selectProjectMigrations(
+    migrations: readonly RuntimeMigration[],
+    from: string,
+    to: string,
+): readonly RuntimeMigration[] {
+    return migrations.filter(({version}) => compareVersions(version, from) > 0 && compareVersions(version, to) <= 0)
 }
 
 function installProjectDependencies(projectRoot: string): Promise<void> {

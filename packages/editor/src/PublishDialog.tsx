@@ -11,7 +11,7 @@ import {
     ProgressBar,
 } from '@blueprintjs/core'
 import {DevServerRequestError, DevServerSource} from './DevServerSource.ts'
-import {isExpired, localSlugReason, slugify, timeLeft, type DeployView} from './publishing.ts'
+import {isExpired, slugify, timeLeft, type DeployView} from './publishing.ts'
 
 interface PublishDialogProps {
     isOpen: boolean
@@ -70,11 +70,6 @@ export function PublishDialog({isOpen, name, source, onClose}: PublishDialogProp
 
     useEffect(() => {
         if (!isOpen || !showCreate) return
-        const localReason = localSlugReason(slug)
-        if (localReason) {
-            setAvailability(localReason === 'reserved_slug' ? 'reserved' : 'invalid')
-            return
-        }
         setAvailability('checking')
         let cancelled = false
         const timer = setTimeout(() => {

@@ -12,6 +12,7 @@ import {
     unlink,
 } from 'node:fs/promises'
 import type {Server} from 'node:http'
+import {createRequire} from 'node:module'
 import {basename, dirname, resolve, sep} from 'node:path'
 import {Readable} from 'node:stream'
 import {pipeline} from 'node:stream/promises'
@@ -42,11 +43,8 @@ export interface DevServerOptions {
     projectRoot?: string
     port?: number
     strictPort?: boolean
-    token?: string
-    editorDirectory?: string
     open?: boolean
     backendUrl?: string
-    assetLibraryProxyUrl?: string
     publish?: (
         options: {slug?: string, name?: string, message?: string},
         emit: (data: PublishProgress) => void,
@@ -83,12 +81,12 @@ interface PendingCommand {
 
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
 const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
-const DEFAULT_ASSET_LIBRARY_PROXY_URL = 'https://blitz-asset-library-proxy.blitzapp.workers.dev'
+const serverRequire = createRequire(import.meta.url)
 
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
     const projectRoot = await realpath(resolve(options.projectRoot || process.cwd()))
-    const token = options.token || randomBytes(24).toString('base64url')
-    const editorDirectory = options.editorDirectory || await resolvePackageDirectory('@blitzdev/editor') + '/dist'
+    const token = randomBytes(24).toString('base64url')
+    const editorDirectory = await resolvePackageDirectory('@blitzdev/editor') + '/dist'
     const clients = new Map<SSEStreamingApi, string | undefined>()
     const pendingCommands = new Map<string, PendingCommand>()
     const pendingEvents = new Map<string, PendingEvent>()
@@ -101,9 +99,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     let closing = false
     let platformToken: string | undefined
     const backendUrl = (options.backendUrl || process.env.BLITZ_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '')
-    const assetLibraryProxyUrl = (options.assetLibraryProxyUrl
-        || process.env.BLITZ_ASSET_LIBRARY_PROXY_URL
-        || DEFAULT_ASSET_LIBRARY_PROXY_URL).replace(/\/+$/, '')
     const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
 
     for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)
@@ -140,12 +135,12 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     app.get('/favicon.ico', () => serveStaticFile(resolve(editorDirectory, 'favicon.ico'), editorDirectory))
     app.get('/api/import-map', async () => jsonResponse(await readProjectImportMap(projectRoot)))
     app.get('/api/files', async () => jsonResponse(await buildManifest(projectRoot)))
-    app.get('/api/state', async () => jsonResponse(await projectState(projectRoot, assetLibraryProxyUrl)))
+    app.get('/api/state', async () => jsonResponse(await projectState(projectRoot)))
     app.get('/api/events', (c) => {
         c.header('Cache-Control', 'no-cache')
         c.header('Connection', 'keep-alive')
         return streamSSE(c, async (stream) => {
-            clients.set(stream, c.get('clientId'))
+            clients.set(stream, c.req.query('client') || c.get('clientId'))
             await stream.write(': connected\n\n')
             await new Promise<void>((resolveAbort) => stream.onAbort(() => {
                 clients.delete(stream)
@@ -570,14 +565,13 @@ function isIncludedPath(path: string): boolean {
     return !parts.some((part) => part.startsWith('.') && part !== '.blitz')
 }
 
-async function projectState(root: string, assetLibraryProxyUrl: string) {
+async function projectState(root: string) {
     let packageJson: Record<string, unknown> = {}
     try { packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown> } catch { /* optional */ }
     return {
         name: typeof packageJson.name === 'string' ? packageJson.name : basename(root),
         versions: {blitz: BLITZ_VERSION, editor: EDITOR_VERSION, engine: ENGINE_VERSION},
         server_version: BLITZ_VERSION,
-        asset_library_proxy_url: assetLibraryProxyUrl,
     }
 }
 
@@ -754,5 +748,5 @@ async function writeDevFile(root: string, value: unknown): Promise<void> {
 }
 
 async function resolvePackageDirectory(packageName: string): Promise<string> {
-    return dirname(fileURLToPath(import.meta.resolve(`${packageName}/package.json`)))
+    return dirname(serverRequire.resolve(`${packageName}/package.json`))
 }

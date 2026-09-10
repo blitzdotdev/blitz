@@ -105,11 +105,15 @@ export class DevServerSource implements ProjectSource {
     }
 
     events(listener: (event: ProjectEvent) => void): () => void {
-        const controller = new AbortController()
-        this.readEvents(listener, controller.signal).catch((error) => {
-            if (!controller.signal.aborted) console.error('[blitz] Event stream stopped', error)
-        })
-        return () => controller.abort()
+        const source = new EventSource(this.url(`/api/events?client=${encodeURIComponent(this.clientId)}`))
+        const receive = (event: Event) => {
+            const message = event as MessageEvent<string>
+            listener({type: event.type, ...JSON.parse(message.data)} as ProjectEvent)
+        }
+        for (const type of ['change', 'add', 'unlink', 'publish', 'command']) {
+            source.addEventListener(type, receive)
+        }
+        return () => source.close()
     }
 
     fileUrl(path: string, sha256?: string): string {
@@ -132,31 +136,6 @@ export class DevServerSource implements ProjectSource {
             headers: this.headers({'Content-Type': 'application/json'}),
             body: JSON.stringify(result),
         })
-    }
-
-    private async readEvents(listener: (event: ProjectEvent) => void, signal: AbortSignal): Promise<void> {
-        const response = await fetch(this.url('/api/events'), {
-            headers: this.headers({'X-Blitz-Client': this.clientId}),
-            signal,
-        })
-        if (!response.ok || !response.body) throw new Error(`Cannot watch project: ${response.status}`)
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffered = ''
-        while (!signal.aborted) {
-            const {done, value} = await reader.read()
-            if (done) break
-            buffered += decoder.decode(value, {stream: true})
-            let boundary = buffered.indexOf('\n\n')
-            while (boundary >= 0) {
-                const frame = buffered.slice(0, boundary)
-                buffered = buffered.slice(boundary + 2)
-                const eventName = frame.match(/^event: (.+)$/m)?.[1]
-                const data = frame.match(/^data: (.+)$/m)?.[1]
-                if (eventName && data) listener({type: eventName, ...JSON.parse(data)} as ProjectEvent)
-                boundary = buffered.indexOf('\n\n')
-            }
-        }
     }
 
     private async json<T>(path: string, init?: RequestInit): Promise<T> {

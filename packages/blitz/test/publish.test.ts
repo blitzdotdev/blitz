@@ -1,5 +1,6 @@
-import {describe, expect, it, vi} from 'vitest'
+import {afterEach, describe, expect, it, vi} from 'vitest'
 import {
+    BlitzApi,
     canonicalizeManifest,
     generateIndexHtml,
     manifestHash,
@@ -11,17 +12,20 @@ import {
     writeDeploys,
 } from '../src/index.ts'
 import type {
-    CreatedAnonymousGame,
+    DeployEntry,
     DeploysFile,
-    GameRecord,
     ReleaseManifest,
-    ReleaseRecord,
-    RuntimeRecord,
 } from '../src/index.ts'
-import type {PublishApi} from '../src/publish.ts'
 import {FakeDirectory} from './fakeDirectory.ts'
 import manifestGoldenFixtures from './fixtures/manifest-golden.json'
 import {BLITZ_VERSION} from '../src/versions.ts'
+import {startMockBackend, type MockBackend} from './mockBackend.ts'
+
+const backends: MockBackend[] = []
+
+afterEach(async () => {
+    while (backends.length) await backends.pop()!.close()
+})
 
 const MANIFEST_GOLDENS = {
     comprehensive: {
@@ -144,7 +148,7 @@ describe('.blitz/deploys.json', () => {
 describe('publishProject', () => {
     it('creates, prepares, uploads four at a time, releases, and reuses the base release', async () => {
         const root = sampleProject()
-        const api = new MockPublishApi()
+        const {api, backend} = await testApi()
         const progress: string[] = []
         const first = await publishProject({
             dirHandle: root.asHandle(),
@@ -154,26 +158,27 @@ describe('publishProject', () => {
         })
 
         expect(first).toEqual({
-            preview_url: 'https://gateway.example/sample-game/',
-            release_hash: 'd'.repeat(64),
+            preview_url: `${backend.url}/preview/sample-game/`,
+            release_hash: `${'0'.repeat(63)}1`,
         })
-        expect(api.order[0]).toBe('create')
-        expect(api.order.indexOf('runtime')).toBeLessThan(api.order.indexOf('missing'))
-        expect(api.order.lastIndexOf('upload')).toBeLessThan(api.order.indexOf('release'))
-        expect(api.maxUploads).toBe(4)
-        expect(api.releaseOptions?.base_release).toBeUndefined()
+        const paths = backend.requests.map(({path}) => path)
+        expect(paths[0]).toContain('/api/v1/new-game/sample-game')
+        expect(paths.findIndex((path) => path.includes('/runtimes/')))
+            .toBeLessThan(paths.findIndex((path) => path.endsWith('/blobs/missing')))
+        expect(paths.findLastIndex((path) => path.includes('/blobs/')))
+            .toBeLessThan(paths.findIndex((path) => path.endsWith('/releases')))
+        expect(backend.maxActiveUploads).toBe(4)
+        expect(releaseRequest(backend).body).not.toHaveProperty('base_release')
         expect(progress.at(-1)).toBe('complete')
         expect(JSON.parse(await root.text('package.json')).blitz.version).toBe(BLITZ_VERSION)
         expect(await root.text('index.html')).toContain("./_blitz/runtime.js")
         const stored = await readDeploys(root.asHandle())
-        expect(stored.games['sample-game'].last_release_hash).toBe('d'.repeat(64))
+        expect(stored.games['sample-game'].last_release_hash).toBe(first.release_hash)
 
-        api.order.length = 0
-        api.missing = []
-        api.nextReleaseHash = 'e'.repeat(64)
+        const requestCount = backend.requests.length
         await publishProject({dirHandle: root.asHandle(), api, slug: 'sample-game', message: 'second'})
-        expect(api.order).not.toContain('create')
-        expect(api.releaseOptions).toEqual({message: 'second', base_release: 'd'.repeat(64)})
+        expect(backend.requests.slice(requestCount).some(({path}) => path.includes('/new-game/'))).toBe(false)
+        expect(releaseRequest(backend).body).toMatchObject({message: 'second', base_release: first.release_hash})
         expect(await root.text('index.html')).toContain('<title>Sample Game</title>')
     })
 
@@ -183,17 +188,15 @@ describe('publishProject', () => {
         packageJson.name = 'package-slug-name'
         packageJson.blitz.name = 'Configured Game Name'
         root.set('package.json', JSON.stringify(packageJson))
-        const api = new MockPublishApi()
+        const {api, backend} = await testApi()
 
         await publishProject({dirHandle: root.asHandle(), api, slug: 'name-game'})
-        expect(api.createdName).toBe('Configured Game Name')
+        expect(backend.games.get('name-game')?.name).toBe('Configured Game Name')
 
-        api.gameName = 'Live Renamed Game'
-        api.nextReleaseHash = 'e'.repeat(64)
+        backend.games.get('name-game')!.name = 'Live Renamed Game'
         await publishProject({dirHandle: root.asHandle(), api, slug: 'name-game'})
         expect(await root.text('index.html')).toContain('<title>Live Renamed Game</title>')
 
-        api.nextReleaseHash = 'f'.repeat(64)
         await publishProject({dirHandle: root.asHandle(), api, slug: 'name-game', name: 'Explicit Update Name'})
         expect(await root.text('index.html')).toContain('<title>Explicit Update Name</title>')
     })
@@ -206,11 +209,11 @@ describe('publishProject', () => {
             devDependencies: {'@blitzdev/blitz': pinned},
             blitz: {version: '1.2.3'},
         }))
-        const api = new MockPublishApi()
+        const {api, backend} = await testApi({runtimeVersions: [pinned]})
 
         await publishProject({dirHandle: root.asHandle(), api, slug: 'pinned-game'})
 
-        expect(api.runtimeVersion).toBe(pinned)
+        expect(backend.requests.some(({path}) => path.endsWith(`/runtimes/${pinned}`))).toBe(true)
         expect(JSON.parse(await root.text('package.json')).blitz.version).toBe(pinned)
     })
 
@@ -224,11 +227,11 @@ describe('publishProject', () => {
                 blitz: {version: '1.2.3'},
             }))
             installEngine(root, '9.8.7', 'installed runtime')
-            const api = new MockPublishApi()
+            const {api, backend} = await testApi({runtimeVersions: ['9.8.7']})
 
             await publishProject({dirHandle: root.asHandle(), api, slug: 'installed-version-game'})
 
-            expect(api.runtimeVersion).toBe('9.8.7')
+            expect(backend.requests.some(({path}) => path.endsWith('/runtimes/9.8.7'))).toBe(true)
             expect(JSON.parse(await root.text('package.json')).blitz.version).toBe('9.8.7')
         },
     )
@@ -238,17 +241,19 @@ describe('publishProject', () => {
         installEngine(root, BLITZ_VERSION, 'new local runtime with Generator')
         const localRuntime = await root.file('node_modules/@blitzdev/engine/dist/runtime.js')
         const localHash = await sha256(localRuntime)
-        const api = new MockPublishApi()
+        const {api, backend} = await testApi()
         const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
         await publishProject({dirHandle: root.asHandle(), api, slug: 'local-runtime'})
 
-        expect(api.releasedManifest?.files['_blitz/runtime.js']).toMatchObject({
+        const release = releaseRequest(backend).body as ReleaseManifest
+        expect(release.files['_blitz/runtime.js']).toMatchObject({
             sha256: localHash,
             size: localRuntime.size,
             mime: 'text/javascript; charset=utf-8',
         })
-        expect(await api.uploaded.get(localHash)?.text()).toBe('new local runtime with Generator')
+        const upload = backend.requests.find(({method, path}) => method === 'PUT' && path.endsWith(`/blobs/${localHash}`))
+        expect((upload?.body as Buffer).toString()).toBe('new local runtime with Generator')
         expect(warning).toHaveBeenCalledWith(expect.stringContaining('publishing the installed runtime'))
         warning.mockRestore()
     })
@@ -261,21 +266,19 @@ describe('publishProject', () => {
         root.set('tools/build.mjs', 'private build helper')
         root.set('AGENTS.md', 'private instructions')
         root.set('public.txt', 'ship this')
-        const api = new MockPublishApi()
+        const {api, backend} = await testApi()
 
         await publishProject({dirHandle: root.asHandle(), api, slug: 'exclude-game'})
 
-        expect(api.releasedManifest?.files).toHaveProperty('public.txt')
-        expect(api.releasedManifest?.files).not.toHaveProperty('tools/build.mjs')
-        expect(api.releasedManifest?.files).not.toHaveProperty('AGENTS.md')
+        const release = releaseRequest(backend).body as ReleaseManifest
+        expect(release.files).toHaveProperty('public.txt')
+        expect(release.files).not.toHaveProperty('tools/build.mjs')
+        expect(release.files).not.toHaveProperty('AGENTS.md')
     })
 
     it('continues when the installed runtime version is not registered', async () => {
         const root = sampleProject()
-        const api = new MockPublishApi()
-        api.getRuntime = async () => {
-            throw Object.assign(new Error('not found'), {status: 404})
-        }
+        const {api} = await testApi({runtimeVersions: []})
         const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
         await expect(publishProject({dirHandle: root.asHandle(), api, slug: 'missing-runtime'}))
@@ -286,13 +289,7 @@ describe('publishProject', () => {
 
     it('leaves strict runtime enforcement to the release endpoint', async () => {
         const root = sampleProject()
-        const api = new MockPublishApi()
-        api.getRuntime = async () => {
-            throw Object.assign(new Error('registry unavailable'), {status: 503})
-        }
-        api.putRelease = async () => {
-            throw Object.assign(new Error('unregistered_runtime'), {status: 409, code: 'unregistered_runtime'})
-        }
+        const {api} = await testApi({runtimeStatus: 503, releaseStatus: 409})
         const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
         await expect(publishProject({dirHandle: root.asHandle(), api, slug: 'strict-runtime'}))
@@ -305,18 +302,9 @@ describe('publishProject', () => {
 describe('pullProject', () => {
     it('reports nothing to pull when a game was created but has no published release', async () => {
         const root = new FakeDirectory('pull-before-publish')
-        const entry = {
-            game_id: 'game-id',
-            deploy_token: 'tp_token',
-            claim_secret: 'claim-secret',
-            preview_url: 'https://gateway.example/pull-before-publish/',
-            expires_at: '2026-09-10 01:00:00',
-        }
+        const {api} = await testApi()
+        const entry = deployEntry(await api.createAnonymousGame({slug: 'pull-before-publish'}))
         await writeDeploys(root.asHandle(), {games: {'pull-before-publish': entry}})
-        const api = {
-            useGame: () => undefined,
-            getGame: async () => { throw new Error('should not query the game') },
-        } as unknown as PublishApi
 
         await expect(pullProject({dirHandle: root.asHandle(), api, entry}))
             .rejects.toThrow('There is nothing to pull before the first publish')
@@ -326,62 +314,30 @@ describe('pullProject', () => {
         const root = new FakeDirectory('pull')
         root.set('package.json', '{"name":"old"}')
         root.set('main.js', 'same')
-        const entry = {
-            game_id: 'game-id',
-            deploy_token: 'tp_token',
-            claim_secret: 'claim-secret',
-            preview_url: 'https://gateway.example/pull-game/',
-            expires_at: '2026-09-10 01:00:00',
-            last_release_hash: 'a'.repeat(64),
-        }
-        await writeDeploys(root.asHandle(), {games: {'pull-game': entry}})
+        const {api, backend} = await testApi()
+        const entry = deployEntry(await api.createAnonymousGame({slug: 'pull-game'}))
         const nextPackage = new Blob(['{"name":"new"}'])
         const sameMain = new Blob(['same'])
         const runtime = new Blob(['runtime'])
-        const releaseHash = 'b'.repeat(64)
-        const blobs = new Map([
-            [await sha256(nextPackage), nextPackage],
-            [await sha256(sameMain), sameMain],
-            [await sha256(runtime), runtime],
-        ])
-        const downloaded: string[] = []
-        const api = {
-            useGame: () => undefined,
-            getGame: async () => ({id: 'game-id', slug: 'pull-game', name: 'Pull', active_release: releaseHash}),
-            getRelease: async (hash: string) => hash === entry.last_release_hash ? {
-                release_hash: hash,
-                message: 'previous',
-                created_at: '2026-09-08 01:00:00',
-                active: false,
-                files: {
-                    'package.json': {sha256: await sha256(new Blob(['{"name":"old"}'])), size: 14},
-                    'main.js': {sha256: await sha256(sameMain), size: sameMain.size},
-                },
-            } : ({
-                release_hash: releaseHash,
-                message: 'remote',
-                created_at: '2026-09-09 01:00:00',
-                active: true,
-                files: {
-                    'index.html': {sha256: '1'.repeat(64), size: 1},
-                    '_blitz/runtime.js': {sha256: await sha256(runtime), size: runtime.size},
-                    'package.json': {sha256: await sha256(nextPackage), size: nextPackage.size},
-                    'main.js': {sha256: await sha256(sameMain), size: sameMain.size},
-                },
-            }),
-            downloadBlob: async (hash: string) => {
-                downloaded.push(hash)
-                const blob = blobs.get(hash)
-                if (!blob) throw new Error('Missing test blob')
-                return blob
-            },
-        } as PublishApi
+        const previous = await putRemoteRelease(api, {
+            'package.json': new Blob(['{"name":"old"}']),
+            'main.js': sameMain,
+        })
+        const remote = await putRemoteRelease(api, {
+            'index.html': new Blob(['x']),
+            '_blitz/runtime.js': runtime,
+            'package.json': nextPackage,
+            'main.js': sameMain,
+        })
+        entry.last_release_hash = previous.release_hash
+        await writeDeploys(root.asHandle(), {games: {'pull-game': entry}})
 
         const result = await pullProject({dirHandle: root.asHandle(), api, entry})
-        expect(result).toEqual({release_hash: releaseHash, updated: ['package.json'], kept: []})
+        expect(result).toEqual({release_hash: remote.release_hash, updated: ['package.json'], kept: []})
         expect(await root.text('package.json')).toBe('{"name":"new"}')
-        expect(downloaded).toEqual([await sha256(nextPackage)])
-        expect((await readDeploys(root.asHandle())).games['pull-game'].last_release_hash).toBe(releaseHash)
+        expect(backend.requests.filter(({method, path}) => method === 'GET' && path.includes('/blobs/')).map(({path}) => path))
+            .toEqual([expect.stringContaining(await sha256(nextPackage))])
+        expect((await readDeploys(root.asHandle())).games['pull-game'].last_release_hash).toBe(remote.release_hash)
     })
 
     it('keeps files changed since the last release unless force is set', async () => {
@@ -389,41 +345,19 @@ describe('pullProject', () => {
         root.set('main.js', 'local edit')
         const previous = new Blob(['published'])
         const remote = new Blob(['remote edit'])
-        const previousHash = await sha256(previous)
-        const remoteHash = await sha256(remote)
-        const previousReleaseHash = 'a'.repeat(64)
-        const remoteReleaseHash = 'b'.repeat(64)
-        const entry = {
-            game_id: 'game-id',
-            deploy_token: 'tp_token',
-            claim_secret: 'claim-secret',
-            preview_url: 'https://gateway.example/pull-conflict/',
-            expires_at: '2026-09-10 01:00:00',
-            last_release_hash: previousReleaseHash,
-        }
+        const {api} = await testApi()
+        const entry = deployEntry(await api.createAnonymousGame({slug: 'pull-conflict'}))
+        const previousRelease = await putRemoteRelease(api, {'main.js': previous})
+        const remoteRelease = await putRemoteRelease(api, {'main.js': remote})
+        entry.last_release_hash = previousRelease.release_hash
         await writeDeploys(root.asHandle(), {games: {'pull-conflict': entry}})
-        const release = (hash: string): ReleaseRecord => ({
-            release_hash: hash,
-            message: null,
-            created_at: '2026-09-09 01:00:00',
-            active: hash === remoteReleaseHash,
-            files: {'main.js': hash === remoteReleaseHash
-                ? {sha256: remoteHash, size: remote.size}
-                : {sha256: previousHash, size: previous.size}},
-        })
-        const api = {
-            useGame: () => undefined,
-            getGame: async () => ({id: 'game-id', slug: 'pull-conflict', name: 'Pull', active_release: remoteReleaseHash}),
-            getRelease: async (hash: string) => release(hash),
-            downloadBlob: async () => remote,
-        } as PublishApi
 
         const kept = await pullProject({dirHandle: root.asHandle(), api, entry})
-        expect(kept).toEqual({release_hash: remoteReleaseHash, updated: [], kept: ['main.js']})
+        expect(kept).toEqual({release_hash: remoteRelease.release_hash, updated: [], kept: ['main.js']})
         expect(await root.text('main.js')).toBe('local edit')
 
         const forced = await pullProject({dirHandle: root.asHandle(), api, entry, force: true})
-        expect(forced).toEqual({release_hash: remoteReleaseHash, updated: ['main.js'], kept: []})
+        expect(forced).toEqual({release_hash: remoteRelease.release_hash, updated: ['main.js'], kept: []})
         expect(await root.text('main.js')).toBe('remote edit')
     })
 })
@@ -440,9 +374,9 @@ function sampleProject(): FakeDirectory {
     root.set('main.js', 'export async function main() {}')
     root.set('ignored-by-gitignore.txt', 'still published')
     root.set('.gitignore', 'ignored-by-gitignore.txt')
-    root.set('assets/main.scene.glb', Uint8Array.from([1, 2, 3]))
+    root.set('assets/main.scene.gltf', '{"asset":{"version":"2.0"}}')
     root.set('Player.script.js', 'export class Player {}')
-    installEngine(root, BLITZ_VERSION, 'installed Blitz runtime')
+    installEngine(root, BLITZ_VERSION, 'mock Blitz runtime')
     return root
 }
 
@@ -451,80 +385,35 @@ function installEngine(root: FakeDirectory, version: string, runtime: string): v
     root.set('node_modules/@blitzdev/engine/dist/runtime.js', runtime)
 }
 
-class MockPublishApi implements PublishApi {
-    order: string[] = []
-    missing: string[] | undefined
-    activeUploads = 0
-    maxUploads = 0
-    nextReleaseHash = 'd'.repeat(64)
-    releaseOptions?: {message?: string; base_release?: string}
-    runtimeVersion?: string
-    releasedManifest?: ReleaseManifest
-    uploaded = new Map<string, Blob>()
-    createdName?: string
-    gameName = 'Sample Game'
+async function testApi(options: Parameters<typeof startMockBackend>[0] = {}) {
+    const backend = await startMockBackend(options)
+    backends.push(backend)
+    return {api: new BlitzApi({baseUrl: backend.url}), backend}
+}
 
-    useGame(): void {
-        this.order.push('use-game')
-    }
+function releaseRequest(backend: MockBackend) {
+    const request = backend.requests.findLast(({method, path}) => method === 'PUT' && path.endsWith('/releases'))
+    if (!request) throw new Error('No release request was recorded')
+    return request
+}
 
-    async createAnonymousGame(options: {slug: string; name?: string}): Promise<CreatedAnonymousGame> {
-        this.order.push('create')
-        this.createdName = options.name
-        this.gameName = options.name || options.slug
-        return {
-            game_id: 'game-id',
-            slug: 'sample-game',
-            name: this.gameName,
-            state: 'open',
-            deploy_token: 'tp_token',
-            claim_secret: 'claim-secret',
-            preview_url: 'https://gateway.example/sample-game/',
-            expires_at: '2026-09-10 01:00:00',
-        }
+function deployEntry(created: Awaited<ReturnType<BlitzApi['createAnonymousGame']>>): DeployEntry {
+    return {
+        game_id: created.game_id,
+        deploy_token: created.deploy_token,
+        claim_secret: created.claim_secret,
+        preview_url: created.preview_url,
+        expires_at: created.expires_at,
     }
+}
 
-    async getRuntime(version: string): Promise<RuntimeRecord> {
-        this.order.push('runtime')
-        this.runtimeVersion = version
-        return {version, sha256: 'c'.repeat(64), size: 42}
-    }
-
-    async missingBlobs(hashes: string[]): Promise<string[]> {
-        this.order.push('missing')
-        return this.missing ?? hashes.filter((hash) => hash !== 'c'.repeat(64))
-    }
-
-    async uploadBlob(hash: string, file: Blob): Promise<void> {
-        this.order.push('upload')
-        this.uploaded.set(hash, file)
-        this.activeUploads += 1
-        this.maxUploads = Math.max(this.maxUploads, this.activeUploads)
-        await new Promise((resolve) => setTimeout(resolve, 5))
-        this.activeUploads -= 1
-    }
-
-    async putRelease(manifest: ReleaseManifest, options?: {message?: string; base_release?: string}) {
-        this.order.push('release')
-        this.releasedManifest = manifest
-        this.releaseOptions = options
-        return {
-            release_hash: this.nextReleaseHash,
-            preview_url: 'https://gateway.example/sample-game/',
-        }
-    }
-
-    async getGame(): Promise<GameRecord> {
-        return {id: 'game-id', slug: 'sample-game', name: this.gameName, active_release: this.nextReleaseHash}
-    }
-
-    async getRelease(): Promise<ReleaseRecord> {
-        throw new Error('Not used')
-    }
-
-    async downloadBlob(): Promise<Blob> {
-        throw new Error('Not used')
-    }
+async function putRemoteRelease(api: BlitzApi, files: Record<string, Blob>) {
+    const descriptors = await Promise.all(Object.entries(files).map(async ([path, file]) => {
+        const hash = await sha256(file)
+        await api.uploadBlob(hash, file)
+        return [path, {sha256: hash, size: file.size}] as const
+    }))
+    return api.putRelease({files: Object.fromEntries(descriptors)})
 }
 
 function readImportMap(html: string): {imports: Record<string, string>} {

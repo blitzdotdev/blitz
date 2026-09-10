@@ -32,12 +32,7 @@ export {
 export type {PublicDeployEntry, PublishFromDiskOptions, UpgradeProjectOptions} from './commands.ts'
 export {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 export {enforceVersionPin, findPinnedProject} from './version-pin.ts'
-export type {
-    ExistingDeployTarget,
-    PublishApi,
-    PublishProjectOptions,
-    PullProjectOptions,
-} from './publish.ts'
+export type {PublishProjectOptions, PullProjectOptions} from './publish.ts'
 export type {
     CreatedAnonymousGame,
     DeployEntry,

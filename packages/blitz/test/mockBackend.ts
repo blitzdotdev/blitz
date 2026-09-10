@@ -1,6 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto'
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http'
 import {BLITZ_VERSION} from '../src/versions.ts'
+import type {ReleaseRecord} from '../src/types.ts'
 
 interface MockGame {
     id: string
@@ -9,7 +10,7 @@ interface MockGame {
     deployToken: string
     claimSecret: string
     expiresAt: string
-    releases: string[]
+    releases: ReleaseRecord[]
     claimed: boolean
 }
 
@@ -17,17 +18,24 @@ export interface MockBackend {
     url: string
     games: Map<string, MockGame>
     requests: Array<{method: string, path: string, body: unknown, authorization?: string}>
+    maxActiveUploads: number
     releaseCount(slug: string): number
     close(): Promise<void>
 }
 
-export async function startMockBackend(options: {runtimeVersions?: string[]} = {}): Promise<MockBackend> {
+export async function startMockBackend(options: {
+    runtimeVersions?: string[]
+    runtimeStatus?: number
+    releaseStatus?: number
+} = {}): Promise<MockBackend> {
     const games = new Map<string, MockGame>()
     const blobs = new Map<string, Buffer>()
     const requests: MockBackend['requests'] = []
     const runtime = Buffer.from('mock Blitz runtime')
     const runtimeHash = createHash('sha256').update(runtime).digest('hex')
     let baseUrl = ''
+    let activeUploads = 0
+    let maxActiveUploads = 0
 
     const server = createServer(async (request, response) => {
         const url = new URL(request.url || '/', baseUrl || 'http://127.0.0.1')
@@ -79,6 +87,9 @@ export async function startMockBackend(options: {runtimeVersions?: string[]} = {
             })
         }
         const runtimeMatch = request.method === 'GET' && /^\/api\/v1\/runtimes\/([^/]+)$/.exec(url.pathname)
+        if (runtimeMatch && options.runtimeStatus) {
+            return sendJson(response, options.runtimeStatus, {error: {code: 'runtime_unavailable', message: 'Runtime unavailable.'}})
+        }
         if (runtimeMatch && (options.runtimeVersions || [BLITZ_VERSION]).includes(decodeURIComponent(runtimeMatch[1]))) {
             return sendJson(response, 200, {version: decodeURIComponent(runtimeMatch[1]), sha256: runtimeHash, size: runtime.byteLength})
         }
@@ -103,20 +114,61 @@ export async function startMockBackend(options: {runtimeVersions?: string[]} = {
         const upload = request.method === 'PUT' && /^\/api\/v1\/games\/([^/]+)\/blobs\/([a-f\d]{64})$/.exec(url.pathname)
         if (upload) {
             const bytes = Buffer.isBuffer(body) ? body : Buffer.alloc(0)
+            activeUploads += 1
+            maxActiveUploads = Math.max(maxActiveUploads, activeUploads)
+            await new Promise((resolveDelay) => setTimeout(resolveDelay, 5))
             blobs.set(upload[2], bytes)
+            activeUploads -= 1
             return sendJson(response, 201, {sha256: upload[2], size: bytes.byteLength, uploaded: true})
         }
         const release = request.method === 'PUT' && /^\/api\/v1\/games\/([^/]+)\/releases$/.exec(url.pathname)
         if (release) {
             const game = findGame(decodeURIComponent(release[1]), games)
             if (!game) return sendJson(response, 404, {error: {code: 'game_not_found', message: 'Game not found.'}})
+            if (options.releaseStatus) {
+                return sendJson(response, options.releaseStatus, {error: {code: 'unregistered_runtime', message: 'unregistered_runtime'}})
+            }
             const releaseHash = String(game.releases.length + 1).padStart(64, '0')
-            game.releases.push(releaseHash)
+            for (const previous of game.releases) previous.active = false
+            const releaseRecord: ReleaseRecord = {
+                release_hash: releaseHash,
+                message: typeof record(body).message === 'string' ? record(body).message as string : null,
+                created_at: new Date().toISOString(),
+                active: true,
+                files: record(record(body).files) as ReleaseRecord['files'],
+            }
+            game.releases.push(releaseRecord)
             return sendJson(response, game.releases.length === 1 ? 201 : 200, {
                 release_hash: releaseHash,
                 preview_url: `${baseUrl}/preview/${game.slug}/`,
-                files: record(body).files,
+                files: releaseRecord.files,
             })
+        }
+        const gameRequest = request.method === 'GET' && /^\/api\/v1\/games\/([^/]+)$/.exec(url.pathname)
+        if (gameRequest) {
+            const game = findGame(decodeURIComponent(gameRequest[1]), games)
+            if (!game) return sendJson(response, 404, {error: {code: 'game_not_found', message: 'Game not found.'}})
+            return sendJson(response, 200, {game: {
+                id: game.id,
+                slug: game.slug,
+                name: game.name,
+                active_release: game.releases.at(-1)?.release_hash || null,
+            }})
+        }
+        const releaseRequest = request.method === 'GET' && /^\/api\/v1\/games\/([^/]+)\/releases\/([a-f\d]{64})$/.exec(url.pathname)
+        if (releaseRequest) {
+            const game = findGame(decodeURIComponent(releaseRequest[1]), games)
+            const found = game?.releases.find(({release_hash}) => release_hash === releaseRequest[2])
+            return found
+                ? sendJson(response, 200, found)
+                : sendJson(response, 404, {error: {code: 'release_not_found', message: 'Release not found.'}})
+        }
+        const download = request.method === 'GET' && /^\/api\/v1\/games\/([^/]+)\/blobs\/([a-f\d]{64})$/.exec(url.pathname)
+        if (download) {
+            const bytes = blobs.get(download[2])
+            if (!bytes) return sendJson(response, 404, {error: {code: 'blob_not_found', message: 'Blob not found.'}})
+            response.writeHead(200, {'Content-Type': 'application/octet-stream'}).end(bytes)
+            return
         }
         if (request.method === 'GET' && /^\/preview\/[^/]+\/$/.test(url.pathname)) {
             return sendHtml(response, '<!doctype html><title>Mock published game</title>')
@@ -139,6 +191,7 @@ export async function startMockBackend(options: {runtimeVersions?: string[]} = {
         url: baseUrl,
         games,
         requests,
+        get maxActiveUploads() { return maxActiveUploads },
         releaseCount(slug: string) { return games.get(slug)?.releases.length || 0 },
         close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
     }

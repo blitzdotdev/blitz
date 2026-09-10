@@ -154,7 +154,6 @@ describe('Blitz dev server', () => {
             name: 'server-test',
             server_version: BLITZ_VERSION,
             versions: {blitz: BLITZ_VERSION, editor: EDITOR_VERSION, engine: ENGINE_VERSION},
-            asset_library_proxy_url: expect.stringContaining('blitz-asset-library-proxy'),
         })
     })
 
@@ -246,8 +245,8 @@ describe('Blitz dev server', () => {
     it('serves the editor, its shared runtime bridge, and favicon from one origin', async () => {
         const {server} = await startServer()
         expect((await fetch(server.url)).status).toBe(200)
-        expect(await (await fetch(server.url)).text()).toContain('test editor')
-        expect(await (await fetch(`${base(server)}/editor-runtime.js`)).text()).toContain('editor runtime')
+        expect(await (await fetch(server.url)).text()).toContain('Blitz Editor')
+        expect((await fetch(`${base(server)}/editor-runtime.js`)).status).toBe(200)
         expect((await fetch(`${base(server)}/_blitz/runtime.js`)).status).toBe(404)
         expect((await fetch(`${base(server)}/favicon.ico`)).status).toBe(200)
         expect((await stat(resolve(server.projectRoot, '.blitz/dev.json'))).isFile()).toBe(true)
@@ -264,13 +263,8 @@ describe('Blitz dev server', () => {
         const address = blocker.address()
         if (!address || typeof address === 'string') throw new Error('Test blocker did not bind')
         const root = await temporaryProject()
-        const editor = resolve(root, 'editor')
-        await mkdir(editor)
-        await writeFile(resolve(editor, 'index.html'), '<!doctype html><head></head><title>test editor</title>')
-
         const fallback = await createDevServer({
             projectRoot: root,
-            editorDirectory: editor,
             port: address.port,
         })
         cleanup.push(() => fallback.close())
@@ -278,7 +272,6 @@ describe('Blitz dev server', () => {
 
         await expect(createDevServer({
             projectRoot: root,
-            editorDirectory: editor,
             port: address.port,
             strictPort: true,
         })).rejects.toThrow(`Port ${address.port} is already in use`)
@@ -354,16 +347,9 @@ async function readJournalLines(path: string): Promise<Array<Record<string, unkn
 
 async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull' | 'backendUrl'> = {}) {
     const root = await temporaryProject()
-    const editor = resolve(root, 'editor')
-    await mkdir(editor)
-    await writeFile(resolve(editor, 'index.html'), '<!doctype html><head><script type="importmap">{"imports":{}}</script></head><title>test editor</title>')
-    await writeFile(resolve(editor, 'editor-runtime.js'), 'export const editor = "editor runtime"')
-    await writeFile(resolve(editor, 'favicon.ico'), 'icon')
     const server = await createDevServer({
         projectRoot: root,
         port: 0,
-        token: 'test-token',
-        editorDirectory: editor,
         ...options,
     })
     cleanup.push(() => server.close())

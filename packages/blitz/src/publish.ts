@@ -3,41 +3,18 @@ import {projectDependencies} from '@blitzdev/engine/importMap'
 import {readProjectFile, walkProject, writeProjectFile} from './filesystem.ts'
 import {generateIndexHtml} from './indexHtml.ts'
 import {buildManifest, sha256} from './manifest.ts'
+import {BlitzApi} from './api.ts'
 import type {
     CreatedAnonymousGame,
     DeployEntry,
-    GameRecord,
     ProjectEntry,
     PublishProgress,
-    ReleaseManifest,
-    ReleaseRecord,
-    RuntimeRecord,
 } from './types.ts'
-
-export interface PublishApi {
-    useGame(gameId: string, token: string): unknown
-    createAnonymousGame(options: {slug: string; name?: string}): Promise<CreatedAnonymousGame>
-    getRuntime(version: string): Promise<RuntimeRecord>
-    missingBlobs(hashes: string[]): Promise<string[]>
-    uploadBlob(hash: string, file: Blob, onProgress?: (uploaded: number, total: number) => void): Promise<unknown>
-    putRelease(
-        manifest: ReleaseManifest,
-        options?: {message?: string; base_release?: string},
-    ): Promise<{release_hash: string; preview_url: string}>
-    getGame(id?: string): Promise<GameRecord>
-    getRelease(hash: string): Promise<ReleaseRecord>
-    downloadBlob(hash: string): Promise<Blob>
-}
-
-export interface ExistingDeployTarget extends DeployEntry {
-    slug: string
-}
 
 export interface PublishProjectOptions {
     dirHandle: FileSystemDirectoryHandle
-    api: PublishApi
-    slug?: string | ExistingDeployTarget
-    entry?: ExistingDeployTarget
+    api: BlitzApi
+    slug: string
     message?: string
     name?: string
     onProgress?: (progress: PublishProgress) => void
@@ -45,7 +22,7 @@ export interface PublishProjectOptions {
 
 export interface PullProjectOptions {
     dirHandle: FileSystemDirectoryHandle
-    api: PublishApi
+    api: BlitzApi
     entry: DeployEntry
     force?: boolean
 }
@@ -53,18 +30,13 @@ export interface PullProjectOptions {
 export async function publishProject({
     dirHandle,
     api,
-    slug: slugOrEntry,
-    entry: explicitEntry,
+    slug,
     message,
     name,
     onProgress,
 }: PublishProjectOptions): Promise<{preview_url: string; release_hash: string}> {
     const deploys = await readDeploys(dirHandle)
-    const target = explicitEntry ?? (typeof slugOrEntry === 'object' ? slugOrEntry : undefined)
-    const slug = target?.slug ?? slugOrEntry
-    if (typeof slug !== 'string' || !slug) throw new Error('A slug or existing deploy entry is required.')
-
-    let entry: DeployEntry | undefined = target ? deployEntryFromTarget(target) : deploys.games[slug]
+    let entry: DeployEntry | undefined = deploys.games[slug]
     const packageFile = await readProjectFile(dirHandle, 'package.json')
     if (!packageFile) throw new Error('package.json is required to publish a project.')
     let packageJson = parsePackageJson(await packageFile.text())
@@ -146,7 +118,10 @@ export async function publishProject({
         if (!projectEntry) throw new Error(`The release blob ${hash} is missing from the project upload set.`)
         return {hash, ...projectEntry}
     })
-    await uploadWithPool(api, uploads, onProgress)
+    await api.uploadBlobs(
+        uploads.map(({hash, file, path}) => ({sha256: hash, file, path})),
+        ({completed, total, path}) => onProgress?.({phase: 'uploading', completed, total, path}),
+    )
 
     onProgress?.({phase: 'releasing', completed: 0, total: 1})
     const release = await api.putRelease(manifest, {
@@ -283,11 +258,6 @@ function replaceEntry(entries: ProjectEntry[], next: ProjectEntry): ProjectEntry
         .sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)
 }
 
-function deployEntryFromTarget(target: ExistingDeployTarget): DeployEntry {
-    const {slug: _slug, ...entry} = target
-    return entry
-}
-
 function deployEntryFromCreated(created: CreatedAnonymousGame): DeployEntry {
     return {
         game_id: created.game_id,
@@ -296,29 +266,4 @@ function deployEntryFromCreated(created: CreatedAnonymousGame): DeployEntry {
         preview_url: created.preview_url,
         expires_at: created.expires_at,
     }
-}
-
-async function uploadWithPool(
-    api: PublishApi,
-    uploads: Array<ProjectEntry & {hash: string}>,
-    onProgress?: (progress: PublishProgress) => void,
-): Promise<void> {
-    let completed = 0
-    let nextIndex = 0
-    onProgress?.({phase: 'uploading', completed, total: uploads.length})
-    const workers = Array.from({length: Math.min(4, uploads.length)}, async () => {
-        while (nextIndex < uploads.length) {
-            const upload = uploads[nextIndex]
-            nextIndex += 1
-            await api.uploadBlob(upload.hash, upload.file)
-            completed += 1
-            onProgress?.({
-                phase: 'uploading',
-                completed,
-                total: uploads.length,
-                path: upload.path,
-            })
-        }
-    })
-    await Promise.all(workers)
 }

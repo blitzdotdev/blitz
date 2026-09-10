@@ -24,23 +24,11 @@ export interface PublishResult {
     release_hash: string
 }
 
-const RESERVED_SLUGS = new Set([
-    'admin', 'api', 'app', 'assets', 'auth', 'blitz', 'dashboard', 'editor', 'games',
-    'health', 'login', 'logout', 'new', 'register', 'settings', 'static', 'status', 'support', 'www',
-])
-
 export function slugify(name: string): string {
     let slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/--+/g, '-')
     if (slug.length < 3) slug = `${slug || 'game'}-game`
     slug = slug.slice(0, 49).replace(/-+$/, '')
-    if (RESERVED_SLUGS.has(slug)) slug = `${slug}-game`.slice(0, 49)
     return slug
-}
-
-export function localSlugReason(slug: string): SlugAvailability['reason'] | undefined {
-    if (!/^[a-z0-9](?:[a-z0-9-]{1,47}[a-z0-9])$/.test(slug) || slug.includes('--')) return 'invalid_slug'
-    if (RESERVED_SLUGS.has(slug)) return 'reserved_slug'
-    return undefined
 }
 
 export function isExpired(entry: DeployView, now = Date.now()): boolean {
