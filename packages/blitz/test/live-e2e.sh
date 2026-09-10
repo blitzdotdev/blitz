@@ -47,6 +47,7 @@ jq -n --arg slug "$SLUG" --arg id "$GAME_ID" --arg token "$DEPLOY_TOKEN" \
   > "$WORK_DIR/.blitz/deploys.json"
 
 node --input-type=module - "$REPO_ROOT" "$WORK_DIR" "$RUNTIME_VERSION" <<'NODE'
+import {createHash} from 'node:crypto'
 import {readFile, writeFile} from 'node:fs/promises'
 import {resolve} from 'node:path'
 import {pathToFileURL} from 'node:url'
@@ -60,7 +61,9 @@ packageJson.blitz ||= {}
 packageJson.blitz.version ||= runtimeVersion
 await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
 const dependencies = Object.entries(packageJson.dependencies || {}).map(([key, version]) => ({key, version}))
-const html = generateIndexHtml({name: packageJson.name, version: runtimeVersion, dependencies})
+const runtimeBytes = await readFile(resolve(project, 'node_modules/@blitzdev/engine/dist/runtime.js'))
+const runtimeHash = createHash('sha256').update(runtimeBytes).digest('hex')
+const html = generateIndexHtml({name: packageJson.name, version: runtimeVersion, runtimeHash, dependencies})
 await writeFile(resolve(project, 'index.html'), html)
 NODE
 log 'index: generated with relative runtime paths'

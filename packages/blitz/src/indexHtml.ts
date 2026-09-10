@@ -4,17 +4,18 @@ import {dependencyImportMap} from '@blitzdev/engine/importMap'
 export interface GenerateIndexHtmlOptions {
     name: string
     version: string
+    runtimeHash: string
     dependencies?: ProjectDependency[]
 }
 
-export function generateIndexHtml({name, version, dependencies = []}: GenerateIndexHtmlOptions): string {
+export function generateIndexHtml({name, version, runtimeHash, dependencies = []}: GenerateIndexHtmlOptions): string {
     const importMap = JSON.stringify(dependencyImportMap(dependencies, './_blitz/runtime.js')).replace(/</g, '\\u003c')
     return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="blitz-runtime" content="${escapeHtml(version)}">
+<meta name="blitz-runtime" content="${escapeHtml(`${version} ${runtimeHash}`)}">
 <link rel="icon" href="./icon.svg">
 <title>${escapeHtml(name)}</title>
 <script type="importmap">${importMap}</script>

@@ -80,6 +80,7 @@ interface PendingCommand {
 }
 
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
+const protectedProjectPaths = new Set(['.blitz/deploys.json', '.blitz/dev.json'])
 const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
 const serverRequire = createRequire(import.meta.url)
 
@@ -115,7 +116,8 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     app.use('/files/*', checkToken)
 
     async function checkToken(c: Context<AppEnv>, next: Next): Promise<void | Response> {
-        if (c.req.header('X-Blitz-Token') !== token && getCookie(c, 'blitz-token') !== token) {
+        const queryToken = c.req.method === 'GET' ? c.req.query('t') : undefined
+        if (c.req.header('X-Blitz-Token') !== token && getCookie(c, 'blitz-token') !== token && queryToken !== token) {
             return textResponse('Missing or invalid Blitz token', 401)
         }
         return next()
@@ -254,7 +256,8 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     })
     app.get('/files/*', async (c) => {
         const relativePath = decodeFilePath(new URL(c.req.url).pathname)
-        const filePath = await safeProjectPath(projectRoot, relativePath)
+        const filePath = await safeProjectPath(projectRoot, relativePath, true)
+        if (!(await fileExists(filePath))) return missingFileResponse()
         return serveProjectFile(c.req.raw, filePath, relativePath)
     })
     app.put('/files/*', async (c) => {
@@ -296,8 +299,8 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     })
     app.delete('/files/*', async (c) => {
         const relativePath = decodeFilePath(new URL(c.req.url).pathname)
-        const filePath = await safeProjectPath(projectRoot, relativePath)
-        if (!(await fileExists(filePath))) return textResponse('Not found', 404)
+        const filePath = await safeProjectPath(projectRoot, relativePath, true)
+        if (!(await fileExists(filePath))) return missingFileResponse()
         await unlink(filePath)
         knownHashes.delete(relativePath)
         scheduleEvent(relativePath, c.get('clientId'), 'unlink')
@@ -314,9 +317,12 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         return textResponse('Not found', 404)
     })
     app.onError((error) => {
-        const message = error instanceof Error ? error.message : 'Internal server error'
-        const status = httpErrorStatus(error) ?? (/Invalid project path|forbidden|symlink|escape/i.test(message) ? 403 : 500)
-        const code = httpErrorCode(error) ?? (status === 403 ? 'invalid_path' : 'internal_error')
+        const rawMessage = error instanceof Error ? error.message : 'Internal server error'
+        const status = httpErrorStatus(error) ?? (isMissing(error) ? 404 : (/Invalid project path|forbidden|symlink|escape/i.test(rawMessage) ? 403 : 500))
+        const code = status === 404
+            ? 'not_found'
+            : httpErrorCode(error) ?? (status === 403 ? 'invalid_path' : 'internal_error')
+        const message = status === 404 ? 'File not found.' : status === 500 ? 'Internal server error' : rawMessage
         return jsonResponse({error: {code, message}}, status)
     })
     app.notFound(() => textResponse('Not found', 404))
@@ -560,7 +566,9 @@ export async function buildManifest(root: string): Promise<ManifestEntry[]> {
 }
 
 function isIncludedPath(path: string): boolean {
-    const parts = normalizeRelativePath(path).split('/')
+    const normalized = normalizeRelativePath(path)
+    if (protectedProjectPaths.has(normalized)) return false
+    const parts = normalized.split('/')
     if (parts.some((part) => excludedDirectories.has(part))) return false
     return !parts.some((part) => part.startsWith('.') && part !== '.blitz')
 }
@@ -614,7 +622,7 @@ async function safeProjectPath(root: string, relativePath: string, allowMissing 
 }
 
 async function serveProjectFile(request: Request, path: string, relativePath: string): Promise<Response> {
-    if (!(await fileExists(path))) return textResponse('Not found', 404)
+    if (!(await fileExists(path))) return missingFileResponse()
     const sha256 = await hashFile(path)
     const etag = `"${sha256}"`
     if (request.headers.get('If-None-Match') === etag) {
@@ -700,6 +708,10 @@ function jsonResponse(body: unknown, status = 200, headers: HeadersInit = {}): R
             ...Object.fromEntries(new Headers(headers)),
         },
     })
+}
+
+function missingFileResponse(): Response {
+    return jsonResponse({error: {code: 'not_found', message: 'File not found.'}}, 404)
 }
 
 async function proxyBackendJson(url: string, init?: RequestInit): Promise<Response> {

@@ -12,6 +12,7 @@ import {createDevServer, type DevServer} from './server.ts'
 import type {PublishProgress} from './types.ts'
 import {appendJournalEntry, readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
 import {BLITZ_VERSION} from './versions.ts'
+import {checkProject} from './check.ts'
 
 const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
 const commandRequire = createRequire(import.meta.url)
@@ -21,6 +22,7 @@ export interface PublishFromDiskOptions {
     name?: string
     message?: string
     backendUrl?: string
+    noCheck?: boolean
 }
 
 export interface PublicDeployEntry {
@@ -30,6 +32,13 @@ export interface PublicDeployEntry {
     expires_at: string
     last_release_hash?: string
     claimed: boolean
+}
+
+export interface PublicDevServer {
+    pid: number
+    port: number
+    age: string
+    url: string
 }
 
 interface RuntimeProjectTools {
@@ -125,8 +134,14 @@ export async function runDev(options: {
     strictPort?: boolean
     noOpen?: boolean
     backendUrl?: string
+    force?: boolean
 } = {}): Promise<DevServer> {
     const projectRoot = resolve(options.projectRoot || process.cwd())
+    const existing = await devStatusFromDisk(projectRoot)
+    if (existing && !options.force) {
+        console.warn(`[blitz] A development server is already running for this project (pid ${existing.pid}, port ${existing.port}).`)
+        throw new Error('Use blitz open to open it, or pass --force to start another server.')
+    }
     const server = await createDevServer({
         projectRoot,
         port: options.port,
@@ -147,6 +162,15 @@ export async function publishFromDisk(
     options: PublishFromDiskOptions = {},
     onProgress?: (progress: PublishProgress) => void,
 ): Promise<{preview_url: string, release_hash: string}> {
+    if (!options.noCheck) {
+        const check = await checkProject(projectRoot)
+        if (!check.ok) {
+            const first = check.rows.find(({status}) => status === 'fail')
+            const error = new Error(`Project check failed${first ? `: ${first.kind} ${first.path}: ${first.detail}` : ''}. Run blitz check for details, or use --no-check to skip it.`)
+            Object.assign(error, {status: 422, code: 'check_failed'})
+            throw error
+        }
+    }
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
     const existing = Object.entries(deploys.games)[0]
@@ -175,6 +199,35 @@ export async function statusFromDisk(projectRoot = process.cwd()): Promise<Publi
     }))
 }
 
+export async function devStatusFromDisk(projectRoot = process.cwd()): Promise<PublicDevServer | undefined> {
+    let state: {pid?: unknown, port?: unknown, url?: unknown, started_at?: unknown}
+    try {
+        state = JSON.parse(await readFile(resolve(projectRoot, '.blitz/dev.json'), 'utf8')) as typeof state
+    } catch {
+        return undefined
+    }
+    if (!Number.isInteger(state.pid) || (state.pid as number) <= 0
+        || !Number.isInteger(state.port) || (state.port as number) < 1
+        || typeof state.url !== 'string' || typeof state.started_at !== 'string'
+        || !processIsAlive(state.pid as number)) return undefined
+    const started = Date.parse(state.started_at)
+    if (!Number.isFinite(started)) return undefined
+    let publicUrl: string
+    try {
+        const url = new URL(state.url)
+        url.searchParams.delete('t')
+        publicUrl = url.toString()
+    } catch {
+        return undefined
+    }
+    return {
+        pid: state.pid as number,
+        port: state.port as number,
+        age: formatAge(Math.max(0, Date.now() - started)),
+        url: publicUrl,
+    }
+}
+
 export async function claimFromDisk(
     options: {email: string, password: string, login?: boolean},
     projectRoot = process.cwd(),
@@ -201,7 +254,7 @@ export async function pullFromDisk(projectRoot = process.cwd(), options: {force?
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
     const existing = Object.entries(deploys.games)[0]
-    if (!existing?.[1].last_release_hash) throw new Error('There is nothing to pull before the first publish.')
+    if (!existing?.[1].last_release_hash) return {release_hash: undefined, updated: [], kept: []}
     const [, entry] = existing
     return pullProject({
         dirHandle: directory,
@@ -209,6 +262,24 @@ export async function pullFromDisk(projectRoot = process.cwd(), options: {force?
         entry,
         force: options.force === true,
     })
+}
+
+function processIsAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0)
+        return true
+    } catch (error) {
+        return error instanceof Error && 'code' in error && error.code === 'EPERM'
+    }
+}
+
+function formatAge(milliseconds: number): string {
+    const seconds = Math.floor(milliseconds / 1_000)
+    if (seconds < 60) return `${seconds}s`
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ${seconds % 60}s`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ${minutes % 60}m`
 }
 
 export async function openCurrentProject(projectRoot = process.cwd()): Promise<string> {

@@ -3,9 +3,9 @@ import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises'
 import {createServer as createHttpServer, request} from 'node:http'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
-import {afterEach, describe, expect, it} from 'vitest'
+import {afterEach, describe, expect, it, vi} from 'vitest'
 import {createDevServer, type DevServer, type DevServerOptions} from '../src/server.ts'
-import {publishFromDisk} from '../src/commands.ts'
+import {devStatusFromDisk, publishFromDisk, runDev} from '../src/commands.ts'
 import {readDeploys, writeDeploys} from '../src/deploys.ts'
 import {NodeProjectDirectory} from '../src/node-filesystem.ts'
 import {readProjectFile, walkProject, writeProjectFile} from '../src/filesystem.ts'
@@ -111,7 +111,7 @@ describe('Blitz dev server', () => {
             headers: {...started.headers, 'Content-Type': 'application/json'},
             body: JSON.stringify({slug: 'route-game', name: 'Route Game', message: 'from proxy'}),
         })
-        expect(response.status).toBe(200)
+        expect(response.status, await response.clone().text()).toBe(200)
         expect(await response.json()).toMatchObject({preview_url: `${backend.url}/preview/route-game/`})
         expect(backend.games.get('route-game')?.name).toBe('Route Game')
         expect(backend.releaseCount('route-game')).toBe(1)
@@ -157,6 +157,44 @@ describe('Blitz dev server', () => {
         })
     })
 
+    it('returns sanitized JSON 404 errors for missing file reads and deletes', async () => {
+        const {server, root, headers} = await startServer()
+        for (const method of ['GET', 'DELETE']) {
+            const response = await fetch(`${base(server)}/files/missing/nothing.txt`, {method, headers})
+            expect(response.status).toBe(404)
+            expect(response.headers.get('content-type')).toContain('application/json')
+            const body = await response.json()
+            expect(body).toEqual({error: {code: 'not_found', message: 'File not found.'}})
+            expect(JSON.stringify(body)).not.toContain(root)
+        }
+    })
+
+    it('accepts the query token on GET API routes', async () => {
+        const {server} = await startServer()
+        const query = `t=${encodeURIComponent(server.token)}`
+        expect((await fetch(`${base(server)}/api/state?${query}`)).status).toBe(200)
+        expect((await fetch(`${base(server)}/api/files?${query}`)).status).toBe(200)
+        const controller = new AbortController()
+        const events = await fetch(`${base(server)}/api/events?${query}`, {signal: controller.signal})
+        expect(events.status).toBe(200)
+        controller.abort()
+    })
+
+    it('keeps local deploy and dev credentials out of file APIs', async () => {
+        const {server, root, headers} = await startServer()
+        await writeFile(resolve(root, '.blitz/deploys.json'), '{"secret":"deploy"}')
+        const manifest = await (await fetch(`${base(server)}/api/files`, {headers})).json() as Array<{path: string}>
+        expect(manifest.map(({path}) => path)).not.toContain('.blitz/deploys.json')
+        expect(manifest.map(({path}) => path)).not.toContain('.blitz/dev.json')
+        for (const path of ['.blitz/deploys.json', '.blitz/dev.json']) {
+            expect((await fetch(`${base(server)}/files/${path}`, {headers})).status).toBe(403)
+            expect((await fetch(`${base(server)}/files/${path}`, {
+                method: 'DELETE',
+                headers,
+            })).status).toBe(403)
+        }
+    })
+
     it('injects the same dependency map used by published games', async () => {
         const {server, root, headers} = await startServer()
         const packageJson = {
@@ -176,6 +214,7 @@ describe('Blitz dev server', () => {
         const publishedHtml = generateIndexHtml({
             name: packageJson.name,
             version: BLITZ_VERSION,
+            runtimeHash: 'abc123',
             dependencies: projectDependencies(packageJson),
         })
         const published = JSON.parse(publishedHtml.match(/<script type="importmap">(.*?)<\/script>/s)?.[1] || '{}') as {
@@ -277,6 +316,23 @@ describe('Blitz dev server', () => {
         })).rejects.toThrow(`Port ${address.port} is already in use`)
     })
 
+    it('reports a live project server and refuses a second dev server unless forced', async () => {
+        const {server, root} = await startServer()
+        const status = await devStatusFromDisk(root)
+        expect(status).toMatchObject({pid: process.pid, port: server.port, url: base(server) + '/'})
+        expect(status?.age).toMatch(/^\d+s$/)
+        expect(JSON.stringify(status)).not.toContain(server.token)
+
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+        await expect(runDev({projectRoot: root, noOpen: true})).rejects.toThrow('pass --force')
+        expect(warning).toHaveBeenCalledWith(expect.stringContaining('already running for this project'))
+        warning.mockRestore()
+
+        const forced = await runDev({projectRoot: root, port: 0, noOpen: true, force: true})
+        cleanup.push(() => forced.close())
+        expect(forced.port).toBeGreaterThan(0)
+    })
+
     it('fails bake clearly when no editor is connected', async () => {
         const {server, headers} = await startServer()
         const response = await fetch(`${base(server)}/api/bake`, {
@@ -324,6 +380,7 @@ async function temporaryProject(): Promise<string> {
     cleanup.push(() => rm(root, {recursive: true, force: true}))
     await writeFile(resolve(root, 'package.json'), `${JSON.stringify({
         name: 'server-test',
+        mainScene: 'assets/main.scene.gltf',
         devDependencies: {'@blitzdev/blitz': BLITZ_VERSION},
         blitz: {version: BLITZ_VERSION},
     })}\n`)

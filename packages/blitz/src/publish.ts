@@ -74,6 +74,10 @@ export async function publishProject({
         )
         projectEntries = replaceEntry(projectEntries, {path: 'package.json', file: updated})
     }
+    projectEntries = replaceEntry(projectEntries, {
+        path: 'package.json',
+        file: publishedPackageFile(packageJson),
+    })
 
     const version = versionResult.version
     const installedRuntime = await readProjectFile(dirHandle, 'node_modules/@blitzdev/engine/dist/runtime.js')
@@ -96,6 +100,7 @@ export async function publishProject({
     const indexHtml = generateIndexHtml({
         name: releaseName,
         version,
+        runtimeHash,
         dependencies: projectDependencies(packageJson),
     })
     const indexFile = await writeProjectFile(dirHandle, 'index.html', indexHtml)
@@ -127,6 +132,9 @@ export async function publishProject({
     const release = await api.putRelease(manifest, {
         message: message ?? (entry.last_release_hash ? 'update' : 'initial'),
         base_release: entry.last_release_hash,
+        metadata: typeof packageJson.description === 'string'
+            ? {description: packageJson.description}
+            : undefined,
     })
     entry.last_release_hash = release.release_hash
     deploys.games[slug] = entry
@@ -180,6 +188,20 @@ function parsePackageJson(text: string): Record<string, unknown> {
         throw new Error('package.json must contain an object.')
     }
     return value as Record<string, unknown>
+}
+
+function publishedPackageFile(packageJson: Record<string, unknown>): File {
+    const published = {...packageJson}
+    delete published.devDependencies
+    for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
+        const dependencies = published[section]
+        if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue
+        const filtered = Object.fromEntries(Object.entries(dependencies as Record<string, unknown>)
+            .filter(([, spec]) => typeof spec !== 'string' || !spec.startsWith('file:')))
+        if (Object.keys(filtered).length) published[section] = filtered
+        else delete published[section]
+    }
+    return new File([`${JSON.stringify(published, null, 2)}\n`], 'package.json', {type: 'application/json'})
 }
 
 function packageDisplayName(packageJson: Record<string, unknown>, fallback: string): string {

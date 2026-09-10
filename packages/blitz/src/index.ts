@@ -1,5 +1,7 @@
 export {BlitzApi, BlitzApiError} from './api.ts'
 export type {BlitzApiOptions, BlobUpload, BlobUploadProgress} from './api.ts'
+export {checkProject, formatCheckTable} from './check.ts'
+export type {CheckResult, CheckRow} from './check.ts'
 export {DEPLOYS_PATH, findDeploySlug, readDeploys, writeDeploys} from './deploys.ts'
 export {readProjectFile, walkProject, writeProjectFile} from './filesystem.ts'
 export {generateIndexHtml} from './indexHtml.ts'
@@ -18,6 +20,7 @@ export type {JournalEntry, ReadJournalOptions, UpgradeSummary} from './journal.t
 export {
     bakeFromEditor,
     claimFromDisk,
+    devStatusFromDisk,
     initProject,
     journalFromDisk,
     openCurrentProject,
@@ -29,7 +32,7 @@ export {
     statusFromDisk,
     upgradeProject,
 } from './commands.ts'
-export type {PublicDeployEntry, PublishFromDiskOptions, UpgradeProjectOptions} from './commands.ts'
+export type {PublicDeployEntry, PublicDevServer, PublishFromDiskOptions, UpgradeProjectOptions} from './commands.ts'
 export {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 export {enforceVersionPin, findPinnedProject} from './version-pin.ts'
 export type {PublishProjectOptions, PullProjectOptions} from './publish.ts'

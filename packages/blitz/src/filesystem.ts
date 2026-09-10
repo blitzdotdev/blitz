@@ -1,7 +1,17 @@
 import type {ProjectEntry} from './types.ts'
 
 const EXCLUDED_DIRECTORIES = new Set(['.blitz', '.git', 'node_modules', 'dist'])
-const DEFAULT_EXCLUDES = ['package-lock.json', '.env', '.env.*', '*.log', '.eslintrc*']
+const DEFAULT_EXCLUDES = [
+    'package-lock.json',
+    '.env',
+    '.env.*',
+    '*.log',
+    '.eslintrc*',
+    'AGENTS.md',
+    'samples/**',
+    'tools/**',
+    '*.md',
+]
 
 export interface WalkProjectOptions {
     exclude?: string[]
@@ -16,8 +26,7 @@ export async function walkProject(
     options: WalkProjectOptions = {},
 ): Promise<ProjectEntry[]> {
     const entries: ProjectEntry[] = []
-    const excludes = [...DEFAULT_EXCLUDES, ...(options.exclude || [])]
-    await walkDirectory(dirHandle, '', entries, excludes)
+    await walkDirectory(dirHandle, '', entries, options.exclude || [])
     return entries.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)
 }
 
@@ -34,10 +43,16 @@ async function walkDirectory(
             if (EXCLUDED_DIRECTORIES.has(handle.name)) continue
             await walkDirectory(handle, path, result, excludes)
         } else {
+            if (DEFAULT_EXCLUDES.some((pattern) => matchesDefaultExclude(path, pattern))) continue
             if (excludes.some((pattern) => matchesGlob(path, pattern))) continue
             result.push({path, file: await handle.getFile()})
         }
     }
+}
+
+function matchesDefaultExclude(path: string, pattern: string): boolean {
+    if (pattern === '*.md') return !path.includes('/') && path !== 'README.md' && matchesGlob(path, pattern)
+    return matchesGlob(path, pattern)
 }
 
 function matchesGlob(path: string, pattern: string): boolean {

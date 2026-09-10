@@ -2,6 +2,7 @@
 import {
     bakeFromEditor,
     claimFromDisk,
+    devStatusFromDisk,
     initProject,
     journalFromDisk,
     openCurrentProject,
@@ -12,6 +13,7 @@ import {
     statusFromDisk,
     upgradeProject,
 } from './commands.ts'
+import {checkProject, formatCheckTable} from './check.ts'
 import {enforceVersionPin} from './version-pin.ts'
 import {BLITZ_VERSION} from './versions.ts'
 
@@ -26,6 +28,7 @@ Commands:
   claim --email <email> --password <password> [--login]
                               Register or sign in, then claim local deploys
   bake <nodeName> [--force]   Bake a Generator node
+  check                       Validate scripts, plugins, generators, and scene components
   journal [options]           Read the edit journal
   open                        Open the running local editor
   sources                     Locate installed source
@@ -35,12 +38,13 @@ Run blitz <command> --help for command usage.`
 
 const COMMAND_USAGE: Record<string, string> = {
     init: 'Usage: blitz init [dir]',
-    dev: 'Usage: blitz dev [--port <port>] [--no-open]',
-    publish: 'Usage: blitz publish [--slug <slug>] [--name <name>] [--message <message>]',
+    dev: 'Usage: blitz dev [--port <port>] [--no-open] [--force]',
+    publish: 'Usage: blitz publish [--slug <slug>] [--name <name>] [--message <message>] [--no-check]',
     pull: 'Usage: blitz pull [--force]',
     status: 'Usage: blitz status',
     claim: 'Usage: blitz claim --email <email> --password <password> [--login]',
     bake: 'Usage: blitz bake <nodeName> [--force]',
+    check: 'Usage: blitz check',
     journal: 'Usage: blitz journal [--since <iso>] [-n <count>]',
     open: 'Usage: blitz open',
     sources: 'Usage: blitz sources',
@@ -75,12 +79,13 @@ try {
         console.log(`Created Blitz project at ${target}`)
         console.log(`Next: cd ${directory} && npm install && npx blitz dev`)
     } else if (command === 'dev') {
-        const parsed = parseArgs(args, {'--port': 'value', '--no-open': 'boolean'})
+        const parsed = parseArgs(args, {'--port': 'value', '--no-open': 'boolean', '--force': 'boolean'})
         const port = portOption(parsed.values['--port'])
         const server = await runDev({
             port,
             strictPort: port !== undefined,
             noOpen: parsed.values['--no-open'] === true,
+            force: parsed.values['--force'] === true,
         })
         console.log(`Blitz editor: ${server.url}`)
         console.log(`Project: ${server.projectRoot}`)
@@ -91,11 +96,12 @@ try {
         process.once('SIGINT', shutdown)
         process.once('SIGTERM', shutdown)
     } else if (command === 'publish') {
-        const parsed = parseArgs(args, {'--slug': 'value', '--name': 'value', '--message': 'value'})
+        const parsed = parseArgs(args, {'--slug': 'value', '--name': 'value', '--message': 'value', '--no-check': 'boolean'})
         const result = await publishFromDisk(process.cwd(), {
             slug: valueOption(parsed.values['--slug']),
             name: valueOption(parsed.values['--name']),
             message: valueOption(parsed.values['--message']),
+            noCheck: parsed.values['--no-check'] === true,
         }, (value) => {
             const progress = value as {phase?: string, completed?: number, total?: number, path?: string}
             console.log(`[${progress.phase}] ${progress.completed}/${progress.total}${progress.path ? ` ${progress.path}` : ''}`)
@@ -105,11 +111,17 @@ try {
     } else if (command === 'pull') {
         const parsed = parseArgs(args, {'--force': 'boolean'})
         const result = await pullFromDisk(process.cwd(), {force: parsed.values['--force'] === true})
-        for (const path of result.kept) console.log(`${path}: modified locally, kept`)
-        console.log(`Pulled ${result.release_hash}; updated ${result.updated.length} file(s).`)
+        if (!result.release_hash) {
+            console.log('There is nothing to pull before the first publish.')
+        } else {
+            for (const path of result.kept) console.log(`${path}: modified locally, kept`)
+            console.log(`Pulled ${result.release_hash}; updated ${result.updated.length} file(s).`)
+        }
     } else if (command === 'status') {
         parseArgs(args, {})
         const entries = await statusFromDisk()
+        const dev = await devStatusFromDisk()
+        if (dev) console.log(`Dev server: pid ${dev.pid}, port ${dev.port}, age ${dev.age}, ${dev.url}`)
         if (!entries.length) console.log('No deploys. Run blitz publish first.')
         for (const entry of entries) console.log(JSON.stringify({...entry, time_left: timeLeft(entry)}))
     } else if (command === 'claim') {
@@ -129,6 +141,11 @@ try {
         const nodeName = parsed.positionals[0] || ''
         const result = await bakeFromEditor(nodeName, {force: parsed.values['--force'] === true})
         console.log(`Baked ${String(result.nodeName || nodeName)}`)
+    } else if (command === 'check') {
+        parseArgs(args, {})
+        const result = await checkProject()
+        console.log(formatCheckTable(result))
+        if (!result.ok) process.exitCode = 1
     } else if (command === 'journal') {
         const parsed = parseArgs(args, {'--since': 'value', '-n': 'value'})
         const entries = await journalFromDisk(process.cwd(), {

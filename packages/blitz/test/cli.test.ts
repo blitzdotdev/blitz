@@ -17,7 +17,7 @@ afterEach(async () => {
 
 describe('blitz CLI', () => {
     it('prints command-specific help without performing the command', async () => {
-        const commands = ['init', 'dev', 'publish', 'pull', 'status', 'claim', 'bake', 'journal', 'open', 'sources', 'upgrade']
+        const commands = ['init', 'dev', 'publish', 'pull', 'status', 'claim', 'bake', 'check', 'journal', 'open', 'sources', 'upgrade']
         const results = await Promise.all(commands.map(async (command) => ({
             command,
             result: await execute(process.execPath, [cli, command, '--help']),
@@ -131,14 +131,30 @@ describe('blitz CLI', () => {
             })
     })
 
-    it('explains that there is nothing to pull before the first publish', async () => {
+    it('exits successfully when there is nothing to pull before the first publish', async () => {
         const root = await pinnedProject(BLITZ_VERSION)
 
-        await expect(execute(process.execPath, [cli, 'pull'], {cwd: root}))
-            .rejects.toMatchObject({
-                code: 1,
-                stderr: expect.stringContaining('There is nothing to pull before the first publish'),
-            })
+        const result = await execute(process.execPath, [cli, 'pull'], {cwd: root})
+
+        expect(result.stdout).toContain('There is nothing to pull before the first publish')
+        expect(result.stderr).toBe('')
+    })
+
+    it('prints a live project dev server without exposing its token', async () => {
+        const root = await pinnedProject(BLITZ_VERSION)
+        await mkdir(resolve(root, '.blitz'), {recursive: true})
+        await writeFile(resolve(root, '.blitz/dev.json'), JSON.stringify({
+            pid: process.pid,
+            port: 4567,
+            url: 'http://127.0.0.1:4567/?t=very-secret',
+            token: 'very-secret',
+            started_at: new Date(Date.now() - 5_000).toISOString(),
+        }))
+
+        const result = await execute(process.execPath, [cli, 'status'], {cwd: root})
+
+        expect(result.stdout).toMatch(new RegExp(`Dev server: pid ${process.pid}, port 4567, age \\d+s, http://127\\.0\\.0\\.1:4567/`))
+        expect(result.stdout).not.toContain('very-secret')
     })
 
     it('bypasses the project version rule for development', async () => {

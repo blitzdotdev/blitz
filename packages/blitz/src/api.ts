@@ -153,7 +153,7 @@ export class BlitzApi {
 
     putRelease(
         manifest: ReleaseManifest,
-        options: {message?: string; base_release?: string} = {},
+        options: {message?: string; base_release?: string; metadata?: {description?: string}} = {},
     ): Promise<{release_hash: string; preview_url: string; files: ReleaseManifest['files']}> {
         return this.request(this.gamePath('/releases'), {
             method: 'PUT',

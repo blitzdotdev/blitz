@@ -55,9 +55,17 @@ describe('walkProject', () => {
         root.set('dist/index.js', 'build')
         root.set('assets/.hidden.glb', 'hidden')
         root.set('assets/model.glb', 'model')
+        root.set('AGENTS.md', 'private agent instructions')
+        root.set('DESIGN.md', 'private design notes')
+        root.set('README.md', 'public readme')
+        root.set('samples/example.js', 'sample')
+        root.set('tools/build.mjs', 'tool')
+        root.set('docs/guide.md', 'nested documentation')
 
         expect((await walkProject(root.asHandle())).map(({path}) => path)).toEqual([
+            'README.md',
             'assets/model.glb',
+            'docs/guide.md',
             'keep-me.txt',
             'main.js',
         ])
@@ -90,6 +98,7 @@ describe('generateIndexHtml', () => {
         const html = generateIndexHtml({
             name: 'A <Game>',
             version: BLITZ_VERSION,
+            runtimeHash: 'abc123',
             dependencies: [
                 {key: 'threepipe', version: '0.5.1'},
                 {key: 'extra-package', version: '1.2.3'},
@@ -106,6 +115,7 @@ describe('generateIndexHtml', () => {
         expect(html).toContain("base:new URL('./',location.href).href")
         expect(html).not.toContain('"/_blitz/runtime.js"')
         expect(html).toContain('<title>A &lt;Game&gt;</title>')
+        expect(html).toContain(`<meta name="blitz-runtime" content="${BLITZ_VERSION} abc123">`)
         expect(html).toContain('<link rel="icon" href="./icon.svg">')
     })
 
@@ -113,6 +123,7 @@ describe('generateIndexHtml', () => {
         const html = generateIndexHtml({
             name: 'Tarball Game',
             version: BLITZ_VERSION,
+            runtimeHash: 'abc123',
             dependencies: [
                 {key: '@blitzdev/engine', version: 'file:../../packs/engine.tgz'},
                 {key: '@blitzdev/editor', version: 'file:../../packs/editor.tgz'},
@@ -254,8 +265,33 @@ describe('publishProject', () => {
         })
         const upload = backend.requests.find(({method, path}) => method === 'PUT' && path.endsWith(`/blobs/${localHash}`))
         expect((upload?.body as Buffer).toString()).toBe('new local runtime with Generator')
+        expect(await root.text('index.html')).toContain(`<meta name="blitz-runtime" content="${BLITZ_VERSION} ${localHash}">`)
         expect(warning).toHaveBeenCalledWith(expect.stringContaining('publishing the installed runtime'))
         warning.mockRestore()
+    })
+
+    it('uploads a sanitized package manifest and sends its description as release metadata', async () => {
+        const root = sampleProject()
+        const packageJson = JSON.parse(await root.text('package.json'))
+        packageJson.description = 'A tiny sample world.'
+        packageJson.devDependencies.extra = 'file:../private-dev-tool'
+        packageJson.dependencies.local = 'file:../local-package'
+        packageJson.peerDependencies = {shared: 'file:../shared', public: '^1.0.0'}
+        root.set('package.json', JSON.stringify(packageJson))
+        const {api, backend} = await testApi()
+
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'sanitized-package'})
+
+        const request = releaseRequest(backend)
+        expect(request.body).toMatchObject({metadata: {description: 'A tiny sample world.'}})
+        const release = request.body as ReleaseManifest
+        const packageHash = release.files['package.json'].sha256
+        const packageUpload = backend.requests.find(({method, path}) => method === 'PUT' && path.endsWith(`/blobs/${packageHash}`))
+        const uploadedPackage = JSON.parse((packageUpload?.body as Buffer).toString())
+        expect(uploadedPackage).not.toHaveProperty('devDependencies')
+        expect(uploadedPackage.dependencies).not.toHaveProperty('local')
+        expect(uploadedPackage.peerDependencies).toEqual({public: '^1.0.0'})
+        expect(JSON.parse(await root.text('package.json'))).toHaveProperty('devDependencies')
     })
 
     it('applies blitz.publish.exclude to the release manifest', async () => {
