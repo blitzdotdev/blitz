@@ -13,7 +13,7 @@ import type {
     ReleaseRecord,
     RuntimeRecord,
 } from './types.ts'
-import {RUNTIME_VERSION} from '../runtime/version.ts'
+import {RUNTIME_VERSION} from '@blitzdev/engine/version'
 
 export interface PublishApi {
     useGame(gameId: string, token: string): unknown

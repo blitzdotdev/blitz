@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto'
 import {describe, expect, it} from 'vitest'
-import {canonicalizeManifest as canonicalizeBackendManifest} from '../../../../services/backend/src/utils/manifest.ts'
+import {canonicalizeManifest as canonicalizeBackendManifest} from '../../../services/backend/src/utils/manifest.ts'
 import {
     buildManifest,
     generateIndexHtml,
@@ -11,7 +11,7 @@ import {
     sha256,
     walkProject,
     writeDeploys,
-} from '../../src/publish/index.ts'
+} from '../src/index.ts'
 import type {
     CreatedAnonymousGame,
     DeploysFile,
@@ -19,8 +19,8 @@ import type {
     ReleaseManifest,
     ReleaseRecord,
     RuntimeRecord,
-} from '../../src/publish/index.ts'
-import type {PublishApi} from '../../src/publish/publish.ts'
+} from '../src/index.ts'
+import type {PublishApi} from '../src/publish.ts'
 import {FakeDirectory} from './fakeDirectory.ts'
 
 describe('walkProject', () => {

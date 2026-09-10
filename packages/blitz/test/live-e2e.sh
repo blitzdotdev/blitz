@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/../../../.." && pwd)
-FIXTURE="$REPO_ROOT/apps/editor/test/fixtures/sample-project"
+FIXTURE="$REPO_ROOT/packages/editor/test/fixtures/sample-project"
 WORK_DIR=$(mktemp -d)
 TRANSCRIPT=${TRANSCRIPT:-/tmp/blitz-phase-b-e2e-transcript.txt}
 BACKEND_URL='https://blitz-backend.blitzapp.workers.dev'
@@ -52,7 +52,7 @@ import {resolve} from 'node:path'
 import {pathToFileURL} from 'node:url'
 
 const [, , repository, project, runtimeVersion] = process.argv
-const moduleUrl = pathToFileURL(resolve(repository, 'apps/editor/src/publish/indexHtml.ts')).href
+const moduleUrl = pathToFileURL(resolve(repository, 'packages/blitz/src/indexHtml.ts')).href
 const {generateIndexHtml} = await import(moduleUrl)
 const packagePath = resolve(project, 'package.json')
 const packageJson = JSON.parse(await readFile(packagePath, 'utf8'))
