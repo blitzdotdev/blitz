@@ -247,6 +247,76 @@ test('writes byte-identical unchanged saves across editor sessions', async ({pag
     expect(second).toEqual(first)
 })
 
+test('registers a dropped GLB as an asset and loads it from the published project', async ({page}) => {
+    test.setTimeout(90_000)
+    const fixture = await startPublishEditor()
+    try {
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.evaluate(() => {
+            const target = window as unknown as {
+                viewer: {assetManager: {importer: {import(path: string, options?: unknown): Promise<unknown>}}}
+                __assetLoadPaths?: string[]
+            }
+            const importer = target.viewer.assetManager.importer
+            const load = importer.import.bind(importer)
+            target.__assetLoadPaths = []
+            importer.import = async (path, options) => {
+                target.__assetLoadPaths!.push(path)
+                return load(path, options)
+            }
+        })
+
+        const glb = minimalTriangleGlb('Fixture mesh')
+        await page.locator('.editorCanvasContainer').dispatchEvent('drop', {
+            dataTransfer: await page.evaluateHandle(({bytes}) => {
+                const transfer = new DataTransfer()
+                transfer.items.add(new File([Uint8Array.from(bytes)], 'gate-model.glb', {type: 'model/gltf-binary'}))
+                return transfer
+            }, {bytes: [...glb]}),
+        })
+
+        await expect(page.getByText('Imported gate-model.glb')).toBeVisible({timeout: 20_000})
+        const assets = JSON.parse(await readFile(resolve(fixture.root, 'assets.json'), 'utf8')) as {
+            files: Record<string, {path: string}>
+        }
+        expect(assets.files).toEqual({'gate-model': {path: 'assets/imports/gate-model.glb'}})
+        expect(await readFile(resolve(fixture.root, 'assets/imports/gate-model.glb'))).toEqual(glb)
+        expect(await page.evaluate(() => (
+            window as unknown as {__assetLoadPaths: string[]}
+        ).__assetLoadPaths)).toContain('/blitz/@gate-model/f.glb')
+        await expect(page.getByTestId('scene-hierarchy')).toContainText('gate-model.glb')
+
+        await page.getByTestId('save-scene').click()
+        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+        const scene = await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8')
+        expect(scene).toContain('"rootPath": "/blitz/@gate-model/f.glb"')
+
+        await page.getByTestId('open-game').click()
+        await expect(page.getByText('Available', {exact: true})).toBeVisible()
+        const popupPromise = page.waitForEvent('popup')
+        await page.getByTestId('create-live-game').click()
+        const popup = await popupPromise
+        const slug = await page.locator('#publish-slug').inputValue()
+        await expect(page.getByTestId('live-url')).toBeVisible({timeout: 30_000})
+        await expect.poll(() => popup.evaluate(() => Boolean((window as unknown as {viewer?: unknown}).viewer)), {
+            timeout: 30_000,
+        }).toBe(true)
+        await expect.poll(() => fixture.backend.requests.some(({method, path}) =>
+            method === 'GET' && path === `/preview/${slug}/assets/imports/gate-model.glb`), {timeout: 30_000}).toBe(true)
+        await expect.poll(() => popup.evaluate(() => {
+            const wrapper = (window as unknown as {
+                viewer?: {scene: {modelRoot: {getObjectByName(name: string): {children: unknown[]} | undefined}}}
+            }).viewer?.scene.modelRoot.getObjectByName('gate-model.glb')
+            return wrapper?.children.length || 0
+        }), {timeout: 30_000}).toBeGreaterThan(0)
+        await popup.close()
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
+})
+
 test('reports leaked runtime content after Stop in a toast and the console log', async ({page}) => {
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
@@ -848,4 +918,40 @@ export class DynamicScript extends Object3DComponent {
     }
 }
 `
+}
+
+function minimalTriangleGlb(nodeName: string): Buffer {
+    const document = Buffer.from(JSON.stringify({
+        asset: {version: '2.0'},
+        scene: 0,
+        scenes: [{nodes: [0]}],
+        nodes: [{name: nodeName, mesh: 0}],
+        meshes: [{primitives: [{attributes: {POSITION: 0}}]}],
+        accessors: [{
+            bufferView: 0,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        }],
+        bufferViews: [{buffer: 0, byteOffset: 0, byteLength: 36, target: 34962}],
+        buffers: [{byteLength: 36}],
+    }))
+    const jsonPadding = Buffer.alloc((4 - document.byteLength % 4) % 4, 0x20)
+    const binary = Buffer.alloc(36)
+    new Float32Array(binary.buffer, binary.byteOffset, 9).set([0, 0, 0, 1, 0, 0, 0, 1, 0])
+    const output = Buffer.alloc(12 + 8 + document.byteLength + jsonPadding.byteLength + 8 + binary.byteLength)
+    output.writeUInt32LE(0x46546c67, 0)
+    output.writeUInt32LE(2, 4)
+    output.writeUInt32LE(output.byteLength, 8)
+    output.writeUInt32LE(document.byteLength + jsonPadding.byteLength, 12)
+    output.writeUInt32LE(0x4e4f534a, 16)
+    document.copy(output, 20)
+    jsonPadding.copy(output, 20 + document.byteLength)
+    const binaryHeader = 20 + document.byteLength + jsonPadding.byteLength
+    output.writeUInt32LE(binary.byteLength, binaryHeader)
+    output.writeUInt32LE(0x004e4942, binaryHeader + 4)
+    binary.copy(output, binaryHeader + 8)
+    return output
 }

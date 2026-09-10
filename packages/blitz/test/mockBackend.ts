@@ -242,7 +242,7 @@ export async function startMockBackend(options: {
                 response.writeHead(200, {'Content-Type': 'application/octet-stream'}).end('corrupt bytes')
                 return
             }
-            response.writeHead(200, {'Content-Type': 'application/octet-stream'}).end(bytes)
+            response.writeHead(200, {'Content-Type': previewContentType(path)}).end(bytes)
             return
         }
         return sendJson(response, 404, {error: {code: 'not_found', message: 'Mock route not found.'}})
@@ -304,6 +304,15 @@ function findGame(id: string, games: Map<string, MockGame>): MockGame | undefine
 
 function sqlDate(milliseconds: number): string {
     return new Date(milliseconds).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '')
+}
+
+function previewContentType(path: string): string {
+    if (path.endsWith('.html')) return 'text/html; charset=utf-8'
+    if (path.endsWith('.js') || path.endsWith('.mjs')) return 'text/javascript; charset=utf-8'
+    if (path.endsWith('.json')) return 'application/json; charset=utf-8'
+    if (path.endsWith('.gltf')) return 'model/gltf+json'
+    if (path.endsWith('.glb')) return 'model/gltf-binary'
+    return 'application/octet-stream'
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
