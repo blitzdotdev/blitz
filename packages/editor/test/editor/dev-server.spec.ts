@@ -31,6 +31,15 @@ test('loads, watches scripts, saves the scene without echo reload, and plays mai
 import {Object3DComponent} from 'threepipe'
 export class LiveComponent extends Object3DComponent { static ComponentType = 'LiveComponent' }
 `)
+    await writeFile(resolve(root, 'Generator.js'), `
+export default function generate({node, params, engine}) {
+    for (let index = 0; index < params.count; index += 1) {
+        const child = new engine.Group()
+        child.name = 'Tree ' + index
+        node.add(child)
+    }
+}
+`)
     await expect(page.getByTestId('component-types')).toContainText('LiveComponent', {timeout: 10_000})
 
     const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as {mainScene: string}
@@ -40,7 +49,7 @@ export class LiveComponent extends Object3DComponent { static ComponentType = 'L
     const before = await manifestHash(packageJson.mainScene)
     const scene = JSON.parse(await readFile(resolve(root, packageJson.mainScene), 'utf8')) as {
         scenes: Array<{nodes: number[]}>
-        nodes: Array<{name?: string, mesh?: number}>
+        nodes: Array<{name?: string, mesh?: number, extras?: Record<string, unknown>}>
         [key: string]: unknown
     }
     scene.nodes.push({name: 'RoundTripObject'})
@@ -50,6 +59,14 @@ export class LiveComponent extends Object3DComponent { static ComponentType = 'L
     scene.accessors = [{bufferView: 0, componentType: 5126, count: 3, type: 'VEC3'}]
     scene.meshes = [{primitives: [{attributes: {POSITION: 0}}]}]
     scene.nodes[scene.nodes.length - 1].mesh = 0
+    scene.nodes[scene.nodes.length - 1].extras = {
+        EntityComponentPlugin: {
+            'round-trip-generator': {
+                type: 'Generator',
+                state: {module: 'Generator.js', params: {count: 2}},
+            },
+        },
+    }
     scene.images = [{uri: 'data:image/png;base64,iVBORw0KGgo='}]
     await page.getByTestId('scene-source').fill(JSON.stringify(scene))
     await expect(page.getByTestId('scene-objects')).toContainText('RoundTripObject')
@@ -77,6 +94,25 @@ export class LiveComponent extends Object3DComponent { static ComponentType = 'L
     await page.getByTestId('play').click()
     await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
     await expect.poll(() => page.evaluate(() => Boolean((window as unknown as {__blitzMainRan?: boolean}).__blitzMainRan))).toBe(true)
+    await expect(page.getByTestId('scene-hierarchy')).toContainText('Tree 0 generated')
+    await expect(page.getByTestId('scene-hierarchy')).toContainText('Tree 1 generated')
+    expect(await readFile(resolve(root, packageJson.mainScene), 'utf8')).not.toContain('Tree 0')
+
+    await page.getByTestId('generator-params-0').fill('{"count": 3}')
+    await page.getByTestId('generator-params-0').blur()
+    await expect(page.getByTestId('scene-hierarchy')).toContainText('Tree 2 generated')
+
+    await writeFile(resolve(root, 'Generator.js'), `
+export default function generate({node, params, engine}) {
+    for (let index = 0; index < params.count + 1; index += 1) {
+        const child = new engine.Group()
+        child.name = 'Reloaded tree ' + index
+        node.add(child)
+    }
+}
+`)
+    await expect(page.getByText('Generator.js regenerated')).toBeVisible({timeout: 15_000})
+    await expect(page.getByTestId('scene-hierarchy')).toContainText('Reloaded tree 3 generated')
 
     await writeFile(resolve(root, 'Live.script.js'), `
 import {Object3DComponent} from 'threepipe'

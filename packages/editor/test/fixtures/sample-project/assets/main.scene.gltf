@@ -7,7 +7,7 @@
   "scenes": [
     {
       "name": "MainScene",
-      "nodes": [0, 1],
+      "nodes": [0, 1, 2],
       "extras": {
         "rootSceneModelRoot": true
       }
@@ -31,6 +31,22 @@
       "extras": {
         "rootPath": "/blitz/@prop/f.gltf",
         "sProperties": []
+      }
+    },
+    {
+      "name": "GeneratorRoot",
+      "extras": {
+        "EntityComponentPlugin": {
+          "fixture-generator": {
+            "type": "Generator",
+            "state": {
+              "module": "Generator.js",
+              "params": {
+                "count": 3
+              }
+            }
+          }
+        }
       }
     }
   ],

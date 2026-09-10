@@ -17,6 +17,7 @@ import {
 } from 'threepipe'
 import {registerScripts} from '../scripts.ts'
 import {HtmlUiComponent} from '../plugins/HtmlUiComponent.ts'
+import {GeneratorComponent} from '../plugins/GeneratorComponent.ts'
 import {CannonPhysicsPlugin} from '../plugins/cannon/CannonPhysicsPlugin.ts'
 import {RuntimeNestedAssetLoader} from './nestedAssets.ts'
 import {
@@ -105,6 +106,8 @@ export async function createGame({base, canvas, onError}: CreateGameOptions): Pr
         })
         viewer.timeline.endTime = 0
         entityComponents.addComponentType(HtmlUiComponent)
+        entityComponents.addComponentType(GeneratorComponent)
+        GeneratorComponent.configureViewer(viewer, {base: baseUrl, onError: reportError})
 
         // Three's LoadingManager delegates through this importer hook. It covers
         // glTF buffers/textures and nested imports without patching global fetch.
@@ -124,6 +127,7 @@ export async function createGame({base, canvas, onError}: CreateGameOptions): Pr
         }
         await nestedAssets.loadObjectDependencies(loadedScene as IObject3D)
         await nestedAssets.waitForPending()
+        await GeneratorComponent.waitForViewer(viewer)
 
         viewer.timeline.reset()
         viewer.timeline.start()

@@ -1,6 +1,8 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {
     createGame,
+    EntityComponentPlugin,
+    GeneratorComponent,
     registerScripts,
     RUNTIME_VERSION,
     serializeSceneGltfDocument,
@@ -18,6 +20,19 @@ interface ServerState {
     versions: Record<string, string>
 }
 
+interface HierarchyEntry {
+    name: string
+    generated: boolean
+}
+
+interface GeneratorEditorState {
+    componentId: string
+    module: string
+    nodeIndex: number
+    nodeName: string
+    params: Record<string, unknown>
+}
+
 export default function App() {
     const source = useMemo(() => new DevServerSource(), [])
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -32,6 +47,7 @@ export default function App() {
     const [dirty, setDirty] = useState(false)
     const [playing, setPlaying] = useState(false)
     const [components, setComponents] = useState<string[]>([])
+    const [runtimeHierarchy, setRuntimeHierarchy] = useState<HierarchyEntry[]>([])
     const [lastError, setLastError] = useState<string>()
     const [status, setStatus] = useState('Loading project…')
 
@@ -77,7 +93,7 @@ export default function App() {
     }, [source])
 
     const loadScriptTypes = useCallback(async (entries: ProjectFileEntry[]) => {
-        const names = new Set<string>()
+        const names = new Set<string>([GeneratorComponent.ComponentType])
         for (const entry of entries.filter(({path}) => path.endsWith('.script.js') || path.endsWith('.plugin.js'))) {
             try {
                 const module = await import(/* @vite-ignore */ source.fileUrl(entry.path, entry.sha256)) as Record<string, unknown>
@@ -119,6 +135,7 @@ export default function App() {
         gameRef.current?.dispose()
         gameRef.current = undefined
         setPlaying(false)
+        setRuntimeHierarchy([])
         setStatus('Stopped')
         await writeState(false, lastError)
     }, [lastError, writeState])
@@ -135,6 +152,7 @@ export default function App() {
             })
             gameRef.current = game
             await loadScriptTypes(await source.list())
+            setRuntimeHierarchy(readRuntimeHierarchy(game))
             setPlaying(true)
             setStatus('Playing')
             await writeState(true)
@@ -184,6 +202,35 @@ export default function App() {
     }, [reportError, scenePath, source])
 
     const sceneObjectNames = useMemo(() => readSceneObjectNames(scenePath, sceneText), [scenePath, sceneText])
+    const generatorStates = useMemo(() => readGeneratorStates(scenePath, sceneText), [scenePath, sceneText])
+    const sourceHierarchy = useMemo<HierarchyEntry[]>(() => sceneObjectNames.map((name) => ({name, generated: false})), [sceneObjectNames])
+
+    const updateGeneratorState = useCallback(async (
+        generator: GeneratorEditorState,
+        update: Partial<Pick<GeneratorEditorState, 'module' | 'params'>>,
+    ) => {
+        const document = JSON.parse(sceneTextRef.current) as {
+            nodes?: Array<{extras?: {EntityComponentPlugin?: Record<string, {state?: Record<string, unknown>}>}}>
+        }
+        const state = document.nodes?.[generator.nodeIndex]?.extras?.EntityComponentPlugin?.[generator.componentId]?.state
+        if (!state) throw new Error(`Generator component is missing on ${generator.nodeName}`)
+        Object.assign(state, update)
+        const nextText = JSON.stringify(document, null, 2)
+        sceneTextRef.current = nextText
+        setSceneText(nextText)
+        setDirty(true)
+        await saveScene()
+
+        const game = gameRef.current
+        const object = game?.viewer.scene.modelRoot.getObjectByName(generator.nodeName)
+        const component = object && EntityComponentPlugin.GetComponent(object, GeneratorComponent)
+        if (component && game) {
+            if (update.module !== undefined) component.module = update.module
+            if (update.params !== undefined) component.params = update.params
+            await GeneratorComponent.waitForViewer(game.viewer)
+            setRuntimeHierarchy(readRuntimeHierarchy(game))
+        }
+    }, [saveScene])
 
     const onProjectEvent = useCallback(async (event: ProjectEvent) => {
         if (event.client === source.clientId || !event.path) return
@@ -192,10 +239,15 @@ export default function App() {
         else hashes.current.delete(event.path)
         const entries = await source.list()
         setManifest(entries)
+        const generatorModuleChanged = readGeneratorStates(scenePath, sceneTextRef.current)
+            .some(({module}) => normalizeModulePath(module) === event.path)
         if (event.path.endsWith('.script.js') || event.path.endsWith('.plugin.js')) {
             await loadScriptTypes(entries)
             if (gameRef.current) await play()
             setStatus(`${event.path} reloaded`)
+        } else if (generatorModuleChanged) {
+            if (gameRef.current) await play()
+            setStatus(`${event.path} regenerated`)
         } else if (event.path === 'package.json' || event.path === 'assets.json') {
             await readProject()
         } else if (event.path === scenePath) {
@@ -245,6 +297,33 @@ export default function App() {
                 <ul data-testid="project-files">{manifest.map((entry) => <li key={entry.path}>{entry.path}</li>)}</ul>
                 <h2>Component types</h2>
                 <ul data-testid="component-types">{components.map((name) => <li key={name}>{name}</li>)}</ul>
+                <h2>Scene hierarchy</h2>
+                <ul data-testid="scene-hierarchy">
+                    {[...sourceHierarchy, ...runtimeHierarchy].map((entry, index) => <li key={`${entry.name}-${index}`}>
+                        {entry.name} {entry.generated && <span className="generated-badge">generated</span>}
+                    </li>)}
+                </ul>
+                <h2>Generators</h2>
+                <div data-testid="generator-inspector">{generatorStates.map((generator) => <fieldset key={`${generator.nodeIndex}-${generator.componentId}`}>
+                    <legend>{generator.nodeName}</legend>
+                    <label>Module <input
+                        data-testid={`generator-module-${generator.nodeIndex}`}
+                        defaultValue={generator.module}
+                        onBlur={(event) => void updateGeneratorState(generator, {module: event.target.value}).catch(reportError)}
+                    /></label>
+                    <label>Params <textarea
+                        data-testid={`generator-params-${generator.nodeIndex}`}
+                        defaultValue={JSON.stringify(generator.params, null, 2)}
+                        onBlur={(event) => {
+                            try {
+                                const params = JSON.parse(event.target.value) as Record<string, unknown>
+                                void updateGeneratorState(generator, {params}).catch(reportError)
+                            } catch (error) {
+                                void reportError(error)
+                            }
+                        }}
+                    /></label>
+                </fieldset>)}</div>
             </aside>
             <div className="stage"><canvas ref={canvasRef} data-testid="game-canvas"/></div>
             <section className="scene-source">
@@ -296,4 +375,50 @@ function readSceneObjectNames(path: string, text: string): string[] {
     } catch {
         return []
     }
+}
+
+function readGeneratorStates(path: string, text: string): GeneratorEditorState[] {
+    if (!path.toLowerCase().endsWith('.gltf')) return []
+    try {
+        const document = JSON.parse(text) as {
+            nodes?: Array<{
+                name?: unknown
+                extras?: {EntityComponentPlugin?: Record<string, {type?: unknown, state?: unknown}>}
+            }>
+        }
+        const generators: GeneratorEditorState[] = []
+        for (const [nodeIndex, node] of (document.nodes || []).entries()) {
+            for (const [componentId, component] of Object.entries(node.extras?.EntityComponentPlugin || {})) {
+                if (component.type !== GeneratorComponent.ComponentType || !isRecord(component.state)) continue
+                generators.push({
+                    componentId,
+                    module: typeof component.state.module === 'string' ? component.state.module : '',
+                    nodeIndex,
+                    nodeName: typeof node.name === 'string' ? node.name : `Node ${nodeIndex}`,
+                    params: isRecord(component.state.params) ? component.state.params : {},
+                })
+            }
+        }
+        return generators
+    } catch {
+        return []
+    }
+}
+
+function readRuntimeHierarchy(game: CreatedGame): HierarchyEntry[] {
+    const entries: HierarchyEntry[] = []
+    game.viewer.scene.modelRoot.traverse((object) => {
+        if (object.userData.blitzGenerated === true) {
+            entries.push({name: object.name || object.uuid, generated: true})
+        }
+    })
+    return entries
+}
+
+function normalizeModulePath(path: string): string {
+    return path.replace(/^\.\//, '').replace(/\\/g, '/')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }

@@ -21,6 +21,16 @@ test('the published runtime boots scripts, main, and nested assets', async ({pag
     )
     expect(nestedAssetLoaded).toBe(true)
 
+    const generated = await page.evaluate(() => {
+        const root = window.__blitzGame?.viewer.scene.modelRoot.getObjectByName('GeneratorRoot')
+        return root?.children.map((child) => ({
+            generated: child.userData.blitzGenerated,
+            excluded: child.userData.excludeFromExport,
+        }))
+    })
+    expect(generated).toHaveLength(3)
+    expect(generated).toEqual(Array(3).fill({generated: true, excluded: true}))
+
     await expect.poll(() => page.evaluate(() => window.__blitzUpdates || 0)).toBeGreaterThan(0)
     const updatesBefore = await page.evaluate(() => window.__blitzUpdates || 0)
     await expect.poll(() => page.evaluate(() => window.__blitzUpdates || 0)).toBeGreaterThan(updatesBefore)
@@ -36,7 +46,9 @@ declare global {
             viewer: {
                 scene: {
                     modelRoot: {
-                        getObjectByName(name: string): unknown
+                        getObjectByName(name: string): {
+                            children: Array<{userData: Record<string, unknown>}>
+                        } | undefined
                     }
                 }
             }
