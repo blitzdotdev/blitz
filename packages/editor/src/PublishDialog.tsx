@@ -25,6 +25,7 @@ type Availability = 'checking' | 'available' | 'taken' | 'reserved' | 'invalid' 
 type RetryAction = 'publish' | 'claim'
 const GOOGLE_CLIENT_ID = '118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com'
 const GOOGLE_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
+const GOOGLE_CREDENTIAL_WAIT_MS = 4_000
 
 interface GoogleCredentialResponse {
     credential?: string
@@ -38,7 +39,13 @@ interface GooglePromptNotification {
 
 interface GoogleIdentity {
     initialize(config: {client_id: string, callback(response: GoogleCredentialResponse): void}): void
-    renderButton(parent: HTMLElement, options: Record<string, string>): void
+    renderButton(parent: HTMLElement, options: {
+        type: string
+        theme: string
+        size: string
+        text: string
+        click_listener(): void
+    }): void
     prompt?(listener: (notification: GooglePromptNotification) => void): void
 }
 
@@ -71,6 +78,7 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
     const [googleError, setGoogleError] = useState('')
     const slugInput = useRef<HTMLInputElement | null>(null)
     const googleButton = useRef<HTMLDivElement | null>(null)
+    const googleCredentialTimeout = useRef<number | undefined>(undefined)
     const popup = useRef<Window | null>(null)
 
     const entry = deploys?.[0]
@@ -213,7 +221,23 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
         await authenticateAndClaim(() => source.authenticate(authMode, email, password))
     }
 
+    const clearGoogleCredentialTimeout = useCallback(() => {
+        if (googleCredentialTimeout.current === undefined) return
+        window.clearTimeout(googleCredentialTimeout.current)
+        googleCredentialTimeout.current = undefined
+    }, [])
+
+    const handleGoogleButtonClick = useCallback(() => {
+        clearGoogleCredentialTimeout()
+        setGoogleError('')
+        googleCredentialTimeout.current = window.setTimeout(() => {
+            googleCredentialTimeout.current = undefined
+            setGoogleError(googleOriginMessage())
+        }, GOOGLE_CREDENTIAL_WAIT_MS)
+    }, [clearGoogleCredentialTimeout])
+
     const handleGoogleCredential = useCallback((response: GoogleCredentialResponse) => {
+        clearGoogleCredentialTimeout()
         const credential = response.credential
         if (!credential) {
             setGoogleError('Google sign-in did not return a credential.')
@@ -221,7 +245,7 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
         }
         setGoogleError('')
         void authenticateAndClaim(() => source.authenticateWithGoogle(credential, response.select_by))
-    }, [authenticateAndClaim, source])
+    }, [authenticateAndClaim, clearGoogleCredentialTimeout, source])
 
     useEffect(() => {
         if (!isOpen || !entry?.last_release_hash || expired || entry.claimed) return
@@ -243,6 +267,7 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
                 theme: 'outline',
                 size: 'large',
                 text: 'continue_with',
+                click_listener: handleGoogleButtonClick,
             })
             identity.prompt?.((notification) => {
                 if (notification.isNotDisplayed?.()
@@ -255,9 +280,10 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
         })
         return () => {
             cancelled = true
+            clearGoogleCredentialTimeout()
             if (googleCredentialHandler === handleGoogleCredential) googleCredentialHandler = undefined
         }
-    }, [entry?.claimed, entry?.last_release_hash, expired, handleGoogleCredential, isOpen])
+    }, [clearGoogleCredentialTimeout, entry?.claimed, entry?.last_release_hash, expired, handleGoogleButtonClick, handleGoogleCredential, isOpen])
 
     const retry = () => {
         if (retryAction === 'claim') void claim()
@@ -416,5 +442,5 @@ function isOriginError(error: unknown): boolean {
 }
 
 function googleOriginMessage(): string {
-    return `Add the editor origin ${window.location.origin} to the Google OAuth client's authorized JavaScript origins. Google permits http://localhost and http://127.0.0.1 origins for development once they are listed.`
+    return `Add the editor origin ${window.location.origin} to the Google OAuth client's authorized JavaScript origins. Listing http://localhost does not cover every port; each editor origin, including its port, must be listed separately.`
 }

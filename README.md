@@ -29,6 +29,10 @@ All public packages use Apache-2.0 and ship source for agent inspection. Cloud s
 
 The editor's Library panel reads Polyhaven entries through the deployed read-only proxy at `https://blitz-asset-library-proxy.blitzapp.workers.dev`. The proxy URL is a public editor constant; it is not a per-project or local-server option.
 
+## Editor Google sign-in
+
+Google sign-in requires the exact editor origin printed by `blitz dev` in the OAuth client's authorized JavaScript origins. Listing `http://localhost` does not cover every port: each scheme, host, and port combination must be listed separately, and `localhost` does not cover `127.0.0.1`. See Google's [origin mismatch documentation](https://developers.google.com/identity/protocols/oauth2/javascript-implicit-flow#origin_mismatch).
+
 ## Repository checks
 
 ```sh

@@ -38,6 +38,7 @@ import {
     readProjectGeneratorStates,
     registerScripts,
     RUNTIME_VERSION,
+    RuntimeNestedAssetLoader,
     runGenerator,
     semanticSceneSnapshot,
     serializeSceneGltf,
@@ -154,6 +155,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     private heartbeat?: ReturnType<typeof setInterval>
     private playCanvas?: HTMLCanvasElement
     private assetUrlModifier?: (url: string) => string
+    private nestedAssets?: RuntimeNestedAssetLoader
     private loadingScene = false
     private savingScene = false
     private consoleErrorTimes: number[] = []
@@ -346,6 +348,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         viewer.getPlugin(GLTFAnimationPlugin)!.autoIncrementTime = false
         viewer.timeline.endTime = 0
         viewer.scene.addEventListener('sceneUpdate', this.onEditSceneUpdate)
+        this.nestedAssets = new RuntimeNestedAssetLoader(viewer, (error) => void this.reportError(error))
         ;(window as Window & {viewer?: ThreeViewer}).viewer = viewer
         return viewer
     }
@@ -420,6 +423,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 importAsModelRoot: true,
             })
             if (!loaded?.isObject3D) throw new Error(`The main scene did not load as an Object3D: ${this.scenePath}`)
+            await this.nestedAssets?.loadObjectDependencies(loaded as IObject3D)
+            await this.nestedAssets?.waitForPending()
             await GeneratorComponent.waitForViewer(viewer)
             this.sceneText = sceneText
             this.generatorStates = readProjectGeneratorStates(sceneText)
@@ -844,6 +849,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 loaded.userData.rootPath = rootPath
                 loaded.userData.sProperties = [...assetInstanceProperties]
                 loaded.name = file.name
+                for (const child of loaded.children) child.userData.excludeFromExport = true
                 this.get().scene.addObject(loaded as IObject3D)
             }
             this.loadedNeedsSave = true
@@ -1125,6 +1131,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         if (wasPlaying) await this.stopPlay()
         if (this.viewer) {
             this.viewer.scene.removeEventListener('sceneUpdate', this.onEditSceneUpdate)
+            this.nestedAssets?.dispose()
+            this.nestedAssets = undefined
             this.viewer.dispose()
             this.viewer.container.remove()
             this.viewer = undefined
@@ -1169,6 +1177,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.game?.dispose()
         if (this.viewer) {
             this.viewer.scene.removeEventListener('sceneUpdate', this.onEditSceneUpdate)
+            this.nestedAssets?.dispose()
+            this.nestedAssets = undefined
             this.viewer.dispose()
             this.viewer.container.remove()
         }

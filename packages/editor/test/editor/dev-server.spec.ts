@@ -307,8 +307,56 @@ test('registers a dropped GLB as an asset and loads it from the published projec
 
         await page.getByTestId('save-scene').click()
         await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
-        const scene = await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8')
-        expect(scene).toContain('"rootPath": "/blitz/@gate-model/f.glb"')
+        const expectReferenceOnlyScene = async () => {
+            const scene = JSON.parse(await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8')) as {
+                nodes: Array<{children?: number[], extras?: {rootPath?: string}, mesh?: number}>
+                meshes?: unknown[]
+            }
+            const wrapper = scene.nodes.find((node) => node.extras?.rootPath === '/blitz/@gate-model/f.glb')
+            expect(wrapper).toBeDefined()
+            expect(wrapper?.children || []).toEqual([])
+            expect(scene.nodes.filter((node) => node.mesh !== undefined)).toEqual([])
+            expect(scene.meshes || []).toEqual([])
+        }
+        await expectReferenceOnlyScene()
+
+        await page.reload()
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await expect.poll(() => page.evaluate(() => {
+            const wrapper = (window as unknown as {
+                viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+                    children: Array<{isMesh?: boolean, userData: {excludeFromExport?: boolean}}>
+                    traverse(callback: (object: {isMesh?: boolean}) => void): void
+                } | undefined}}}
+            }).viewer.scene.modelRoot.getObjectByName('gate-model.glb')
+            if (!wrapper) return undefined
+            let meshCount = 0
+            wrapper.traverse((object) => {
+                if (object.isMesh) meshCount += 1
+            })
+            const state = {
+                meshCount,
+                excluded: wrapper.children.every((child) => child.userData.excludeFromExport === true),
+            }
+            return state
+        })).toEqual({meshCount: 1, excluded: true})
+        await page.evaluate(() => {
+            const wrapper = (window as unknown as {
+                viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+                    name: string
+                    setDirty(event: {change: string}): void
+                } | undefined}}}
+            }).viewer.scene.modelRoot.getObjectByName('gate-model.glb')
+            if (!wrapper) throw new Error('The reloaded scene is missing gate-model.glb')
+            wrapper.name = 'Temporary asset name'
+            wrapper.setDirty({change: 'name'})
+            wrapper.name = 'gate-model.glb'
+            wrapper.setDirty({change: 'name'})
+        })
+        await expect(page.getByTestId('save-scene')).toBeEnabled()
+        await page.getByTestId('save-scene').click()
+        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+        await expectReferenceOnlyScene()
 
         await page.getByTestId('open-game').click()
         await expect(page.getByText('Available', {exact: true})).toBeVisible()
@@ -755,6 +803,60 @@ window.google = {accounts: {id: {
         expect(googleRequest.cookie).toBe('g_csrf_token=gis-csrf')
         expect(fixture.backend.requests.findLast(({path}) => path.endsWith('/claim'))?.authorization)
             .toBe('Bearer jwt-google')
+        await popup.close()
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
+})
+
+test('shows the exact editor origin when the GIS button flow returns 403 without a credential', async ({page}) => {
+    test.setTimeout(90_000)
+    const fixture = await startPublishEditor()
+    await page.unroute(googleScriptUrl)
+    await page.route('https://accounts.google.com/gsi/button**', async (route) => {
+        await route.fulfill({status: 403, contentType: 'text/html', body: 'Forbidden'})
+    })
+    await page.route(googleScriptUrl, async (route) => {
+        await route.fulfill({
+            contentType: 'text/javascript',
+            body: `
+window.google = {accounts: {id: {
+  initialize() {},
+  renderButton(parent, options) {
+    const button = document.createElement('button')
+    button.textContent = 'Continue with Google'
+    button.addEventListener('click', options.click_listener)
+    const iframe = document.createElement('iframe')
+    iframe.hidden = true
+    iframe.src = 'https://accounts.google.com/gsi/button?client_id=blocked'
+    parent.replaceChildren(button, iframe)
+  },
+  prompt() {},
+}}}
+`,
+        })
+    })
+    try {
+        const buttonFailure = page.waitForResponse((response) =>
+            response.url().startsWith('https://accounts.google.com/gsi/button'))
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.getByTestId('open-game').click()
+        await expect(page.getByText('Available', {exact: true})).toBeVisible()
+        const popupPromise = page.waitForEvent('popup')
+        await page.getByTestId('create-live-game').click()
+        const popup = await popupPromise
+        await expect(page.getByTestId('live-url')).toBeVisible({timeout: 30_000})
+        expect((await buttonFailure).status()).toBe(403)
+
+        await page.getByTestId('google-sign-in').getByRole('button', {name: 'Continue with Google'}).click()
+        const origin = new URL(fixture.server.url).origin
+        await expect(page.getByTestId('google-origin-error')).toHaveText(
+            `Add the editor origin ${origin} to the Google OAuth client's authorized JavaScript origins. `
+            + 'Listing http://localhost does not cover every port; each editor origin, including its port, must be listed separately.',
+            {timeout: 10_000},
+        )
         await popup.close()
     } finally {
         await page.close()
