@@ -54,6 +54,7 @@ import {
     type SerializedSceneGltf,
 } from '@blitzdev/engine'
 import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib'
+import {GeometryGeneratorPlugin} from '@threepipe/plugin-geometry-generator'
 import {DevServerSource} from '../DevServerSource.ts'
 import {ProjectConflictError, type ProjectEvent, type ProjectFileEntry} from '../ProjectSource.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
@@ -260,9 +261,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         const sceneText = decode(scene.bytes)
         validateSceneSource(scenePath, sceneText)
         this.hashes.set(scenePath, scene.sha256)
-        this.fileTracker.updateFile(scenePath, new File(
+        const memoryPath = scenePath.replace(/\.gltf$/, '.glb')
+        this.fileTracker.updateFile(memoryPath, new File(
             [scene.bytes as BlobPart],
-            scenePath.split('/').pop() || scenePath,
+            memoryPath.split('/').pop() || memoryPath,
             {type: 'model/gltf+json'},
         ))
 
@@ -349,6 +351,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             new EditorViewWidgetPlugin('bottom-right', 100),
             new Object3DWidgetsPlugin(true),
             new Object3DGeneratorPlugin(),
+            new GeometryGeneratorPlugin(),
             new CanvasSnapshotPlugin(),
             new AssetExporterPlugin(),
         ])
