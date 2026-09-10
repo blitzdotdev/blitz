@@ -30,6 +30,44 @@ describe('scene semantic diff', () => {
             new: 0.25,
         }])
     })
+
+    it('ignores object key order and decomposes matrix transforms', () => {
+        const before = {
+            nodes: [{
+                name: 'Mover',
+                translation: [1, 2, 3],
+                extras: {EntityComponentPlugin: {controller: {
+                    type: 'Controller',
+                    state: {speed: 4, nested: {enabled: true, label: 'same'}},
+                }}},
+            }],
+        }
+        const after = {
+            nodes: [{
+                name: 'Mover',
+                matrix: [
+                    1, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0, 0, 1, 0,
+                    5, 2, 3, 1,
+                ],
+                extras: {EntityComponentPlugin: {controller: {
+                    state: {nested: {label: 'same', enabled: true}, speed: 4},
+                    type: 'Controller',
+                }}},
+            }],
+        }
+
+        const diff = diffSceneGltf(before, after)
+
+        expect(diff.components).toEqual([])
+        expect(diff.transforms).toEqual([{
+            node: {name: 'Mover', uuid: undefined},
+            property: 'position',
+            old: [1, 2, 3],
+            new: [5, 2, 3],
+        }])
+    })
 })
 
 async function fixture(name: string): Promise<unknown> {

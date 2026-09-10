@@ -1,4 +1,4 @@
-import {mkdir, readFile, readdir, stat, writeFile} from 'node:fs/promises'
+import {chmod, mkdir, readFile, readdir, stat, writeFile} from 'node:fs/promises'
 import {basename, dirname, resolve, sep} from 'node:path'
 
 /** A File System Access-shaped adapter backed by a real directory on disk. */
@@ -39,7 +39,7 @@ export class NodeProjectDirectory {
                 await stat(target)
             } catch (error) {
                 if (!isMissing(error)) throw error
-                await writeFile(target, new Uint8Array())
+                await writeFile(target, new Uint8Array(), {mode: this.modeFor(target)})
             }
         }
         try {
@@ -73,7 +73,11 @@ export class NodeProjectDirectory {
                 let next: Uint8Array<ArrayBufferLike> = new Uint8Array()
                 return {
                     write: async (data: FileSystemWriteChunkType) => { next = await bytesOf(data) },
-                    close: async () => { await writeFile(target, next) },
+                    close: async () => {
+                        const mode = this.modeFor(target)
+                        await writeFile(target, next, {mode})
+                        if (mode === 0o600) await chmod(target, mode)
+                    },
                 }
             },
         }
@@ -95,6 +99,10 @@ export class NodeProjectDirectory {
     }
     private relativePath(target: string): string {
         return target.slice(this.root.length + 1).replaceAll('\\', '/')
+    }
+
+    private modeFor(target: string): number | undefined {
+        return this.relativePath(target) === '.blitz/deploys.json' ? 0o600 : undefined
     }
 }
 

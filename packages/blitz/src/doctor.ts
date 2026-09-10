@@ -30,6 +30,8 @@ export interface DoctorOptions {
 }
 
 const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
+const DEFAULT_DEV_PORT = 4321
+const DEFAULT_DEV_PORT_ATTEMPTS = 20
 const BLITZ_PACKAGES = ['blitz', 'editor', 'engine', 'template'] as const
 const doctorRequire = createRequire(import.meta.url)
 
@@ -75,10 +77,19 @@ export async function doctorProject(
     if (liveDev) {
         rows.push(row('dev-port', 'pass', `Live project server: pid ${liveDev.pid}, port ${liveDev.port}, age ${liveDev.age}`))
     } else {
-        const port = options.port ?? 4321
-        rows.push(await portAvailable(port)
-            ? row('dev-port', 'pass', port === 0 ? 'A development port is available' : `Port ${port} is available for blitz dev`)
-            : row('dev-port', 'fail', `Port ${port} is in use by another process`))
+        const requestedPort = options.port
+        if (requestedPort !== undefined) {
+            rows.push(await portAvailable(requestedPort)
+                ? row('dev-port', 'pass', requestedPort === 0 ? 'A development port is available' : `Port ${requestedPort} is available for blitz dev`)
+                : row('dev-port', 'fail', `Port ${requestedPort} is in use by another process`))
+        } else {
+            const available = await firstAvailablePort(DEFAULT_DEV_PORT, DEFAULT_DEV_PORT_ATTEMPTS)
+            rows.push(available === DEFAULT_DEV_PORT
+                ? row('dev-port', 'pass', `Port ${DEFAULT_DEV_PORT} is available for blitz dev`)
+                : available !== undefined
+                    ? row('dev-port', 'warn', `Port ${DEFAULT_DEV_PORT} is in use; blitz dev will use port ${available}`)
+                    : row('dev-port', 'fail', `Ports ${DEFAULT_DEV_PORT}-${DEFAULT_DEV_PORT + DEFAULT_DEV_PORT_ATTEMPTS - 1} are in use`))
+        }
     }
 
     const backendUrl = (options.backendUrl || process.env.BLITZ_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '')
@@ -203,6 +214,14 @@ function portAvailable(port: number): Promise<boolean> {
         server.once('error', () => resolveAvailable(false))
         server.listen(port, '127.0.0.1', () => server.close(() => resolveAvailable(true)))
     })
+}
+
+async function firstAvailablePort(start: number, count: number): Promise<number | undefined> {
+    for (let offset = 0; offset < count; offset += 1) {
+        const port = start + offset
+        if (await portAvailable(port)) return port
+    }
+    return undefined
 }
 
 async function playwrightBrowserAvailable(): Promise<string> {

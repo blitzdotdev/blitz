@@ -78,6 +78,33 @@ describe('blitz doctor', () => {
         expect(row(result, 'dev-port')).toMatchObject({status: 'fail', detail: expect.stringContaining('another process')})
     })
 
+    it('warns when the default port is busy but another automatic port is free', async () => {
+        const fixture = await readyProject()
+        const blocker = createServer()
+        const ownsDefaultPort = await new Promise<boolean>((resolveListen, reject) => {
+            blocker.once('error', (error: NodeJS.ErrnoException) => {
+                if (error.code === 'EADDRINUSE') resolveListen(false)
+                else reject(error)
+            })
+            blocker.listen(4321, '127.0.0.1', () => resolveListen(true))
+        })
+        if (ownsDefaultPort) {
+            cleanup.push(() => new Promise<void>((resolveClose, reject) =>
+                blocker.close((error) => error ? reject(error) : resolveClose())))
+        }
+
+        const result = await doctorProject(fixture.root, {
+            backendUrl: fixture.backendUrl,
+            checkPlaywright: async () => 'fixture browser',
+        })
+
+        expect(row(result, 'dev-port')).toMatchObject({
+            status: 'warn',
+            detail: expect.stringMatching(/Port 4321 is in use; blitz dev will use port 43\d\d/),
+        })
+        expect(result.ok).toBe(true)
+    })
+
     it('accepts a live server for this project and reports its pid and age', async () => {
         const fixture = await readyProject()
         const live = createServer((_, response) => {
