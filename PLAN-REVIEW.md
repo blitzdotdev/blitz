@@ -37,7 +37,7 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | Per-game backend logic on D1 (auth, economy) | UNBUILT | later |
 | Staging wildcard `*.games.blitz.dev` and `editor-staging.blitz.dev` for host-mode tests | UNBUILT | proposal in `docs/e2e-test-plan.md` |
 | E2E gate execution | UNBUILT | after the running passes and Phase B |
-| Private repo split: `services/` moved to `/Users/minjunes/blitz-cloud` with filtered history; monorepo without services still builds; backend deploys from the new repo | BUILT (local only, no GitHub yet) | monorepo commit `1650bda`; cloud repo 14 commits; caveat: the cloud backend serves a COPY of `docs/agents.md`; sync it from the published `@blitzdev/template` once packages are on npm |
+| Private repo split: `services/` moved to `/Users/minjunes/blitz-cloud` with filtered history; monorepo without services still builds; backend deploys from the new repo | BUILT, on GitHub (private): https://github.com/blitzdotdev/blitz and https://github.com/blitzdotdev/blitz-cloud | monorepo commit `1650bda`; cloud repo 14 commits; caveat: the cloud backend serves a COPY of `docs/agents.md`; sync it from the published `@blitzdev/template` once packages are on npm |
 | Domain cutover: `blitz.dev` to the store, `editor.blitz.dev` to the editor, `*.app.blitz.dev` to the gateway | BLOCKED | another agent detaches the domains from teenybase; then gated on the E2E pass; map in `docs/storefront-plan.md` |
 | Google Cloud: add editor origins to the OAuth client | USER ACTION | client id `118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com` |
 
