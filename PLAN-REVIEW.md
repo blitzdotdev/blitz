@@ -20,18 +20,18 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | Blob GC: refcounts, ten-release retention, 24 h grace sweep, daily reconciliation, runtimes as roots | BUILT | commit `d8e9aec`; live on workers.dev; 12 integration tests; design in `services/backend/BLOB-GC.md` |
 | Slug check `GET /api/v1/slugs/:slug`; spinner page for a game without a release; runtime registry `PUT/GET /api/v1/runtimes/:version`; Google sign-in with the teenyapp client id | BUILT | commits `dbd5be3`, `ac43e74`, `af38c90`; verified live; Google needs the editor origin in the OAuth client |
 | Phase A runtime: `createGame({base, canvas})`, `dist/runtime.js` (2.75 MiB, plugins bundled), sample project, Playwright runtime test with two negative controls, `main.js` text in the AGENTS template | BUILT, merged into main | commits `26d4fa1`, `973bea0`; test passes; note: editor play mode does not run `main.js`, only the published runtime does |
-| NOW-1 watcher and friends | SUPERSEDED | replaced by the local dev server, see `docs/local-dev-server-plan.md` (evening decision): the server watches, serves, and versions files; the editor drops the File System Access API |
-| NOW-1 IndexedDB trimmed to handles and recents | UNBUILT | |
-| NOW-1 exact `blitz.version` in package.json and an editor bootstrapper per version | UNBUILT | |
+| NOW-1 as rebuilt by C1: `blitz dev` local server watches the folder, serves files with hashes and `If-Match`, streams change events with writer ids; the editor uses one `DevServerSource`; File System Access, IndexedDB, service worker, fetch proxy deleted; play mode through `createGame` | BUILT, merged | merge `0baecd5`; suites: 12 server tests, editor Playwright against a real `blitz dev`, runtime, publish; my manual run of init, dev, PUT, SSE, 401, traversal |
+| NOW-1 IndexedDB | DONE by deletion | no IndexedDB remains in the editor |
+| Version pinning | BUILT differently | the project pins `@blitzdev/blitz` as a devDependency; `npx blitz` runs that version; no bootstrapper |
 | NOW-1 undo journal `.blitz/journal.jsonl`; `.blitz/state.json` and `.blitz/console.log` mirrors for agents | UNBUILT | |
 | NOW-2 glTF scene file: text, no binary, stable names, deterministic, validated; external `.bin` exporter option in threepipe | UNBUILT | scene is still `assets/main.scene.glb` |
 | Phase B part 1: framework-free publish module (walk, hash, manifest, index.html with relative paths, API client, deploys.json, publish and pull orchestration), `agents.md` served with a page pointer, slug-or-id lookup, `base_release` guard, pull endpoints, gateway CORS, runtime registration on deploy | BUILT, merged | commits `aa5568f`..`cb32c12`; live proof: curl-only publish of the sample project plays on workers.dev; runtime 0.12.0 registered |
-| Phase B part 2: the publish dialog in the editor | UNBUILT, moved to C2 | runs in the local editor through the local server |
+| Phase B part 2: the publish dialog in the editor | UNBUILT, C2 | calls `POST /api/publish` on the local server |
 | Follow mode and the hosted editor | DROPPED (evening) | no hosted editor; the editor runs only from `blitz dev` |
 | Storefront (phase D): listed and description columns, listing rule, server-rendered grid with 60 s edge cache, public JSON list, PATCH unlist, thumbnail convention, `agents.md` and `llms.txt` served by the backend, runtime DELETE | BUILT, merged | commit `c059f4e`; live at https://blitz-backend.blitzapp.workers.dev/ ; verified: anonymous games never listed |
 | Runtime handler API: scripted input, tick stepping (plan DEFER) | UNBUILT | |
 | Agent connection: websocket or CLI (plan DEFER) | UNBUILT | |
-| Open-source split: `@blitzdev/engine`, `@blitzdev/editor`, `@blitzdev/blitz`, `@blitzdev/template`, all Apache-2.0 with `src/` shipped so agents can grep them; cloud services stay closed | UNBUILT, decided | `docs/open-source-split.md`; rights check on the editor code first |
+| Open-source split: `@blitzdev/engine`, `@blitzdev/editor`, `@blitzdev/blitz`, `@blitzdev/template`, Apache-2.0, `src/` shipped | BUILT as packages, NOT on npm yet | packaging proof: `npm pack` + local install + `blitz init` + `blitz dev` + `blitz sources` (threepipe src present); publishing to npm is one command on your go |
 | `services/asset-library-proxy` deployed for the editor's asset library | UNBUILT | worker not created |
 | Blitz logo and artwork | UNBUILT | editor still shows the kite artwork |
 | Per-game backend logic on D1 (auth, economy) | UNBUILT | later |
