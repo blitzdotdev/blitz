@@ -4,7 +4,7 @@ import {defineConfig, devices} from '@playwright/test'
 
 export default defineConfig({
     testDir: './test/runtime',
-    testMatch: 'runtime.spec.ts',
+    testMatch: '*.spec.ts',
     fullyParallel: false,
     reporter: 'line',
     timeout: 30_000,

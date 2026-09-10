@@ -28,7 +28,7 @@ Commands:
   claim --email <email> --password <password> [--login]
                               Register or sign in, then claim local deploys
   bake <nodeName> [--force]   Bake a Generator node
-  check                       Validate scripts, plugins, generators, and scene components
+  check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
   open                        Open the running local editor
   sources                     Locate installed source

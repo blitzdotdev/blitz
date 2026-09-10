@@ -344,6 +344,9 @@ describe('Blitz dev server', () => {
         expect(await response.json()).toMatchObject({
             error: {code: 'editor_not_connected', message: expect.stringContaining('No editor is connected')},
         })
+        const check = await fetch(`${base(server)}/api/check`, {method: 'POST', headers})
+        expect(check.status).toBe(409)
+        expect(await check.json()).toMatchObject({error: {code: 'editor_not_connected'}})
     })
 
     it('journals API and watcher scene writes with semantic summaries', async () => {
@@ -357,7 +360,10 @@ describe('Blitz dev server', () => {
                 'If-Match': current.headers.get('etag')!,
                 'X-Blitz-Client': 'editor-journal-test',
             },
-            body: JSON.stringify({asset: {version: '2.0'}, nodes: [{name: 'Human node'}]}),
+            body: JSON.stringify({
+                asset: {version: '2.0'},
+                nodes: [{name: 'Authored triangle', mesh: 0}, {name: 'Human node'}],
+            }),
         })
         expect(response.status).toBe(200)
         const journalPath = resolve(root, '.blitz/journal.jsonl')
@@ -387,7 +393,16 @@ async function temporaryProject(): Promise<string> {
     await writeFile(resolve(root, 'assets.json'), '{"files":{},"version":1}\n')
     await writeFile(resolve(root, 'main.js'), 'export async function main() {}\n')
     await mkdir(resolve(root, 'assets'), {recursive: true})
-    await writeFile(resolve(root, 'assets/main.scene.gltf'), '{"asset":{"version":"2.0"},"nodes":[]}\n')
+    await writeFile(resolve(root, 'assets/main.scene.gltf'), `${JSON.stringify({
+        asset: {version: '2.0'},
+        scene: 0,
+        scenes: [{nodes: [0]}],
+        nodes: [{name: 'Authored triangle', mesh: 0}],
+        meshes: [{primitives: [{attributes: {POSITION: 0}}]}],
+        accessors: [{bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [-1, -1, 0], max: [1, 1, 0]}],
+        bufferViews: [{buffer: 0, byteOffset: 0, byteLength: 36, target: 34962}],
+        buffers: [{byteLength: 36, uri: 'data:application/octet-stream;base64,AAAAAAAAgD8AAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAA='}],
+    })}\n`)
     await mkdir(resolve(root, 'node_modules/@blitzdev/engine/dist'), {recursive: true})
     await writeFile(resolve(root, 'node_modules/@blitzdev/engine/package.json'), JSON.stringify({version: BLITZ_VERSION}))
     await writeFile(resolve(root, 'node_modules/@blitzdev/engine/dist/runtime.js'), 'installed runtime')

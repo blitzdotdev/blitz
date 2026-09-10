@@ -166,7 +166,11 @@ export async function publishFromDisk(
         const check = await checkProject(projectRoot)
         if (!check.ok) {
             const first = check.rows.find(({status}) => status === 'fail')
-            const error = new Error(`Project check failed${first ? `: ${first.kind} ${first.path}: ${first.detail}` : ''}. Run blitz check for details, or use --no-check to skip it.`)
+            const outcome = check.outcomes.find(({status}) => status === 'fail')
+            const detail = first
+                ? `${first.kind} ${first.path}: ${first.detail}`
+                : outcome ? `${outcome.name}${outcome.codes.length ? ` ${outcome.codes.join(', ')}` : ''}: ${outcome.summary}` : ''
+            const error = new Error(`Project check failed${detail ? `: ${detail}` : ''}. Run blitz check for details, or use --no-check to skip it.`)
             Object.assign(error, {status: 422, code: 'check_failed'})
             throw error
         }

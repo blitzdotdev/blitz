@@ -295,6 +295,28 @@ body{
   white-space: nowrap;
 }
 
+.check-result-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px;
+  background: var(--app-background-color);
+
+  .bp5-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 6px 8px;
+  }
+
+  .bp5-card > span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .editor-panel-body {
   box-sizing: border-box;
   height: 100%;

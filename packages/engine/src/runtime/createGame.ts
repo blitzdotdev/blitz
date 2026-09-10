@@ -19,6 +19,13 @@ import {registerScripts} from '../scripts.ts'
 import {HtmlUiComponent} from '../plugins/HtmlUiComponent.ts'
 import {GeneratorComponent} from '../plugins/GeneratorComponent.ts'
 import {CannonPhysicsPlugin} from '../plugins/cannon/CannonPhysicsPlugin.ts'
+import {
+    installGameHooks,
+    runtimeCleanupReport,
+    type GameValidationFunction,
+    type GameValidationReport,
+    type RuntimeCleanupReport,
+} from '../authoringValidation.ts'
 import {RuntimeNestedAssetLoader} from './nestedAssets.ts'
 import {
     assetUrlPrefix,
@@ -49,7 +56,10 @@ export interface RuntimeProject {
 export interface CreatedGame {
     viewer: ThreeViewer
     project: RuntimeProject
-    dispose(): void
+    registerGameValidation(fn: GameValidationFunction): () => void
+    publishGameTelemetry(value: object): () => void
+    runGameValidation(): Promise<GameValidationReport>
+    dispose(): RuntimeCleanupReport
 }
 
 type ModuleExports = Record<string, unknown>
@@ -60,6 +70,7 @@ export async function createGame({base, canvas, onError, fileRevisions = {}}: Cr
     let viewer: ThreeViewer | undefined
     let nestedAssets: RuntimeNestedAssetLoader | undefined
     let removeURLModifier: (() => void) | undefined
+    let gameHooks: ReturnType<typeof installGameHooks> | undefined
 
     try {
         const baseUrl = validateBase(base)
@@ -104,6 +115,7 @@ export async function createGame({base, canvas, onError, fileRevisions = {}}: Cr
             ],
         })
         viewer.timeline.endTime = 0
+        gameHooks = installGameHooks()
         entityComponents.addComponentType(HtmlUiComponent)
         entityComponents.addComponentType(GeneratorComponent)
         GeneratorComponent.configureViewer(viewer, {base: baseUrl, onError: reportError})
@@ -144,23 +156,31 @@ export async function createGame({base, canvas, onError, fileRevisions = {}}: Cr
 
         const readyViewer = viewer
         let disposed = false
+        let cleanupReport: RuntimeCleanupReport | undefined
         return {
             viewer: readyViewer,
             project,
+            registerGameValidation: gameHooks.registerGameValidation,
+            publishGameTelemetry: gameHooks.publishGameTelemetry,
+            runGameValidation: gameHooks.runGameValidation,
             dispose() {
-                if (disposed) return
+                if (disposed) return cleanupReport!
                 disposed = true
                 entityComponents.stop()
                 physics.running = false
                 readyViewer.timeline.stop()
+                cleanupReport = runtimeCleanupReport(readyViewer)
                 nestedAssets?.dispose()
                 removeURLModifier?.()
+                gameHooks?.dispose()
                 readyViewer.dispose()
+                return cleanupReport
             },
         }
     } catch (error) {
         nestedAssets?.dispose()
         removeURLModifier?.()
+        gameHooks?.dispose()
         viewer?.dispose()
         reportError(error)
         throw error

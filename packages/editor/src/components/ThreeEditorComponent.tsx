@@ -88,12 +88,28 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                     >Save</Button>
                     <PlayModeButtonGroup onPlay={() => setPlayOverlay(true)} onStop={() => void stop()}/>
                     <Button data-testid="open-game" icon="share" onClick={onOpenGame}>Open game</Button>
+                    <Button
+                        data-testid="check-game"
+                        icon="diagnosis"
+                        loading={manager.isChecking}
+                        disabled={manager.isChecking}
+                        onClick={() => void manager.runCheck()}
+                    >Check</Button>
                     <Navbar.Divider/>
                     <Popover minimal placement="bottom" content={<ThemeSettingsMenuComponent/>}>
                         <Button aria-label="Settings" icon="cog" minimal/>
                     </Popover>
                 </Navbar.Group>
             </Navbar>
+
+            {manager.checkResult && <div className="check-result-cards" data-testid="check-results">
+                {manager.checkResult.outcomes.map((outcome) => <Card key={outcome.name} compact>
+                    <Tag minimal intent={outcome.status === 'pass' ? Intent.SUCCESS : Intent.DANGER}>
+                        {outcome.name} {outcome.status.toUpperCase()}
+                    </Tag>
+                    <span>{outcome.codes.length ? outcome.codes.join(', ') : outcome.summary}</span>
+                </Card>)}
+            </div>}
 
             <WindowPanesLayout panels={{
                 left: [

@@ -25,26 +25,32 @@ import {
 } from 'threepipe'
 import {
     CannonPhysicsPlugin,
+    authoringQualityReport,
     createGame,
     GeneratorComponent,
     HtmlUiComponent,
     parseAssetsJSONManifest,
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
+    persistenceReport,
     readProjectGeneratorStates,
     registerScripts,
     RUNTIME_VERSION,
     runGenerator,
+    semanticSceneSnapshot,
     serializeSceneGltf,
     validateSceneSource,
+    type AuthoringValidationIssue,
     type AssetsJSONManifest,
     type CreatedGame,
     type ExternalPlugin,
     type ProjectConfigSettings,
     type ProjectGeneratorState,
     type ProjectPackageJSON,
+    type RuntimeCleanupReport,
     type SerializedSceneGltf,
 } from '@blitzdev/engine'
+import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib'
 import {DevServerSource} from '../DevServerSource.ts'
 import {ProjectConflictError, type ProjectEvent, type ProjectFileEntry} from '../ProjectSource.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
@@ -77,6 +83,22 @@ interface ManagerEventMap {
     loadedNeedsSaveChange: object
 }
 
+export interface EditorCheckOutcome {
+    name: 'Playable' | 'Editable' | 'Persisted'
+    status: 'pass' | 'fail'
+    summary: string
+    codes: string[]
+    durationMs?: number
+    report?: unknown
+}
+
+export interface EditorCheckResult {
+    ok: boolean
+    mode: 'editor'
+    checkedAt: string
+    outcomes: EditorCheckOutcome[]
+}
+
 type ModuleExports = Record<string, unknown>
 
 /** Owns the persistent edit viewer and the disposable published-game viewer. */
@@ -97,6 +119,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     projectLoaded = false
     isPlaying = false
     isStartingPlay = false
+    isChecking = false
+    checkResult?: EditorCheckResult
     welcomeOpen = false
     loadedProject: EditorProject | null = null
     loadedProjectFile: LoadedProjectFile | null = null
@@ -107,6 +131,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     private _loadedNeedsSave = false
     private initializing?: Promise<void>
     private playPromise?: Promise<void>
+    private checkPromise?: Promise<EditorCheckResult>
     private readyResolve!: () => void
     private readyReject!: (error: unknown) => void
     private readonly ready = new Promise<void>((resolve, reject) => {
@@ -120,6 +145,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     private loadingScene = false
     private savingScene = false
     private consoleErrorTimes: number[] = []
+    private runtimeErrorCount = 0
     private consoleWriteQueue: Promise<void> = Promise.resolve()
     private stateWriteQueue: Promise<void> = Promise.resolve()
     private originalConsoleError?: typeof console.error
@@ -501,8 +527,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
-    async stopPlay() {
-        this.game?.dispose()
+    async stopPlay(): Promise<RuntimeCleanupReport | undefined> {
+        const cleanup = this.game?.dispose()
         this.game = undefined
         this.isPlaying = false
         this.isStartingPlay = false
@@ -514,6 +540,162 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
         this.setStatus('Stopped')
         await this.writeState()
+        if (cleanup && !cleanup.ok) await this.reportCleanupFailure(cleanup)
+        return cleanup
+    }
+
+    async runCheck(): Promise<EditorCheckResult> {
+        if (this.checkPromise) return this.checkPromise
+        const task = this.performCheck()
+        this.checkPromise = task
+        this.isChecking = true
+        this.setStatus('Checking game…')
+        this.changed()
+        try {
+            return await task
+        } finally {
+            this.isChecking = false
+            if (this.checkPromise === task) this.checkPromise = undefined
+            this.changed()
+        }
+    }
+
+    private async performCheck(): Promise<EditorCheckResult> {
+        await this.ready
+        if (this.isPlaying || this.isStartingPlay) await this.stopPlay()
+        const before = semanticSceneSnapshot(this.get())
+        this.loadedNeedsSave = true
+        const saved = await this.saveScene()
+        const editableStarted = performance.now()
+        const editable = authoringQualityReport(this.get())
+        const editableOutcome: EditorCheckOutcome = {
+            name: 'Editable',
+            status: editable.ok ? 'pass' : 'fail',
+            summary: editable.summary,
+            codes: issueCodes(editable.issues),
+            durationMs: Math.round((performance.now() - editableStarted) * 10) / 10,
+            report: editable,
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width = 640
+        canvas.height = 360
+        canvas.style.position = 'fixed'
+        canvas.style.left = '-10000px'
+        document.body.append(canvas)
+        const playStarted = performance.now()
+        const errorStart = this.runtimeErrorCount
+        let playableOutcome: EditorCheckOutcome
+        try {
+            await this.startPlay(canvas)
+            if (!this.game) throw new Error('The game did not start.')
+            await waitForViewerFrames(this.game.viewer, 30)
+            const projectValidation = await this.game.runGameValidation()
+            const relationships = authoringQualityReport(this.game.viewer).issues.filter(({code}) =>
+                code === 'MISSING_AUTHORING_SOURCE' || code === 'RUNTIME_SOURCE_DRIFT')
+            const cleanup = await this.stopPlay()
+            const cleanupIssues = cleanup?.issues.filter(({severity}) => severity === 'error') || []
+            const runtimeErrors = this.runtimeErrorCount - errorStart
+            const playable = runtimeErrors === 0 && projectValidation.ok && relationships.length === 0 && cleanupIssues.length === 0
+            const reasons = [
+                runtimeErrors ? `${runtimeErrors} runtime error(s).` : '',
+                !projectValidation.ok ? projectValidation.summary : '',
+                relationships.length ? `${relationships.length} runtime source issue(s).` : '',
+                cleanupIssues.length ? `${cleanupIssues.length} cleanup issue(s).` : '',
+            ].filter(Boolean)
+            playableOutcome = {
+                name: 'Playable',
+                status: playable ? 'pass' : 'fail',
+                summary: playable ? 'The game booted and ran 30 frames without errors.' : reasons.join(' '),
+                codes: issueCodes([...relationships, ...cleanupIssues]),
+                durationMs: Math.round((performance.now() - playStarted) * 10) / 10,
+                report: {projectValidation, cleanup, runtimeErrors, relationships},
+            }
+        } catch (error) {
+            await this.stopPlay()
+            playableOutcome = {
+                name: 'Playable',
+                status: 'fail',
+                summary: `The game did not complete its play check: ${errorMessage(error)}`,
+                codes: [],
+                durationMs: Math.round((performance.now() - playStarted) * 10) / 10,
+            }
+        } finally {
+            canvas.remove()
+        }
+
+        const persistenceStarted = performance.now()
+        let persistedOutcome: EditorCheckOutcome
+        if (!saved) {
+            persistedOutcome = {
+                name: 'Persisted', status: 'fail', summary: 'The scene could not be saved before reload.', codes: [],
+            }
+        } else {
+            try {
+                const disk = await this.source.read(this.scenePath)
+                const text = decode(disk.bytes)
+                validateSceneSource(this.scenePath, text)
+                this.hashes.set(this.scenePath, disk.sha256)
+                await this.loadEditScene(text)
+                const persisted = persistenceReport(before, semanticSceneSnapshot(this.get()))
+                persistedOutcome = {
+                    name: 'Persisted',
+                    status: persisted.ok ? 'pass' : 'fail',
+                    summary: persisted.summary,
+                    codes: issueCodes(persisted.issues),
+                    durationMs: Math.round((performance.now() - persistenceStarted) * 10) / 10,
+                    report: persisted,
+                }
+            } catch (error) {
+                persistedOutcome = {
+                    name: 'Persisted', status: 'fail', summary: `Save/Reload failed: ${errorMessage(error)}`, codes: [],
+                }
+            }
+        }
+
+        const outcomes = [playableOutcome, editableOutcome, persistedOutcome]
+        const result: EditorCheckResult = {
+            ok: outcomes.every(({status}) => status === 'pass'),
+            mode: 'editor',
+            checkedAt: new Date().toISOString(),
+            outcomes,
+        }
+        await this.writeCheckResult(result)
+        await this.appendConsoleLine(`[blitz check] ${outcomes.map(({name, status, codes}) =>
+            `${name}=${status}${codes.length ? `(${codes.join(',')})` : ''}`).join(' ')}`)
+        this.checkResult = result
+        this.setStatus(result.ok ? 'Check passed' : 'Check failed')
+        AppToaster().show({
+            message: result.ok ? 'Playable, Editable, and Persisted checks passed.' : 'Blitz check failed. See the result cards and .blitz/check.json.',
+            intent: result.ok ? 'success' : 'danger',
+            icon: result.ok ? 'tick' : 'error',
+            timeout: 4000,
+            isCloseButtonShown: true,
+        })
+        return result
+    }
+
+    private async writeCheckResult(result: EditorCheckResult): Promise<void> {
+        const path = '.blitz/check.json'
+        let ifMatch: string | '*' = this.hashes.get(path) || '*'
+        try {
+            const current = await this.source.read(path)
+            ifMatch = current.sha256
+        } catch { /* first check */ }
+        const written = await this.source.write(path, encode(`${JSON.stringify(result, null, 2)}\n`), ifMatch)
+        this.hashes.set(path, written.sha256)
+    }
+
+    private async reportCleanupFailure(report: RuntimeCleanupReport): Promise<void> {
+        const codes = issueCodes(report.issues)
+        await this.appendConsoleLine(`[blitz stop] runtime cleanup failed: ${codes.join(', ')}`)
+        AppToaster().show({
+            message: `Runtime cleanup failed: ${codes.join(', ')}`,
+            intent: 'danger',
+            icon: 'error',
+            timeout: 5000,
+            isCloseButtonShown: true,
+        })
     }
 
     private async restartPlay() {
@@ -602,6 +784,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     async reportError(error: unknown) {
+        if (this.isPlaying || this.isStartingPlay) this.runtimeErrorCount += 1
         const message = error instanceof Error ? `${error.message}\n${error.stack || ''}` : String(error)
         this.error = message
         this.setStatus('Project error')
@@ -646,6 +829,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         console.error = (...values: unknown[]) => {
             this.originalConsoleError?.(...values)
             if (this.isPlaying || this.isStartingPlay) {
+                this.runtimeErrorCount += 1
                 void this.appendConsoleError(`[console.error] ${values.map(formatConsoleValue).join(' ')}`)
             }
         }
@@ -658,6 +842,16 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     private async onProjectEvent(event: ProjectEvent) {
+        if (event.type === 'command' && event.command === 'check' && typeof event.id === 'string') {
+            try {
+                const result = await this.runCheck()
+                await this.source.commandResult?.(event.id, {ok: true, result})
+            } catch (error) {
+                await this.source.commandResult?.(event.id, {ok: false, error: errorMessage(error)})
+                await this.reportError(error)
+            }
+            return
+        }
         if (event.type === 'command' && event.command === 'bake'
             && typeof event.id === 'string' && typeof event.nodeName === 'string') {
             try {
@@ -863,4 +1057,30 @@ function downloadBlob(blob: Blob, filename: string) {
     anchor.download = filename
     anchor.click()
     setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function issueCodes(issues: AuthoringValidationIssue[]): string[] {
+    return [...new Set(issues.map(({code}) => code))]
+}
+
+function waitForViewerFrames(viewer: ThreeViewer, target: number): Promise<void> {
+    return new Promise((resolveFrames, reject) => {
+        let frames = 0
+        const timeout = window.setTimeout(() => {
+            viewer.removeEventListener('preFrame', onFrame)
+            reject(new Error(`The game did not render ${target} frames within 10 seconds.`))
+        }, 10_000)
+        const onFrame = () => {
+            frames += 1
+            if (frames < target) {
+                viewer.setDirty()
+                return
+            }
+            window.clearTimeout(timeout)
+            viewer.removeEventListener('preFrame', onFrame)
+            resolveFrames()
+        }
+        viewer.addEventListener('preFrame', onFrame)
+        viewer.setDirty()
+    })
 }

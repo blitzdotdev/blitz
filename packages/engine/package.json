@@ -15,6 +15,8 @@
     "./fileTypes": {"types": "./dist/fileTypes.d.ts", "import": "./dist/fileTypes.js"},
     "./paths": {"types": "./dist/paths.d.ts", "import": "./dist/paths.js"},
     "./sceneSerialization": {"types": "./dist/sceneSerialization.d.ts", "import": "./dist/sceneSerialization.js"},
+    "./authoring": {"types": "./dist/authoring.d.ts", "import": "./dist/authoring.js"},
+    "./authoringValidation": {"types": "./dist/authoringValidation.d.ts", "import": "./dist/authoringValidation.js"},
     "./version": {"types": "./dist/runtime/version.d.ts", "import": "./dist/version.js"},
     "./projectFormat": {"types": "./dist/runtime/projectFormat.d.ts", "import": "./dist/projectFormat.js"},
     "./migrations": {"types": "./dist/runtime/migrations.d.ts", "import": "./dist/migrations.js"},
@@ -28,6 +30,7 @@
     "build": "vite build && vite build --config vite.runtime.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest run test/unit",
     "test:runtime": "npm run build && vitest run test/unit && playwright test"
   },
   "dependencies": {

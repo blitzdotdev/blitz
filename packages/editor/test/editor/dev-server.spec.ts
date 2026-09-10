@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {initProject, runDev} from '../../../blitz/src/commands.ts'
+import {checkProject} from '../../../blitz/src/check.ts'
 import type {DevServer} from '../../../blitz/src/server.ts'
 import {startMockBackend, type MockBackend} from '../../../blitz/test/mockBackend.ts'
 
@@ -83,6 +84,52 @@ test.afterAll(async () => {
     await server.close()
     await backend.close()
     await rm(root, {recursive: true, force: true})
+})
+
+test('runs Playable, Editable, and Persisted checks through the connected editor', async ({page}) => {
+    test.setTimeout(90_000)
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+
+    await page.getByTestId('check-game').click()
+    const results = page.getByTestId('check-results')
+    await expect(results).toContainText('Playable PASS', {timeout: 45_000})
+    await expect(results).toContainText('Editable PASS')
+    await expect(results).toContainText('Persisted PASS')
+
+    const written = JSON.parse(await readFile(resolve(root, '.blitz/check.json'), 'utf8')) as {
+        ok: boolean
+        mode: string
+        outcomes: Array<{name: string, status: string}>
+    }
+    expect(written).toMatchObject({ok: true, mode: 'editor'})
+    expect(written.outcomes).toEqual([
+        expect.objectContaining({name: 'Playable', status: 'pass'}),
+        expect.objectContaining({name: 'Editable', status: 'pass'}),
+        expect.objectContaining({name: 'Persisted', status: 'pass'}),
+    ])
+    expect(await readFile(resolve(root, '.blitz/console.log'), 'utf8')).toContain('[blitz check] Playable=pass Editable=pass Persisted=pass')
+
+    const cliResult = await checkProject(root)
+    expect(cliResult).toMatchObject({ok: true, mode: 'editor'})
+})
+
+test('reports leaked runtime content after Stop in a toast and the console log', async ({page}) => {
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await page.getByTestId('play').click()
+    await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
+    await page.evaluate(async () => {
+        const {BoxGeometry, Mesh, MeshStandardMaterial} = await import('@blitzdev/engine')
+        const leaked = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial())
+        leaked.name = 'Leaked Play object'
+        ;(window as unknown as {__blitzRuntimeViewer: {scene: {add(object: unknown): void}}}).__blitzRuntimeViewer.scene.add(leaked)
+    })
+    await page.getByTestId('play').click()
+
+    await expect(page.getByText(/Runtime cleanup failed: RUNTIME_OBJECT_AFTER_STOP/)).toBeVisible()
+    await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8')))
+        .toContain('runtime cleanup failed: RUNTIME_OBJECT_AFTER_STOP')
 })
 
 test('loads the restored panels, watches generators, and saves text glTF without echo reload', async ({page}) => {
@@ -321,7 +368,10 @@ function generatorModule(prefix: string, extra: number): string {
     return `
 export default function generate({node, params, engine}) {
     for (let index = 0; index < params.count + ${extra}; index += 1) {
-        const child = new engine.Group()
+        const child = new engine.Mesh(
+            new engine.BoxGeometry(0.25, 0.25, 0.25),
+            new engine.MeshStandardMaterial({color: 0x44ccaa}),
+        )
         child.name = '${prefix} ' + index
         node.add(child)
     }
@@ -336,7 +386,7 @@ export class HotScript extends Object3DComponent {
     static ComponentType = 'HotScript'
     start() {
         window.__hotScriptVersion = '${version}'
-        console.error('[HotScript] ${version}')
+        console.warn('[HotScript] ${version}')
     }
 }
 `
