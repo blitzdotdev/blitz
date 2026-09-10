@@ -14,7 +14,8 @@ export async function assertBlitzProjectRoot(root = process.cwd()): Promise<void
 
     throw new Error(
         `Not a Blitz project root: missing ${joinMissing(missing)}. `
-        + 'cd into a Blitz project or run blitz init.',
+        + 'cd into a Blitz project or run blitz init. '
+        + 'Start with: npx @blitzdev/blitz init my-game',
     )
 }
 
