@@ -26,6 +26,8 @@ export interface ProjectSource {
     delete(path: string): Promise<void>
     events(listener: (event: ProjectEvent) => void): () => void
     bake?(nodeName: string, force?: boolean): Promise<Record<string, unknown>>
+    checkpoint?(label?: string): Promise<{hash: string, label?: string}>
+    restore?(hash?: string): Promise<{hash: string}>
     commandResult?(id: string, result: Record<string, unknown>): Promise<void>
 }
 

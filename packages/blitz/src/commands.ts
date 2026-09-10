@@ -14,6 +14,7 @@ import type {DeploysFile, PublishProgress} from './types.ts'
 import {appendJournalEntry, readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
 import {BLITZ_VERSION} from './versions.ts'
 import {checkProject} from './check.ts'
+import {gitRepositoryRoot, initializeGitRepository} from './git.ts'
 
 const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
 const commandRequire = createRequire(import.meta.url)
@@ -61,10 +62,11 @@ export interface UpgradeProjectOptions {
 
 const TEMPLATE_RENAMES: Readonly<Record<string, string>> = {gitignore: '.gitignore'}
 
-export async function initProject(directory = '.'): Promise<string> {
+export async function initProject(directory = '.', options: {git?: boolean} = {}): Promise<string> {
     const target = resolve(directory)
     const name = directory === '.' ? target.split(sep).at(-1)! : directory.split(/[\\/]/).filter(Boolean).at(-1)!
     await mkdir(target, {recursive: true})
+    const shouldInitializeGit = options.git !== false && !await gitRepositoryRoot(target)
     const packageRoot = dirname(commandRequire.resolve('@blitzdev/template/package.json'))
     const template = resolve(packageRoot, 'template')
     for (const sourceName of await walkTemplate(template)) {
@@ -90,6 +92,7 @@ export async function initProject(directory = '.'): Promise<string> {
         }
         await writeFile(destination, contents)
     }
+    if (shouldInitializeGit) await initializeGitRepository(target)
     return target
 }
 

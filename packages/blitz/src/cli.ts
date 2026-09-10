@@ -17,12 +17,19 @@ import {checkProject, formatCheckTable} from './check.ts'
 import {enforceVersionPin} from './version-pin.ts'
 import {BLITZ_VERSION} from './versions.ts'
 import {sanitizeDiagnostic} from './api.ts'
+import {archiveProject} from './archive.ts'
+import {doctorProject, formatDoctorTable} from './doctor.ts'
+import {checkpointProject, restoreProject} from './git.ts'
 
 const ROOT_USAGE = `Usage: blitz <command> [options]
 
 Commands:
-  init [dir]                  Create a Blitz project
+  init [dir] [--no-git]       Create a Blitz project and Git repository
   dev [--port <port>]         Start the local editor
+  doctor [--port <port>]      Check the local development prerequisites
+  checkpoint [label]          Commit a project checkpoint
+  restore [hash]              Restore files from a checkpoint
+  archive                     Write a sanitized project source ZIP
   publish [options]           Publish the project
   pull [--force]              Pull the active release
   status                      Show local deploy status
@@ -38,8 +45,12 @@ Commands:
 Run blitz <command> --help for command usage.`
 
 const COMMAND_USAGE: Record<string, string> = {
-    init: 'Usage: blitz init [dir]',
+    init: 'Usage: blitz init [dir] [--no-git]',
     dev: 'Usage: blitz dev [--port <port>] [--no-open] [--force]',
+    doctor: 'Usage: blitz doctor [--port <port>]',
+    checkpoint: 'Usage: blitz checkpoint [label]',
+    restore: 'Usage: blitz restore [hash]',
+    archive: 'Usage: blitz archive',
     publish: 'Usage: blitz publish [--slug <slug>] [--name <name>] [--message <message>] [--no-check] [--no-verify]',
     pull: 'Usage: blitz pull [--force]',
     status: 'Usage: blitz status',
@@ -55,7 +66,7 @@ const COMMAND_USAGE: Record<string, string> = {
 const [command = 'help', ...args] = process.argv.slice(2)
 
 try {
-    const skipsVersionRule = command === 'help' || command === '--help' || command === '-h'
+    const skipsVersionRule = command === 'help' || command === '--help' || command === '-h' || command === 'doctor'
         || command === '--version' || command === '-v'
         || args.includes('--help') || args.includes('-h')
     const delegatedExitCode = skipsVersionRule ? undefined : await enforceVersionPin(command, process.argv.slice(2))
@@ -74,11 +85,28 @@ try {
         if (extras.length) throw new Error(`--help cannot be combined with other arguments.\n${COMMAND_USAGE[command]}`)
         console.log(COMMAND_USAGE[command])
     } else if (command === 'init') {
-        const parsed = parseArgs(args, {}, 1)
+        const parsed = parseArgs(args, {'--no-git': 'boolean'}, 1)
         const directory = parsed.positionals[0] || '.'
-        const target = await initProject(directory)
+        const target = await initProject(directory, {git: parsed.values['--no-git'] !== true})
         console.log(`Created Blitz project at ${target}`)
         console.log(`Next: cd ${directory} && npm install && npx blitz dev`)
+    } else if (command === 'doctor') {
+        const parsed = parseArgs(args, {'--port': 'value'})
+        const result = await doctorProject(process.cwd(), {port: portOption(parsed.values['--port'])})
+        console.log(formatDoctorTable(result))
+        if (!result.ok) process.exitCode = 1
+    } else if (command === 'checkpoint') {
+        const parsed = parseArgs(args, {}, 1)
+        const result = await checkpointProject(process.cwd(), parsed.positionals[0])
+        console.log(`Checkpoint ${result.hash}${result.label ? ` ${result.label}` : ''}`)
+    } else if (command === 'restore') {
+        const parsed = parseArgs(args, {}, 1)
+        const result = await restoreProject(process.cwd(), parsed.positionals[0])
+        console.log(`Restored checkpoint ${result.hash}`)
+    } else if (command === 'archive') {
+        parseArgs(args, {})
+        const result = await archiveProject()
+        console.log(`Archived ${result.files.length} file(s) to ${result.path}`)
     } else if (command === 'dev') {
         const parsed = parseArgs(args, {'--port': 'value', '--no-open': 'boolean', '--force': 'boolean'})
         const port = portOption(parsed.values['--port'])

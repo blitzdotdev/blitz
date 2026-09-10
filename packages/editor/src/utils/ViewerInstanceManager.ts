@@ -425,6 +425,48 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
+    async createCheckpoint(label = 'editor'): Promise<{hash: string} | undefined> {
+        if (!this.source.checkpoint) throw new Error('Project checkpoints are unavailable.')
+        if (!await this.saveScene()) return undefined
+        this.setStatus('Creating checkpoint…')
+        try {
+            const result = await this.source.checkpoint(label)
+            this.setStatus(`Checkpoint ${result.hash}`)
+            AppToaster().show({
+                message: `Checkpoint ${result.hash} created.`,
+                intent: 'success',
+                icon: 'git-commit',
+                timeout: 3000,
+            })
+            return result
+        } catch (error) {
+            await this.reportError(error)
+            return undefined
+        }
+    }
+
+    async restoreLastCheckpoint(): Promise<{hash: string} | undefined> {
+        if (!this.source.restore) throw new Error('Project restore is unavailable.')
+        if (this.loadedNeedsSave && !window.confirm('Restore the last checkpoint and discard unsaved scene edits?')) return undefined
+        if (this.isPlaying || this.isStartingPlay) await this.stopPlay()
+        this.loadedNeedsSave = false
+        this.setStatus('Restoring checkpoint…')
+        try {
+            const result = await this.source.restore()
+            this.setStatus(`Restored checkpoint ${result.hash}`)
+            AppToaster().show({
+                message: `Restored checkpoint ${result.hash}.`,
+                intent: 'success',
+                icon: 'history',
+                timeout: 3000,
+            })
+            return result
+        } catch (error) {
+            await this.reportError(error)
+            return undefined
+        }
+    }
+
     private async writeSerializedScene(serialized: SerializedSceneGltf) {
         for (const file of serialized.files) {
             const result = await this.source.write(file.path, file.bytes, this.hashes.get(file.path) || '*')

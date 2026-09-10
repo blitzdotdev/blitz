@@ -222,7 +222,7 @@ function packageDisplayName(packageJson: Record<string, unknown>, fallback: stri
     return typeof packageJson.name === 'string' && packageJson.name.trim() ? packageJson.name : fallback
 }
 
-function publishExcludes(packageJson: Record<string, unknown>): string[] {
+export function publishExcludes(packageJson: Record<string, unknown>): string[] {
     const blitz = packageJson.blitz
     if (!blitz || typeof blitz !== 'object' || Array.isArray(blitz)) return []
     const publish = (blitz as Record<string, unknown>).publish

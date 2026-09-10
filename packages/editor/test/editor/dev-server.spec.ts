@@ -256,6 +256,26 @@ test('loads the restored panels, watches generators, and saves text glTF without
     expect(errors).toEqual([])
 })
 
+test('creates a checkpoint beside Check and restores the last checkpoint from Settings', async ({page}) => {
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await expect(page.locator('[data-testid="check-game"] + [data-testid="checkpoint-game"]')).toBeVisible()
+
+    const mainPath = resolve(root, 'main.js')
+    const checkpointContents = await readFile(mainPath, 'utf8')
+    await page.getByTestId('checkpoint-game').click()
+    await expect(page.getByText(/Checkpoint [a-f\d]+ created\./)).toBeVisible({timeout: 10_000})
+
+    await writeFile(mainPath, 'export async function main() { window.__restored = false }\n')
+    await expect.poll(() => readFile(mainPath, 'utf8')).not.toBe(checkpointContents)
+    await page.getByRole('button', {name: 'Settings', exact: true}).click()
+    await expect(page.getByTestId('restore-checkpoint')).toHaveText('Restore last checkpoint')
+    await page.getByTestId('restore-checkpoint').click()
+
+    await expect(page.getByText(/Restored checkpoint [a-f\d]+\./)).toBeVisible({timeout: 10_000})
+    await expect.poll(() => readFile(mainPath, 'utf8')).toBe(checkpointContents)
+})
+
 test('queues Play during project load and keeps one overlay update loop through reload and Stop', async ({page}) => {
     test.setTimeout(90_000)
     let delayedManifest = false

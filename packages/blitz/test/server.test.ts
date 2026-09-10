@@ -14,6 +14,7 @@ import {BLITZ_SERVER_CLIENT_ID} from '@blitzdev/engine/paths'
 import {projectDependencies} from '@blitzdev/engine/importMap'
 import {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from '../src/versions.ts'
 import {generateIndexHtml} from '../src/indexHtml.ts'
+import {initializeGitRepository} from '../src/git.ts'
 
 const cleanup: Array<() => Promise<void>> = []
 
@@ -375,6 +376,35 @@ describe('Blitz dev server', () => {
             type: 'add',
             data: {path: 'pulled.txt', client: BLITZ_SERVER_CLIENT_ID},
         })
+    })
+
+    it('creates and restores Git checkpoints through authenticated server routes', async () => {
+        const {server, root, headers} = await startServer()
+        await writeFile(resolve(root, '.gitignore'), '.blitz/\nnode_modules/\n')
+        await initializeGitRepository(root)
+        const original = await readFile(resolve(root, 'main.js'), 'utf8')
+        const checkpoint = await fetch(`${base(server)}/api/checkpoint`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({label: 'editor route'}),
+        })
+        expect(checkpoint.status).toBe(200)
+        expect(await checkpoint.json()).toMatchObject({hash: expect.stringMatching(/^[a-f\d]+$/), label: 'editor route'})
+
+        await writeFile(resolve(root, 'main.js'), 'changed after checkpoint\n')
+        const restored = await fetch(`${base(server)}/api/restore`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: '{}',
+        })
+        expect(restored.status, await restored.clone().text()).toBe(200)
+        expect(await restored.json()).toMatchObject({hash: expect.stringMatching(/^[a-f\d]+$/)})
+        expect(await readFile(resolve(root, 'main.js'), 'utf8')).toBe(original)
+
+        await writeFile(resolve(root, '.blitz/publish.lock'), '{}')
+        const locked = await fetch(`${base(server)}/api/restore`, {method: 'POST', headers, body: '{}'})
+        expect(locked.status).toBe(409)
+        expect(await locked.json()).toMatchObject({error: {code: 'publish_locked'}})
     })
 
     it('serves the editor, its shared runtime bridge, and favicon from one origin', async () => {

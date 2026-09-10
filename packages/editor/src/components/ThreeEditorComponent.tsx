@@ -7,6 +7,8 @@ import {
     FormGroup,
     InputGroup,
     Intent,
+    Menu,
+    MenuItem,
     Navbar,
     Popover,
     Slider,
@@ -39,6 +41,8 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
     const canvasContainer = useRef<HTMLDivElement>(null)
     const playCanvas = useRef<HTMLCanvasElement>(null)
     const [playOverlay, setPlayOverlay] = useState(false)
+    const [checkpointing, setCheckpointing] = useState(false)
+    const [restoring, setRestoring] = useState(false)
 
     useEffect(() => {
         if (!canvasContainer.current || viewer.container.parentElement === canvasContainer.current) return
@@ -60,6 +64,16 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
 
     const dropFiles = (files: FileList) => {
         void manager.importFiles(Array.from(files)).catch((error) => manager.reportError(error))
+    }
+
+    const checkpoint = async () => {
+        setCheckpointing(true)
+        try { await manager.createCheckpoint() } finally { setCheckpointing(false) }
+    }
+
+    const restore = async () => {
+        setRestoring(true)
+        try { await manager.restoreLastCheckpoint() } finally { setRestoring(false) }
     }
 
     if (!ui) return null
@@ -95,8 +109,15 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                         disabled={manager.isChecking}
                         onClick={() => void manager.runCheck()}
                     >Check</Button>
+                    <Button
+                        data-testid="checkpoint-game"
+                        icon="git-commit"
+                        loading={checkpointing}
+                        disabled={checkpointing || restoring}
+                        onClick={() => void checkpoint()}
+                    >Checkpoint</Button>
                     <Navbar.Divider/>
-                    <Popover minimal placement="bottom" content={<ThemeSettingsMenuComponent/>}>
+                    <Popover minimal placement="bottom" content={<SettingsMenu restoring={restoring} onRestore={() => void restore()}/>}>
                         <Button aria-label="Settings" icon="cog" minimal/>
                     </Popover>
                 </Navbar.Group>
@@ -149,6 +170,21 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
             {manager.error && <pre className="editor-error" role="alert">{manager.error}</pre>}
         </div>
     </UiConfigRendererContext.Provider>
+}
+
+function SettingsMenu({restoring, onRestore}: {restoring: boolean, onRestore(): void}) {
+    return <div>
+        <Menu>
+            <MenuItem
+                data-testid="restore-checkpoint"
+                icon="history"
+                text="Restore last checkpoint"
+                disabled={restoring}
+                onClick={onRestore}
+            />
+        </Menu>
+        <ThemeSettingsMenuComponent/>
+    </div>
 }
 
 function ObjectsPanel() {
