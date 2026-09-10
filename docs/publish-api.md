@@ -133,7 +133,7 @@ When the active manifest does not contain `thumbnail.png` at its root, `thumbnai
 
 `GET /api/v1/slugs/:slug`
 
-Auth: none. This uses the same per-IP rate limiter as anonymous creation. The slug namespace is owned by this backend's D1 database and is independent of teenyapp.
+Auth: none. Slug checks have their own exact limit of 10 requests per IP per minute; see Request limits. The slug namespace is owned by this backend's D1 database and is independent of teenyapp.
 
 Success: `200`.
 
@@ -173,7 +173,7 @@ Success: `201`.
 }
 ```
 
-Anonymous games expire after 12 hours. Limits are 10 creates per IP per minute and 100 creates per ASN per minute. The KV tripwire also enforces the IP/ASN windows and supports an emergency lockdown key.
+Anonymous games expire after 12 hours. Limits are 10 creates per IP per minute and 100 creates per ASN per minute. Counting happens in atomic D1 counters; the KV tripwire only holds the emergency lockdown key. See Request limits.
 
 Errors: `400 invalid_slug`, `400 reserved_slug`, `400 invalid_name`, `400 invalid_source`, `404 source_not_found`, `409 slug_taken`, `429 rate_limited`, `503 service_unavailable`.
 
@@ -547,6 +547,40 @@ Success is `200`, or `206` for one valid byte range. Responses include `Content-
 The publishing spinner returns `503` with `Retry-After: 2`, `Cache-Control: no-store`, `X-Blitz-State: publishing`, and `X-Content-Type-Options: nosniff`. Its centered HTML page says "Publishing your game" and polls the current URL every two seconds with `cache: 'no-store'`; it reloads once the response no longer has `X-Blitz-State`. This behavior is the same in custom-host mode and workers.dev/local path mode. Unknown slugs remain `404`.
 
 Known extensions include HTML, JavaScript, CSS, JSON, GLB, glTF, BIN, KTX2, Basis, Wasm, HDR, EXR, PNG, JPEG, WebP, SVG, MP3, Ogg, WAV, MP4, WebM, WOFF2, TXT, and Markdown. An explicit manifest `mime` wins. Unknown files use `application/octet-stream`.
+
+## Agent guide and discovery
+
+### Publish the agent guide
+
+`PUT /api/v1/agents-md`
+
+Auth: `Authorization: Bearer <RUNTIME_UPLOAD_TOKEN>`, the same release token used for runtime uploads. Send the Markdown document as the raw request body with `Content-Type: text/markdown`. The maximum body size is 512 KiB. The backend stores the document in KV with SHA-256 and byte-size metadata. Uploading the same document again is idempotent.
+
+Success: `200` with `{"sha256":"<lowercase-sha256>","size":123456}`.
+
+Errors: `401 invalid_runtime_token`, `413 agents_md_too_large`.
+
+Never log `RUNTIME_UPLOAD_TOKEN` or put it in a command-line argument; send it only as the in-memory authorization header.
+
+### Read the agent guide
+
+`GET /agents.md`
+
+Auth: none. Success: `200` with `Content-Type: text/markdown; charset=utf-8`, `ETag: "<sha256>"`, and `Cache-Control: public, max-age=300`. Send the ETag in `If-None-Match` to receive `304 Not Modified` when the document is unchanged. Before the first upload the route serves the bundled fallback guide with `X-Blitz-Agents-Md: stub`.
+
+### Discover Blitz resources
+
+`GET /llms.txt`
+
+Auth: none. Success: `200` with `Content-Type: text/plain; charset=utf-8`. The short discovery document links to `/agents.md`, the public storefront, and its game-list API.
+
+## Request limits
+
+Anonymous game creation has exact fixed-minute limits of 10 requests per IP and 100 requests per ASN when Cloudflare supplies an ASN. Slug availability checks have a separate exact fixed-minute limit of 10 requests per IP. A rejected request returns `429 rate_limited` with `Retry-After: 60`.
+
+Atomic D1 counters are authoritative for all three scopes. Cloudflare's native rate-limit bindings run first with the same caps as cheap edge shields, so a flood does not produce a D1 write for every request. The KV namespace is not part of counting; its lockdown key can still disable anonymous creation.
+
+Blob and runtime uploads must send the exact bytes for their declared size or URL hash. Cloudflare's public edge normalizes a chunked upload into a sized request before it reaches the Worker, so public clients must not rely on receiving `411` for a missing `Content-Length`. Wrong blob bytes return `422 hash_mismatch`; invalid or mismatched lengths and missing bodies return `400`. The `411 content_length_required` branch remains for direct callers that reach the Worker without a content length.
 
 ## Complete curl walkthrough
 
