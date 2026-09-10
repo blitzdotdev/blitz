@@ -16,6 +16,7 @@ const contentTypes = {
     '.js': 'text/javascript; charset=utf-8',
     '.json': 'application/json; charset=utf-8',
     '.gltf': 'model/gltf+json',
+    '.bin': 'application/octet-stream',
 }
 
 createServer(async (request, response) => {
