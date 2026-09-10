@@ -830,20 +830,70 @@ body{
   z-index: 20;
 }
 
-.check-result-cards {
-  background: var(--app-background-color);
-  display: grid;
-  gap: 6px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 6px;
+.blitz-check-badge {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--pt-app-background-color);
+  height: 7px;
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 7px;
 }
 
-.check-result-cards .bp5-card {
+.blitz-check-badge-success,
+.blitz-check-status-success {
+  background: var(--pt-intent-success);
+}
+
+.blitz-check-badge-danger,
+.blitz-check-status-danger {
+  background: var(--pt-intent-danger);
+}
+
+.blitz-check-popover {
+  padding: 10px 12px;
+  width: 320px;
+}
+
+.blitz-check-header {
   align-items: center;
   display: flex;
-  gap: 8px;
-  min-width: 0;
-  padding: 6px 8px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.blitz-check-header h6 {
+  margin: 0;
+}
+
+.blitz-check-header > span,
+.blitz-check-summary,
+.blitz-check-codes {
+  color: var(--pt-text-color-muted);
+  font-size: 12px;
+}
+
+.blitz-check-outcome {
+  align-items: start;
+  display: grid;
+  gap: 2px 8px;
+  grid-template-columns: 8px 72px 1fr;
+  padding: 4px 0;
+}
+
+.blitz-check-status {
+  border-radius: 50%;
+  height: 8px;
+  margin-top: 5px;
+  width: 8px;
+}
+
+.blitz-check-outcome strong {
+  font-weight: 500;
+}
+
+.blitz-check-codes {
+  grid-column: 3;
 }
 
 .source-editor {

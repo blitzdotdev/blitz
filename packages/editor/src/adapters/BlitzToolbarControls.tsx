@@ -1,4 +1,4 @@
-import {useState} from 'react'
+import {useEffect, useState} from 'react'
 import {
     Button,
     Classes,
@@ -6,13 +6,14 @@ import {
     Menu,
     MenuItem,
     Popover,
+    PopoverInteractionKind,
     Position,
-    Tag,
     Tooltip,
 } from '@blueprintjs/core'
 import {ThemeSettingsMenuComponent} from 'uiconfig-blueprint/lib/esm/lib'
 import {useManagerVersion} from '../utils/UseManager.ts'
 import {InteractionIconButton} from '../components/InteractionIconButton.tsx'
+import type {EditorCheckResult} from '../utils/ViewerInstanceManager.ts'
 
 export function BlitzSaveSceneButton() {
     const manager = useManagerVersion()
@@ -68,6 +69,86 @@ export function BlitzOpenGameButton({onOpenGame}: {onOpenGame(): void}) {
     </Tooltip>
 }
 
+const checkTooltip = 'Check the game: Playable, Editable, Persisted'
+
+export function BlitzCheckButton() {
+    const manager = useManagerVersion()
+    const result = manager.checkResult
+    const button = <InteractionIconButton
+        aria-label={checkTooltip}
+        data-check-status={result ? (result.ok ? 'pass' : 'fail') : undefined}
+        data-testid="check-game"
+        disabled={manager.isChecking}
+        endIcon="tick"
+        loading={manager.isChecking}
+        onClick={() => void manager.runCheck()}
+    >
+        {result && <span
+            aria-hidden={true}
+            className={`blitz-check-badge blitz-check-badge-${result.ok ? 'success' : 'danger'}`}/>}
+    </InteractionIconButton>
+
+    if (!result) {
+        return <Tooltip
+            content={checkTooltip}
+            intent={Intent.PRIMARY}
+            position={Position.BOTTOM}
+            usePortal={true}
+        >
+            {button}
+        </Tooltip>
+    }
+
+    return <Popover
+        content={<BlitzCheckPopover result={result}/>}
+        hoverCloseDelay={150}
+        hoverOpenDelay={150}
+        interactionKind={PopoverInteractionKind.HOVER_TARGET_ONLY}
+        minimal={true}
+        placement="bottom-end"
+        usePortal={true}
+    >
+        {button}
+    </Popover>
+}
+
+function BlitzCheckPopover({result}: {result: EditorCheckResult}) {
+    const relativeTime = useRelativeTime(result.checkedAt)
+    return <div className="blitz-check-popover" data-testid="check-results">
+        <div className="blitz-check-header">
+            <h6>Check</h6>
+            <span data-testid="check-relative-time">{relativeTime}</span>
+        </div>
+        {result.outcomes.map((outcome) => <div
+            className="blitz-check-outcome"
+            data-status={outcome.status}
+            data-testid={`check-outcome-${outcome.name.toLowerCase()}`}
+            key={outcome.name}
+        >
+            <span
+                aria-label={outcome.status === 'pass' ? 'Passed' : 'Failed'}
+                className={`blitz-check-status blitz-check-status-${outcome.status === 'pass' ? 'success' : 'danger'}`}/>
+            <strong>{outcome.name}</strong>
+            <span className="blitz-check-summary">{outcome.summary}</span>
+            {outcome.status === 'fail' && outcome.codes.length > 0 &&
+                <span className="blitz-check-codes">{outcome.codes.join(', ')}</span>}
+        </div>)}
+    </div>
+}
+
+function useRelativeTime(checkedAt: string) {
+    const [now, setNow] = useState(() => Date.now())
+    useEffect(() => {
+        const timer = window.setInterval(() => setNow(Date.now()), 1000)
+        return () => window.clearInterval(timer)
+    }, [checkedAt])
+    const seconds = Math.max(0, Math.floor((now - Date.parse(checkedAt)) / 1000))
+    if (seconds < 5) return 'just now'
+    if (seconds < 60) return `${seconds} seconds ago`
+    const minutes = Math.floor(seconds / 60)
+    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+}
+
 export function BlitzToolbarControls() {
     const manager = useManagerVersion()
     const [checkpointing, setCheckpointing] = useState(false)
@@ -83,13 +164,6 @@ export function BlitzToolbarControls() {
     // AGREED-3: Blitz's centered owner controls do not participate in reference navbar layout.
     return <div className="blitz-toolbar-controls">
         <Button className="blitz-open-game-spacer" icon="share" aria-hidden={true} tabIndex={-1}>Open game</Button>
-        <Button
-            data-testid="check-game"
-            icon="diagnosis"
-            loading={manager.isChecking}
-            disabled={manager.isChecking}
-            onClick={() => void manager.runCheck()}
-        >Check</Button>
         <Button
             data-testid="checkpoint-game"
             icon="git-commit"
@@ -122,18 +196,5 @@ export function BlitzThemeSettingsMenu() {
             data-testid="restore-checkpoint"
             onClick={() => void manager.restoreLastCheckpoint()}
         >Restore last checkpoint</button>
-    </div>
-}
-
-export function BlitzCheckResults() {
-    const manager = useManagerVersion()
-    if (!manager.checkResult) return null
-    return <div className="check-result-cards" data-testid="check-results">
-        {manager.checkResult.outcomes.map((outcome) => <div className="bp5-card bp5-compact" key={outcome.name}>
-            <Tag minimal intent={outcome.status === 'pass' ? Intent.SUCCESS : Intent.DANGER}>
-                {outcome.name} {outcome.status.toUpperCase()}
-            </Tag>
-            <span>{outcome.codes.length ? outcome.codes.join(', ') : outcome.summary}</span>
-        </div>)}
     </div>
 }
