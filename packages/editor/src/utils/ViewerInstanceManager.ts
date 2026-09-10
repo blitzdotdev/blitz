@@ -450,7 +450,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.sceneText = sceneText
             this.generatorStates = readProjectGeneratorStates(sceneText)
             this.error = undefined
-            this.loadedNeedsSave = false
             const editMode = viewer.getPlugin(EditModePlugin)
             const savedCamera = this.project?.config.viewer.camera ? viewer.scene.defaultCamera : undefined
             if (editMode && savedCamera) {
@@ -469,6 +468,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             }
             this.selectInitialGenerator()
             this.savedSceneHash = await hashBytes((await serializeSceneGltf(viewer, {scenePath: this.scenePath})).gltf)
+            // AGREED-4: DevServerSource reloads may finish with renderer updates queued for the next frame.
+            // Keep the load guard raised until those updates settle so a disk reload is not reported as an edit.
+            await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+            this.loadedNeedsSave = false
         } finally {
             this.loadingScene = false
             this.changed()

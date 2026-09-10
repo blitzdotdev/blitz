@@ -80,8 +80,11 @@ export function FilesPanelGrid() {
             }}/>) }
         {fileManifest.filter(({path}) => path.includes('/') && !isPrivateBlitzFile(path)).map((file, index) =>
             <button key={`semantic-${file.path}`} type="button" className="blitz-semantic-hook"
-                    style={{left: `${index}px`}}
-                    aria-label={file.path} onClick={() => manager.selectFile(file.path)}/>) }
+                    style={{left: `${index * 4}px`, top: `${index * 4}px`}}
+                    aria-label={file.path} onClick={() => {
+                        setSelectedFiles([file])
+                        manager.selectFile(file.path)
+                    }}/>) }
     </ButtonGroup>
 }
 
