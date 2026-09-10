@@ -74,7 +74,9 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 - DONE: P4 (merge `3e51928`): source editing in the Inspector as a view over the project files, drafts in memory, `If-Match` writes, conflict banner with Reload and Overwrite, publish refused while dirty; 24 editor Playwright tests. One publish-dialog test is timing-sensitive under load and passes alone; hardening it goes into fix pass H.
 - All six integration passes P1 to P6 are merged. Tarballs repacked from `3e51928`.
 - DONE: run 3 session review, `docs/e2e-session-review-2026-09-10-run3.md`: ten new findings H1 to H10, all six agent gaps confirmed (gap 6 fixed by P2), 29 of 32 earlier findings fixed. Worst: the editor marks the scene dirty with nothing to save after a Check and blocks publish (H5); the headless Editable check judges the started game while the editor judges the stopped scene (H7); script paths without `./` fail only in the editor (H1); the editor check judges the viewport camera instead of the saved one (H2).
-- RUNNING: fix pass H for H1 to H10, F12, the doctor port nit, and the flaky dialog test (`fix-h`); a cloud pass that serves the generated agents guide at `/agents.md` with a release-token upload (`agents-md`). Then E2E run 4 with the current paste block, then the gate.
+- DONE: fix pass H (merge `922824c`): all ten run-3 findings, the lighting quickstart, the doctor port nit, the flaky dialog test hardened; three consecutive editor suite runs at 25 of 25. Includes one change in the vendored threepipe subtree (`GBufferRenderPass.ts`) to send upstream.
+- DONE: the backend serves the generated agents guide at `/agents.md` and `/llms.txt` (cloud `f1c8780`); the release script uploads it (`8e78068`).
+- RUNNING: E2E run 4 with a clean-memory agent on tarballs from `922824c`, using the current paste block with the `blitz check` step (project `fps-trainer`). Then its review, then the gate.
 
 Build order agreed (revised, evening): Phase A done, Phase B part 1 running, then C1 blitz command, local dev server, editor source, then C2 cloud source, dialog, glTF model. See `docs/local-dev-server-plan.md`.
 

@@ -25,8 +25,9 @@ Never print the deploy token or claim secret from .blitz/deploys.json.
 
 What to expect today:
 
-- The editor URL opens in your browser and shows the project. Script saves by the agent hot-reload. The scene is a text glTF at `assets/main.scene.gltf`; the agent can edit it with scripts, and C2a is making that file deterministic with external buffers.
-- The live URL is `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/`, valid for 12 hours unless claimed. Claiming from the editor arrives with C2b; until then the agent can claim through the API in `docs/publish-api.md`.
-- You can open the project in the editor while the agent works, edit, and save. The agent's next `npx blitz publish` includes your edits, because both work on the same folder.
-- `npx blitz check` is the required step immediately before publish. It resolves configured scripts, plugins, and generators, imports scripts in Node, verifies component types in the main scene, and records the result in `.blitz/check.json`. Publish repeats the check unless `--no-check` is explicitly supplied.
-- Known gaps: no publish dialog in the editor yet, `blitz publish --help` and `--slug` land with C2b, and the store at `https://blitz-backend.blitzapp.workers.dev/` lists claimed games only.
+- The editor URL opens in your browser and shows the project in the upstream editor layout, with Play, Check, Checkpoint, and Open game at the top right. Script saves by the agent hot-reload, including modules they import. The scene is a deterministic text glTF at `assets/main.scene.gltf` with an external `.bin`; the agent edits it with scripts, and generated content lives under Generator nodes.
+- `npx blitz check` is the required step before publish. It resolves scripts, plugins, and generators, then reports Playable, Editable, and Persisted, headless or through the open editor. Results go to `.blitz/check.json` and `.blitz/console.log`. Publish repeats the check unless `--no-check` is supplied, refuses while the editor is playing or has an unsaved draft, and verifies every public asset after release.
+- The live URL is `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/`, valid for 12 hours unless claimed. Claim from the editor's Open game dialog or with `npx blitz claim`.
+- You can open the project in the editor while the agent works, edit the scene or a script in the Inspector, and save. The agent's next `npx blitz publish` includes your edits, because both work on the same folder. Run `npx blitz checkpoint` before handing the folder to an agent and `npx blitz restore` to undo its work.
+- `npx blitz doctor` checks Node, the version pin, installed packages, a free port, the backend, the runtime registry, and Playwright. `npx blitz status` shows the running dev server.
+- Known gaps: the store at `https://blitz-backend.blitzapp.workers.dev/` lists claimed games only, and `<game>.app.blitz.dev` waits for the domain cutover.
