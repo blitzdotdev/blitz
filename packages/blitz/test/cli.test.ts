@@ -140,6 +140,22 @@ describe('blitz CLI', () => {
         expect(result.stderr).toBe('')
     })
 
+    it('prints the check table, records failures, and exits nonzero', async () => {
+        const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-check-'))
+        cleanup.push(() => rm(root, {recursive: true, force: true}))
+        await execute(process.execPath, [cli, 'init', root])
+        const packagePath = resolve(root, 'package.json')
+        const packageJson = JSON.parse(await readFile(packagePath, 'utf8'))
+        packageJson.blitz.scripts = ['./Missing.script.js']
+        await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
+
+        await expect(execute(process.execPath, [cli, 'check'], {cwd: root})).rejects.toMatchObject({
+            code: 1,
+            stdout: expect.stringMatching(/KIND\s+STATUS\s+PATH\s+DETAIL[\s\S]*script\s+FAIL\s+\.\/Missing\.script\.js\s+file not found/),
+        })
+        expect(JSON.parse(await readFile(resolve(root, '.blitz/check.json'), 'utf8'))).toMatchObject({ok: false})
+    })
+
     it('prints a live project dev server without exposing its token', async () => {
         const root = await pinnedProject(BLITZ_VERSION)
         await mkdir(resolve(root, '.blitz'), {recursive: true})
