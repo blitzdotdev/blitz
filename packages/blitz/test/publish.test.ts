@@ -1,8 +1,6 @@
-import {createHash} from 'node:crypto'
 import {describe, expect, it} from 'vitest'
-import {canonicalizeManifest as canonicalizeBackendManifest} from '../../../services/backend/src/utils/manifest.ts'
 import {
-    buildManifest,
+    canonicalizeManifest,
     generateIndexHtml,
     manifestHash,
     pullProject,
@@ -22,6 +20,18 @@ import type {
 } from '../src/index.ts'
 import type {PublishApi} from '../src/publish.ts'
 import {FakeDirectory} from './fakeDirectory.ts'
+import manifestGoldenFixtures from './fixtures/manifest-golden.json'
+
+const MANIFEST_GOLDENS = {
+    comprehensive: {
+        canonical: `{"files":{"_blitz/runtime.js":{"sha256":"${'d'.repeat(64)}","size":98765,"mime":"text/javascript; charset=utf-8"},"assets/models/ship.glb":{"sha256":"${'a'.repeat(64)}","size":2048,"mime":"model/gltf-binary"},"copies/nested/ship.glb":{"sha256":"${'a'.repeat(64)}","size":2048,"mime":"model/gltf-binary"},"index.html":{"sha256":"${'c'.repeat(64)}","size":321,"mime":"text/html; charset=utf-8"},"z-last.bin":{"sha256":"${'b'.repeat(64)}","size":17}}}`,
+        releaseHash: 'ac12513ae334cd5a04954f2f22ff324ba6046bf92ff0a38388f8881f80a4b023',
+    },
+    minimal: {
+        canonical: `{"files":{"main.js":{"sha256":"${'e'.repeat(64)}","size":0}}}`,
+        releaseHash: '861ff3c694bdac9d86bcf9894294d578ae6dc7334a1f2a06675467d0e852e9a3',
+    },
+} as const
 
 describe('walkProject', () => {
     it('uses the fixed exclusions and does not interpret .gitignore', async () => {
@@ -46,17 +56,13 @@ describe('walkProject', () => {
 })
 
 describe('release manifests', () => {
-    it('matches the backend canonical hash exactly', async () => {
-        const entries = [
-            {path: 'z.bin', file: new File([Uint8Array.from([1, 2, 3])], 'z.bin')},
-            {path: 'index.html', file: new File(['hello'], 'index.html')},
-        ]
-        const manifest = await buildManifest(entries, {sha256: 'c'.repeat(64), size: 42})
-        const backendCanonical = canonicalizeBackendManifest(manifest.files)
-        const backendHash = createHash('sha256').update(backendCanonical).digest('hex')
-        expect(await manifestHash(manifest)).toBe(backendHash)
-        expect(backendHash).toBe('c62d887c03354202dddb0a3387119f5074702b3037911686645fdde8b674c852')
-        expect(Object.keys(manifest.files)).toEqual(['_blitz/runtime.js', 'index.html', 'z.bin'])
+    // The private blitz-cloud repo carries an identical copy of these fixtures and constants; both must change together.
+    it('matches the backend golden canonical JSON and release hashes', async () => {
+        for (const name of ['comprehensive', 'minimal'] as const) {
+            const manifest = manifestGoldenFixtures[name] as ReleaseManifest
+            expect(canonicalizeManifest(manifest)).toBe(MANIFEST_GOLDENS[name].canonical)
+            expect(await manifestHash(manifest)).toBe(MANIFEST_GOLDENS[name].releaseHash)
+        }
     })
 })
 

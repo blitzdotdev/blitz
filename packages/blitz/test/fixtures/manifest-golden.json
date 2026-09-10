@@ -1,0 +1,38 @@
+{
+  "comprehensive": {
+    "files": {
+      "z-last.bin": {
+        "size": 17,
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "assets/models/ship.glb": {
+        "mime": "model/gltf-binary",
+        "size": 2048,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "index.html": {
+        "size": 321,
+        "mime": "text/html; charset=utf-8",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "_blitz/runtime.js": {
+        "mime": "text/javascript; charset=utf-8",
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "size": 98765
+      },
+      "copies/nested/ship.glb": {
+        "size": 2048,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mime": "model/gltf-binary"
+      }
+    }
+  },
+  "minimal": {
+    "files": {
+      "main.js": {
+        "size": 0,
+        "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    }
+  }
+}
