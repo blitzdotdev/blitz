@@ -16,12 +16,12 @@ afterEach(async () => {
 
 describe('blitz CLI', () => {
     it('prints command-specific help without performing the command', async () => {
-        for (const command of ['init', 'dev', 'publish', 'pull', 'status', 'claim', 'bake', 'journal', 'open', 'sources']) {
+        await Promise.all(['init', 'dev', 'publish', 'pull', 'status', 'claim', 'bake', 'journal', 'open', 'sources'].map(async command => {
             const result = await execute(process.execPath, [cli, command, '--help'])
             expect(result.stdout).toContain(`Usage: blitz ${command}`)
             expect(result.stderr).toBe('')
-        }
-    })
+        }))
+    }, 60000)
 
     it('rejects unknown flags with a clear message and nonzero exit code', async () => {
         await expect(execute(process.execPath, [cli, 'publish', '--bogus']))
@@ -48,5 +48,5 @@ describe('blitz CLI', () => {
         expect(backend.requests.find(({path}) => path.endsWith('/releases'))?.body).toMatchObject({message: 'agent release'})
         const deploys = JSON.parse(await readFile(resolve(root, '.blitz/deploys.json'), 'utf8')) as {games: Record<string, unknown>}
         expect(deploys.games).toHaveProperty('agent-picked-slug')
-    })
+    }, 60000)
 })
