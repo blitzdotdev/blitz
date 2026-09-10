@@ -18,8 +18,10 @@ import {
     EditorViewWidgetPlugin,
     PickingPlugin,
     TransformControlsPlugin,
+    type IGeometry,
     type IMaterial,
     type IObject3D,
+    type SelectionObject,
     type ITexture,
 } from 'threepipe'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
@@ -183,8 +185,9 @@ function InspectorPanel() {
     }, [picking])
 
     const selected = picking?.getSelectedObject()
-    const object = !Array.isArray(selected) && (selected as IObject3D | undefined)?.isObject3D
-        ? selected as IObject3D
+    const selection = !Array.isArray(selected) ? selected : undefined
+    const object = (selection as IObject3D | undefined)?.isObject3D
+        ? selection as IObject3D
         : undefined
     const generators = object
         ? manager.generatorStates.filter(({nodeName}) => nodeName === object.name)
@@ -209,6 +212,11 @@ function InspectorPanel() {
                 closePanel={() => undefined}
             />}
         </>}
+        {selection && !object && selection.uiConfig && <ConfigObject
+            config={selection.uiConfig}
+            openPanel={() => undefined}
+            closePanel={() => undefined}
+        />}
         {generators.map((generator) => <GeneratorInspector key={generator.componentId} generator={generator}/>)}
     </div>
 }
@@ -264,13 +272,13 @@ function GeneratorInspector({generator}: {generator: ReturnType<typeof useManage
 function MaterialsPanel() {
     const manager = useManagerVersion()
     const materials = collectMaterials(manager.get().scene.modelRoot)
-    return <ResourceList values={materials.map((material) => material.name || material.uuid)} empty="No materials"/>
+    return <ResourceList values={materials} empty="No materials"/>
 }
 
 function TexturesPanel() {
     const manager = useManagerVersion()
     const textures = collectTextures(collectMaterials(manager.get().scene.modelRoot))
-    return <ResourceList values={textures.map((texture) => texture.name || texture.uuid)} empty="No textures"/>
+    return <ResourceList values={textures} empty="No textures"/>
 }
 
 function GeometriesPanel() {
@@ -279,9 +287,17 @@ function GeometriesPanel() {
     return <ResourceList values={geometries} empty="No geometries"/>
 }
 
-function ResourceList({values, empty}: {values: string[], empty: string}) {
+function ResourceList({values, empty}: {values: Exclude<SelectionObject, IObject3D | null>[], empty: string}) {
+    const manager = useManagerVersion()
     return <div className="editor-panel-body">
-        {values.length ? <ul className="resource-list">{values.map((value) => <li key={value}>{value}</li>)}</ul>
+        {values.length ? <ul className="resource-list">{values.map((value) => <li key={value.uuid}>
+            <Button
+                minimal
+                small
+                text={value.name || value.uuid}
+                onClick={() => manager.get().getPlugin(PickingPlugin)?.setSelectedObject(value)}
+            />
+        </li>)}</ul>
             : <p className="empty-panel-message">{empty}</p>}
     </div>
 }
@@ -293,6 +309,11 @@ function ScenePanel() {
         <h3>{manager.scenePath}</h3>
         <p>{viewer.scene.modelRoot.children.length} root objects</p>
         <p>Camera: {viewer.scene.mainCamera.name || 'Default camera'}</p>
+        {viewer.scene.uiConfig && <ConfigObject
+            config={viewer.scene.uiConfig}
+            openPanel={() => undefined}
+            closePanel={() => undefined}
+        />}
     </div>
 }
 
@@ -414,10 +435,10 @@ function collectMaterials(root: IObject3D): IMaterial[] {
     return [...found.values()]
 }
 
-function collectGeometries(root: IObject3D): string[] {
-    const found = new Map<string, string>()
+function collectGeometries(root: IObject3D): IGeometry[] {
+    const found = new Map<string, IGeometry>()
     root.traverse((object) => {
-        if (object.geometry) found.set(object.geometry.uuid, object.geometry.name || object.geometry.uuid)
+        if (object.geometry) found.set(object.geometry.uuid, object.geometry)
     })
     return [...found.values()]
 }
