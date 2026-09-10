@@ -25,18 +25,18 @@ export async function registerScripts(viewer: ThreeViewer, modules: Iterable<Scr
 
     for (const module of modules) {
         const walked = walkScriptExports(module)
-        for (const plugin of walked.plugins) {
-            if (!viewer.getPlugin(plugin.value)) await viewer.addPlugin(plugin.value)
-            found.plugins.push(plugin)
+        found.plugins.push(...walked.plugins)
+        found.components.push(...walked.components)
+    }
+    for (const component of found.components) {
+        const existing = entityComponents.componentTypes.get(component.value.ComponentType)
+        if (existing !== component.value) {
+            if (existing) entityComponents.removeComponentType(existing)
+            await entityComponents.addComponentType(component.value)
         }
-        for (const component of walked.components) {
-            const existing = entityComponents.componentTypes.get(component.value.ComponentType)
-            if (existing !== component.value) {
-                if (existing) entityComponents.removeComponentType(existing)
-                await entityComponents.addComponentType(component.value)
-            }
-            found.components.push(component)
-        }
+    }
+    for (const plugin of found.plugins) {
+        if (!viewer.getPlugin(plugin.value)) await viewer.addPlugin(plugin.value)
     }
     return found
 }

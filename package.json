@@ -31,6 +31,7 @@
     "build": "npm run build:threepipe && npm run build:ui && npm run build:engine && npm run build:editor && npm run build:blitz",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:runtime": "npm run test:runtime -w packages/engine",
+    "test:gates": "npm run test:gates -w packages/engine",
     "test:publish": "npm run test:publish -w packages/blitz",
     "test:blitz": "npm test -w packages/blitz",
     "test:editor": "npm test -w packages/editor",

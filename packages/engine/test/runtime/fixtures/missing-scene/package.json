@@ -1,0 +1,8 @@
+{
+  "name": "missing-scene-gate",
+  "version": "1.0.0",
+  "private": true,
+  "mainScene": "assets/not-there.scene.gltf",
+  "dependencies": {},
+  "blitz": {"plugins": [], "imports": {}, "scripts": [], "viewer": {"msaa": false, "tonemap": false}}
+}

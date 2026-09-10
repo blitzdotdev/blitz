@@ -31,11 +31,13 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run test/unit",
+    "test:gates": "npm run build && playwright test persistence-gate.spec.ts startup-failures.spec.ts release-gates.spec.ts",
     "test:runtime": "npm run build && vitest run test/unit && playwright test"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
     "jsonc-parser": "^3.3.1",
+    "meshoptimizer": "^0.20.0",
     "threepipe": "0.5.1",
     "ts-browser-helpers": "0.19.4",
     "uiconfig.js": "^0.3.1"

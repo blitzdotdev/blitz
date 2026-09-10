@@ -15,6 +15,7 @@ import {
     ThreeViewer,
     USDZLoadPlugin,
 } from 'threepipe'
+import {MeshoptDecoder} from 'meshoptimizer'
 import {registerScripts} from '../scripts.ts'
 import {HtmlUiComponent} from '../plugins/HtmlUiComponent.ts'
 import {GeneratorComponent} from '../plugins/GeneratorComponent.ts'
@@ -91,6 +92,7 @@ export async function createGame({base, canvas, onError, fileRevisions = {}}: Cr
         const entityComponents = new EntityComponentPlugin(false)
         const physics = new CannonPhysicsPlugin(true, false)
         EntityComponentPlugin.AddObjectUiConfig = false
+        window.MeshoptDecoder = MeshoptDecoder
 
         viewer = new ThreeViewer({
             canvas,
@@ -105,7 +107,7 @@ export async function createGame({base, canvas, onError, fileRevisions = {}}: Cr
                 physics,
                 new PopmotionPlugin(),
                 new GLTFAnimationPlugin(),
-                new GLTFMeshOptDecodePlugin(),
+                new GLTFMeshOptDecodePlugin(false),
                 new KTX2LoadPlugin(),
                 new KTXLoadPlugin(),
                 new PLYLoadPlugin(),
@@ -128,8 +130,8 @@ export async function createGame({base, canvas, onError, fileRevisions = {}}: Cr
 
         nestedAssets = new RuntimeNestedAssetLoader(viewer, reportError)
 
-        await registerProjectPlugins(viewer, config, baseUrl, fileRevisions)
         await registerProjectScripts(viewer, config, baseUrl, fileRevisions)
+        await registerProjectPlugins(viewer, config, baseUrl, fileRevisions)
 
         const sceneUrl = new URL(project.mainScene, baseUrl).href
         const loadedScene = await viewer.load(sceneUrl, {importAsModelRoot: true})
@@ -298,10 +300,7 @@ function assertSameOrigin(url: URL, base: URL): URL {
 
 function createErrorReporter(onError?: RuntimeErrorHandler) {
     return (error: unknown) => {
-        if (!onError) {
-            console.error('[blitz] Runtime error', error)
-            return
-        }
-        onError(error)
+        console.error('[blitz] Runtime error', error)
+        onError?.(error)
     }
 }
