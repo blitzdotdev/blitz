@@ -174,6 +174,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this._loadedNeedsSave = value
         this.dispatchEvent({type: 'loadedNeedsSaveChange'})
         this.changed()
+        if (this.projectLoaded) void this.writeState()
     }
 
     get(): ThreeViewer {
@@ -242,6 +243,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.loadedNeedsSave = false
         this.setStatus('Project loaded')
         await this.writeState()
+        this.startHeartbeat()
     }
 
     private createEditViewer(): ThreeViewer {
@@ -395,6 +397,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             const serialized = await serializeSceneGltf(this.get(), {scenePath: this.scenePath})
             await this.writeSerializedScene(serialized)
             this.loadedNeedsSave = false
+            await this.writeState()
             this.setStatus('Scene saved')
             return true
         } catch (error) {
@@ -517,7 +520,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.setStatus('Playing')
             await this.writeState()
         } catch (error) {
-            this.stopHeartbeat()
             this.get().renderEnabled = true
             await this.reportError(error)
             await this.writeState(errorMessage(error))
@@ -532,7 +534,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.game = undefined
         this.isPlaying = false
         this.isStartingPlay = false
-        this.stopHeartbeat()
         this.playCanvas = undefined
         if (this.viewer) {
             this.viewer.renderEnabled = true
@@ -763,6 +764,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 engineVersion: RUNTIME_VERSION,
                 projectLoaded: this.projectLoaded,
                 playState: this.isPlaying ? 'playing' : 'stopped',
+                dirty: this.loadedNeedsSave,
                 selectionNames: selectedNames(this.viewer),
                 lastLoadError: error || this.error || null,
                 updatedAt: new Date().toISOString(),

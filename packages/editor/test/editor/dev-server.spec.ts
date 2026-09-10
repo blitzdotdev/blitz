@@ -3,9 +3,9 @@ import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {initProject, runDev} from '../../../blitz/src/commands.ts'
+import {initProject, publishFromDisk, runDev} from '../../../blitz/src/commands.ts'
 import {checkProject} from '../../../blitz/src/check.ts'
-import type {DevServer} from '../../../blitz/src/server.ts'
+import {createDevServer, type DevServer} from '../../../blitz/src/server.ts'
 import {startMockBackend, type MockBackend} from '../../../blitz/test/mockBackend.ts'
 
 let root: string
@@ -171,8 +171,10 @@ test('loads the restored panels, watches generators, and saves text glTF without
     await page.getByRole('button', {name: 'Hot_reload_target'}).click()
     const before = await manifestHash('assets/main.scene.gltf')
     await page.locator('#inspector-object-name').fill('Saved target')
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(true)
     await page.getByTestId('save-scene').click()
     await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
     await expect.poll(() => manifestHash('assets/main.scene.gltf')).not.toBe(before)
     await page.waitForTimeout(300)
     await expect(page.getByText('Scene reloaded from disk')).toHaveCount(0)
@@ -357,6 +359,149 @@ test('opens the game dialog, publishes, updates, and claims a live game', async 
     await expect(page.getByTestId('claimed-notice')).toContainText('does not expire')
     expect(backend.games.get(slug)?.claimed).toBe(true)
 })
+
+test('returns a raced slug conflict to the field and copies a secret-free agent prompt', async ({page, context}) => {
+    const fixture = await startPublishEditor()
+    try {
+        await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: new URL(fixture.server.url).origin})
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.getByTestId('open-game').click()
+        const slugInput = page.locator('#publish-slug')
+        const slug = await slugInput.inputValue()
+        await expect(page.getByText('Available', {exact: true})).toBeVisible()
+        await page.getByRole('button', {name: 'Copy prompt'}).click()
+        const prompt = await page.evaluate(() => navigator.clipboard.readText())
+        expect(prompt).toContain(`Use the slug "${slug}"`)
+        expect(prompt).not.toContain('tp_')
+        expect(prompt).not.toContain('claim_secret')
+        await fetch(`${fixture.backend.url}/api/v1/new-game/${slug}`, {method: 'POST'})
+
+        const popupPromise = page.waitForEvent('popup')
+        await page.getByTestId('create-live-game').click()
+        const popup = await popupPromise
+
+        await expect(page.getByText('Taken. Choose another slug.')).toBeVisible()
+        await expect(slugInput).toBeFocused()
+        await expect.poll(() => popup.isClosed()).toBe(true)
+        await expect(page.getByTestId('google-sign-in')).toHaveCount(0)
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
+})
+
+test('shows a popup fallback and preserves a failed publish for retry', async ({page}) => {
+    const releaseStatuses = [503, 503, 503, 503, 503]
+    const fixture = await startPublishEditor({releaseStatuses})
+    try {
+        await page.addInitScript(() => {
+            window.open = () => null
+        })
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.getByTestId('open-game').click()
+        await expect(page.getByText('Available', {exact: true})).toBeVisible()
+        await page.getByTestId('create-live-game').click()
+
+        await expect(page.getByText('Publishing is temporarily unavailable. Try again in a minute.')).toBeVisible({timeout: 20_000})
+        await expect(page.getByRole('link', {name: 'Open the live game'})).toBeVisible()
+        expect(releaseStatuses).toHaveLength(0)
+        await page.reload()
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.getByTestId('open-game').click()
+        await expect(page.getByText('Publishing is temporarily unavailable. Try again in a minute.')).toBeVisible()
+        await expect(page.getByText('Your game is live')).toHaveCount(0)
+        await page.getByRole('button', {name: 'Retry'}).click()
+        await expect(page.getByTestId('live-url')).toBeVisible({timeout: 20_000})
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
+})
+
+test('maps a publish quota error to the documented message and allows retry', async ({page}) => {
+    const fixture = await startPublishEditor({releaseStatuses: [413]})
+    try {
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.getByTestId('open-game').click()
+        await expect(page.getByText('Available', {exact: true})).toBeVisible()
+        const popupPromise = page.waitForEvent('popup')
+        await page.getByTestId('create-live-game').click()
+        const popup = await popupPromise
+
+        await expect(page.getByText('A file exceeds 100 MiB, or the game exceeds the 500 MiB or 2,000 file limit.')).toBeVisible()
+        const retryPopupPromise = page.waitForEvent('popup')
+        await page.getByRole('button', {name: 'Retry'}).click()
+        const retryPopup = await retryPopupPromise
+        await expect(page.getByTestId('live-url')).toBeVisible({timeout: 20_000})
+        await popup.close()
+        await retryPopup.close()
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
+})
+
+test('keeps the publish dialog open for retry after a connection loss during the walk', async ({page}) => {
+    const fixture = await startPublishEditor()
+    try {
+        await page.route('**/api/publish', (route) => route.abort('connectionfailed'), {times: 1})
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.getByTestId('open-game').click()
+        await expect(page.getByText('Available', {exact: true})).toBeVisible()
+        const popupPromise = page.waitForEvent('popup')
+        await page.getByTestId('create-live-game').click()
+        const popup = await popupPromise
+
+        await expect(page.getByText('The network connection was lost. Check your connection and retry.')).toBeVisible()
+        await expect(page.getByRole('button', {name: 'Retry'})).toBeVisible()
+        await expect(page.getByRole('dialog', {name: 'Open game'})).toBeVisible()
+
+        const retryPopupPromise = page.waitForEvent('popup')
+        await page.getByRole('button', {name: 'Retry'}).click()
+        const retryPopup = await retryPopupPromise
+        await expect(page.getByTestId('live-url')).toBeVisible({timeout: 20_000})
+        await popup.close()
+        await retryPopup.close()
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
+})
+
+async function startPublishEditor(options: Parameters<typeof startMockBackend>[0] = {}) {
+    const projectRoot = await mkdtemp(resolve(tmpdir(), 'blitz-editor-publish-'))
+    await initProject(projectRoot)
+    const engineRoot = fileURLToPath(new URL('../../../engine/', import.meta.url))
+    const installedEngine = resolve(projectRoot, 'node_modules/@blitzdev/engine')
+    await mkdir(resolve(installedEngine, 'dist'), {recursive: true})
+    await writeFile(resolve(installedEngine, 'package.json'), await readFile(resolve(engineRoot, 'package.json')))
+    await writeFile(resolve(installedEngine, 'dist/runtime.js'), await readFile(resolve(engineRoot, 'dist/runtime.js')))
+    const mockBackend = await startMockBackend(options)
+    const devServer = await createDevServer({
+        projectRoot,
+        port: 0,
+        backendUrl: mockBackend.url,
+        publish: (publishOptions, emit) => publishFromDisk(projectRoot, {
+            ...publishOptions,
+            backendUrl: mockBackend.url,
+            noCheck: true,
+        }, emit),
+    })
+    return {
+        root: projectRoot,
+        server: devServer,
+        backend: mockBackend,
+        async close() {
+            await devServer.close()
+            await mockBackend.close()
+            await rm(projectRoot, {recursive: true, force: true})
+        },
+    }
+}
 
 async function manifestHash(path: string): Promise<string | undefined> {
     const response = await fetch(`http://127.0.0.1:${server.port}/api/files`, {headers: {'X-Blitz-Token': server.token}})

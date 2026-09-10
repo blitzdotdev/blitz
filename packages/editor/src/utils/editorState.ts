@@ -3,6 +3,7 @@ export interface EditorState {
     engineVersion: string
     projectLoaded: boolean
     playState: 'playing' | 'stopped'
+    dirty: boolean
     selectionNames: string[]
     lastLoadError: string | null
     updatedAt: string

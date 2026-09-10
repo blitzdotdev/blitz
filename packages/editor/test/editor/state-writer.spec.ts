@@ -17,6 +17,7 @@ test('state writer records liveness, client identity, and play state', async () 
         engineVersion: '0.12.0',
         projectLoaded: true,
         playState: 'playing',
+        dirty: true,
         clientId: 'state-writer-test',
         selectionNames: [],
         lastLoadError: null,
@@ -29,6 +30,7 @@ test('state writer records liveness, client identity, and play state', async () 
     expect(state).toMatchObject({
         projectLoaded: true,
         playState: 'playing',
+        dirty: true,
         clientId: 'state-writer-test',
         selectionNames: [],
         lastLoadError: null,

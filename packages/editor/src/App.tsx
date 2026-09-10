@@ -50,6 +50,7 @@ function EditorApp({source}: {source: DevServerSource}) {
             isOpen={publishDialogOpen}
             name={manager.project?.name || 'Blitz game'}
             source={source}
+            beforePublish={() => manager.saveScene()}
             onClose={() => setPublishDialogOpen(false)}
         />
         <DialogComponent/>

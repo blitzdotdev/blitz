@@ -7,6 +7,16 @@ export interface DeployView {
     claimed: boolean
 }
 
+export interface PublishStatusView {
+    slug: string
+    status: 'publishing' | 'succeeded' | 'failed'
+    updated_at: string
+    release_hash?: string
+    error?: string
+    error_status?: number
+    error_code?: string
+}
+
 export interface SlugAvailability {
     slug: string
     available: boolean
@@ -22,6 +32,14 @@ export interface PublishRequest {
 export interface PublishResult {
     preview_url: string
     release_hash: string
+}
+
+export interface PublishProgress {
+    phase: string
+    done: number
+    total: number
+    path?: string
+    preview_url?: string
 }
 
 export function slugify(name: string): string {

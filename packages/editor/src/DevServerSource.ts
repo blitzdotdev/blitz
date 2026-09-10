@@ -5,7 +5,14 @@ import {
     type ProjectReadResult,
     type ProjectSource,
 } from './ProjectSource.ts'
-import type {DeployView, PublishRequest, PublishResult, SlugAvailability} from './publishing.ts'
+import type {
+    DeployView,
+    PublishProgress,
+    PublishRequest,
+    PublishResult,
+    PublishStatusView,
+    SlugAvailability,
+} from './publishing.ts'
 
 export class DevServerRequestError extends Error {
     readonly name = 'DevServerRequestError'
@@ -36,7 +43,7 @@ export class DevServerSource implements ProjectSource {
         return this.json('/api/state')
     }
 
-    async deploys(): Promise<{games: DeployView[]}> {
+    async deploys(): Promise<{games: DeployView[], last_publish?: PublishStatusView}> {
         return this.json('/api/deploys')
     }
 
@@ -44,12 +51,56 @@ export class DevServerSource implements ProjectSource {
         return this.json(`/api/slug/${encodeURIComponent(slug)}`)
     }
 
-    async publish(request: PublishRequest): Promise<PublishResult> {
-        return this.json('/api/publish', {
+    async publish(request: PublishRequest, onProgress?: (progress: PublishProgress) => void): Promise<PublishResult> {
+        const response = await fetch(this.url('/api/publish'), {
             method: 'POST',
             headers: this.headers({'Content-Type': 'application/json'}),
             body: JSON.stringify(request),
         })
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({})) as {error?: {code?: string, message?: string}}
+            throw new DevServerRequestError(
+                response.status,
+                body.error?.code || `http_${response.status}`,
+                body.error?.message || `/api/publish failed: ${response.status}`,
+            )
+        }
+        if (!response.body || !response.headers.get('Content-Type')?.includes('text/event-stream')) {
+            throw new Error('The publish route did not return an event stream.')
+        }
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let result: PublishResult | undefined
+        let streamDone = false
+        while (!streamDone) {
+            const chunk = await reader.read()
+            streamDone = chunk.done
+            buffer += decoder.decode(chunk.value || new Uint8Array(), {stream: !chunk.done}).replace(/\r\n/g, '\n')
+            const blocks = buffer.split('\n\n')
+            buffer = blocks.pop() || ''
+            for (const block of blocks) {
+                const event = block.split('\n').find((line) => line.startsWith('event:'))?.slice(6).trim()
+                const data = block.split('\n').filter((line) => line.startsWith('data:'))
+                    .map((line) => line.slice(5).trimStart()).join('\n')
+                if (!event || !data) continue
+                const payload = JSON.parse(data) as Record<string, unknown>
+                if (event === 'publish:progress') {
+                    onProgress?.(payload as unknown as PublishProgress)
+                } else if (event === 'publish:result') {
+                    result = payload as unknown as PublishResult
+                } else if (event === 'publish:error') {
+                    await reader.cancel()
+                    throw new DevServerRequestError(
+                        typeof payload.status === 'number' ? payload.status : 500,
+                        typeof payload.code === 'string' ? payload.code : 'publish_failed',
+                        typeof payload.message === 'string' ? payload.message : 'Publishing failed.',
+                    )
+                }
+            }
+        }
+        if (!result) throw new Error('The publish stream ended before returning a result.')
+        return result
     }
 
     async authenticate(mode: 'register' | 'login', email: string, password: string): Promise<{token: string}> {
@@ -110,7 +161,7 @@ export class DevServerSource implements ProjectSource {
             const message = event as MessageEvent<string>
             listener({type: event.type, ...JSON.parse(message.data)} as ProjectEvent)
         }
-        for (const type of ['change', 'add', 'unlink', 'publish', 'command']) {
+        for (const type of ['change', 'add', 'unlink', 'publish:progress', 'command']) {
             source.addEventListener(type, receive)
         }
         return () => source.close()
