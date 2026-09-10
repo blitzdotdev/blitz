@@ -11,18 +11,24 @@ import {
     stat,
     unlink,
 } from 'node:fs/promises'
-import {createServer, type IncomingMessage, type Server, type ServerResponse} from 'node:http'
-import {basename, dirname, extname, resolve, sep} from 'node:path'
+import type {Server} from 'node:http'
+import {basename, dirname, resolve, sep} from 'node:path'
+import {Readable} from 'node:stream'
 import {pipeline} from 'node:stream/promises'
 import {fileURLToPath} from 'node:url'
+import {serve, type HttpBindings} from '@hono/node-server'
 import {mimeTypeForPath} from '@blitzdev/engine/fileTypes'
-import {JOURNAL_PATH} from '@blitzdev/engine/paths'
-import {RUNTIME_VERSION} from '@blitzdev/engine/version'
+import {BLITZ_SERVER_CLIENT_ID, JOURNAL_PATH} from '@blitzdev/engine/paths'
+import {Hono, type Context, type Next} from 'hono'
+import {getCookie} from 'hono/cookie'
+import {LinearRouter} from 'hono/router/linear-router'
+import {streamSSE, type SSEStreamingApi} from 'hono/streaming'
 import {checkBakeSafety, type BakeJournalEntry} from './bake.ts'
 import {appendSceneJournal} from './journal.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {readDeploys, writeDeploys} from './deploys.ts'
 import type {PublishProgress} from './types.ts'
+import {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 
 export interface ManifestEntry {
     path: string
@@ -39,6 +45,7 @@ export interface DevServerOptions {
     runtimePath?: string
     open?: boolean
     backendUrl?: string
+    assetLibraryProxyUrl?: string
     publish?: (
         options: {slug?: string, name?: string, message?: string},
         emit: (data: PublishProgress) => void,
@@ -73,17 +80,16 @@ interface PendingCommand {
     timer: ReturnType<typeof setTimeout>
 }
 
-const SERVER_VERSION = '0.12.0'
-const SERVER_CLIENT_ID = 'blitz-server'
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
 const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
+const DEFAULT_ASSET_LIBRARY_PROXY_URL = 'https://blitz-asset-library-proxy.blitzapp.workers.dev'
 
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
     const projectRoot = await realpath(resolve(options.projectRoot || process.cwd()))
     const token = options.token || randomBytes(24).toString('base64url')
     const editorDirectory = options.editorDirectory || await resolvePackageDirectory('@blitzdev/editor') + '/dist'
     const runtimePath = options.runtimePath || resolve(await resolvePackageDirectory('@blitzdev/engine'), 'dist/runtime.js')
-    const clients = new Map<ServerResponse, string | undefined>()
+    const clients = new Map<SSEStreamingApi, string | undefined>()
     const pendingCommands = new Map<string, PendingCommand>()
     const pendingEvents = new Map<string, PendingEvent>()
     const knownHashes = new Map<string, string>()
@@ -95,223 +101,233 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     let closing = false
     let platformToken: string | undefined
     const backendUrl = (options.backendUrl || process.env.BLITZ_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '')
+    const assetLibraryProxyUrl = (options.assetLibraryProxyUrl
+        || process.env.BLITZ_ASSET_LIBRARY_PROXY_URL
+        || DEFAULT_ASSET_LIBRARY_PROXY_URL).replace(/\/+$/, '')
     const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
 
     for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)
 
-    const server = createServer(async (request, response) => {
-        try {
-            if (!isLocalHost(request.headers.host)) return send(response, 403, 'Invalid Host')
-            const url = new URL(request.url || '/', `http://${request.headers.host}`)
+    type AppEnv = {Bindings: HttpBindings, Variables: {clientId: string | undefined}}
+    const app = new Hono<AppEnv>({router: new LinearRouter()})
 
-            if (url.pathname === '/' || url.pathname === '/index.html') {
-                if (url.searchParams.get('t') !== token) return send(response, 401, 'Missing or invalid Blitz token')
-                response.setHeader('Set-Cookie', `blitz-token=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`)
-                return serveStatic(response, resolve(editorDirectory, 'index.html'), editorDirectory)
-            }
-
-            if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/files/')) {
-                const cookieToken = request.headers.cookie?.split(';').map((part) => part.trim()).find((part) => part.startsWith('blitz-token='))?.slice('blitz-token='.length)
-                if (request.headers['x-blitz-token'] !== token && decodeURIComponent(cookieToken || '') !== token) {
-                    return send(response, 401, 'Missing or invalid Blitz token')
-                }
-            }
-
-            if (request.method === 'GET' && url.pathname === '/_blitz/runtime.js') {
-                return serveStatic(response, runtimePath, dirname(runtimePath))
-            }
-            if (request.method === 'GET' && url.pathname === '/api/files') {
-                return json(response, 200, await buildManifest(projectRoot))
-            }
-            if (request.method === 'GET' && url.pathname === '/api/state') {
-                return json(response, 200, await projectState(projectRoot))
-            }
-            const slugMatch = request.method === 'GET' && /^\/api\/slug\/([^/]+)$/.exec(url.pathname)
-            if (slugMatch) {
-                return proxyBackendJson(response, `${backendUrl}/api/v1/slugs/${encodeURIComponent(decodeURIComponent(slugMatch[1]))}`)
-            }
-            if (request.method === 'GET' && url.pathname === '/api/deploys') {
-                const deploys = await readDeploys(projectDirectory)
-                return json(response, 200, {
-                    games: Object.entries(deploys.games).map(([slug, entry]) => ({
-                        game_id: entry.game_id,
-                        slug,
-                        preview_url: entry.preview_url,
-                        expires_at: entry.expires_at,
-                        last_release_hash: entry.last_release_hash,
-                        claimed: entry.claimed === true,
-                    })),
-                })
-            }
-            if (request.method === 'POST' && (url.pathname === '/api/auth/register' || url.pathname === '/api/auth/login')) {
-                const body = await readJsonBody(request)
-                const path = url.pathname.endsWith('/register') ? '/api/v1/auth/register' : '/api/v1/auth/login'
-                const backendResponse = await fetch(`${backendUrl}${path}`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(body),
-                })
-                const payload = await readBackendPayload(backendResponse)
-                if (!backendResponse.ok) return backendJson(response, backendResponse, payload)
-                if (!isRecord(payload) || typeof payload.token !== 'string') {
-                    return json(response, 502, {error: {code: 'invalid_backend_response', message: 'The Blitz backend returned an invalid authentication response.'}})
-                }
-                platformToken = payload.token
-                return json(response, backendResponse.status, {user: payload.user, token: payload.token})
-            }
-            if (request.method === 'POST' && url.pathname === '/api/claim') {
-                if (!platformToken) return json(response, 401, {error: {code: 'authentication_required', message: 'Sign in before claiming a game.'}})
-                const body = await readJsonBody(request)
-                const slug = typeof body.slug === 'string' ? body.slug : ''
-                const deploys = await readDeploys(projectDirectory)
-                const entry = deploys.games[slug]
-                if (!entry) return json(response, 404, {error: {code: 'deploy_not_found', message: `No local deploy exists for ${slug}.`}})
-                const backendResponse = await fetch(`${backendUrl}/api/v1/games/${encodeURIComponent(slug)}/claim`, {
-                    method: 'POST',
-                    headers: {'Authorization': `Bearer ${platformToken}`, 'Content-Type': 'application/json'},
-                    body: JSON.stringify({secret: entry.claim_secret}),
-                })
-                const payload = await readBackendPayload(backendResponse)
-                if (!backendResponse.ok) return backendJson(response, backendResponse, payload)
-                deploys.games[slug] = {...entry, claimed: true}
-                await writeDeploys(projectDirectory, deploys)
-                return json(response, backendResponse.status, payload)
-            }
-            if (request.method === 'GET' && url.pathname === '/api/events') {
-                response.writeHead(200, {
-                    'Content-Type': 'text/event-stream',
-                    'Cache-Control': 'no-cache',
-                    Connection: 'keep-alive',
-                })
-                response.write(': connected\n\n')
-                clients.set(response, request.headers['x-blitz-client'] as string | undefined)
-                request.on('close', () => clients.delete(response))
-                return
-            }
-            if (request.method === 'POST' && url.pathname === '/api/bake') {
-                const body = await readJsonBody(request)
-                const nodeName = typeof body.nodeName === 'string' ? body.nodeName.trim() : ''
-                const force = body.force === true
-                if (!nodeName) return json(response, 400, {error: {code: 'invalid_node', message: 'nodeName is required.'}})
-                if (![...clients.values()].some(Boolean)) {
-                    return json(response, 409, {error: {code: 'editor_not_connected', message: 'No editor is connected. Open the URL from blitz dev and try again.'}})
-                }
-                const {document, journal} = await readBakeInputs(projectRoot)
-                const safety = checkBakeSafety(document, nodeName, journal, force)
-                if (!safety.ok) return json(response, 409, {error: {code: safety.code, message: safety.reason}})
-
-                const id = randomBytes(16).toString('hex')
-                const result = await new Promise<CommandResult>((resolveCommand) => {
-                    const timer = setTimeout(() => {
-                        pendingCommands.delete(id)
-                        resolveCommand({ok: false, error: 'The connected editor did not finish the bake within 30 seconds.'})
-                    }, 30_000)
-                    pendingCommands.set(id, {resolve: resolveCommand, timer})
-                    broadcast('command', {id, command: 'bake', nodeName, force})
-                })
-                return result.ok
-                    ? json(response, 200, result)
-                    : json(response, 409, {error: {code: 'bake_failed', message: result.error || 'Bake failed.'}})
-            }
-            const commandResultMatch = request.method === 'POST' && /^\/api\/commands\/([a-f\d]+)$/.exec(url.pathname)
-            if (commandResultMatch) {
-                const pending = pendingCommands.get(commandResultMatch[1])
-                if (!pending) return json(response, 404, {error: {code: 'command_not_found', message: 'Command is no longer pending.'}})
-                const body = await readJsonBody(request) as CommandResult
-                clearTimeout(pending.timer)
-                pendingCommands.delete(commandResultMatch[1])
-                pending.resolve({...body, ok: body.ok === true})
-                return json(response, 202, {accepted: true})
-            }
-            if (request.method === 'POST' && url.pathname === '/api/publish') {
-                if (!options.publish) return json(response, 501, {error: {code: 'publish_unavailable', message: 'Publish is not configured.'}})
-                const body = await readJsonBody(request)
-                const result = await runServerMutation(() => options.publish!(
-                    {
-                        slug: typeof body.slug === 'string' ? body.slug : undefined,
-                        name: typeof body.name === 'string' ? body.name : undefined,
-                        message: typeof body.message === 'string' ? body.message : undefined,
-                    },
-                    (data) => { broadcast('publish', data) },
-                ))
-                return json(response, 200, result)
-            }
-            if (request.method === 'POST' && url.pathname === '/api/pull') {
-                if (!options.pull) return json(response, 501, {error: {code: 'pull_unavailable', message: 'Pull is not configured.'}})
-                return json(response, 200, await runServerMutation(options.pull))
-            }
-            if (url.pathname.startsWith('/files/')) {
-                const relativePath = decodeFilePath(url.pathname)
-                const filePath = await safeProjectPath(projectRoot, relativePath, request.method === 'PUT')
-                if (request.method === 'GET') return serveProjectFile(request, response, filePath, relativePath)
-                if (request.method === 'PUT') {
-                    const existed = await fileExists(filePath)
-                    const currentHash = existed ? await hashFile(filePath) : undefined
-                    const beforeSceneText = relativePath === mainScenePath && existed
-                        ? await readFile(filePath, 'utf8')
-                        : undefined
-                    const ifMatch = request.headers['if-match']
-                    if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
-                        return json(response, 412, {error: {code: 'precondition_failed', message: 'The file changed on disk.'}, sha256: currentHash})
-                    }
-                    await mkdir(dirname(filePath), {recursive: true})
-                    const temporary = resolve(dirname(filePath), `.${basename(filePath)}.blitz-${randomBytes(8).toString('hex')}`)
-                    let sha256 = ''
-                    try {
-                        await pipeline(request, createWriteStream(temporary, {flags: 'wx'}))
-                        sha256 = await hashFile(temporary)
-                        knownHashes.set(relativePath, sha256)
-                        await rename(temporary, filePath)
-                    } catch (error) {
-                        if (currentHash) knownHashes.set(relativePath, currentHash)
-                        else knownHashes.delete(relativePath)
-                        await unlink(temporary).catch(() => undefined)
-                        throw error
-                    }
-                    if (relativePath === mainScenePath) {
-                        const afterSceneText = await readFile(filePath, 'utf8')
-                        const requestedClient = request.headers['x-blitz-client'] as string | undefined
-                        const client = pendingCommands.size ? 'blitz-bake' : requestedClient || 'external'
-                        await recordSceneWrite(beforeSceneText, afterSceneText, client)
-                    } else if (relativePath === 'package.json') {
-                        const snapshot = await readMainSceneSnapshot(projectRoot)
-                        mainScenePath = snapshot.path
-                        lastSceneText = snapshot.text
-                    }
-                    scheduleEvent(relativePath, request.headers['x-blitz-client'] as string | undefined, existed ? 'change' : 'add')
-                    return json(response, existed ? 200 : 201, {path: relativePath, sha256})
-                }
-                if (request.method === 'DELETE') {
-                    const existed = await fileExists(filePath)
-                    if (!existed) return send(response, 404, 'Not found')
-                    await unlink(filePath)
-                    knownHashes.delete(relativePath)
-                    scheduleEvent(relativePath, request.headers['x-blitz-client'] as string | undefined, 'unlink')
-                    return send(response, 204)
-                }
-            }
-
-            if (request.method === 'GET') {
-                const relative = decodeURIComponent(url.pathname.slice(1))
-                if (relative && !relative.includes('..') && !relative.includes('\\')) {
-                    const staticPath = resolve(editorDirectory, relative)
-                    if (staticPath.startsWith(`${resolve(editorDirectory)}${sep}`)) {
-                        return serveStatic(response, staticPath, editorDirectory)
-                    }
-                }
-            }
-            return send(response, 404, 'Not found')
-        } catch (error) {
-            const message = error instanceof Error ? error.message : 'Internal server error'
-            const status = httpErrorStatus(error) ?? (/Invalid project path|forbidden|symlink|escape/i.test(message) ? 403 : 500)
-            const code = httpErrorCode(error) ?? (status === 403 ? 'invalid_path' : 'internal_error')
-            return json(response, status, {error: {code, message}})
-        }
+    app.use('*', async (c, next) => {
+        if (!isLocalHost(c.req.header('Host'))) return textResponse('Invalid Host', 403)
+        c.set('clientId', c.req.header('X-Blitz-Client'))
+        await next()
     })
+    app.use('/api/*', checkToken)
+    app.use('/files/*', checkToken)
 
-    function broadcast(event: string, data: unknown) {
-        const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-        for (const client of clients.keys()) client.write(frame)
+    async function checkToken(c: Context<AppEnv>, next: Next): Promise<void | Response> {
+        if (c.req.header('X-Blitz-Token') !== token && getCookie(c, 'blitz-token') !== token) {
+            return textResponse('Missing or invalid Blitz token', 401)
+        }
+        return next()
+    }
+
+    const serveIndex = async (c: Context<AppEnv>) => {
+        if (new URL(c.req.url).searchParams.get('t') !== token) return textResponse('Missing or invalid Blitz token', 401)
+        const response = await serveStaticFile(resolve(editorDirectory, 'index.html'), editorDirectory)
+        response.headers.set('Set-Cookie', `blitz-token=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`)
+        return response
+    }
+    app.get('/', serveIndex)
+    app.get('/index.html', serveIndex)
+    app.get('/_blitz/runtime.js', () => serveStaticFile(runtimePath, dirname(runtimePath)))
+    app.get('/api/files', async () => jsonResponse(await buildManifest(projectRoot)))
+    app.get('/api/state', async () => jsonResponse(await projectState(projectRoot, assetLibraryProxyUrl)))
+    app.get('/api/events', (c) => {
+        c.header('Cache-Control', 'no-cache')
+        c.header('Connection', 'keep-alive')
+        return streamSSE(c, async (stream) => {
+            clients.set(stream, c.get('clientId'))
+            await stream.write(': connected\n\n')
+            await new Promise<void>((resolveAbort) => stream.onAbort(() => {
+                clients.delete(stream)
+                resolveAbort()
+            }))
+        })
+    })
+    app.get('/api/slug/:slug', async (c) => proxyBackendJson(
+        `${backendUrl}/api/v1/slugs/${encodeURIComponent(c.req.param('slug'))}`,
+    ))
+    app.get('/api/deploys', async () => {
+        const deploys = await readDeploys(projectDirectory)
+        return jsonResponse({
+            games: Object.entries(deploys.games).map(([slug, entry]) => ({
+                game_id: entry.game_id,
+                slug,
+                preview_url: entry.preview_url,
+                expires_at: entry.expires_at,
+                last_release_hash: entry.last_release_hash,
+                claimed: entry.claimed === true,
+            })),
+        })
+    })
+    for (const mode of ['register', 'login'] as const) {
+        app.post(`/api/auth/${mode}`, async (c) => {
+            const body = await readJsonBody(c.req.raw)
+            const backendResponse = await fetch(`${backendUrl}/api/v1/auth/${mode}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+            })
+            const payload = await readBackendPayload(backendResponse)
+            if (!backendResponse.ok) return backendJson(backendResponse, payload)
+            if (!isRecord(payload) || typeof payload.token !== 'string') {
+                return jsonResponse({error: {code: 'invalid_backend_response', message: 'The Blitz backend returned an invalid authentication response.'}}, 502)
+            }
+            platformToken = payload.token
+            return jsonResponse({user: payload.user, token: payload.token}, backendResponse.status)
+        })
+    }
+    app.post('/api/claim', async (c) => {
+        if (!platformToken) return jsonResponse({error: {code: 'authentication_required', message: 'Sign in before claiming a game.'}}, 401)
+        const body = await readJsonBody(c.req.raw)
+        const slug = typeof body.slug === 'string' ? body.slug : ''
+        const deploys = await readDeploys(projectDirectory)
+        const entry = deploys.games[slug]
+        if (!entry) return jsonResponse({error: {code: 'deploy_not_found', message: `No local deploy exists for ${slug}.`}}, 404)
+        const backendResponse = await fetch(`${backendUrl}/api/v1/games/${encodeURIComponent(slug)}/claim`, {
+            method: 'POST',
+            headers: {'Authorization': `Bearer ${platformToken}`, 'Content-Type': 'application/json'},
+            body: JSON.stringify({secret: entry.claim_secret}),
+        })
+        const payload = await readBackendPayload(backendResponse)
+        if (!backendResponse.ok) return backendJson(backendResponse, payload)
+        deploys.games[slug] = {...entry, claimed: true}
+        await writeDeploys(projectDirectory, deploys)
+        return jsonResponse(payload, backendResponse.status)
+    })
+    app.post('/api/bake', async (c) => {
+        const body = await readJsonBody(c.req.raw)
+        const nodeName = typeof body.nodeName === 'string' ? body.nodeName.trim() : ''
+        const force = body.force === true
+        if (!nodeName) return jsonResponse({error: {code: 'invalid_node', message: 'nodeName is required.'}}, 400)
+        if (![...clients.values()].some(Boolean)) {
+            return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected. Open the URL from blitz dev and try again.'}}, 409)
+        }
+        const {document, journal} = await readBakeInputs(projectRoot)
+        const safety = checkBakeSafety(document, nodeName, journal, force)
+        if (!safety.ok) return jsonResponse({error: {code: safety.code, message: safety.reason}}, 409)
+
+        const id = randomBytes(16).toString('hex')
+        const result = await new Promise<CommandResult>((resolveCommand) => {
+            const timer = setTimeout(() => {
+                pendingCommands.delete(id)
+                resolveCommand({ok: false, error: 'The connected editor did not finish the bake within 30 seconds.'})
+            }, 30_000)
+            pendingCommands.set(id, {resolve: resolveCommand, timer})
+            void broadcast('command', {id, command: 'bake', nodeName, force})
+        })
+        return result.ok
+            ? jsonResponse(result)
+            : jsonResponse({error: {code: 'bake_failed', message: result.error || 'Bake failed.'}}, 409)
+    })
+    app.post('/api/commands/:id', async (c) => {
+        const id = c.req.param('id')
+        if (!/^[a-f\d]+$/.test(id)) return jsonResponse({error: {code: 'command_not_found', message: 'Command is no longer pending.'}}, 404)
+        const pending = pendingCommands.get(id)
+        if (!pending) return jsonResponse({error: {code: 'command_not_found', message: 'Command is no longer pending.'}}, 404)
+        const body = await readJsonBody(c.req.raw) as CommandResult
+        clearTimeout(pending.timer)
+        pendingCommands.delete(id)
+        pending.resolve({...body, ok: body.ok === true})
+        return jsonResponse({accepted: true}, 202)
+    })
+    app.post('/api/publish', async (c) => {
+        if (!options.publish) return jsonResponse({error: {code: 'publish_unavailable', message: 'Publish is not configured.'}}, 501)
+        const body = await readJsonBody(c.req.raw)
+        const result = await runServerMutation(() => options.publish!(
+            {
+                slug: typeof body.slug === 'string' ? body.slug : undefined,
+                name: typeof body.name === 'string' ? body.name : undefined,
+                message: typeof body.message === 'string' ? body.message : undefined,
+            },
+            (data) => { void broadcast('publish', data) },
+        ))
+        return jsonResponse(result)
+    })
+    app.post('/api/pull', async () => {
+        if (!options.pull) return jsonResponse({error: {code: 'pull_unavailable', message: 'Pull is not configured.'}}, 501)
+        return jsonResponse(await runServerMutation(options.pull))
+    })
+    app.get('/files/*', async (c) => {
+        const relativePath = decodeFilePath(new URL(c.req.url).pathname)
+        const filePath = await safeProjectPath(projectRoot, relativePath)
+        return serveProjectFile(c.req.raw, filePath, relativePath)
+    })
+    app.put('/files/*', async (c) => {
+        const relativePath = decodeFilePath(new URL(c.req.url).pathname)
+        const filePath = await safeProjectPath(projectRoot, relativePath, true)
+        const existed = await fileExists(filePath)
+        const currentHash = existed ? await hashFile(filePath) : undefined
+        const beforeSceneText = relativePath === mainScenePath && existed ? await readFile(filePath, 'utf8') : undefined
+        const ifMatch = c.req.header('If-Match')
+        if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
+            return jsonResponse({error: {code: 'precondition_failed', message: 'The file changed on disk.'}, sha256: currentHash}, 412)
+        }
+        await mkdir(dirname(filePath), {recursive: true})
+        const temporary = resolve(dirname(filePath), `.${basename(filePath)}.blitz-${randomBytes(8).toString('hex')}`)
+        let sha256 = ''
+        try {
+            if (!c.req.raw.body) throw new Error('File request body is required')
+            await pipeline(c.env.incoming, createWriteStream(temporary, {flags: 'wx'}))
+            sha256 = await hashFile(temporary)
+            knownHashes.set(relativePath, sha256)
+            await rename(temporary, filePath)
+        } catch (error) {
+            if (currentHash) knownHashes.set(relativePath, currentHash)
+            else knownHashes.delete(relativePath)
+            await unlink(temporary).catch(() => undefined)
+            throw error
+        }
+        if (relativePath === mainScenePath) {
+            const afterSceneText = await readFile(filePath, 'utf8')
+            const client = pendingCommands.size ? 'blitz-bake' : c.get('clientId') || 'external'
+            await recordSceneWrite(beforeSceneText, afterSceneText, client)
+        } else if (relativePath === 'package.json') {
+            const snapshot = await readMainSceneSnapshot(projectRoot)
+            mainScenePath = snapshot.path
+            lastSceneText = snapshot.text
+        }
+        scheduleEvent(relativePath, c.get('clientId'), existed ? 'change' : 'add')
+        return jsonResponse({path: relativePath, sha256}, existed ? 200 : 201)
+    })
+    app.delete('/files/*', async (c) => {
+        const relativePath = decodeFilePath(new URL(c.req.url).pathname)
+        const filePath = await safeProjectPath(projectRoot, relativePath)
+        if (!(await fileExists(filePath))) return textResponse('Not found', 404)
+        await unlink(filePath)
+        knownHashes.delete(relativePath)
+        scheduleEvent(relativePath, c.get('clientId'), 'unlink')
+        return new Response(null, {status: 204})
+    })
+    app.get('*', async (c) => {
+        const relative = decodeURIComponent(new URL(c.req.url).pathname.slice(1))
+        if (relative && !relative.includes('..') && !relative.includes('\\')) {
+            const staticPath = resolve(editorDirectory, relative)
+            if (staticPath.startsWith(`${resolve(editorDirectory)}${sep}`)) {
+                return serveStaticFile(staticPath, editorDirectory)
+            }
+        }
+        return textResponse('Not found', 404)
+    })
+    app.onError((error) => {
+        const message = error instanceof Error ? error.message : 'Internal server error'
+        const status = httpErrorStatus(error) ?? (/Invalid project path|forbidden|symlink|escape/i.test(message) ? 403 : 500)
+        const code = httpErrorCode(error) ?? (status === 403 ? 'invalid_path' : 'internal_error')
+        return jsonResponse({error: {code, message}}, status)
+    })
+    app.notFound(() => textResponse('Not found', 404))
+
+    const server = serve({fetch: app.fetch, port: options.port ?? 4321, hostname: '127.0.0.1'}) as Server
+
+    async function broadcast(event: string, data: unknown): Promise<void> {
+        await Promise.all([...clients.keys()].map(async (client) => {
+            try { await client.writeSSE({event, data: JSON.stringify(data)}) } catch { clients.delete(client) }
+        }))
     }
 
     function scheduleEvent(path: string, client?: string, forcedType?: PendingEvent['forcedType']) {
@@ -334,14 +350,15 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             const type = effectiveType || (sha256 ? (oldHash ? 'change' : 'add') : 'unlink')
             if (sha256) knownHashes.set(path, sha256)
             else knownHashes.delete(path)
-            broadcast(type, {path, sha256, client: effectiveClient})
+            await broadcast(type, {path, sha256, client: effectiveClient})
         }, 150)
         pendingEvents.set(path, {path, client: effectiveClient, forcedType: effectiveType, timer})
     }
 
     await new Promise<void>((resolveListen, reject) => {
+        if (server.listening) return resolveListen()
         server.once('error', reject)
-        server.listen(options.port ?? 4321, '127.0.0.1', () => {
+        server.once('listening', () => {
             server.off('error', reject)
             resolveListen()
         })
@@ -366,7 +383,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         console.warn(`[blitz] file watching is unavailable: ${error instanceof Error ? error.message : error}`)
     }
     const keepAlive = setInterval(() => {
-        for (const client of clients.keys()) client.write(': keepalive\n\n')
+        for (const client of clients.keys()) void client.write(': keepalive\n\n')
     }, 15_000)
     keepAlive.unref()
 
@@ -382,7 +399,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             watcher?.close()
             clearInterval(keepAlive)
             for (const pending of pendingEvents.values()) clearTimeout(pending.timer)
-            for (const client of clients.keys()) client.end()
+            await Promise.all([...clients.keys()].map((client) => client.close()))
             for (const command of pendingCommands.values()) {
                 clearTimeout(command.timer)
                 command.resolve({ok: false, error: 'The development server closed before the bake finished.'})
@@ -446,9 +463,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                         if (previous === current) continue
                         if (path === mainScenePath && current) {
                             const after = await readFile(resolve(projectRoot, path), 'utf8')
-                            await recordSceneWrite(lastSceneText, after, SERVER_CLIENT_ID, true)
+                            await recordSceneWrite(lastSceneText, after, BLITZ_SERVER_CLIENT_ID, true)
                         }
-                        scheduleEvent(path, SERVER_CLIENT_ID, current ? (previous ? 'change' : 'add') : 'unlink')
+                        scheduleEvent(path, BLITZ_SERVER_CLIENT_ID, current ? (previous ? 'change' : 'add') : 'unlink')
                     }
                 } finally {
                     serverMutationActive = false
@@ -524,13 +541,14 @@ function isIncludedPath(path: string): boolean {
     return !parts.some((part) => part.startsWith('.') && part !== '.blitz')
 }
 
-async function projectState(root: string) {
+async function projectState(root: string, assetLibraryProxyUrl: string) {
     let packageJson: Record<string, unknown> = {}
     try { packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown> } catch { /* optional */ }
     return {
         name: typeof packageJson.name === 'string' ? packageJson.name : basename(root),
-        versions: {server: SERVER_VERSION, engine: RUNTIME_VERSION, editor: SERVER_VERSION},
-        server_version: SERVER_VERSION,
+        versions: {blitz: BLITZ_VERSION, editor: EDITOR_VERSION, engine: ENGINE_VERSION},
+        server_version: BLITZ_VERSION,
+        asset_library_proxy_url: assetLibraryProxyUrl,
     }
 }
 
@@ -558,35 +576,38 @@ async function safeProjectPath(root: string, relativePath: string, allowMissing 
     return target
 }
 
-async function serveProjectFile(request: IncomingMessage, response: ServerResponse, path: string, relativePath: string) {
-    if (!(await fileExists(path))) return send(response, 404, 'Not found')
+async function serveProjectFile(request: Request, path: string, relativePath: string): Promise<Response> {
+    if (!(await fileExists(path))) return textResponse('Not found', 404)
     const sha256 = await hashFile(path)
-    const etag = quoteHash(sha256)
-    if (request.headers['if-none-match'] === etag) {
-        response.writeHead(304, {ETag: etag}).end()
-        return
+    const etag = `"${sha256}"`
+    if (request.headers.get('If-None-Match') === etag) {
+        return new Response(null, {status: 304, headers: {ETag: etag}})
     }
     const metadata = await stat(path)
-    response.writeHead(200, {
-        'Content-Type': mimeTypeForPath(relativePath),
-        'Content-Length': metadata.size,
-        ETag: etag,
-        'Cache-Control': 'no-cache',
+    return new Response(Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>, {
+        status: 200,
+        headers: {
+            'Content-Type': mimeTypeForPath(relativePath),
+            'Content-Length': String(metadata.size),
+            ETag: etag,
+            'Cache-Control': 'no-cache',
+        },
     })
-    createReadStream(path).pipe(response)
 }
 
-async function serveStatic(response: ServerResponse, path: string, root: string) {
+async function serveStaticFile(path: string, root: string): Promise<Response> {
     const absoluteRoot = resolve(root)
     const absolutePath = resolve(path)
-    if (absolutePath !== absoluteRoot && !absolutePath.startsWith(`${absoluteRoot}${sep}`)) return send(response, 403, 'Forbidden')
+    if (absolutePath !== absoluteRoot && !absolutePath.startsWith(`${absoluteRoot}${sep}`)) return textResponse('Forbidden', 403)
     try {
         const metadata = await stat(absolutePath)
-        if (!metadata.isFile()) return send(response, 404, 'Not found')
-        response.writeHead(200, {'Content-Type': mimeTypeForPath(absolutePath), 'Content-Length': metadata.size})
-        createReadStream(absolutePath).pipe(response)
+        if (!metadata.isFile()) return textResponse('Not found', 404)
+        return new Response(Readable.toWeb(createReadStream(absolutePath)) as ReadableStream<Uint8Array>, {
+            status: 200,
+            headers: {'Content-Type': mimeTypeForPath(absolutePath), 'Content-Length': String(metadata.size)},
+        })
     } catch (error) {
-        if (isMissing(error)) return send(response, 404, 'Not found')
+        if (isMissing(error)) return textResponse('Not found', 404)
         throw error
     }
 }
@@ -625,18 +646,28 @@ function isMissing(error: unknown): boolean {
     return error instanceof Error && 'code' in error && error.code === 'ENOENT'
 }
 
-function send(response: ServerResponse, status: number, body = '') {
-    response.writeHead(status, body ? {'Content-Type': 'text/plain; charset=utf-8'} : undefined).end(body)
+function textResponse(body: string, status = 200): Response {
+    return new Response(body || null, {
+        status,
+        headers: body ? {'Content-Type': 'text/plain; charset=utf-8'} : undefined,
+    })
 }
 
-function json(response: ServerResponse, status: number, body: unknown) {
+function jsonResponse(body: unknown, status = 200, headers: HeadersInit = {}): Response {
     const text = JSON.stringify(body)
-    response.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(text)}).end(text)
+    return new Response(text, {
+        status,
+        headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Length': String(Buffer.byteLength(text)),
+            ...Object.fromEntries(new Headers(headers)),
+        },
+    })
 }
 
-async function proxyBackendJson(response: ServerResponse, url: string, init?: RequestInit): Promise<void> {
+async function proxyBackendJson(url: string, init?: RequestInit): Promise<Response> {
     const backendResponse = await fetch(url, init)
-    return backendJson(response, backendResponse, await readBackendPayload(backendResponse))
+    return backendJson(backendResponse, await readBackendPayload(backendResponse))
 }
 
 async function readBackendPayload(response: Response): Promise<unknown> {
@@ -647,10 +678,9 @@ async function readBackendPayload(response: Response): Promise<unknown> {
     }
 }
 
-function backendJson(response: ServerResponse, backendResponse: Response, payload: unknown): void {
+function backendJson(backendResponse: Response, payload: unknown): Response {
     const retryAfter = backendResponse.headers.get('Retry-After')
-    if (retryAfter) response.setHeader('Retry-After', retryAfter)
-    json(response, backendResponse.status, payload)
+    return jsonResponse(payload, backendResponse.status, retryAfter ? {'Retry-After': retryAfter} : {})
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -667,11 +697,10 @@ function httpErrorCode(error: unknown): string | undefined {
     return typeof error.code === 'string' ? error.code : undefined
 }
 
-async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
-    const chunks: Buffer[] = []
-    for await (const chunk of request) chunks.push(Buffer.from(chunk))
-    if (!chunks.length) return {}
-    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
+async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
+    const text = await request.text()
+    if (!text) return {}
+    const body = JSON.parse(text) as unknown
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('JSON body must be an object')
     return body as Record<string, unknown>
 }

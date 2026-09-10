@@ -13,7 +13,6 @@ import type {
     ReleaseRecord,
     RuntimeRecord,
 } from './types.ts'
-import {RUNTIME_VERSION} from '@blitzdev/engine/version'
 
 export interface PublishApi {
     useGame(gameId: string, token: string): unknown
@@ -68,6 +67,8 @@ export async function publishProject({
     const packageFile = await readProjectFile(dirHandle, 'package.json')
     if (!packageFile) throw new Error('package.json is required to publish a project.')
     let packageJson = parsePackageJson(await packageFile.text())
+    const versionResult = usePinnedRuntimeVersion(packageJson)
+    packageJson = versionResult.packageJson
 
     if (!entry) {
         onProgress?.({phase: 'creating', completed: 0, total: 1})
@@ -86,8 +87,6 @@ export async function publishProject({
     let projectEntries = await walkProject(dirHandle)
     onProgress?.({phase: 'walking', completed: 1, total: 1})
 
-    const versionResult = ensureRuntimeVersion(packageJson)
-    packageJson = versionResult.packageJson
     if (versionResult.changed) {
         const updated = await writeProjectFile(
             dirHandle,
@@ -98,7 +97,15 @@ export async function publishProject({
     }
 
     const version = versionResult.version
-    const runtime = await api.getRuntime(version)
+    let runtime: RuntimeRecord
+    try {
+        runtime = await api.getRuntime(version)
+    } catch (error) {
+        if (isHttpNotFound(error)) {
+            throw new Error(`Blitz runtime ${version} is not registered. Upgrade the project or publish the matching runtime first.`)
+        }
+        throw error
+    }
     const indexHtml = generateIndexHtml({
         name: name || (typeof packageJson.name === 'string' ? packageJson.name : slug),
         version,
@@ -173,11 +180,19 @@ function parsePackageJson(text: string): Record<string, unknown> {
     return value as Record<string, unknown>
 }
 
-function ensureRuntimeVersion(packageJson: Record<string, unknown>): {
+function usePinnedRuntimeVersion(packageJson: Record<string, unknown>): {
     packageJson: Record<string, unknown>
     version: string
     changed: boolean
 } {
+    const devDependencies = packageJson.devDependencies
+    if (!devDependencies || typeof devDependencies !== 'object' || Array.isArray(devDependencies)) {
+        throw new Error('package.json must pin @blitzdev/blitz in devDependencies.')
+    }
+    const version = (devDependencies as Record<string, unknown>)['@blitzdev/blitz']
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) {
+        throw new Error('package.json devDependencies["@blitzdev/blitz"] must be an exact x.y.z version.')
+    }
     const rawBlitz = packageJson.blitz
     if (rawBlitz !== undefined && (!rawBlitz || typeof rawBlitz !== 'object' || Array.isArray(rawBlitz))) {
         throw new Error('package.json blitz must be an object.')
@@ -186,13 +201,17 @@ function ensureRuntimeVersion(packageJson: Record<string, unknown>): {
     if (blitz.version !== undefined && typeof blitz.version !== 'string') {
         throw new Error('package.json blitz.version must be a string.')
     }
-    const changed = !blitz.version
-    if (changed) blitz.version = RUNTIME_VERSION
+    const changed = blitz.version !== version
+    if (changed) blitz.version = version
     return {
         packageJson: changed ? {...packageJson, blitz} : packageJson,
-        version: blitz.version as string,
+        version,
         changed,
     }
+}
+
+function isHttpNotFound(error: unknown): boolean {
+    return Boolean(error && typeof error === 'object' && 'status' in error && error.status === 404)
 }
 
 function packageDependencies(packageJson: Record<string, unknown>): ProjectDependency[] {

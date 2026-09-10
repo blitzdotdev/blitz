@@ -13,8 +13,8 @@ export {checkBakeSafety} from './bake.ts'
 export type {BakeJournalEntry, BakeSafetyResult} from './bake.ts'
 export {diffSceneGltf, diffSceneGltfText} from './scene-diff.ts'
 export type {SceneComponentChange, SceneDiff, SceneIdentity, SceneMaterialChange, SceneNodeRename, SceneTransformChange} from './scene-diff.ts'
-export {appendSceneJournal, readJournal} from './journal.ts'
-export type {JournalEntry, ReadJournalOptions} from './journal.ts'
+export {appendJournalEntry, appendSceneJournal, readJournal} from './journal.ts'
+export type {JournalEntry, ReadJournalOptions, UpgradeSummary} from './journal.ts'
 export {
     bakeFromEditor,
     claimFromDisk,
@@ -27,8 +27,11 @@ export {
     slugify,
     sourcesInstructions,
     statusFromDisk,
+    upgradeProject,
 } from './commands.ts'
-export type {PublicDeployEntry, PublishFromDiskOptions} from './commands.ts'
+export type {PublicDeployEntry, PublishFromDiskOptions, UpgradeProjectOptions} from './commands.ts'
+export {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
+export {enforceVersionPin, findPinnedProject} from './version-pin.ts'
 export type {
     ExistingDeployTarget,
     PublishApi,

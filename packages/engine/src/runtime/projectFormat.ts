@@ -79,6 +79,14 @@ export function parseAssetsJSONManifest(text: string): AssetsJSONManifest {
     return json
 }
 
+export function validateSceneSource(path: string, text: string): void {
+    if (!path.toLowerCase().endsWith('.gltf')) return
+    const document = JSON.parse(text) as {asset?: unknown}
+    if (!document || typeof document !== 'object' || !document.asset) {
+        throw new Error(`${path} is not a JSON glTF document`)
+    }
+}
+
 export async function parsePackageJsonSettingsConfig(json: ProjectPackageJSON, _project?: unknown): Promise<ProjectConfigSettings> {
     const config = (json[settingsKey] ?? {}) as ProjectConfigSettingsJSON
     const dependencies: ProjectDependency[] = []

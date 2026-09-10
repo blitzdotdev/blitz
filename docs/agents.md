@@ -15,6 +15,15 @@ The last command prints `http://127.0.0.1:4321/?t=...`. Edit source files while 
 
 Run `npx blitz <command> --help` for command-specific usage. Unknown flags fail with a nonzero exit code.
 
+`blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. Every command except `--help` and `--version` checks that pin. A different command version delegates to `node_modules/.bin/blitz` when it is installed, or asks you to run `npm install` or the matching `npx @blitzdev/blitz@<version>` command.
+
+Upgrade both stamped fields, install dependencies without lifecycle scripts, run engine migrations, validate the scene, and journal the change with:
+
+```sh
+npx blitz upgrade
+npx blitz upgrade --to x.y.z
+```
+
 Before every update, run `npx blitz pull` and resolve any local and remote differences. Publish with an explicit slug when creating a game:
 
 ```sh
@@ -97,7 +106,7 @@ Every scene write appends one JSON line to `.blitz/journal.jsonl`. Read it befor
 {"ts":"2026-09-09T18:42:10.000Z","client":"52fa...","summary":{"nodesAdded":[{"name":"Player","uuid":"a1"}],"nodesRemoved":[],"nodesRenamed":[],"transforms":[{"node":{"name":"Player","uuid":"a1"},"property":"position","old":[0,0,0],"new":[1,0,0]}],"components":[],"materials":[]}}
 ```
 
-Editor writes carry the editor client id. API writes use `X-Blitz-Client`. Watcher-detected writes use `external`.
+Editor writes carry the editor client id. API writes use `X-Blitz-Client`. Watcher-detected writes use `external`. Server mutations use the engine export `BLITZ_SERVER_CLIENT_ID`, whose value is `blitz-server`.
 
 ## Limits
 

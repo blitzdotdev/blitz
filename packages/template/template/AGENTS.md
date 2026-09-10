@@ -13,6 +13,10 @@ npx blitz dev
 
 `blitz dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx blitz pull`; then run `npx blitz publish` and report the live URL it prints. Run `npx blitz <command> --help` for command-specific usage.
 
+`blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. Every command except `--help` and `--version` checks that pin. A different command version delegates to the installed project binary, or tells you to install dependencies or run the pinned package through `npx`.
+
+Upgrade the project with `npx blitz upgrade`, or select an exact target with `npx blitz upgrade --to x.y.z`. Upgrade rewrites both version fields, runs `npm install --ignore-scripts`, applies engine migrations, validates the scene, and records a `blitz-upgrade` journal entry.
+
 Source code to grep after `npm install`:
 
 ```text
@@ -128,7 +132,7 @@ Each line has `{ts, client, summary}`. `summary` contains node additions, remova
 {"ts":"2026-09-09T18:42:10.000Z","client":"52fa...","summary":{"nodesAdded":[{"name":"Player","uuid":"a1"}],"nodesRemoved":[],"nodesRenamed":[],"transforms":[{"node":{"name":"Player","uuid":"a1"},"property":"position","old":[0,0,0],"new":[1,0,0]}],"components":[],"materials":[]}}
 ```
 
-Editor writes use the editor client id. API writes use `X-Blitz-Client`. Watcher-detected writes use `external`.
+Editor writes use the editor client id. API writes use `X-Blitz-Client`. Watcher-detected writes use `external`. Server mutations use the engine export `BLITZ_SERVER_CLIENT_ID`, whose value is `blitz-server`.
 
 - The game is using Blitz game engine built on top of threepipe and three.js.
 - The scene path is declared by `mainScene` in `package.json`. Keep the main scene as text glTF.

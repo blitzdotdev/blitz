@@ -1,10 +1,11 @@
 import {execFile} from 'node:child_process'
-import {mkdtemp, readFile, rm} from 'node:fs/promises'
+import {chmod, mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {promisify} from 'node:util'
 import {afterEach, describe, expect, it} from 'vitest'
 import {startMockBackend} from './mockBackend.ts'
+import {BLITZ_VERSION} from '../src/versions.ts'
 
 const execute = promisify(execFile)
 const cli = resolve('dist/cli.js')
@@ -16,12 +17,21 @@ afterEach(async () => {
 
 describe('blitz CLI', () => {
     it('prints command-specific help without performing the command', async () => {
-        await Promise.all(['init', 'dev', 'publish', 'pull', 'status', 'claim', 'bake', 'journal', 'open', 'sources'].map(async command => {
-            const result = await execute(process.execPath, [cli, command, '--help'])
+        const commands = ['init', 'dev', 'publish', 'pull', 'status', 'claim', 'bake', 'journal', 'open', 'sources', 'upgrade']
+        const results = await Promise.all(commands.map(async (command) => ({
+            command,
+            result: await execute(process.execPath, [cli, command, '--help']),
+        })))
+        for (const {command, result} of results) {
             expect(result.stdout).toContain(`Usage: blitz ${command}`)
             expect(result.stderr).toBe('')
-        }))
-    }, 60000)
+        }
+    })
+
+    it('prints its package version without applying the project version rule', async () => {
+        const result = await execute(process.execPath, [cli, '--version'])
+        expect(result.stdout.trim()).toBe(BLITZ_VERSION)
+    })
 
     it('rejects unknown flags with a clear message and nonzero exit code', async () => {
         await expect(execute(process.execPath, [cli, 'publish', '--bogus']))
@@ -48,5 +58,72 @@ describe('blitz CLI', () => {
         expect(backend.requests.find(({path}) => path.endsWith('/releases'))?.body).toMatchObject({message: 'agent release'})
         const deploys = JSON.parse(await readFile(resolve(root, '.blitz/deploys.json'), 'utf8')) as {games: Record<string, unknown>}
         expect(deploys.games).toHaveProperty('agent-picked-slug')
-    }, 60000)
+    })
+
+    it('delegates a mismatch to the installed pinned binary with the same arguments', async () => {
+        const root = await pinnedProject('9.9.9')
+        const binDirectory = resolve(root, 'node_modules/.bin')
+        await mkdir(binDirectory, {recursive: true})
+        const fakeBin = resolve(binDirectory, 'blitz')
+        await writeFile(fakeBin, '#!/usr/bin/env node\nconsole.log(JSON.stringify(process.argv.slice(2)))\n')
+        await chmod(fakeBin, 0o755)
+
+        const result = await execute(process.execPath, [cli, 'status'], {cwd: root})
+
+        expect(result.stderr).toContain(`Blitz ${BLITZ_VERSION} does not match project pin 9.9.9; delegating`)
+        expect(JSON.parse(result.stdout.trim())).toEqual(['status'])
+    })
+
+    it('refuses a mismatch when the pinned binary is not installed', async () => {
+        const root = await pinnedProject('9.9.8')
+        await expect(execute(process.execPath, [cli, 'status'], {cwd: root}))
+            .rejects.toMatchObject({
+                code: 1,
+                stderr: expect.stringContaining('Run npm install, or npx @blitzdev/blitz@9.9.8 status'),
+            })
+    })
+
+    it('bypasses the project version rule for development', async () => {
+        const root = await pinnedProject('9.9.7')
+        const result = await execute(process.execPath, [cli, 'status'], {
+            cwd: root,
+            env: {...process.env, BLITZ_IGNORE_VERSION_PIN: '1'},
+        })
+        expect(result.stdout).toContain('No deploys')
+    })
+
+    it('publishes with the project pin when the development bypass is set', async () => {
+        const pinned = '9.8.7'
+        const backend = await startMockBackend({runtimeVersions: [pinned]})
+        cleanup.push(() => backend.close())
+        const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-publish-pin-'))
+        cleanup.push(() => rm(root, {recursive: true, force: true}))
+        await execute(process.execPath, [cli, 'init', root])
+        const packagePath = resolve(root, 'package.json')
+        const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
+            devDependencies: Record<string, string>, blitz: {version: string}
+        }
+        packageJson.devDependencies['@blitzdev/blitz'] = pinned
+        packageJson.blitz.version = '1.2.3'
+        await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
+
+        await execute(process.execPath, [cli, 'publish', '--slug', 'pinned-publish'], {
+            cwd: root,
+            env: {...process.env, BLITZ_BACKEND_URL: backend.url, BLITZ_IGNORE_VERSION_PIN: '1'},
+        })
+
+        expect(backend.requests.map(({path}) => path)).toContain(`/api/v1/runtimes/${pinned}`)
+        expect(JSON.parse(await readFile(packagePath, 'utf8')).blitz.version).toBe(pinned)
+    })
 })
+
+async function pinnedProject(version: string): Promise<string> {
+    const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-pin-'))
+    cleanup.push(() => rm(root, {recursive: true, force: true}))
+    await writeFile(resolve(root, 'package.json'), JSON.stringify({
+        name: 'pin-test',
+        devDependencies: {'@blitzdev/blitz': version},
+        blitz: {version},
+    }))
+    return root
+}

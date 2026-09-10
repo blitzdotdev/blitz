@@ -5,20 +5,10 @@
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
-    "lint": "eslint main.js samples --ext js --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint template/main.js template/samples --ext js --report-unused-disable-directives --max-warnings 0"
   },
   "exports": {
     "./package.json": "./package.json"
   },
-  "files": [
-    "AGENTS.md",
-    "assets.json",
-    "main.js",
-    "icon.svg",
-    ".gitignore",
-    "gitignore",
-    "template",
-    "assets",
-    "samples"
-  ]
+  "files": ["template"]
 }

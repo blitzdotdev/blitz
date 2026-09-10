@@ -1,6 +1,8 @@
-import {readFile, stat, writeFile, mkdir} from 'node:fs/promises'
+import {spawn} from 'node:child_process'
+import {createRequire} from 'node:module'
+import {readFile, readdir, stat, writeFile, mkdir} from 'node:fs/promises'
 import {dirname, relative, resolve, sep} from 'node:path'
-import {fileURLToPath} from 'node:url'
+import {pathToFileURL} from 'node:url'
 import openBrowser from 'open'
 import {BlitzApi} from './api.ts'
 import {readDeploys, writeDeploys} from './deploys.ts'
@@ -8,9 +10,11 @@ import {NodeProjectDirectory} from './node-filesystem.ts'
 import {publishProject, pullProject} from './publish.ts'
 import {createDevServer, type DevServer} from './server.ts'
 import type {PublishProgress} from './types.ts'
-import {readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
+import {appendJournalEntry, readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
+import {BLITZ_VERSION} from './versions.ts'
 
 const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
+const commandRequire = createRequire(import.meta.url)
 
 export interface PublishFromDiskOptions {
     slug?: string
@@ -28,22 +32,38 @@ export interface PublicDeployEntry {
     claimed: boolean
 }
 
+interface RuntimeProjectTools {
+    parsePackageJSON(text: string): Record<string, unknown>
+    parseAssetsJSONManifest(text: string): unknown
+    parsePackageJsonSettingsConfig(json: Record<string, unknown>): Promise<unknown>
+    validateSceneSource(path: string, text: string): void
+}
+
+interface RuntimeMigration {
+    version: string
+    migrate(projectRoot: string): void | Promise<void>
+}
+
+export interface UpgradeProjectOptions {
+    to?: string
+    commandVersion?: string
+    install?: (projectRoot: string) => Promise<void>
+    loadRuntime?: (projectRoot: string) => Promise<{
+        tools: RuntimeProjectTools
+        migrations: readonly RuntimeMigration[]
+    }>
+}
+
+const TEMPLATE_RENAMES: Readonly<Record<string, string>> = {gitignore: '.gitignore'}
+
 export async function initProject(directory = '.'): Promise<string> {
     const target = resolve(directory)
     const name = directory === '.' ? target.split(sep).at(-1)! : directory.split(/[\\/]/).filter(Boolean).at(-1)!
     await mkdir(target, {recursive: true})
-    const template = dirname(fileURLToPath(import.meta.resolve('@blitzdev/template/package.json')))
-    const files = [
-        ['template/package.json', 'package.json'],
-        ['assets.json', 'assets.json'],
-        ['main.js', 'main.js'],
-        ['AGENTS.md', 'AGENTS.md'],
-        ['icon.svg', 'icon.svg'],
-        [await templateGitignore(template), '.gitignore'],
-        ['assets/main.scene.gltf', 'assets/main.scene.gltf'],
-        ['samples/Spin.script.js', 'samples/Spin.script.js'],
-    ] as const
-    for (const [sourceName, destinationName] of files) {
+    const packageRoot = dirname(commandRequire.resolve('@blitzdev/template/package.json'))
+    const template = resolve(packageRoot, 'template')
+    for (const sourceName of await walkTemplate(template)) {
+        const destinationName = TEMPLATE_RENAMES[sourceName] || sourceName
         const destination = resolve(target, destinationName)
         if (!destination.startsWith(`${target}${sep}`)) throw new Error('Template path escaped target directory')
         try {
@@ -55,11 +75,58 @@ export async function initProject(directory = '.'): Promise<string> {
         await mkdir(dirname(destination), {recursive: true})
         let contents = await readFile(resolve(template, sourceName))
         if (destinationName === 'package.json') {
-            contents = Buffer.from(contents.toString('utf8').replaceAll('__BLITZ_PROJECT_NAME__', packageName(name)))
+            const projectManifest = JSON.parse(contents.toString('utf8').replaceAll('__BLITZ_PROJECT_NAME__', packageName(name))) as {
+                devDependencies?: Record<string, unknown>
+                blitz?: Record<string, unknown>
+            }
+            projectManifest.devDependencies = {...projectManifest.devDependencies, '@blitzdev/blitz': BLITZ_VERSION}
+            projectManifest.blitz = {...projectManifest.blitz, version: BLITZ_VERSION}
+            contents = Buffer.from(`${JSON.stringify(projectManifest, null, 2)}\n`)
         }
         await writeFile(destination, contents)
     }
     return target
+}
+
+export async function upgradeProject(
+    projectRoot = process.cwd(),
+    options: UpgradeProjectOptions = {},
+): Promise<{from: string, to: string}> {
+    const root = resolve(projectRoot)
+    const packagePath = resolve(root, 'package.json')
+    const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as Record<string, unknown>
+    const devDependencies = record(packageJson.devDependencies)
+    const from = devDependencies['@blitzdev/blitz']
+    if (typeof from !== 'string' || !from) throw new Error('package.json must pin @blitzdev/blitz in devDependencies')
+    const to = options.to || process.env.BLITZ_UPGRADE_TO || options.commandVersion || BLITZ_VERSION
+    compareVersions(from, to)
+    if (compareVersions(from, to) > 0) throw new Error(`Cannot upgrade from ${from} to older version ${to}`)
+
+    const blitz = record(packageJson.blitz)
+    await writeFile(packagePath, `${JSON.stringify({
+        ...packageJson,
+        devDependencies: {...devDependencies, '@blitzdev/blitz': to},
+        blitz: {...blitz, version: to},
+    }, null, 2)}\n`, 'utf8')
+
+    await (options.install || installProjectDependencies)(root)
+    const runtime = await (options.loadRuntime || loadInstalledRuntime)(root)
+    for (const migration of runtime.migrations) {
+        if (compareVersions(migration.version, from) > 0 && compareVersions(migration.version, to) <= 0) {
+            await migration.migrate(root)
+        }
+    }
+
+    const packageText = await readFile(packagePath, 'utf8')
+    const parsedPackage = runtime.tools.parsePackageJSON(packageText)
+    await runtime.tools.parsePackageJsonSettingsConfig(parsedPackage)
+    runtime.tools.parseAssetsJSONManifest(await readFile(resolve(root, 'assets.json'), 'utf8'))
+    const mainScene = parsedPackage.mainScene
+    if (typeof mainScene !== 'string') throw new Error('package.json mainScene must be a string')
+    const sceneText = await readFile(resolve(root, mainScene), 'utf8')
+    runtime.tools.validateSceneSource(mainScene, sceneText)
+    await appendJournalEntry(root, 'blitz-upgrade', {upgrade: {from, to}})
+    return {from, to}
 }
 
 export async function runDev(options: {projectRoot?: string, port?: number, noOpen?: boolean, backendUrl?: string} = {}): Promise<DevServer> {
@@ -205,11 +272,18 @@ export async function sourcesInstructions(projectRoot = process.cwd()): Promise<
     ].join('\n')
 }
 
-async function templateGitignore(template: string): Promise<string> {
-    for (const name of ['.gitignore', 'gitignore']) {
-        try { await stat(resolve(template, name)); return name } catch { /* try fallback */ }
+async function walkTemplate(root: string): Promise<string[]> {
+    const files: string[] = []
+    await visit(root, '')
+    return files.sort()
+
+    async function visit(directory: string, prefix: string): Promise<void> {
+        for (const entry of await readdir(directory, {withFileTypes: true})) {
+            const path = prefix ? `${prefix}/${entry.name}` : entry.name
+            if (entry.isDirectory()) await visit(resolve(directory, entry.name), path)
+            else if (entry.isFile()) files.push(path)
+        }
     }
-    throw new Error('The Blitz template does not contain a gitignore file')
 }
 
 function packageName(name: string): string {
@@ -231,4 +305,49 @@ function usernameFromEmail(email: string): string {
     let username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
     if (!/^[a-z]/.test(username)) username = `player_${username}`
     return (username || 'player').slice(0, 30)
+}
+
+function record(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function compareVersions(left: string, right: string): number {
+    const parseVersion = (value: string): [number, number, number] => {
+        const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value)
+        if (!match) throw new Error(`Blitz version must be an exact x.y.z version: ${value}`)
+        return [Number(match[1]), Number(match[2]), Number(match[3])]
+    }
+    const leftParts = parseVersion(left)
+    const rightParts = parseVersion(right)
+    for (let index = 0; index < leftParts.length; index += 1) {
+        if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index]
+    }
+    return 0
+}
+
+function installProjectDependencies(projectRoot: string): Promise<void> {
+    return new Promise((resolveInstall, reject) => {
+        const child = spawn('npm', ['install', '--ignore-scripts'], {cwd: projectRoot, stdio: 'inherit'})
+        child.once('error', reject)
+        child.once('exit', (code, signal) => {
+            if (code === 0) resolveInstall()
+            else reject(new Error(`npm install --ignore-scripts failed${signal ? ` with signal ${signal}` : ` with exit code ${code}`}`))
+        })
+    })
+}
+
+async function loadInstalledRuntime(projectRoot: string): Promise<{
+    tools: RuntimeProjectTools
+    migrations: readonly RuntimeMigration[]
+}> {
+    const projectRequire = createRequire(resolve(projectRoot, 'package.json'))
+    const resolveModule = (specifier: string): string => {
+        try { return projectRequire.resolve(specifier) } catch { return commandRequire.resolve(specifier) }
+    }
+    const cacheKey = `upgrade=${Date.now()}`
+    const tools = await import(`${pathToFileURL(resolveModule('@blitzdev/engine/projectFormat')).href}?${cacheKey}`) as RuntimeProjectTools
+    const migrationModule = await import(`${pathToFileURL(resolveModule('@blitzdev/engine/migrations')).href}?${cacheKey}`) as {
+        PROJECT_MIGRATIONS?: readonly RuntimeMigration[]
+    }
+    return {tools, migrations: migrationModule.PROJECT_MIGRATIONS || []}
 }

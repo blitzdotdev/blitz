@@ -1,6 +1,5 @@
 {
   "name": "__BLITZ_PROJECT_NAME__",
-  "version": "1.0.0",
   "private": true,
   "type": "module",
   "mainScene": "assets/main.scene.gltf",
@@ -11,10 +10,10 @@
     "pull": "blitz pull"
   },
   "devDependencies": {
-    "@blitzdev/blitz": "0.12.0"
+    "@blitzdev/blitz": "__BLITZ_VERSION__"
   },
   "blitz": {
-    "version": "0.12.0",
+    "version": "__BLITZ_VERSION__",
     "plugins": [],
     "scripts": [],
     "viewer": {}
