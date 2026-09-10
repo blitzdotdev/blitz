@@ -810,6 +810,60 @@ window.google = {accounts: {id: {
     }
 })
 
+test('shows the exact editor origin when the GIS button flow returns 403 without a credential', async ({page}) => {
+    test.setTimeout(90_000)
+    const fixture = await startPublishEditor()
+    await page.unroute(googleScriptUrl)
+    await page.route('https://accounts.google.com/gsi/button**', async (route) => {
+        await route.fulfill({status: 403, contentType: 'text/html', body: 'Forbidden'})
+    })
+    await page.route(googleScriptUrl, async (route) => {
+        await route.fulfill({
+            contentType: 'text/javascript',
+            body: `
+window.google = {accounts: {id: {
+  initialize() {},
+  renderButton(parent, options) {
+    const button = document.createElement('button')
+    button.textContent = 'Continue with Google'
+    button.addEventListener('click', options.click_listener)
+    const iframe = document.createElement('iframe')
+    iframe.hidden = true
+    iframe.src = 'https://accounts.google.com/gsi/button?client_id=blocked'
+    parent.replaceChildren(button, iframe)
+  },
+  prompt() {},
+}}}
+`,
+        })
+    })
+    try {
+        const buttonFailure = page.waitForResponse((response) =>
+            response.url().startsWith('https://accounts.google.com/gsi/button'))
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.getByTestId('open-game').click()
+        await expect(page.getByText('Available', {exact: true})).toBeVisible()
+        const popupPromise = page.waitForEvent('popup')
+        await page.getByTestId('create-live-game').click()
+        const popup = await popupPromise
+        await expect(page.getByTestId('live-url')).toBeVisible({timeout: 30_000})
+        expect((await buttonFailure).status()).toBe(403)
+
+        await page.getByTestId('google-sign-in').getByRole('button', {name: 'Continue with Google'}).click()
+        const origin = new URL(fixture.server.url).origin
+        await expect(page.getByTestId('google-origin-error')).toHaveText(
+            `Add the editor origin ${origin} to the Google OAuth client's authorized JavaScript origins. `
+            + 'Listing http://localhost does not cover every port; each editor origin, including its port, must be listed separately.',
+            {timeout: 10_000},
+        )
+        await popup.close()
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
+})
+
 test('returns a raced slug conflict to the field and copies a secret-free agent prompt', async ({page, context}) => {
     const fixture = await startPublishEditor()
     try {
