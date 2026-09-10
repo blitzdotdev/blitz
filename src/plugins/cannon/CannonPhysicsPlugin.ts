@@ -160,7 +160,6 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
         this._world.gravity.set(0, -9.81, 0)
         // this._world.gravity.set(0, 0, 0)
 
-        console.log(this.enabled)
         //
         // // Max solver iterations: Use more for better force propagation, but keep in mind that it's not very computationally cheap!
         // this._world.solver.iterations = 20

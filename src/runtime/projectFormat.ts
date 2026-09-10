@@ -43,22 +43,39 @@ export interface ExternalScript {
     active?: boolean
 }
 
+export interface ProjectViewerSettings {
+    msaa?: boolean
+    rgbm?: boolean
+    zPrepass?: boolean
+    renderScale?: number | 'auto'
+    maxRenderScale?: number
+    backgroundColor?: string | number | null
+    modelRootScale?: number
+    stencil?: boolean
+    debug?: boolean
+    tonemap?: boolean
+    camera?: {
+        type?: 'perspective' | 'orthographic'
+        controlsMode?: string
+        position?: [number, number, number]
+        target?: [number, number, number]
+    }
+    maxHDRIntensity?: number
+    powerPreference?: 'default' | 'high-performance' | 'low-power'
+}
+
 export interface ProjectConfigSettings {
     plugins: ExternalPlugin[]
     scripts: ExternalScript[]
     dependencies: ProjectDependency[]
-    viewer: {
-        msaa?: boolean
-    }
+    viewer: ProjectViewerSettings
 }
 
 export interface ProjectConfigSettingsJSON {
     plugins?: (ExternalPlugin | string)[]
     imports?: Record<string, string>
     scripts?: (ExternalScript | string)[]
-    viewer?: {
-        msaa?: boolean
-    }
+    viewer?: ProjectViewerSettings
 }
 
 export function parsePackageJSON(text: string): ProjectPackageJSON {
