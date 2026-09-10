@@ -81,6 +81,11 @@ interface ServerState {
 interface ManagerEventMap {
     stateChange: object
     loadedNeedsSaveChange: object
+    projectFileChange: {
+        path: string
+        sha256?: string
+        changeType: ProjectEvent['type']
+    }
 }
 
 export interface EditorCheckOutcome {
@@ -127,8 +132,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     loadedScene: string | null = null
     loadedAssetObj: null = null
     loadedPath: string | null = null
+    selectedFilePath: string | null = null
 
     private _loadedNeedsSave = false
+    private _sourceDraftDirty = false
     private initializing?: Promise<void>
     private playPromise?: Promise<void>
     private checkPromise?: Promise<EditorCheckResult>
@@ -177,6 +184,23 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.dispatchEvent({type: 'loadedNeedsSaveChange'})
         this.changed()
         if (this.projectLoaded) void this.writeState()
+    }
+
+    get sourceDraftDirty() {
+        return this._sourceDraftDirty
+    }
+
+    setSourceDraftDirty(value: boolean) {
+        if (this._sourceDraftDirty === value) return
+        this._sourceDraftDirty = value
+        this.changed()
+        if (this.projectLoaded) void this.writeState()
+    }
+
+    selectFile(path: string) {
+        this.selectedFilePath = path
+        this.get().getPlugin(PickingPlugin)?.setSelectedObject(null)
+        this.changed()
     }
 
     get(): ThreeViewer {
@@ -789,8 +813,31 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     async exportGltf() {
+        if (this.sourceDraftDirty) {
+            AppToaster().show({
+                message: 'Save the open source draft before exporting.',
+                intent: 'warning',
+                icon: 'warning-sign',
+                timeout: 4000,
+                isCloseButtonShown: true,
+            })
+            return
+        }
         const serialized = await serializeSceneGltf(this.get(), {scenePath: this.scenePath})
         downloadBlob(new Blob([serialized.gltf as BlobPart], {type: 'model/gltf+json'}), this.scenePath.split('/').pop() || 'scene.gltf')
+    }
+
+    async beforePublish(): Promise<boolean> {
+        if (this.sourceDraftDirty) {
+            await this.writeState()
+            throw new Error('Save the unsaved source draft before publishing.')
+        }
+        return this.saveScene()
+    }
+
+    async sourceFileSaved(path: string, sha256: string) {
+        await this.applyProjectFileChange(path, sha256, false)
+        this.restoreSelectedFile(path)
     }
 
     unlistedScripts(): ProjectFileEntry[] {
@@ -811,7 +858,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 engineVersion: RUNTIME_VERSION,
                 projectLoaded: this.projectLoaded,
                 playState: this.isPlaying ? 'playing' : 'stopped',
-                dirty: this.loadedNeedsSave,
+                dirty: this.loadedNeedsSave || this.sourceDraftDirty,
                 selectionNames: selectedNames(this.viewer),
                 lastLoadError: error || this.error || null,
                 updatedAt: new Date().toISOString(),
@@ -915,8 +962,23 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         if (event.client === this.source.clientId || !event.path) return
         if (event.sha256 && this.hashes.get(event.path) === event.sha256) return
 
-        if (event.path === this.scenePath) {
-            if (this.loadedNeedsSave && !window.confirm('Changed on disk: reload and discard the editor copy?')) {
+        this.dispatchEvent({
+            type: 'projectFileChange',
+            path: event.path,
+            sha256: event.sha256,
+            changeType: event.type,
+        })
+        await this.applyProjectFileChange(event.path, event.sha256, true)
+        this.restoreSelectedFile(event.path)
+    }
+
+    private restoreSelectedFile(path: string) {
+        if (this.selectedFilePath === path) this.get().getPlugin(PickingPlugin)?.setSelectedObject(null)
+    }
+
+    private async applyProjectFileChange(path: string, eventHash: string | undefined, external: boolean) {
+        if (path === this.scenePath) {
+            if (external && this.loadedNeedsSave && !window.confirm('Changed on disk: reload and discard the editor copy?')) {
                 this.setStatus('Kept unsaved editor scene')
                 return
             }
@@ -926,22 +988,23 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.hashes.set(this.scenePath, disk.sha256)
             await this.loadEditScene(text)
             this.setStatus('Scene reloaded from disk')
+            this.replaceManifest(await this.source.list())
             return
         }
 
         const entries = await this.source.list()
         this.manifest = entries
-        const nextHash = entries.find(({path}) => path === event.path)?.sha256
-        if (nextHash) this.hashes.set(event.path, nextHash)
-        else this.hashes.delete(event.path)
+        const nextHash = entries.find((entry) => entry.path === path)?.sha256 || eventHash
+        if (nextHash) this.hashes.set(path, nextHash)
+        else this.hashes.delete(path)
 
-        if (event.path === 'package.json' || event.path === 'assets.json') {
+        if (path === 'package.json' || path === 'assets.json') {
             await this.reloadProject()
             return
         }
 
-        const isJavaScript = /\.m?js$/i.test(event.path)
-        const generator = this.generatorStates.find(({module}) => normalizeProjectPath(module) === event.path)
+        const isJavaScript = /\.m?js$/i.test(path)
+        const generator = this.generatorStates.find(({module}) => normalizeProjectPath(module) === path)
 
         if (isJavaScript) {
             const moduleRevision = String(++this.moduleReloadSequence)
@@ -960,7 +1023,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 }
             }
             if (this.isPlaying) await this.restartPlay()
-            this.setStatus(`${event.path} ${generator ? 'regenerated' : 'reloaded'}`)
+            this.setStatus(`${path} ${generator ? 'regenerated' : 'reloaded'}`)
         }
         this.changed()
     }
