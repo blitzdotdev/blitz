@@ -1,9 +1,7 @@
 import {ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle} from "react-resizable-panels";
-import {CSSProperties, ReactNode, useEffect, useRef, useState} from "react";
+import {CSSProperties, ReactNode, useCallback, useEffect, useRef, useState} from "react";
 import {Card, Tab, Tabs} from "@blueprintjs/core";
 import {toTitleCase} from "threepipe";
-import {EditPreviewButtonGroup} from "./EditPreviewButtonGroup.tsx";
-import {InteractionControlsButtonGroup} from "./InteractionControlsButtonGroup.tsx";
 import {WindowPanelFlap} from "./WindowPanelFlap.tsx";
 import {PopupDialogCard} from "./PopupDialogCard.tsx";
 
@@ -24,10 +22,13 @@ export interface WindowPanesLayoutProps{
 }
 
 export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
+    const leftPanelRef = useRef<ImperativePanelHandle>(null)
+    const rightPanelRef = useRef<ImperativePanelHandle>(null)
+    const bottomPanelRef = useRef<ImperativePanelHandle>(null)
     const panelRefs = {
-        left: useRef<ImperativePanelHandle>(null),
-        right: useRef<ImperativePanelHandle>(null),
-        bottom: useRef<ImperativePanelHandle>(null),
+        left: leftPanelRef,
+        right: rightPanelRef,
+        bottom: bottomPanelRef,
     };
 
     const [isExpanded, setIsExpanded] = useState(false);
@@ -44,20 +45,20 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
         }
     };
 
-    const toggleExpand = () => {
+    const toggleExpand = useCallback(() => {
         if (isExpanded) {
             // Restore panels
-            panelRefs.left.current?.expand();
-            panelRefs.right.current?.expand();
-            panelRefs.bottom.current?.expand();
+            leftPanelRef.current?.expand();
+            rightPanelRef.current?.expand();
+            bottomPanelRef.current?.expand();
         } else {
             // Collapse all panels
-            panelRefs.left.current?.collapse();
-            panelRefs.right.current?.collapse();
-            panelRefs.bottom.current?.collapse();
+            leftPanelRef.current?.collapse();
+            rightPanelRef.current?.collapse();
+            bottomPanelRef.current?.collapse();
         }
         setIsExpanded(!isExpanded);
-    };
+    }, [isExpanded]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -73,7 +74,7 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
         return () => {
             window.removeEventListener('keydown', handleKeyDown, true);
         };
-    }, [isExpanded]);
+    }, [toggleExpand]);
 
     const renderPanel  = (panel: WindowPanel, index = 0)=> {
         return <Card key={panel.key ?? index} style={panel.style} className={`window-panel-card ${panel.className || ''}`}>
@@ -130,8 +131,6 @@ export function WindowPanesLayout({ panels }: WindowPanesLayoutProps){
                         className="center-top-panel"
                     >
                         {renderPanels(panels.center)}
-                        <InteractionControlsButtonGroup key="interaction-controls" />
-                        <EditPreviewButtonGroup key="editpreview" isExpanded={isExpanded} toggleExpand={toggleExpand} />
                         <PopupDialogCard/>
                         <WindowPanelFlap
                             isCollapsed={panelRefs.left.current?.isCollapsed() ?? false}

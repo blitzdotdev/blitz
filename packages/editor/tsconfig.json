@@ -33,7 +33,9 @@
 
   },
   "include": [
-    "src"
+    "src/main.tsx",
+    "src/editorRuntime.ts",
+    "src/vite-env.d.ts"
   ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

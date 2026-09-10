@@ -259,6 +259,157 @@ body{
     top: unset !important;
 }
 
+.three-editor-shell {
+  height: 100%;
+  position: relative;
+}
+
+.main-nav-logo-button {
+  min-width: 32px !important;
+  padding: 0 !important;
+}
+
+.main-nav-logo-button .main-nav-logo {
+  margin: 0 8px 0 0;
+  width: 24px;
+  max-height: 34px;
+}
+
+.project-heading {
+  font-size: 15px;
+  line-height: var(--pt-navbar-height);
+  margin: 0;
+  white-space: nowrap;
+}
+
+.editor-status {
+  color: var(--pt-text-color-muted);
+  font-size: 12px;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.editor-panel-body {
+  box-sizing: border-box;
+  height: 100%;
+  overflow: auto;
+  padding: 8px;
+}
+
+.hierarchy-row {
+  align-items: center;
+  display: flex;
+  min-height: 26px;
+  white-space: nowrap;
+}
+
+.hierarchy-caret {
+  min-width: 20px !important;
+  padding: 0 !important;
+}
+
+.generated-badge {
+  font-size: 10px;
+  margin-left: 3px;
+}
+
+.game-canvas-overlay {
+  background: #101216;
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+  z-index: 20;
+}
+
+.editor-error {
+  background: rgba(120, 20, 20, 0.95);
+  bottom: 0;
+  color: white;
+  left: 0;
+  margin: 0;
+  max-height: 35%;
+  overflow: auto;
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  white-space: pre-wrap;
+  z-index: 40;
+}
+
+.generator-inspector-card {
+  margin-top: 8px;
+}
+
+.generator-params-input {
+  min-height: 92px;
+  resize: vertical;
+  width: 100%;
+}
+
+.file-list,
+.resource-list,
+.project-panel ul {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+}
+
+.file-list li,
+.resource-list li,
+.project-panel li {
+  overflow: hidden;
+  padding: 2px 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-panel .bp5-callout {
+  margin-bottom: 5px;
+}
+
+.timeline-panel {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto 1fr;
+}
+
+.settings-panel h3,
+.project-panel h3 {
+  font-size: 12px;
+  margin: 12px 0 4px;
+  text-transform: uppercase;
+}
+
+.empty-panel-message {
+  color: var(--pt-text-color-muted);
+}
+
+.welcome-import-actions {
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+  padding: 28px;
+}
+
+.welcome-drop-active {
+  outline: 2px solid var(--pt-intent-primary);
+}
+
+.no-project {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+}
+
+.no-project-detail {
+  color: var(--pt-text-color-muted);
+}
+
 .hidden-scrollbar{
   overflow-x: auto;
   -ms-overflow-style: none;  /* Internet Explorer 10+ */
