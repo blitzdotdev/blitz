@@ -205,6 +205,54 @@ describe('Blitz dev server', () => {
         })
     })
 
+    it('rewrites relative static, re-export, and dynamic imports in versioned modules', async () => {
+        const {server, root, headers} = await startServer()
+        await mkdir(resolve(root, 'modules/nested'), {recursive: true})
+        const source = [
+            "import './static.js'",
+            "export {value} from '../shared.mjs?mode=dev#named'",
+            "export const load = () => import('./dynamic.js')",
+            "import 'bare-package'",
+            "export const computed = (name) => import(name)",
+            "import './missing.js'",
+        ].join('\n')
+        await writeFile(resolve(root, 'modules/nested/entry.mjs'), source)
+        await writeFile(resolve(root, 'modules/nested/static.js'), 'export const value = 1\n')
+        await writeFile(resolve(root, 'modules/nested/dynamic.js'), 'export const value = 2\n')
+        await writeFile(resolve(root, 'modules/shared.mjs'), 'export const value = 3\n')
+
+        const revisions = Object.fromEntries(await Promise.all([
+            'modules/nested/entry.mjs',
+            'modules/nested/static.js',
+            'modules/nested/dynamic.js',
+            'modules/shared.mjs',
+        ].map(async (path) => [path, createHash('sha256').update(await readFile(resolve(root, path))).digest('hex')])))
+        const raw = await fetch(`${base(server)}/files/modules/nested/entry.mjs`, {headers})
+        expect(await raw.text()).toBe(source)
+
+        const versioned = await fetch(
+            `${base(server)}/files/modules/nested/entry.mjs?v=${revisions['modules/nested/entry.mjs']}&r=first`,
+            {headers},
+        )
+        const rewritten = await versioned.text()
+        expect(rewritten).toContain(`import './static.js?v=${revisions['modules/nested/static.js']}&r=first'`)
+        expect(rewritten).toContain(`from '../shared.mjs?mode=dev&v=${revisions['modules/shared.mjs']}&r=first#named'`)
+        expect(rewritten).toContain(`import("./dynamic.js?v=${revisions['modules/nested/dynamic.js']}&r=first")`)
+        expect(rewritten).toContain("import 'bare-package'")
+        expect(rewritten).toContain('import(name)')
+        expect(rewritten).toContain("import './missing.js'")
+        expect(versioned.headers.get('etag')).toBe(`"${revisions['modules/nested/entry.mjs']}"`)
+        expect(Number(versioned.headers.get('content-length'))).toBe(Buffer.byteLength(rewritten))
+
+        await writeFile(resolve(root, 'modules/nested/static.js'), 'export const value = 4\n')
+        const nextStaticRevision = createHash('sha256').update('export const value = 4\n').digest('hex')
+        const rewrittenAgain = await (await fetch(
+            `${base(server)}/files/modules/nested/entry.mjs?v=${revisions['modules/nested/entry.mjs']}&r=second`,
+            {headers},
+        )).text()
+        expect(rewrittenAgain).toContain(`./static.js?v=${nextStaticRevision}&r=second`)
+    })
+
     it('returns sanitized JSON 404 errors for missing file reads and deletes', async () => {
         const {server, root, headers} = await startServer()
         for (const method of ['GET', 'DELETE']) {

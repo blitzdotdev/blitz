@@ -30,6 +30,7 @@ import {appendSceneJournal} from './journal.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {readDeploys, writeDeploys} from './deploys.ts'
 import {sanitizeDiagnostic} from './api.ts'
+import {ProjectModuleRewriter} from './module-rewriter.ts'
 import type {PublishProgress} from './types.ts'
 import {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 
@@ -93,6 +94,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const pendingCommands = new Map<string, PendingCommand>()
     const pendingEvents = new Map<string, PendingEvent>()
     const knownHashes = new Map<string, string>()
+    const moduleRewriter = new ProjectModuleRewriter()
     let {path: mainScenePath, text: lastSceneText} = await readMainSceneSnapshot(projectRoot)
     let sceneJournalQueue = Promise.resolve()
     let serverMutationActive = false
@@ -309,7 +311,15 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         const relativePath = decodeFilePath(new URL(c.req.url).pathname)
         const filePath = await safeProjectPath(projectRoot, relativePath, true)
         if (!(await fileExists(filePath))) return missingFileResponse()
-        return serveProjectFile(c.req.raw, filePath, relativePath)
+        return serveProjectFile(c.req.raw, filePath, relativePath, moduleRewriter, async (targetPath) => {
+            try {
+                const target = await safeProjectPath(projectRoot, targetPath)
+                if (!(await stat(target)).isFile()) return undefined
+                return await hashFile(target)
+            } catch {
+                return undefined
+            }
+        })
     })
     app.put('/files/*', async (c) => {
         const relativePath = decodeFilePath(new URL(c.req.url).pathname)
@@ -807,12 +817,41 @@ async function safeProjectPath(root: string, relativePath: string, allowMissing 
     return target
 }
 
-async function serveProjectFile(request: Request, path: string, relativePath: string): Promise<Response> {
+async function serveProjectFile(
+    request: Request,
+    path: string,
+    relativePath: string,
+    moduleRewriter: ProjectModuleRewriter,
+    resolveModuleRevision: (path: string) => Promise<string | undefined>,
+): Promise<Response> {
     if (!(await fileExists(path))) return missingFileResponse()
-    const sha256 = await hashFile(path)
+    const url = new URL(request.url)
+    const rewriteImports = url.searchParams.has('v') && /\.m?js$/i.test(relativePath)
+    const bytes = rewriteImports ? await readFile(path) : undefined
+    const sha256 = bytes
+        ? createHash('sha256').update(bytes).digest('hex')
+        : await hashFile(path)
     const etag = `"${sha256}"`
     if (request.headers.get('If-None-Match') === etag) {
         return new Response(null, {status: 304, headers: {ETag: etag}})
+    }
+    if (bytes) {
+        const body = await moduleRewriter.rewrite(
+            relativePath,
+            sha256,
+            bytes.toString('utf8'),
+            resolveModuleRevision,
+            url.searchParams.get('r') || undefined,
+        )
+        return new Response(body, {
+            status: 200,
+            headers: {
+                'Content-Type': mimeTypeForPath(relativePath),
+                'Content-Length': String(Buffer.byteLength(body)),
+                ETag: etag,
+                'Cache-Control': 'no-cache',
+            },
+        })
     }
     const metadata = await stat(path)
     return new Response(Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>, {

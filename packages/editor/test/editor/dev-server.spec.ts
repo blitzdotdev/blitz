@@ -21,7 +21,12 @@ test.beforeAll(async () => {
         blitz: {plugins?: string[], scripts?: string[]}
     }
     packageJson.blitz.plugins = ['./Hot.plugin.js:HotPlugin']
-    packageJson.blitz.scripts = ['./Hot.script.js']
+    packageJson.blitz.scripts = [
+        './Hot.script.js',
+        './reload/Reexport.script.js',
+        './reload/Cycle.script.js',
+        './reload/Dynamic.script.js',
+    ]
     await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
     await writeFile(resolve(root, 'main.js'), `
 export async function main({viewer}) {
@@ -33,6 +38,18 @@ export async function main({viewer}) {
 `)
     await writeFile(resolve(root, 'Hot.script.js'), hotScript('v1'))
     await writeFile(resolve(root, 'Hot.plugin.js'), hotPlugin('v1'))
+    await mkdir(resolve(root, 'reload'), {recursive: true})
+    await writeFile(resolve(root, 'reload/Reexport.script.js'), "export {TransitiveScript} from './transitive-helper.js'\n")
+    await writeFile(resolve(root, 'reload/transitive-helper.js'), transitiveHelper('v1'))
+    await writeFile(resolve(root, 'reload/Cycle.script.js'), [
+        "export {CycleScriptA} from './cycle-a.js'",
+        "export {CycleScriptB} from './cycle-b.js'",
+        '',
+    ].join('\n'))
+    await writeFile(resolve(root, 'reload/cycle-a.js'), cycleModuleA('a1'))
+    await writeFile(resolve(root, 'reload/cycle-b.js'), cycleModuleB('b1'))
+    await writeFile(resolve(root, 'reload/Dynamic.script.js'), dynamicScript())
+    await writeFile(resolve(root, 'reload/dynamic-helper.js'), "export const dynamicVersion = 'v1'\n")
     await writeFile(resolve(root, 'Unlisted.script.js'), `
 import {Object3DComponent} from 'threepipe'
 export class UnlistedComponent extends Object3DComponent { static ComponentType = 'UnlistedComponent' }
@@ -61,7 +78,23 @@ export class UnlistedComponent extends Object3DComponent { static ComponentType 
             },
         },
     })
-    scene.scenes[0].nodes.push(0, 1)
+    scene.nodes.push({
+        name: 'Transitive reload target',
+        extras: {EntityComponentPlugin: {'transitive-component': {type: 'TransitiveScript', state: {}}}},
+    })
+    scene.nodes.push({
+        name: 'Cycle A reload target',
+        extras: {EntityComponentPlugin: {'cycle-a-component': {type: 'CycleScriptA', state: {}}}},
+    })
+    scene.nodes.push({
+        name: 'Cycle B reload target',
+        extras: {EntityComponentPlugin: {'cycle-b-component': {type: 'CycleScriptB', state: {}}}},
+    })
+    scene.nodes.push({
+        name: 'Dynamic reload target',
+        extras: {EntityComponentPlugin: {'dynamic-component': {type: 'DynamicScript', state: {}}}},
+    })
+    scene.scenes[0].nodes.push(0, 1, 2, 3, 4, 5)
     scene.buffers = [{
         byteLength: 36,
         uri: 'data:application/octet-stream;base64,Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/',
@@ -266,8 +299,8 @@ test('queues Play during project load and keeps one overlay update loop through 
     expect(await page.evaluate(() => (window as unknown as {viewer: {scene: {uuid: string}}}).viewer.scene.uuid)).toBe(editViewerUuid)
 
     const moduleUrls = await page.evaluate(() => performance.getEntriesByType('resource').map(({name}) => name))
-    expect(moduleUrls.some((url) => /\/files\/Hot\.script\.js\?v=[a-f\d]{64}$/.test(url))).toBe(true)
-    expect(moduleUrls.some((url) => /\/files\/Hot\.plugin\.js\?v=[a-f\d]{64}$/.test(url))).toBe(true)
+    expect(moduleUrls.some((url) => /\/files\/Hot\.script\.js\?v=[a-f\d]{64}(?:&r=\d+)?$/.test(url))).toBe(true)
+    expect(moduleUrls.some((url) => /\/files\/Hot\.plugin\.js\?v=[a-f\d]{64}(?:&r=\d+)?$/.test(url))).toBe(true)
 
     await page.evaluate(() => {
         console.warn('[warn-forwarding-check] visible')
@@ -287,6 +320,75 @@ test('queues Play during project load and keeps one overlay update loop through 
     await page.waitForTimeout(200)
     expect(await page.evaluate(() => (window as unknown as {__blitzLoopTicks: number}).__blitzLoopTicks)).toBe(stoppedAt)
     expect(await page.evaluate(() => (window as unknown as {viewer: {scene: {uuid: string}}}).viewer.scene.uuid)).toBe(editViewerUuid)
+})
+
+test('reloads a component re-exported through an unchanged entry module', async ({page}) => {
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    const pageIdentity = await page.evaluate(() => {
+        const identity = crypto.randomUUID()
+        ;(window as unknown as {__reloadPageIdentity?: string}).__reloadPageIdentity = identity
+        return identity
+    })
+    await page.getByTestId('play').click()
+    await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
+    await expect.poll(() => page.evaluate(() => (
+        window as unknown as {__transitiveVersion?: string}
+    ).__transitiveVersion)).toBe('v1')
+
+    await writeFile(resolve(root, 'reload/transitive-helper.js'), transitiveHelper('v2'))
+
+    await expect(page.getByText('reload/transitive-helper.js reloaded')).toBeVisible({timeout: 20_000})
+    await expect.poll(() => page.evaluate(() => (
+        window as unknown as {__transitiveVersion?: string}
+    ).__transitiveVersion)).toBe('v2')
+    expect(await page.evaluate(() => (
+        window as unknown as {__reloadPageIdentity?: string}
+    ).__reloadPageIdentity)).toBe(pageIdentity)
+})
+
+test('reloads both sides of a cyclic module graph without looping', async ({page}) => {
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await page.getByTestId('play').click()
+    await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
+    await expect.poll(() => page.evaluate(() => [
+        (window as unknown as {__cycleA?: string}).__cycleA,
+        (window as unknown as {__cycleB?: string}).__cycleB,
+    ])).toEqual(['a1:b1', 'b1:a1'])
+    const evaluations = await page.evaluate(() => [
+        (window as unknown as {__cycleAEvaluations?: number}).__cycleAEvaluations || 0,
+        (window as unknown as {__cycleBEvaluations?: number}).__cycleBEvaluations || 0,
+    ])
+
+    await writeFile(resolve(root, 'reload/cycle-a.js'), cycleModuleA('a2'))
+
+    await expect(page.getByText('reload/cycle-a.js reloaded')).toBeVisible({timeout: 20_000})
+    await expect.poll(() => page.evaluate(() => [
+        (window as unknown as {__cycleA?: string}).__cycleA,
+        (window as unknown as {__cycleB?: string}).__cycleB,
+    ])).toEqual(['a2:b1', 'b1:a2'])
+    await expect.poll(() => page.evaluate(() => [
+        (window as unknown as {__cycleAEvaluations?: number}).__cycleAEvaluations || 0,
+        (window as unknown as {__cycleBEvaluations?: number}).__cycleBEvaluations || 0,
+    ])).toEqual([evaluations[0] + 1, evaluations[1] + 1])
+})
+
+test('reloads a literal dynamic import behind an unchanged component module', async ({page}) => {
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await page.getByTestId('play').click()
+    await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
+    await expect.poll(() => page.evaluate(() => (
+        window as unknown as {__dynamicVersion?: string}
+    ).__dynamicVersion)).toBe('v1')
+
+    await writeFile(resolve(root, 'reload/dynamic-helper.js'), "export const dynamicVersion = 'v2'\n")
+
+    await expect(page.getByText('reload/dynamic-helper.js reloaded')).toBeVisible({timeout: 20_000})
+    await expect.poll(() => page.evaluate(() => (
+        window as unknown as {__dynamicVersion?: string}
+    ).__dynamicVersion)).toBe('v2')
 })
 
 test('writes stopped state on pagehide while playing', async ({page}) => {
@@ -546,6 +648,54 @@ export class HotPlugin extends AViewerPluginSync {
     onAdded(viewer) {
         super.onAdded(viewer)
         window.__hotPluginVersion = '${version}'
+    }
+}
+`
+}
+
+function transitiveHelper(version: string): string {
+    return `
+import {Object3DComponent} from 'threepipe'
+export class TransitiveScript extends Object3DComponent {
+    static ComponentType = 'TransitiveScript'
+    start() { window.__transitiveVersion = '${version}' }
+}
+`
+}
+
+function cycleModuleA(version: string): string {
+    return `
+import {Object3DComponent} from 'threepipe'
+import {cycleBVersion} from './cycle-b.js'
+window.__cycleAEvaluations = (window.__cycleAEvaluations || 0) + 1
+export const cycleAVersion = '${version}'
+export class CycleScriptA extends Object3DComponent {
+    static ComponentType = 'CycleScriptA'
+    start() { window.__cycleA = cycleAVersion + ':' + cycleBVersion }
+}
+`
+}
+
+function cycleModuleB(version: string): string {
+    return `
+import {Object3DComponent} from 'threepipe'
+import {cycleAVersion} from './cycle-a.js'
+window.__cycleBEvaluations = (window.__cycleBEvaluations || 0) + 1
+export const cycleBVersion = '${version}'
+export class CycleScriptB extends Object3DComponent {
+    static ComponentType = 'CycleScriptB'
+    start() { window.__cycleB = cycleBVersion + ':' + cycleAVersion }
+}
+`
+}
+
+function dynamicScript(): string {
+    return `
+import {Object3DComponent} from 'threepipe'
+export class DynamicScript extends Object3DComponent {
+    static ComponentType = 'DynamicScript'
+    start() {
+        import('./dynamic-helper.js').then(({dynamicVersion}) => { window.__dynamicVersion = dynamicVersion })
     }
 }
 `
