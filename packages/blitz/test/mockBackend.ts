@@ -38,6 +38,9 @@ export async function startMockBackend(options: {
     corruptPreviewReads?: number
     failureMessage?: string
     previewUrl?: (slug: string, response: 'create' | 'release') => string
+    editorExchangeStatus?: number
+    editorExchangeError?: string
+    editorExchangeToken?: string
 } = {}): Promise<MockBackend> {
     const games = new Map<string, MockGame>()
     const blobs = new Map<string, Buffer>()
@@ -77,21 +80,13 @@ export async function startMockBackend(options: {
         if (request.method === 'POST' && url.pathname === '/api/v1/auth/login') {
             return sendJson(response, 200, {user: {id: 'user-login', username: 'player'}, token: 'jwt-login', refresh_token: 'refresh-login'})
         }
-        if (request.method === 'POST' && url.pathname === '/api/v1/table/users/auth/google-login') {
-            const form = new URLSearchParams(Buffer.isBuffer(body) ? body.toString('utf8') : '')
-            const credential = form.get('credential')
-            const csrfToken = form.get('g_csrf_token')
-            if (!credential || !csrfToken) {
-                return sendJson(response, 400, {error: {code: 'invalid_google_login', message: 'Missing Google login fields.'}})
+        if (request.method === 'POST' && url.pathname === '/api/v1/auth/editor/exchange') {
+            if (options.editorExchangeStatus) {
+                return sendJson(response, options.editorExchangeStatus, {
+                    error: options.editorExchangeError || 'invalid_code',
+                })
             }
-            if (cookieValue(request.headers.cookie, 'g_csrf_token') !== csrfToken) {
-                return sendJson(response, 403, {error: {code: 'invalid_google_csrf', message: 'Google CSRF cookie does not match.'}})
-            }
-            return sendJson(response, 200, {
-                record: {id: 'user-google', username: 'google-player'},
-                token: 'jwt-google',
-                refresh_token: 'refresh-google',
-            })
+            return sendJson(response, 200, {token: options.editorExchangeToken || 'jwt-google'})
         }
         const newGame = request.method === 'POST' && /^\/api\/v1\/new-game\/([^/]+)$/.exec(url.pathname)
         if (newGame) {
@@ -306,12 +301,6 @@ function record(value: unknown): Record<string, unknown> {
 function value(body: unknown, key: string): string {
     const result = record(body)[key]
     return typeof result === 'string' ? result : ''
-}
-
-function cookieValue(header: string | undefined, name: string): string | undefined {
-    const prefix = `${encodeURIComponent(name)}=`
-    const entry = header?.split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix))
-    return entry ? decodeURIComponent(entry.slice(prefix.length)) : undefined
 }
 
 function slugReason(slug: string, games: Map<string, MockGame>): string | undefined {

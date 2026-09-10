@@ -11,6 +11,13 @@ import {
     ProgressBar,
 } from '@blueprintjs/core'
 import {DevServerRequestError, DevServerSource} from './DevServerSource.ts'
+import {
+    brokerPopupUrl,
+    createEditorAuthRequest,
+    openEditorAuthPopup,
+    waitForEditorAuthMessage,
+    type EditorAuthConfig,
+} from './authBroker.ts'
 import {isExpired, slugify, timeLeft, type DeployView} from './publishing.ts'
 
 interface PublishDialogProps {
@@ -23,41 +30,6 @@ interface PublishDialogProps {
 
 type Availability = 'checking' | 'available' | 'taken' | 'reserved' | 'invalid' | 'error'
 type RetryAction = 'publish' | 'claim'
-const GOOGLE_CLIENT_ID = '118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com'
-const GOOGLE_SCRIPT_URL = 'https://accounts.google.com/gsi/client'
-const GOOGLE_CREDENTIAL_WAIT_MS = 4_000
-
-interface GoogleCredentialResponse {
-    credential?: string
-    select_by?: string
-}
-
-interface GooglePromptNotification {
-    isNotDisplayed?(): boolean
-    getNotDisplayedReason?(): string
-}
-
-interface GoogleIdentity {
-    initialize(config: {client_id: string, callback(response: GoogleCredentialResponse): void}): void
-    renderButton(parent: HTMLElement, options: {
-        type: string
-        theme: string
-        size: string
-        text: string
-        click_listener(): void
-    }): void
-    prompt?(listener: (notification: GooglePromptNotification) => void): void
-}
-
-declare global {
-    interface Window {
-        google?: {accounts?: {id?: GoogleIdentity}}
-    }
-}
-
-let googleIdentityPromise: Promise<GoogleIdentity> | undefined
-let googleInitialized = false
-let googleCredentialHandler: ((response: GoogleCredentialResponse) => void) | undefined
 
 export function PublishDialog({isOpen, name, source, beforePublish, onClose}: PublishDialogProps) {
     const [deploys, setDeploys] = useState<DeployView[]>()
@@ -73,12 +45,14 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
     const [authMode, setAuthMode] = useState<'register' | 'login'>('register')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
-    const [authToken, setAuthToken] = useState<string>()
+    const [authenticated, setAuthenticated] = useState(false)
     const [claiming, setClaiming] = useState(false)
+    const [googleAuthenticating, setGoogleAuthenticating] = useState(false)
     const [googleError, setGoogleError] = useState('')
+    const [editorAuthConfig, setEditorAuthConfig] = useState<EditorAuthConfig>()
     const slugInput = useRef<HTMLInputElement | null>(null)
-    const googleButton = useRef<HTMLDivElement | null>(null)
-    const googleCredentialTimeout = useRef<number | undefined>(undefined)
+    const googleAuthAbort = useRef<AbortController>()
+    const googleAuthPopup = useRef<Window | null>(null)
     const popup = useRef<Window | null>(null)
 
     const entry = deploys?.[0]
@@ -198,14 +172,14 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
         await navigator.clipboard.writeText(prompt)
     }
 
-    const authenticateAndClaim = useCallback(async (authenticate: () => Promise<{token: string}>) => {
+    const authenticateAndClaim = useCallback(async (authenticate: () => Promise<unknown>) => {
         if (!entry) return
         setClaiming(true)
         setError('')
         setRetryAction(undefined)
         try {
-            const auth = await authenticate()
-            setAuthToken(auth.token)
+            await authenticate()
+            setAuthenticated(true)
             await source.claim(entry.slug)
             await refreshDeploys()
         } catch (caught) {
@@ -221,69 +195,94 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
         await authenticateAndClaim(() => source.authenticate(authMode, email, password))
     }
 
-    const clearGoogleCredentialTimeout = useCallback(() => {
-        if (googleCredentialTimeout.current === undefined) return
-        window.clearTimeout(googleCredentialTimeout.current)
-        googleCredentialTimeout.current = undefined
-    }, [])
-
-    const handleGoogleButtonClick = useCallback(() => {
-        clearGoogleCredentialTimeout()
-        setGoogleError('')
-        googleCredentialTimeout.current = window.setTimeout(() => {
-            googleCredentialTimeout.current = undefined
-            setGoogleError(googleOriginMessage())
-        }, GOOGLE_CREDENTIAL_WAIT_MS)
-    }, [clearGoogleCredentialTimeout])
-
-    const handleGoogleCredential = useCallback((response: GoogleCredentialResponse) => {
-        clearGoogleCredentialTimeout()
-        const credential = response.credential
-        if (!credential) {
-            setGoogleError('Google sign-in did not return a credential.')
-            return
-        }
-        setGoogleError('')
-        void authenticateAndClaim(() => source.authenticateWithGoogle(credential, response.select_by))
-    }, [authenticateAndClaim, clearGoogleCredentialTimeout, source])
-
     useEffect(() => {
         if (!isOpen || !entry?.last_release_hash || expired || entry.claimed) return
         let cancelled = false
-        googleCredentialHandler = handleGoogleCredential
+        setEditorAuthConfig(undefined)
         setGoogleError('')
-        void loadGoogleIdentity().then((identity) => {
-            if (cancelled || !googleButton.current) return
-            if (!googleInitialized) {
-                identity.initialize({
-                    client_id: GOOGLE_CLIENT_ID,
-                    callback: (response) => googleCredentialHandler?.(response),
-                })
-                googleInitialized = true
-            }
-            googleButton.current.replaceChildren()
-            identity.renderButton(googleButton.current, {
-                type: 'standard',
-                theme: 'outline',
-                size: 'large',
-                text: 'continue_with',
-                click_listener: handleGoogleButtonClick,
-            })
-            identity.prompt?.((notification) => {
-                if (notification.isNotDisplayed?.()
-                    && notification.getNotDisplayedReason?.() === 'unregistered_origin') {
-                    setGoogleError(googleOriginMessage())
-                }
-            })
+        void source.editorAuthConfig().then((config) => {
+            if (!cancelled) setEditorAuthConfig(config)
         }).catch((caught) => {
-            if (!cancelled) setGoogleError(isOriginError(caught) ? googleOriginMessage() : errorMessage(caught))
+            if (!cancelled) setGoogleError(errorMessage(caught))
         })
         return () => {
             cancelled = true
-            clearGoogleCredentialTimeout()
-            if (googleCredentialHandler === handleGoogleCredential) googleCredentialHandler = undefined
         }
-    }, [clearGoogleCredentialTimeout, entry?.claimed, entry?.last_release_hash, expired, handleGoogleButtonClick, handleGoogleCredential, isOpen])
+    }, [entry?.claimed, entry?.last_release_hash, expired, isOpen, source])
+
+    const cancelGoogleAuth = useCallback(() => {
+        googleAuthAbort.current?.abort()
+        googleAuthAbort.current = undefined
+        googleAuthPopup.current?.close()
+        googleAuthPopup.current = null
+    }, [])
+
+    useEffect(() => {
+        if (!isOpen) cancelGoogleAuth()
+    }, [cancelGoogleAuth, isOpen])
+
+    useEffect(() => cancelGoogleAuth, [cancelGoogleAuth])
+
+    const signInWithGoogle = useCallback(async () => {
+        if (!editorAuthConfig || googleAuthenticating) return
+        cancelGoogleAuth()
+        setGoogleAuthenticating(true)
+        setGoogleError('')
+        const controller = new AbortController()
+        googleAuthAbort.current = controller
+        let state = ''
+        let verifier = ''
+        let exchangeVerifier = ''
+        let code = ''
+        try {
+            const request = await createEditorAuthRequest()
+            state = request.state
+            verifier = request.codeVerifier
+            const popupUrl = brokerPopupUrl(
+                editorAuthConfig.broker_page_url,
+                window.location.origin,
+                state,
+                request.codeChallenge,
+            )
+            request.state = ''
+            request.codeVerifier = ''
+            request.codeChallenge = ''
+            if (controller.signal.aborted) return
+            const authPopup = openEditorAuthPopup(popupUrl)
+            googleAuthPopup.current = authPopup
+            const message = await waitForEditorAuthMessage(
+                window,
+                authPopup,
+                editorAuthConfig.cloud_origin,
+                state,
+                {signal: controller.signal},
+            )
+            authPopup.close()
+            googleAuthPopup.current = null
+            if (typeof message.error === 'string') throw new Error(editorAuthErrorMessage(message.error))
+            if (typeof message.code !== 'string' || !message.code) {
+                throw new Error('The Google sign-in window returned an invalid result.')
+            }
+            code = message.code
+            exchangeVerifier = verifier
+            state = ''
+            verifier = ''
+            await authenticateAndClaim(() => source.exchangeEditorAuth(code, exchangeVerifier))
+        } catch (caught) {
+            if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
+                setGoogleError(errorMessage(caught))
+            }
+        } finally {
+            state = ''
+            verifier = ''
+            exchangeVerifier = ''
+            code = ''
+            if (googleAuthAbort.current === controller) googleAuthAbort.current = undefined
+            googleAuthPopup.current?.close()
+            googleAuthPopup.current = null
+            setGoogleAuthenticating(false)
+        }
+    }, [authenticateAndClaim, cancelGoogleAuth, editorAuthConfig, googleAuthenticating, source])
 
     const retry = () => {
         if (retryAction === 'claim') void claim()
@@ -364,16 +363,21 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
                         <Button data-testid="claim-game" type="submit" intent={Intent.SUCCESS} loading={claiming}>
                             {authMode === 'register' ? 'Register and claim' : 'Log in and claim'}
                         </Button>
-                        <div className="google-sign-in" data-testid="google-sign-in" ref={googleButton}>
-                            <span>Continue with Google</span>
-                        </div>
-                        {googleError && <Callout data-testid="google-origin-error" intent={Intent.WARNING}>{googleError}</Callout>}
+                        <Button
+                            className="google-sign-in"
+                            data-testid="google-sign-in"
+                            type="button"
+                            loading={googleAuthenticating}
+                            disabled={!editorAuthConfig}
+                            onClick={() => void signInWithGoogle()}
+                        >Continue with Google</Button>
+                        {googleError && <Callout data-testid="google-auth-error" intent={Intent.WARNING}>{googleError}</Callout>}
                     </form>
                 </>}
                 {entry.claimed && <Callout data-testid="claimed-notice" intent={Intent.SUCCESS}>
                     Claimed. This game does not expire.
                 </Callout>}
-                {authToken && !entry.claimed && <p>Signed in for this editor session.</p>}
+                {authenticated && !entry.claimed && <p>Signed in for this editor session.</p>}
             </>}
 
             {popupBlocked && fallbackUrl && <Callout intent={Intent.WARNING} title="Popup blocked">
@@ -410,37 +414,12 @@ function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error)
 }
 
-function loadGoogleIdentity(): Promise<GoogleIdentity> {
-    const available = window.google?.accounts?.id
-    if (available) return Promise.resolve(available)
-    if (googleIdentityPromise) return googleIdentityPromise
-
-    googleIdentityPromise = new Promise<GoogleIdentity>((resolveIdentity, reject) => {
-        const existing = document.querySelector<HTMLScriptElement>(`script[src="${GOOGLE_SCRIPT_URL}"]`)
-        const script = existing || document.createElement('script')
-        const loaded = () => {
-            const identity = window.google?.accounts?.id
-            if (identity) resolveIdentity(identity)
-            else reject(new Error('Google Identity Services did not initialize.'))
-        }
-        script.addEventListener('load', loaded, {once: true})
-        script.addEventListener('error', () => reject(new Error('Google Identity Services could not be loaded.')), {once: true})
-        if (!existing) {
-            script.src = GOOGLE_SCRIPT_URL
-            script.async = true
-            document.head.append(script)
-        }
-    }).catch((error) => {
-        googleIdentityPromise = undefined
-        throw error
-    })
-    return googleIdentityPromise
-}
-
-function isOriginError(error: unknown): boolean {
-    return /origin/i.test(error instanceof Error ? error.message : String(error))
-}
-
-function googleOriginMessage(): string {
-    return `Add the editor origin ${window.location.origin} to the Google OAuth client's authorized JavaScript origins. Listing http://localhost does not cover every port; each editor origin, including its port, must be listed separately.`
+function editorAuthErrorMessage(code: string): string {
+    return ({
+        gis_unavailable: 'Google sign-in is unavailable. Try again.',
+        csrf_unavailable: 'Google sign-in could not verify its browser session. Try again.',
+        google_login_failed: 'Google sign-in failed. Try again.',
+        code_issue_failed: 'Google sign-in could not create a secure editor code. Try again.',
+        sign_in_failed: 'Google sign-in failed. Try again.',
+    } as Record<string, string>)[code] || 'Google sign-in failed. Try again.'
 }

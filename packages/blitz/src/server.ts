@@ -65,6 +65,20 @@ export interface DevServer {
     close(): Promise<void>
 }
 
+export function normalizeLoopbackOrigin(value: string): string | undefined {
+    const match = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::(\d+))?$/.exec(value)
+    if (!match) return undefined
+    if (match[2]) {
+        const port = Number(match[2])
+        if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined
+    }
+    try {
+        return new URL(value).origin
+    } catch {
+        return undefined
+    }
+}
+
 interface PendingEvent {
     path: string
     client?: string
@@ -104,7 +118,10 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     let closing = false
     let platformToken: string | undefined
     let publishActive = false
+    let listeningPort = 0
     const backendUrl = resolveBackendUrl(options.backendUrl)
+    const cloudOrigin = new URL(backendUrl).origin
+    const brokerPageUrl = new URL('/auth/editor', backendUrl).href
     const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
 
     for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)
@@ -191,35 +208,47 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             return jsonResponse({user: payload.user, token: payload.token}, backendResponse.status)
         })
     }
-    app.post('/api/auth/google', async (c) => {
+    app.get('/api/auth/editor/config', () => jsonResponse({
+        cloud_origin: cloudOrigin,
+        broker_page_url: brokerPageUrl,
+    }))
+    app.post('/api/auth/editor/exchange', async (c) => {
+        const origin = normalizeLoopbackOrigin(c.req.header('Origin') || '')
+        if (!origin) {
+            return jsonResponse({error: {
+                code: 'invalid_origin',
+                message: 'Google sign-in requires this editor to use a loopback HTTP origin.',
+            }}, 403)
+        }
+        const originUrl = new URL(origin)
+        const originPort = Number(originUrl.port || '80')
+        if (originPort !== listeningPort) {
+            return jsonResponse({error: {
+                code: 'origin_mismatch',
+                message: 'The Google sign-in origin does not match this editor port.',
+            }}, 403)
+        }
         const body = await readJsonBody(c.req.raw)
-        const credential = typeof body.credential === 'string' ? body.credential : ''
-        const csrfToken = typeof body.g_csrf_token === 'string' ? body.g_csrf_token : ''
-        const selectBy = typeof body.select_by === 'string' ? body.select_by : undefined
-        if (!credential || !csrfToken) {
-            return jsonResponse({error: {code: 'invalid_google_login', message: 'Google credential and CSRF token are required.'}}, 400)
+        const code = typeof body.code === 'string' ? body.code : ''
+        const codeVerifier = typeof body.code_verifier === 'string' ? body.code_verifier : ''
+        if (!code || !codeVerifier) {
+            return jsonResponse({error: {
+                code: 'invalid_request',
+                message: 'A sign-in code and verifier are required.',
+            }}, 400)
         }
-        if (getCookie(c, 'g_csrf_token') !== csrfToken) {
-            return jsonResponse({error: {code: 'invalid_google_csrf', message: 'Google CSRF cookie does not match.'}}, 403)
-        }
-
-        const form = new URLSearchParams({credential, g_csrf_token: csrfToken})
-        if (selectBy) form.set('select_by', selectBy)
-        const backendResponse = await fetch(`${backendUrl}/api/v1/table/users/auth/google-login`, {
+        const backendResponse = await fetch(`${backendUrl}/api/v1/auth/editor/exchange`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                Cookie: `g_csrf_token=${encodeURIComponent(csrfToken)}`,
-            },
-            body: form,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code, code_verifier: codeVerifier, origin}),
         })
         const payload = await readBackendPayload(backendResponse)
-        if (!backendResponse.ok) return backendJson(backendResponse, payload)
+        if (!backendResponse.ok) return editorExchangeError(backendResponse, payload)
         if (!isRecord(payload) || typeof payload.token !== 'string') {
             return jsonResponse({error: {code: 'invalid_backend_response', message: 'The Blitz backend returned an invalid authentication response.'}}, 502)
         }
         platformToken = payload.token
-        return jsonResponse({user: payload.record, token: payload.token}, backendResponse.status)
+        return jsonResponse({ok: true})
     })
     app.post('/api/claim', async (c) => {
         if (!platformToken) return jsonResponse({error: {code: 'authentication_required', message: 'Sign in before claiming a game.'}}, 401)
@@ -498,6 +527,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('Unable to determine dev server address')
     const port = address.port
+    listeningPort = port
     const origin = `http://127.0.0.1:${port}`
     const url = `${origin}/?t=${encodeURIComponent(token)}`
 
@@ -1018,6 +1048,22 @@ async function readBackendPayload(response: Response): Promise<unknown> {
 function backendJson(backendResponse: Response, payload: unknown): Response {
     const retryAfter = backendResponse.headers.get('Retry-After')
     return jsonResponse(payload, backendResponse.status, retryAfter ? {'Retry-After': retryAfter} : {})
+}
+
+function editorExchangeError(backendResponse: Response, payload: unknown): Response {
+    const error = isRecord(payload) ? payload.error : undefined
+    const code = typeof error === 'string'
+        ? error
+        : isRecord(error) && typeof error.code === 'string' ? error.code : 'editor_auth_unavailable'
+    const message = ({
+        invalid_code: 'The sign-in code is invalid or was already used.',
+        expired_code: 'The sign-in code expired. Try again.',
+        origin_mismatch: 'The sign-in code belongs to a different editor origin.',
+        invalid_verifier: 'The sign-in verifier did not match. Try again.',
+    } as Record<string, string>)[code] || 'Google sign-in is temporarily unavailable. Try again.'
+    const status = backendResponse.status >= 400 && backendResponse.status <= 599 ? backendResponse.status : 502
+    const retryAfter = backendResponse.headers.get('Retry-After')
+    return jsonResponse({error: {code, message}}, status, retryAfter ? {'Retry-After': retryAfter} : {})
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

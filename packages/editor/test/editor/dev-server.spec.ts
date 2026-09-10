@@ -11,7 +11,6 @@ import {startMockBackend, type MockBackend} from '../../../blitz/test/mockBacken
 let root: string
 let server: DevServer
 let backend: MockBackend
-const googleScriptUrl = 'https://accounts.google.com/gsi/client'
 
 test.beforeAll(async () => {
     root = await mkdtemp(resolve(tmpdir(), 'blitz-editor-e2e-'))
@@ -152,23 +151,6 @@ test.afterAll(async () => {
     await server.close()
     await backend.close()
     await rm(root, {recursive: true, force: true})
-})
-
-test.beforeEach(async ({page}) => {
-    await page.route(googleScriptUrl, async (route) => {
-        await route.fulfill({
-            contentType: 'text/javascript',
-            body: `window.google = {accounts: {id: {
-  initialize() {},
-  renderButton(parent) {
-    const button = document.createElement('button')
-    button.textContent = 'Continue with Google'
-    parent.replaceChildren(button)
-  },
-  prompt() {},
-}}}`,
-        })
-    })
 })
 
 test('runs Playable, Editable, and Persisted checks through the connected editor', async ({page}) => {
@@ -874,32 +856,22 @@ test('opens the game dialog, publishes, updates, and claims a live game', async 
     expect(backend.games.get(slug)?.claimed).toBe(true)
 })
 
-test('signs in with GIS and claims through the documented Google backend route', async ({page}) => {
+test('signs in through the cloud broker and ignores a message from the editor origin', async ({page, context}) => {
     test.setTimeout(90_000)
     const fixture = await startPublishEditor()
-    await page.unroute(googleScriptUrl)
-    await page.route(googleScriptUrl, async (route) => {
+    const requestedUrls: string[] = []
+    context.on('request', (request) => requestedUrls.push(request.url()))
+    await context.route(`${fixture.backend.url}/auth/editor**`, async (route) => {
+        const url = new URL(route.request().url())
+        const state = url.searchParams.get('state') || ''
+        const targetOrigin = url.searchParams.get('origin') || ''
         await route.fulfill({
-            contentType: 'text/javascript',
-            body: `
-document.cookie = 'g_csrf_token=gis-csrf; Path=/'
-let credentialCallback
-window.google = {accounts: {id: {
-  initialize(config) {
-    window.__googleClientId = config.client_id
-    credentialCallback = config.callback
-  },
-  renderButton(parent) {
-    const button = document.createElement('button')
-    button.textContent = 'Continue with Google'
-    button.addEventListener('click', () => credentialCallback({credential: 'gis-credential', select_by: 'btn'}))
-    parent.replaceChildren(button)
-  },
-  prompt(listener) {
-    listener({isNotDisplayed: () => true, getNotDisplayedReason: () => 'unregistered_origin'})
-  },
-}}}
-`,
+            contentType: 'text/html',
+            body: `<!doctype html><button id="complete">Complete Google sign-in</button><script>
+document.querySelector('#complete').addEventListener('click', () => {
+  window.opener.postMessage({type: 'blitz-editor-auth', version: 1, state: ${JSON.stringify(state)}, code: 'editor-code'}, ${JSON.stringify(targetOrigin)})
+})
+</script>`,
         })
     })
     try {
@@ -908,84 +880,58 @@ window.google = {accounts: {id: {
         await page.getByTestId('open-game').click()
         await expect(page.getByText('Available', {exact: true})).toBeVisible()
         const slug = await page.locator('#publish-slug').inputValue()
-        const popupPromise = page.waitForEvent('popup')
+        const publishPopupPromise = page.waitForEvent('popup')
         await page.getByTestId('create-live-game').click()
-        const popup = await popupPromise
+        const publishPopup = await publishPopupPromise
         await expect(page.getByTestId('live-url')).toBeVisible({timeout: 30_000})
+        await expect(page.getByTestId('google-sign-in')).toBeEnabled()
 
-        await expect(page.getByTestId('google-origin-error')).toContainText(
-            `Add the editor origin ${new URL(fixture.server.url).origin}`,
-        )
-        expect(await page.evaluate(() => (window as unknown as {__googleClientId: string}).__googleClientId))
-            .toBe('118090436804-rqddo4q5qof92bejmslrrtglnrtb23k1.apps.googleusercontent.com')
-        await page.getByTestId('google-sign-in').getByRole('button', {name: 'Continue with Google'}).click()
+        const authPopupPromise = page.waitForEvent('popup')
+        await page.getByTestId('google-sign-in').click()
+        const authPopup = await authPopupPromise
+        const authUrl = new URL(authPopup.url())
+        const state = authUrl.searchParams.get('state') || ''
+        const challenge = authUrl.searchParams.get('code_challenge') || ''
+        expect(authUrl.origin).toBe(fixture.backend.url)
+        expect(authUrl.pathname).toBe('/auth/editor')
+        expect(authUrl.searchParams.get('origin')).toBe(new URL(fixture.server.url).origin)
+        expect(state).toMatch(/^[A-Za-z0-9_-]{43}$/)
+        expect(challenge).toMatch(/^[A-Za-z0-9_-]{43}$/)
+        expect(authUrl.searchParams.get('code_challenge_method')).toBe('S256')
+
+        await page.evaluate((messageState) => {
+            window.postMessage({
+                type: 'blitz-editor-auth', version: 1, state: messageState, code: 'wrong-origin-code',
+            }, window.location.origin)
+        }, state)
+        await page.waitForTimeout(100)
+        expect(fixture.backend.requests.some(({path}) => path === '/api/v1/auth/editor/exchange')).toBe(false)
+
+        const exchangeResponse = page.waitForResponse((response) =>
+            response.url().endsWith('/api/auth/editor/exchange') && response.request().method() === 'POST')
+        await authPopup.getByRole('button', {name: 'Complete Google sign-in'}).click()
+        expect(await (await exchangeResponse).json()).toEqual({ok: true})
         await expect(page.getByTestId('claimed-notice')).toContainText('does not expire')
         expect(fixture.backend.games.get(slug)?.claimed).toBe(true)
 
-        const googleRequest = fixture.backend.requests.find(({path}) => path.endsWith('/google-login'))!
-        expect(Object.fromEntries(new URLSearchParams((googleRequest.body as Buffer).toString('utf8')))).toEqual({
-            credential: 'gis-credential',
-            g_csrf_token: 'gis-csrf',
-            select_by: 'btn',
+        const exchange = fixture.backend.requests.find(({path}) => path === '/api/v1/auth/editor/exchange')!
+        expect(exchange.body).toMatchObject({
+            code: 'editor-code',
+            code_verifier: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+            origin: new URL(fixture.server.url).origin,
         })
-        expect(googleRequest.cookie).toBe('g_csrf_token=gis-csrf')
+        const verifier = (exchange.body as Record<string, string>).code_verifier
+        expect(authPopup.url()).not.toContain(verifier)
+        expect(requestedUrls.filter((url) => url.includes(state))).toEqual([expect.stringContaining('/auth/editor?')])
+        expect(requestedUrls.some((url) => url.startsWith('https://accounts.google.com'))).toBe(false)
+        for (const value of [state, 'editor-code', verifier, 'jwt-google']) {
+            expect(fixture.server.url).not.toContain(value)
+            expect(await page.evaluate(() => JSON.stringify({localStorage, sessionStorage}))).not.toContain(value)
+            expect(JSON.stringify(await context.cookies(new URL(fixture.server.url).origin))).not.toContain(value)
+        }
         expect(fixture.backend.requests.findLast(({path}) => path.endsWith('/claim'))?.authorization)
             .toBe('Bearer jwt-google')
-        await popup.close()
-    } finally {
-        await page.close()
-        await fixture.close()
-    }
-})
-
-test('shows the exact editor origin when the GIS button flow returns 403 without a credential', async ({page}) => {
-    test.setTimeout(90_000)
-    const fixture = await startPublishEditor()
-    await page.unroute(googleScriptUrl)
-    await page.route('https://accounts.google.com/gsi/button**', async (route) => {
-        await route.fulfill({status: 403, contentType: 'text/html', body: 'Forbidden'})
-    })
-    await page.route(googleScriptUrl, async (route) => {
-        await route.fulfill({
-            contentType: 'text/javascript',
-            body: `
-window.google = {accounts: {id: {
-  initialize() {},
-  renderButton(parent, options) {
-    const button = document.createElement('button')
-    button.textContent = 'Continue with Google'
-    button.addEventListener('click', options.click_listener)
-    const iframe = document.createElement('iframe')
-    iframe.hidden = true
-    iframe.src = 'https://accounts.google.com/gsi/button?client_id=blocked'
-    parent.replaceChildren(button, iframe)
-  },
-  prompt() {},
-}}}
-`,
-        })
-    })
-    try {
-        const buttonFailure = page.waitForResponse((response) =>
-            response.url().startsWith('https://accounts.google.com/gsi/button'))
-        await page.goto(fixture.server.url)
-        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
-        await page.getByTestId('open-game').click()
-        await expect(page.getByText('Available', {exact: true})).toBeVisible()
-        const popupPromise = page.waitForEvent('popup')
-        await page.getByTestId('create-live-game').click()
-        const popup = await popupPromise
-        await expect(page.getByTestId('live-url')).toBeVisible({timeout: 30_000})
-        expect((await buttonFailure).status()).toBe(403)
-
-        await page.getByTestId('google-sign-in').getByRole('button', {name: 'Continue with Google'}).click()
-        const origin = new URL(fixture.server.url).origin
-        await expect(page.getByTestId('google-origin-error')).toHaveText(
-            `Add the editor origin ${origin} to the Google OAuth client's authorized JavaScript origins. `
-            + 'Listing http://localhost does not cover every port; each editor origin, including its port, must be listed separately.',
-            {timeout: 10_000},
-        )
-        await popup.close()
+        await publishPopup.close()
     } finally {
         await page.close()
         await fixture.close()

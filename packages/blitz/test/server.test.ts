@@ -4,7 +4,7 @@ import {createServer as createHttpServer, request} from 'node:http'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, describe, expect, it, vi} from 'vitest'
-import {createDevServer, type DevServer, type DevServerOptions} from '../src/server.ts'
+import {createDevServer, normalizeLoopbackOrigin, type DevServer, type DevServerOptions} from '../src/server.ts'
 import {devStatusFromDisk, publishFromDisk, runDev} from '../src/commands.ts'
 import {readDeploys, writeDeploys} from '../src/deploys.ts'
 import {NodeProjectDirectory} from '../src/node-filesystem.ts'
@@ -33,6 +33,25 @@ describe('NodeProjectDirectory', () => {
 })
 
 describe('Blitz dev server', () => {
+    it('accepts only canonical loopback HTTP origins', () => {
+        expect(normalizeLoopbackOrigin('http://127.0.0.1')).toBe('http://127.0.0.1')
+        expect(normalizeLoopbackOrigin('http://localhost')).toBe('http://localhost')
+        expect(normalizeLoopbackOrigin('http://[::1]:65535')).toBe('http://[::1]:65535')
+        expect(normalizeLoopbackOrigin('http://localhost:80')).toBe('http://localhost')
+        for (const value of [
+            'https://localhost:4321',
+            'http://LOCALHOST:4321',
+            'http://127.0.0.2:4321',
+            'http://127.0.0.1:0',
+            'http://127.0.0.1:65536',
+            'http://user@localhost:4321',
+            'http://localhost:4321/',
+            'http://localhost:4321/path',
+            'http://localhost:4321?query=yes',
+            'http://localhost:4321#fragment',
+        ]) expect(normalizeLoopbackOrigin(value)).toBeUndefined()
+    })
+
     it('proxies slug checks and account authentication through the configured backend', async () => {
         const backend = await startMockBackend()
         cleanup.push(() => backend.close())
@@ -60,26 +79,86 @@ describe('Blitz dev server', () => {
         expect(login.status).toBe(200)
         expect(await login.json()).toMatchObject({token: 'jwt-login'})
 
-        const google = await fetch(`${base(server)}/api/auth/google`, {
-            method: 'POST',
-            headers: {...headers, Cookie: 'g_csrf_token=google-csrf', 'Content-Type': 'application/json'},
-            body: JSON.stringify({credential: 'google-credential', g_csrf_token: 'google-csrf', select_by: 'btn'}),
+        const config = await fetch(`${base(server)}/api/auth/editor/config`, {headers})
+        expect(config.status).toBe(200)
+        expect(await config.json()).toEqual({
+            cloud_origin: backend.url,
+            broker_page_url: `${backend.url}/auth/editor`,
         })
-        expect(google.status).toBe(200)
-        expect(await google.json()).toMatchObject({token: 'jwt-google', user: {username: 'google-player'}})
         expect(backend.requests.map(({path}) => path)).toEqual(expect.arrayContaining([
             '/api/v1/slugs/proxy-game',
             '/api/v1/auth/register',
             '/api/v1/auth/login',
-            '/api/v1/table/users/auth/google-login',
         ]))
-        const googleRequest = backend.requests.find(({path}) => path.endsWith('/google-login'))!
-        expect(Object.fromEntries(new URLSearchParams((googleRequest.body as Buffer).toString('utf8')))).toEqual({
-            credential: 'google-credential',
-            g_csrf_token: 'google-csrf',
-            select_by: 'btn',
+    })
+
+    it('validates and exchanges editor auth codes without exposing the platform JWT', async () => {
+        const backend = await startMockBackend()
+        cleanup.push(() => backend.close())
+        const {server, root, headers} = await startServer({backendUrl: backend.url})
+        const created = await fetch(`${backend.url}/api/v1/new-game/editor-auth?name=Editor`, {method: 'POST'})
+        const game = await created.json() as {
+            game_id: string, deploy_token: string, claim_secret: string, preview_url: string, expires_at: string
+        }
+        await writeDeploys(new NodeProjectDirectory(root).asHandle(), {games: {'editor-auth': game}})
+        const endpoint = `${base(server)}/api/auth/editor/exchange`
+        const body = JSON.stringify({code: 'editor-code', code_verifier: 'editor-verifier'})
+
+        const missingAuth = await fetch(endpoint, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', Origin: base(server)},
+            body,
         })
-        expect(googleRequest.cookie).toBe('g_csrf_token=google-csrf')
+        expect(missingAuth.status).toBe(401)
+
+        for (const origin of ['https://blitz.dev', `http://127.0.0.1:${server.port + 1}`]) {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {...headers, 'Content-Type': 'application/json', Origin: origin},
+                body,
+            })
+            expect(response.status).toBe(403)
+        }
+
+        const exchanged = await fetch(endpoint, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json', Origin: `http://localhost:${server.port}`},
+            body,
+        })
+        expect(exchanged.status).toBe(200)
+        const exchangeBody = await exchanged.json()
+        expect(exchangeBody).toEqual({ok: true})
+        expect(JSON.stringify(exchangeBody)).not.toContain('jwt-google')
+        const cloudExchange = backend.requests.find(({path}) => path === '/api/v1/auth/editor/exchange')!
+        expect(cloudExchange.body).toEqual({
+            code: 'editor-code',
+            code_verifier: 'editor-verifier',
+            origin: `http://localhost:${server.port}`,
+        })
+
+        const claim = await fetch(`${base(server)}/api/claim`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({slug: 'editor-auth'}),
+        })
+        expect(claim.status).toBe(200)
+        expect(backend.requests.findLast(({path}) => path.endsWith('/claim'))?.authorization).toBe('Bearer jwt-google')
+    })
+
+    it('maps cloud editor exchange errors to safe local errors', async () => {
+        const backend = await startMockBackend({editorExchangeStatus: 400, editorExchangeError: 'expired_code'})
+        cleanup.push(() => backend.close())
+        const {server, headers} = await startServer({backendUrl: backend.url})
+        const response = await fetch(`${base(server)}/api/auth/editor/exchange`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json', Origin: base(server)},
+            body: JSON.stringify({code: 'expired', code_verifier: 'verifier'}),
+        })
+        expect(response.status).toBe(400)
+        expect(await response.json()).toEqual({error: {
+            code: 'expired_code',
+            message: 'The sign-in code expired. Try again.',
+        }})
     })
 
     it('claims with the in-memory JWT and local claim secret, then omits secrets from deploys', async () => {

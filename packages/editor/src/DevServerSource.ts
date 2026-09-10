@@ -13,6 +13,7 @@ import type {
     PublishStatusView,
     SlugAvailability,
 } from './publishing.ts'
+import type {EditorAuthConfig} from './authBroker.ts'
 
 export class DevServerRequestError extends Error {
     readonly name = 'DevServerRequestError'
@@ -114,13 +115,15 @@ export class DevServerSource implements ProjectSource {
         })
     }
 
-    async authenticateWithGoogle(credential: string, selectBy?: string): Promise<{token: string}> {
-        const csrfToken = readCookie('g_csrf_token')
-        if (!csrfToken) throw new Error('Google sign-in did not provide its CSRF cookie.')
-        return this.json('/api/auth/google', {
+    async editorAuthConfig(): Promise<EditorAuthConfig> {
+        return this.json('/api/auth/editor/config')
+    }
+
+    async exchangeEditorAuth(code: string, codeVerifier: string): Promise<{ok: true}> {
+        return this.json('/api/auth/editor/exchange', {
             method: 'POST',
             headers: this.headers({'Content-Type': 'application/json'}),
-            body: JSON.stringify({credential, g_csrf_token: csrfToken, select_by: selectBy}),
+            body: JSON.stringify({code, code_verifier: codeVerifier}),
         })
     }
 
@@ -251,10 +254,4 @@ function usernameFromEmail(email: string): string {
 
 function encodePath(path: string): string {
     return path.split('/').map(encodeURIComponent).join('/')
-}
-
-function readCookie(name: string): string | undefined {
-    const prefix = `${encodeURIComponent(name)}=`
-    const value = document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix))
-    return value ? decodeURIComponent(value.slice(prefix.length)) : undefined
 }
