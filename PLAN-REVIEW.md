@@ -58,6 +58,13 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 | DEFER Runtime state controller | LOAD HALF RUNNING | `createGame` load-and-run is Phase A | handler API: scripted input, tick stepping |
 | DEFER Agent connection | UNBUILT | file-based mirrors are proposed in NOW-1 | websocket or CLI |
 
+### Status update, 2026-09-10 morning
+
+- Anti-slop reviews done in both repos; deslop passes applied 30 of 31 public findings (`ProjectSource` kept for the planned cloud source) and all 26 cloud findings, including the manifest-derived blob sweep that replaced refcounts (migrations 0003 and 0004 applied to production, all three workers redeployed, live smoke passed).
+- Second real-user E2E run built and published FPS Drill; session review in `docs/e2e-session-review-2026-09-10-run2.md`: 11 of 17 earlier findings fixed, 15 new findings G1 to G15, none blocking. Runtime registry re-registered (G4). E2E agents' memory notes moved into the repo so later runs start fresh.
+- Found that the C1 pass (commit a2b7ebf) had replaced the entire upstream editor UI with a 525-line minimal app. RUNNING: restoration of the upstream editor on the dev-server source with the Open game button, play through `createGame` on an overlay, text glTF save (branch `restore-editor`).
+- Next: fix pass G on the restored editor (brief staged), then P1 to P6 from `docs/prototype-branch-integration.md`.
+
 Build order agreed (revised, evening): Phase A done, Phase B part 1 running, then C1 blitz command, local dev server, editor source, then C2 cloud source, dialog, glTF model. See `docs/local-dev-server-plan.md`.
 
 ## 0. Findings that change all three items
