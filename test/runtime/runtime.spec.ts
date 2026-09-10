@@ -43,27 +43,3 @@ test('the published runtime boots scripts, main, and nested assets', async ({pag
 
     await page.evaluate(() => window.__blitzGame?.dispose())
 })
-
-declare global {
-    interface Window {
-        __blitzErrors: string[]
-        __blitzGame?: {
-            viewer: {
-                getPlugin(type: string): unknown
-                scene: {
-                    modelRoot: {
-                        getObjectByName(name: string): {
-                            children: Array<{userData: Record<string, unknown>}>
-                        } | undefined
-                    }
-                }
-            }
-            dispose(): void
-        }
-        __blitzMainRan?: boolean
-        __blitzReady?: boolean
-        __blitzRuntimeVersion?: string
-        __blitzStartupError?: string
-        __blitzUpdates?: number
-    }
-}

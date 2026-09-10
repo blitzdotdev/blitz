@@ -5,6 +5,7 @@ import {
     Object3DComponent,
     type ThreeViewer,
 } from 'threepipe'
+import {getAuthoringMetadata, setAuthoringMetadata, type AuthoringMetadata} from '../authoring.ts'
 
 export interface GeneratorParams {
     [key: string]: unknown
@@ -76,6 +77,7 @@ export class GeneratorComponent extends Object3DComponent {
             module: this.module,
             base: config.base,
             revision: ++generatorImportRevision,
+            isCurrent: () => revision === this.runRevision,
         }).then(() => {
             if (revision === this.runRevision) viewer.setDirty(this)
         }).finally(() => config.pending.delete(task))
@@ -94,6 +96,14 @@ export class GeneratorComponent extends Object3DComponent {
         }
         for (const child of generated) unmarkGenerated(child as IObject3D)
         this.ctx.ecp.removeComponent(node, this.uuid)
+        const metadata = getAuthoringMetadata(node)
+        if (metadata?.role === 'generator' && !metadata.sourceId) {
+            setAuthoringMetadata(node, {
+                role: 'direct',
+                id: metadata.id,
+                ...(metadata.allowCameraInside !== undefined ? {allowCameraInside: metadata.allowCameraInside} : {}),
+            })
+        }
         node.userData.blitzBakedFrom = bakedFrom
         node._sChildren = [...node.children]
         node.setDirty?.({change: 'userData.blitzBakedFrom', source: 'blitz bake'})
@@ -111,6 +121,7 @@ export interface RunGeneratorOptions extends Omit<GeneratorContext, 'engine'> {
     module: string
     base: URL
     revision?: number
+    isCurrent?: () => boolean
 }
 
 export async function runGenerator({
@@ -120,9 +131,11 @@ export async function runGenerator({
     module,
     base,
     revision = 0,
+    isCurrent,
 }: RunGeneratorOptions): Promise<IObject3D[]> {
     removeGeneratedChildren(node)
     if (!module) return []
+    const source = ensureGeneratorMetadata(node)
     const moduleUrl = resolveGeneratorModule(module, base)
     if (revision) moduleUrl.searchParams.set('blitz-generator', String(revision))
     const loaded = await importGeneratorModule(moduleUrl.href)
@@ -143,21 +156,33 @@ export async function runGenerator({
     }
 
     const generated = node.children.filter((child) => !existingChildren.has(child)) as IObject3D[]
-    for (const child of generated) markGenerated(child)
+    if (isCurrent && !isCurrent()) {
+        for (const child of generated) removeGeneratedObject(child)
+        return []
+    }
+    generated.forEach((child, index) => markGenerated(child, source.id, index))
     return generated
 }
 
 export function removeGeneratedChildren(node: IObject3D): void {
     for (const child of [...node.children] as IObject3D[]) {
         if (child.userData.blitzGenerated !== true) continue
-        node.remove(child)
+        removeGeneratedObject(child)
     }
 }
 
-export function markGenerated(object: IObject3D): void {
+export function markGenerated(object: IObject3D, sourceId?: string, outputIndex = 0): void {
+    let descendantIndex = 0
     object.traverse((child: IObject3D) => {
         child.userData.blitzGenerated = true
         child.userData.excludeFromExport = true
+        if (sourceId) {
+            child.userData.blitzAuthoring = {
+                role: 'generator',
+                id: `${sourceId}:preview:${outputIndex}:${descendantIndex++}`,
+                sourceId,
+            } satisfies AuthoringMetadata
+        }
     })
 }
 
@@ -165,7 +190,52 @@ function unmarkGenerated(object: IObject3D): void {
     object.traverse((child: IObject3D) => {
         delete child.userData.blitzGenerated
         delete child.userData.excludeFromExport
+        const metadata = getAuthoringMetadata(child)
+        if (metadata?.role === 'generator' && metadata.sourceId) delete child.userData.blitzAuthoring
     })
+}
+
+function ensureGeneratorMetadata(node: IObject3D): AuthoringMetadata {
+    const current = getAuthoringMetadata(node)
+    if (current?.role === 'generator' && !current.sourceId) return current
+    const savedId = typeof node.userData.gltfUUID === 'string' && node.userData.gltfUUID.trim()
+        ? node.userData.gltfUUID.trim()
+        : current?.id || generatorPathId(node)
+    setAuthoringMetadata(node, {role: 'generator', id: savedId})
+    return getAuthoringMetadata(node)!
+}
+
+function generatorPathId(node: IObject3D): string {
+    const parts: string[] = []
+    for (let current: IObject3D | null = node; current?.parent; current = current.parent as IObject3D) {
+        const index = current.parent.children.indexOf(current)
+        parts.push(`${current.name || current.type}:${index}`)
+        if (current.parent.userData?.rootSceneModelRoot) break
+    }
+    return `generator:${parts.reverse().join('/')}`
+}
+
+function removeGeneratedObject(object: IObject3D): void {
+    object.removeFromParent()
+    const disposed = new Set<object>()
+    object.traverse((child) => {
+        const renderable = child as IObject3D & {geometry?: {dispose?(): void}, material?: unknown | unknown[]}
+        disposeResource(renderable.geometry, disposed)
+        const materials = Array.isArray(renderable.material) ? renderable.material : [renderable.material]
+        for (const material of materials) {
+            if (!material || typeof material !== 'object') continue
+            for (const value of Object.values(material)) {
+                if (value && typeof value === 'object' && 'isTexture' in value) disposeResource(value, disposed)
+            }
+            disposeResource(material, disposed)
+        }
+    })
+}
+
+function disposeResource(resource: unknown, disposed: Set<object>): void {
+    if (!resource || typeof resource !== 'object' || disposed.has(resource)) return
+    disposed.add(resource)
+    ;(resource as {dispose?(): void}).dispose?.()
 }
 
 export function resolveGeneratorModule(module: string, base: URL): URL {

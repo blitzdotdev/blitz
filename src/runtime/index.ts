@@ -11,6 +11,8 @@ export type {GeneratorContext, GeneratorModule, GeneratorParams, GeneratorViewer
 export {CannonPhysicsPlugin} from '../plugins/cannon/CannonPhysicsPlugin.ts'
 export {serializeSceneGltf, serializeSceneGltfDocument} from '../sceneSerialization.ts'
 export type {SerializeSceneGltfOptions, SerializedSceneFile, SerializedSceneGltf} from '../sceneSerialization.ts'
+export * from '../authoring.ts'
+export * from '../authoringValidation.ts'
 
 export * from 'threepipe'
 export * from 'uiconfig.js'
