@@ -11,7 +11,7 @@ npm install
 npx blitz dev
 ```
 
-`blitz dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx blitz pull`; then run `npx blitz publish` and report the live URL it prints.
+`blitz dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx blitz pull`; then run `npx blitz publish` and report the live URL it prints. Run `npx blitz <command> --help` for command-specific usage.
 
 Source code to grep after `npm install`:
 
@@ -895,7 +895,9 @@ class EnemySystemComponent extends Object3DComponent {
 
 # Publishing
 
-Run `npx blitz pull` before every publish. Resolve any local/remote difference, then run `npx blitz publish --message "what changed"`. The command hashes the project, uploads missing blobs, creates a release, records it in `.blitz/deploys.json`, and prints the live URL. Publishing requires network access and a reachable Blitz cloud API.
+Run `npx blitz pull` before every update and resolve any local and remote difference. Create a game with `npx blitz publish --slug my-game --name "My Game" --message "initial release"`. Later publishes reuse the saved deploy entry and can use `npx blitz publish --message "what changed"`. The command hashes the project, uploads missing blobs, creates a release, records it in `.blitz/deploys.json`, and prints the live URL. Publishing requires network access and a reachable Blitz cloud API.
+
+Run `npx blitz status` to print local deploy metadata and expiry without secrets. Run `npx blitz claim --email player@example.com --password "at-least-8-characters"` to register and claim every unclaimed local deploy. Add `--login` to use an existing account. Unknown flags fail with a nonzero exit code.
 
 # Limits
 

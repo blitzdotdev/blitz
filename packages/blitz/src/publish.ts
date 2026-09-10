@@ -40,6 +40,7 @@ export interface PublishProjectOptions {
     slug?: string | ExistingDeployTarget
     entry?: ExistingDeployTarget
     message?: string
+    name?: string
     onProgress?: (progress: PublishProgress) => void
 }
 
@@ -55,6 +56,7 @@ export async function publishProject({
     slug: slugOrEntry,
     entry: explicitEntry,
     message,
+    name,
     onProgress,
 }: PublishProjectOptions): Promise<{preview_url: string; release_hash: string}> {
     const deploys = await readDeploys(dirHandle)
@@ -71,12 +73,12 @@ export async function publishProject({
         onProgress?.({phase: 'creating', completed: 0, total: 1})
         const created = await api.createAnonymousGame({
             slug,
-            name: typeof packageJson.name === 'string' ? packageJson.name : slug,
+            name: name || (typeof packageJson.name === 'string' ? packageJson.name : slug),
         })
         entry = deployEntryFromCreated(created)
         deploys.games[slug] = entry
         await writeDeploys(dirHandle, deploys)
-        onProgress?.({phase: 'creating', completed: 1, total: 1})
+        onProgress?.({phase: 'creating', completed: 1, total: 1, preview_url: entry.preview_url})
     }
     api.useGame(entry.game_id, entry.deploy_token)
 
@@ -98,7 +100,7 @@ export async function publishProject({
     const version = versionResult.version
     const runtime = await api.getRuntime(version)
     const indexHtml = generateIndexHtml({
-        name: typeof packageJson.name === 'string' ? packageJson.name : slug,
+        name: name || (typeof packageJson.name === 'string' ? packageJson.name : slug),
         version,
         dependencies: packageDependencies(packageJson),
     })
