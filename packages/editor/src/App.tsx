@@ -7,6 +7,7 @@ import {
     RUNTIME_VERSION,
     serializeSceneGltf,
     serializeSceneGltfDocument,
+    validateSceneSource,
     walkScriptExports,
     type CreatedGame,
     type SerializedSceneGltf,
@@ -21,6 +22,7 @@ const encode = (text: string) => new TextEncoder().encode(text)
 interface ServerState {
     name: string
     versions: Record<string, string>
+    asset_library_proxy_url: string
 }
 
 interface HierarchyEntry {
@@ -43,6 +45,7 @@ export default function App() {
     const hashes = useRef(new Map<string, string>())
     const saveTimer = useRef<ReturnType<typeof setTimeout>>()
     const sceneTextRef = useRef('')
+    const editorVersionRef = useRef(RUNTIME_VERSION)
     const [serverState, setServerState] = useState<ServerState>()
     const [manifest, setManifest] = useState<ProjectFileEntry[]>([])
     const [scenePath, setScenePath] = useState('assets/main.scene.glb')
@@ -81,7 +84,7 @@ export default function App() {
 
     const writeState = useCallback(async (isPlaying: boolean, error?: string) => {
         const state = {
-            editorVersion: '0.12.0',
+            editorVersion: editorVersionRef.current,
             engineVersion: RUNTIME_VERSION,
             playState: isPlaying ? 'playing' : 'stopped',
             selectionNames: [],
@@ -124,6 +127,7 @@ export default function App() {
         const scene = await source.read(nextScenePath)
         validateSceneSource(nextScenePath, decode(scene.bytes))
         hashes.current.set(nextScenePath, scene.sha256)
+        editorVersionRef.current = state.versions.editor || RUNTIME_VERSION
         setServerState(state)
         setManifest(entries)
         setScenePath(nextScenePath)
@@ -347,7 +351,7 @@ export default function App() {
         }
     }, [readProject, reportError, source])
 
-    return <main>
+    return <main data-asset-library-proxy-url={serverState?.asset_library_proxy_url}>
         <header>
             <img src="/logo.svg" alt="Blitz"/>
             <div><h1>{serverState?.name || 'Blitz'}</h1><p>{status}</p></div>
@@ -431,14 +435,6 @@ async function serializeScene(path: string, text: string) {
         return {document: {}, gltf: encode(text), files: []}
     }
     return serializeSceneGltfDocument(JSON.parse(text), {scenePath: path})
-}
-
-function validateSceneSource(path: string, text: string): void {
-    if (!path.toLowerCase().endsWith('.gltf')) return
-    const document = JSON.parse(text) as {asset?: unknown}
-    if (!document || typeof document !== 'object' || !document.asset) {
-        throw new Error(`${path} is not a JSON glTF document`)
-    }
 }
 
 function readSceneObjectNames(path: string, text: string): string[] {

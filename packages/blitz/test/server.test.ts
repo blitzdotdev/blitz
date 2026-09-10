@@ -10,6 +10,8 @@ import {readDeploys, writeDeploys} from '../src/deploys.ts'
 import {NodeProjectDirectory} from '../src/node-filesystem.ts'
 import {readProjectFile, walkProject, writeProjectFile} from '../src/filesystem.ts'
 import {startMockBackend} from './mockBackend.ts'
+import {BLITZ_SERVER_CLIENT_ID} from '@blitzdev/engine/paths'
+import {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from '../src/versions.ts'
 
 const cleanup: Array<() => Promise<void>> = []
 
@@ -146,7 +148,12 @@ describe('Blitz dev server', () => {
         expect(written.status).toBe(200)
         expect(await readFile(resolve(root, 'hello.js'), 'utf8')).toBe('changed')
         const state = await (await fetch(`${base(server)}/api/state`, {headers})).json() as {name: string, server_version: string}
-        expect(state).toMatchObject({name: 'server-test', server_version: '0.12.0'})
+        expect(state).toMatchObject({
+            name: 'server-test',
+            server_version: BLITZ_VERSION,
+            versions: {blitz: BLITZ_VERSION, editor: EDITOR_VERSION, engine: ENGINE_VERSION},
+            asset_library_proxy_url: expect.stringContaining('blitz-asset-library-proxy'),
+        })
     })
 
     it('rejects bad tokens, non-local Host headers, traversal, and symlinks', async () => {
@@ -198,7 +205,7 @@ describe('Blitz dev server', () => {
         const event = await eventPromise
         expect(event).toMatchObject({
             type: 'add',
-            data: {path: 'pulled.txt', client: 'blitz-server'},
+            data: {path: 'pulled.txt', client: BLITZ_SERVER_CLIENT_ID},
         })
     })
 
@@ -255,7 +262,11 @@ describe('Blitz dev server', () => {
 async function temporaryProject(): Promise<string> {
     const root = await mkdtemp(resolve(tmpdir(), 'blitz-server-'))
     cleanup.push(() => rm(root, {recursive: true, force: true}))
-    await writeFile(resolve(root, 'package.json'), '{"name":"server-test"}\n')
+    await writeFile(resolve(root, 'package.json'), `${JSON.stringify({
+        name: 'server-test',
+        devDependencies: {'@blitzdev/blitz': BLITZ_VERSION},
+        blitz: {version: BLITZ_VERSION},
+    })}\n`)
     await writeFile(resolve(root, 'assets.json'), '{"files":{},"version":1}\n')
     await writeFile(resolve(root, 'main.js'), 'export async function main() {}\n')
     await mkdir(resolve(root, 'assets'), {recursive: true})
