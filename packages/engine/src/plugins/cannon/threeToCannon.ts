@@ -1,4 +1,3 @@
-/* eslint-disable */
 // https://github.com/donmccurdy/three-to-cannon/blob/main/src/index.ts
 import {Box, ConvexPolyhedron, Cylinder, Quaternion as CQuaternion, Shape, Sphere, Trimesh, Vec3} from 'cannon-es';
 import {ConvexHull, Box3, BufferGeometry, CylinderGeometry, MathUtils, Mesh, Object3D, SphereGeometry, Vector3} from 'threepipe';

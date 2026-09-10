@@ -1,18 +1,43 @@
-# Notes for Blitz and threepipe Game Development
+# Blitz game development guide
+
+Prerequisite: Node.js 20 or newer.
+
+Create and run a project with:
+
+```sh
+npx @blitzdev/blitz init my-game
+cd my-game
+npm install
+npx blitz dev
+```
+
+`blitz dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx blitz pull`; then run `npx blitz publish` and report the live URL it prints.
+
+Source code to grep after `npm install`:
+
+```text
+node_modules/@blitzdev/engine/src     runtime, project format, scripting API
+node_modules/@blitzdev/editor/src     editor
+node_modules/@blitzdev/blitz/src      command and local server
+node_modules/threepipe/src            engine core, glTF, plugins
+node_modules/uiconfig-blueprint/src   editor UI kit
+```
+
+The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Read `.blitz/state.json` and `.blitz/console.log` for the editor and runtime feedback loop. Keep secrets from `.blitz/deploys.json` private.
 
 - The game is using Blitz game engine built on top of threepipe and three.js.
-- Scenes in the game are designed in a UI editor(similar to Unity/Godot) and exported as .scene.glb files. These are binary files and cannot be read or edited as text
+- The scene path is declared by `mainScene` in `package.json`. A `.gltf` scene is JSON and a `.glb` scene is binary; keep the saved format consistent with that extension.
 - The game dependencies, packages, scripts etc are defined in the package.json file in the game project. Any script or dependency required in the scene or the editor must be added to package.json.
 - The game consists of objects in the scene like player, trees, enemies, weapons, etc. Each object is a three.js `Object3D` with `Object3DComponents` that extend the functionality of the objects
 - Custom components are used to add game-specific behavior to objects. For example, the `PlayerComponent` handles player movement and actions, while the `EnemyComponent` manages enemy AI. These components are defined in their dedicated .script.js files in the game folder and can be attached to the objects using the UI.
 - Instruct the user to make changes to the 3D scene or to add or remove components from the game.
 - Check node_modules/threepipe for the source code of threepipe and its plugins like `ThreeViewer`, `EntityComponentPlugin` etc.
 - threepipe is based on three.js, any three.js export can be imported like `import * as THREE from 'three';`, for three.js addons, they need to be imported from threepipe like `import { SimplifyModifier } from 'threepipe';`(but its not required in most cases as the functionality is built into some plugin).
-- The game includes a `main.js` file that exports `main({viewer})`. The published runtime calls it after the scene has loaded and the timeline, components, and physics have started. The editor's current play mode does not call `main.js`, so test editor play behavior through components and keep published-only setup in `main({viewer})`.
+- The game includes a `main.js` file that exports `main({viewer})`. Play mode and the published runtime call it after the scene has loaded and the timeline, components, and physics have started.
 - Do not use inheritance when creating custom components, always extend from `Object3DComponent` directly. For reusable code, use composition by creating helper classes or functions that can be used across multiple components.
 - The game uses ES6 modules, so use `import` and `export` statements for modularity.
 - When editing files with the editor open, the changes are hot-reloaded automatically on file save. It is necessary to ensure that all resources and event listeners are properly cleaned up in the `destroy()`(or `stop()`) method of components to prevent memory leaks during hot-reloading.
-- Some sample components and plugins can be found at the end of this file and in `.blitz/samples` folder with names ending with `.script.js`. 
+- Some sample components and plugins can be found at the end of this file and in the `samples/` folder with names ending with `.script.js`.
 - Blitz supports two types of code files:
 
 ## .script.js Files (Components)
@@ -765,6 +790,10 @@ class EnemySystemComponent extends Object3DComponent {
 
 # Publishing
 
-Read the live [Blitz agent publishing guide](https://blitz-editor.blitzapp.workers.dev/agents.md).
+Run `npx blitz pull` before every publish. Resolve any local/remote difference, then run `npx blitz publish --message "what changed"`. The command hashes the project, uploads missing blobs, creates a release, records it in `.blitz/deploys.json`, and prints the live URL. Publishing requires network access and a reachable Blitz cloud API.
 
-Follow mode uses this private link: `https://blitz-editor.blitzapp.workers.dev/?game=<slug>#token=<deploy_token>`.
+# Limits
+
+- Source scripts are native ES modules. Bare imports must be declared in `package.json`.
+- Keep generated output, dependencies, secrets, logs, and transient editor data under excluded paths (`dist/`, `node_modules/`, and `.blitz/`).
+- The editor is served only by `blitz dev` on localhost. Keep its random token private.

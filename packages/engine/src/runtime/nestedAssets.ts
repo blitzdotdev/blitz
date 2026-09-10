@@ -212,8 +212,10 @@ export class RuntimeNestedAssetLoader {
 
 function cloneObject(source: IObject3D): IObject3D {
     const clone = source.clone(false) as IObject3D
-    clone._tpRootPath = source._tpRootPath
-    clone._tpRootUid = source._tpRootUid || source.uuid
+    const sourceRoot = source as IObject3D & {_tpRootPath?: string, _tpRootUid?: string}
+    const cloneRoot = clone as IObject3D & {_tpRootPath?: string, _tpRootUid?: string}
+    cloneRoot._tpRootPath = sourceRoot._tpRootPath
+    cloneRoot._tpRootUid = sourceRoot._tpRootUid || source.uuid
     delete clone.userData.cloneParent
     for (const child of source.children) clone.add(cloneObject(child))
     return clone

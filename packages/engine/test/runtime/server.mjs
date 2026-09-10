@@ -7,8 +7,8 @@ import {extname, normalize, resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
 
 const runtimeDirectory = fileURLToPath(new URL('.', import.meta.url))
-const editorDirectory = resolve(runtimeDirectory, '../..')
-const fixtureDirectory = resolve(runtimeDirectory, '../fixtures/sample-project')
+const engineDirectory = resolve(runtimeDirectory, '../..')
+const fixtureDirectory = resolve(runtimeDirectory, '../../../editor/test/fixtures/sample-project')
 const port = Number(process.argv[2] || 4177)
 
 const contentTypes = {
@@ -41,7 +41,7 @@ function resolveRequest(pathname) {
     if (pathname === '/' || pathname === '/index.html') {
         return resolve(runtimeDirectory, 'index.html')
     }
-    if (pathname === '/runtime.js') return resolve(editorDirectory, 'dist/runtime.js')
+    if (pathname === '/runtime.js') return resolve(engineDirectory, 'dist/runtime.js')
     if (!pathname.startsWith('/sample-project/')) return undefined
 
     const relativePath = normalize(decodeURIComponent(pathname.slice('/sample-project/'.length)))

@@ -1,0 +1,8 @@
+export const BLITZ_DIRECTORY = '.blitz'
+export const DEPLOYS_PATH = `${BLITZ_DIRECTORY}/deploys.json`
+export const JOURNAL_PATH = `${BLITZ_DIRECTORY}/journal.jsonl`
+export const STATE_PATH = `${BLITZ_DIRECTORY}/state.json`
+export const CONSOLE_PATH = `${BLITZ_DIRECTORY}/console.log`
+export const THUMBS_DIRECTORY = `${BLITZ_DIRECTORY}/thumbs`
+export const BACKUPS_DIRECTORY = `${BLITZ_DIRECTORY}/backups`
+export const RUNNING_DIRECTORY = `${BLITZ_DIRECTORY}/running`

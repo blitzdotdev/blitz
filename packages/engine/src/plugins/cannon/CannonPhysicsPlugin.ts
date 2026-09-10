@@ -119,7 +119,7 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
         this._world.defaultMaterial = this.defaultMaterial
         this._world.defaultContactMaterial.materials = [this.defaultMaterial, this.defaultMaterial]
 
-        let collisionEv: CollisionEvent = {} as any
+        const collisionEv: CollisionEvent = {} as any
         this._world.addEventListener('beginContact', (e: any)=>{
             const compA = this.cannonBodies.get(e.bodyA)
             const compB = this.cannonBodies.get(e.bodyB)

@@ -1,4 +1,3 @@
-/* eslint-disable */
 // https://github.com/donmccurdy/three-to-cannon/blob/main/src/utils.ts
 
 import { BufferAttribute, BufferGeometry, Mesh, Object3D, Quaternion, Vector3 } from 'threepipe';

@@ -1,4 +1,4 @@
-import {ProjectConfigSettings} from "../utils/project.ts";
+import type {ProjectConfigSettings} from './runtime/projectFormat.ts'
 
 export const emptyProjectSettings = {
     plugins: [

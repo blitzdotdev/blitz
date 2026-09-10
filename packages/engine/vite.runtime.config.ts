@@ -7,6 +7,7 @@ export default defineConfig({
     },
     build: {
         emptyOutDir: false,
+        sourcemap: true,
         lib: {
             entry: resolve(__dirname, 'src/runtime/index.ts'),
             formats: ['es'],

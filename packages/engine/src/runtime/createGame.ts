@@ -13,9 +13,9 @@ import {
     Rhino3dmLoadPlugin,
     STLLoadPlugin,
     ThreeViewer,
-    TObject3DComponent,
     USDZLoadPlugin,
 } from 'threepipe'
+import {registerScripts} from '../scripts.ts'
 import {HtmlUiComponent} from '../plugins/HtmlUiComponent.ts'
 import {CannonPhysicsPlugin} from '../plugins/cannon/CannonPhysicsPlugin.ts'
 import {RuntimeNestedAssetLoader} from './nestedAssets.ts'
@@ -115,7 +115,7 @@ export async function createGame({base, canvas, onError}: CreateGameOptions): Pr
         nestedAssets = new RuntimeNestedAssetLoader(viewer, reportError)
 
         await registerProjectPlugins(viewer, config, baseUrl)
-        await registerProjectScripts(entityComponents, config, baseUrl)
+        await registerProjectScripts(viewer, config, baseUrl)
 
         const sceneUrl = new URL(project.mainScene, baseUrl).href
         const loadedScene = await viewer.load(sceneUrl, {importAsModelRoot: true})
@@ -176,19 +176,17 @@ async function registerProjectPlugins(viewer: ThreeViewer, config: ProjectConfig
 }
 
 async function registerProjectScripts(
-    entityComponents: EntityComponentPlugin,
+    viewer: ThreeViewer,
     config: ProjectConfigSettings,
     base: URL,
 ) {
+    const modules: ModuleExports[] = []
     for (const definition of config.scripts) {
         if (definition.active === false) continue
         const scriptUrl = assertSameOrigin(new URL(definition.import, base), base)
-        const module = await importModule(scriptUrl.href)
-        for (const exported of Object.values(module)) {
-            if (!isComponentType(exported) || entityComponents.hasComponentType(exported)) continue
-            await entityComponents.addComponentType(exported)
-        }
+        modules.push(await importModule(scriptUrl.href))
     }
+    await registerScripts(viewer, modules)
 }
 
 function createURLModifier(base: URL, assets: AssetsJSONManifest) {
@@ -230,11 +228,6 @@ function findPluginExport(module: ModuleExports, definition: ExternalPlugin): Cl
 function isPluginType(value: unknown): value is Class<IViewerPlugin> {
     return typeof value === 'function'
         && typeof (value as unknown as {PluginType?: unknown}).PluginType === 'string'
-}
-
-function isComponentType(value: unknown): value is TObject3DComponent {
-    return typeof value === 'function'
-        && typeof (value as unknown as {ComponentType?: unknown}).ComponentType === 'string'
 }
 
 async function importModule(specifier: string): Promise<ModuleExports> {

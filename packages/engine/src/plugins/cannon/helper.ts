@@ -1,4 +1,3 @@
-/* eslint-disable */
 // https://github.com/pmndrs/cannon-es-debugger/blob/master/src/cannon-es-debugger.ts
 
 import {
