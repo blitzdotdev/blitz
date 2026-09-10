@@ -307,8 +307,56 @@ test('registers a dropped GLB as an asset and loads it from the published projec
 
         await page.getByTestId('save-scene').click()
         await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
-        const scene = await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8')
-        expect(scene).toContain('"rootPath": "/blitz/@gate-model/f.glb"')
+        const expectReferenceOnlyScene = async () => {
+            const scene = JSON.parse(await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8')) as {
+                nodes: Array<{children?: number[], extras?: {rootPath?: string}, mesh?: number}>
+                meshes?: unknown[]
+            }
+            const wrapper = scene.nodes.find((node) => node.extras?.rootPath === '/blitz/@gate-model/f.glb')
+            expect(wrapper).toBeDefined()
+            expect(wrapper?.children || []).toEqual([])
+            expect(scene.nodes.filter((node) => node.mesh !== undefined)).toEqual([])
+            expect(scene.meshes || []).toEqual([])
+        }
+        await expectReferenceOnlyScene()
+
+        await page.reload()
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await expect.poll(() => page.evaluate(() => {
+            const wrapper = (window as unknown as {
+                viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+                    children: Array<{isMesh?: boolean, userData: {excludeFromExport?: boolean}}>
+                    traverse(callback: (object: {isMesh?: boolean}) => void): void
+                } | undefined}}}
+            }).viewer.scene.modelRoot.getObjectByName('gate-model.glb')
+            if (!wrapper) return undefined
+            let meshCount = 0
+            wrapper.traverse((object) => {
+                if (object.isMesh) meshCount += 1
+            })
+            const state = {
+                meshCount,
+                excluded: wrapper.children.every((child) => child.userData.excludeFromExport === true),
+            }
+            return state
+        })).toEqual({meshCount: 1, excluded: true})
+        await page.evaluate(() => {
+            const wrapper = (window as unknown as {
+                viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+                    name: string
+                    setDirty(event: {change: string}): void
+                } | undefined}}}
+            }).viewer.scene.modelRoot.getObjectByName('gate-model.glb')
+            if (!wrapper) throw new Error('The reloaded scene is missing gate-model.glb')
+            wrapper.name = 'Temporary asset name'
+            wrapper.setDirty({change: 'name'})
+            wrapper.name = 'gate-model.glb'
+            wrapper.setDirty({change: 'name'})
+        })
+        await expect(page.getByTestId('save-scene')).toBeEnabled()
+        await page.getByTestId('save-scene').click()
+        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+        await expectReferenceOnlyScene()
 
         await page.getByTestId('open-game').click()
         await expect(page.getByText('Available', {exact: true})).toBeVisible()

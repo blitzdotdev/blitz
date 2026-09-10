@@ -75,7 +75,7 @@ export class RuntimeNestedAssetLoader {
             if (!(child.userData.sProperties as string[]).length) {
                 child.userData.sProperties = [...defaultObjectOverrides]
             }
-            child._sChildren = [...child.children]
+            child._sChildren ||= []
             const load = this.loadReference(child)
             child._loadingPromise = load
             loads.push(load)
@@ -163,7 +163,11 @@ export class RuntimeNestedAssetLoader {
             }
         }
 
-        for (const child of source.children) target.add(cloneObject(child))
+        for (const child of source.children) {
+            const clone = cloneObject(child)
+            clone.userData.excludeFromExport = true
+            target.add(clone)
+        }
 
         const overrideProperties = target.userData.sProperties as string[]
         const name = target.name
