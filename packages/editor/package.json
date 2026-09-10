@@ -19,8 +19,11 @@
   "dependencies": {
     "@blueprintjs/core": "^5.19.1",
     "@blitzdev/engine": "0.12.0",
+    "classnames": "2.5.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-resizable-panels": "^3.0.6",
+    "uiconfig-blueprint": "0.1.0-dev.14"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
