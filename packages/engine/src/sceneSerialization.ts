@@ -67,6 +67,7 @@ export async function serializeSceneGltfDocument(
         throw new Error('The scene is not a JSON glTF document')
     }
     const document = cloneJson(input) as GltfDocument
+    removeVolatileViewerIds(document)
     const scenePath = normalizeProjectPath(options.scenePath || 'assets/main.scene.gltf')
     const sceneDirectory = directoryName(scenePath)
     const files: SerializedSceneFile[] = []
@@ -80,6 +81,42 @@ export async function serializeSceneGltfDocument(
         gltf: encoder.encode(`${JSON.stringify(sorted, null, 2)}\n`),
         files: files.sort((left, right) => left.path.localeCompare(right.path)),
     }
+}
+
+function removeVolatileViewerIds(value: unknown): void {
+    if (Array.isArray(value)) {
+        value.forEach(removeVolatileViewerIds)
+        return
+    }
+    if (!isRecord(value)) return
+    if (value.rootSceneModelRoot === true) delete value.gltfUUID
+    if (isRecord(value.WEBGI_viewer)) {
+        canonicalizeViewerConfig(value.WEBGI_viewer)
+        const scene = value.WEBGI_viewer.scene
+        const camera = isRecord(scene) ? scene.defaultCamera : undefined
+        const object = isRecord(camera) ? camera.object : undefined
+        if (isRecord(object)) delete object.uuid
+    }
+    Object.values(value).forEach(removeVolatileViewerIds)
+}
+
+function canonicalizeViewerConfig(value: unknown): void {
+    if (Array.isArray(value)) {
+        value.forEach(canonicalizeViewerConfig)
+        return
+    }
+    if (!isRecord(value)) return
+    if (value.isEuler === true) {
+        if (typeof value.order !== 'string') value.order = 'XYZ'
+        if (typeof value.x !== 'number') value.x = 0
+        if (typeof value.y !== 'number') value.y = 0
+        if (typeof value.z !== 'number') value.z = 0
+    }
+    if (value.autoAspect === true) {
+        delete value.aspect
+        if (isRecord(value.object)) delete value.object.aspect
+    }
+    Object.values(value).forEach(canonicalizeViewerConfig)
 }
 
 function extractBuffers(

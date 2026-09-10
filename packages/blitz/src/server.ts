@@ -676,11 +676,12 @@ function headlessCheckHtml(): string {
     return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Blitz check</title></head>
-<body><canvas id="first" width="640" height="360"></canvas><canvas id="second" width="640" height="360"></canvas>
+<body><canvas id="stopped" width="640" height="360"></canvas><canvas id="playable" width="640" height="360"></canvas><canvas id="second" width="640" height="360"></canvas>
 <script type="module">
 import {
     authoringQualityReport,
     createGame,
+    createStoppedGame,
     persistenceReport,
     semanticSceneSnapshot,
     serializeSceneGltf,
@@ -720,29 +721,33 @@ const runFrames = (viewer, target) => new Promise((resolve, reject) => {
 
 try {
     const base = new URL('/files/', location.href).href
-    const first = await createGame({base, canvas: document.getElementById('first'), onError: error => errors.push(message(error))})
-    const before = semanticSceneSnapshot(first.viewer)
-    const editable = authoringQualityReport(first.viewer)
-    const relationshipIssues = editable.issues.filter(issue =>
+    const stopped = await createStoppedGame({base, canvas: document.getElementById('stopped'), onError: error => errors.push(message(error))})
+    const before = semanticSceneSnapshot(stopped.viewer)
+    const editable = authoringQualityReport(stopped.viewer)
+    let serialized
+    let serializationError
+    try {
+        serialized = await serializeSceneGltf(stopped.viewer, {scenePath: stopped.project.mainScene})
+    } catch (error) {
+        serializationError = message(error)
+    }
+    const stoppedCleanup = stopped.dispose()
+
+    const first = await createGame({base, canvas: document.getElementById('playable'), onError: error => errors.push(message(error))})
+    const relationshipIssues = authoringQualityReport(first.viewer).issues.filter(issue =>
         issue.code === 'MISSING_AUTHORING_SOURCE' || issue.code === 'RUNTIME_SOURCE_DRIFT')
     const frameCount = Math.max(1, Number(new URL(location.href).searchParams.get('frames')) || 30)
     await runFrames(first.viewer, frameCount)
     const projectValidation = await first.runGameValidation()
-    let serialized
-    let serializationError
-    try {
-        serialized = await serializeSceneGltf(first.viewer, {scenePath: first.project.mainScene})
-    } catch (error) {
-        serializationError = message(error)
-    }
     const cleanup = first.dispose()
+    if (!stoppedCleanup.ok) cleanup.issues.push(...stoppedCleanup.issues)
 
     let persistence
     const networkFetch = window.fetch.bind(window)
     try {
         const savedFiles = new Map()
         if (serialized) {
-            savedFiles.set(new URL(first.project.mainScene, base).href, serialized.gltf)
+            savedFiles.set(new URL(stopped.project.mainScene, base).href, serialized.gltf)
             for (const file of serialized.files) savedFiles.set(new URL(file.path, base).href, file.bytes)
             window.fetch = (input, init) => {
                 const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href).href
@@ -752,7 +757,7 @@ try {
                     : networkFetch(input, init)
             }
         }
-        const second = await createGame({base, canvas: document.getElementById('second'), onError: error => errors.push(message(error))})
+        const second = await createStoppedGame({base, canvas: document.getElementById('second'), onError: error => errors.push(message(error))})
         persistence = persistenceReport(before, semanticSceneSnapshot(second.viewer))
         const secondCleanup = second.dispose()
         if (!secondCleanup.ok) cleanup.issues.push(...secondCleanup.issues)

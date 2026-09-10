@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {checkProject} from '../src/check.ts'
-import {publishFromDisk} from '../src/commands.ts'
+import {initProject, publishFromDisk} from '../src/commands.ts'
 import {BLITZ_VERSION} from '../src/versions.ts'
 import {startMockBackend} from './mockBackend.ts'
 
@@ -15,6 +15,21 @@ afterEach(async () => {
 })
 
 describe('blitz check', () => {
+    it('passes a freshly initialized empty project with an authoring warning', async () => {
+        const root = await mkdtemp(resolve(tmpdir(), 'blitz-check-init-'))
+        cleanup.push(() => rm(root, {recursive: true, force: true}))
+        await initProject(root, {git: false})
+
+        const result = await checkProject(root)
+
+        expect(result).toMatchObject({ok: true, mode: 'headless'})
+        expect(result.outcomes).toContainEqual(expect.objectContaining({
+            name: 'Editable',
+            status: 'pass',
+            codes: ['NO_VISIBLE_AUTHORED_CONTENT'],
+        }))
+    })
+
     it('falls back to headless checks when a live older server returns 404', async () => {
         const root = await project({}, [{name: 'Triangle', mesh: 0}])
         const olderServer = createServer((request, response) => {
@@ -98,6 +113,70 @@ export default ({engine}) => new engine.Mesh(new engine.BoxGeometry(1, 1, 1), ne
         expect(JSON.parse(await readFile(resolve(root, '.blitz/check.json'), 'utf8'))).toMatchObject({ok: true})
         expect(await readFile(resolve(root, '.blitz/console.log'), 'utf8'))
             .toContain('[blitz check] Playable=pass Editable=pass Persisted=pass')
+    })
+
+    it('resolves exact dependency keys and reports normalized project module paths', async () => {
+        const root = await project({
+            scripts: ['scripts/Local.script.js', {import: 'declared-script', active: false}],
+            plugins: ['plugins/Local.plugin.js'],
+        }, [{
+            name: 'Player',
+            mesh: 0,
+            extras: {EntityComponentPlugin: {
+                local: {type: 'LocalComponent', state: {}},
+            }},
+        }])
+        const packagePath = resolve(root, 'package.json')
+        const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as Record<string, unknown>
+        packageJson.dependencies = {'declared-script': '1.0.0'}
+        await writeFile(packagePath, JSON.stringify(packageJson))
+        await mkdir(resolve(root, 'node_modules/declared-script'), {recursive: true})
+        await writeFile(resolve(root, 'node_modules/declared-script/package.json'), JSON.stringify({
+            name: 'declared-script', version: '1.0.0', type: 'module', main: './index.js',
+        }))
+        await writeFile(resolve(root, 'node_modules/declared-script/index.js'), 'export const dependencyLoaded = true\n')
+        await mkdir(resolve(root, 'scripts'), {recursive: true})
+        await writeFile(resolve(root, 'scripts/Local.script.js'), `
+import {Object3DComponent} from 'threepipe'
+export class Local extends Object3DComponent { static ComponentType = 'LocalComponent' }
+`)
+        await mkdir(resolve(root, 'plugins'), {recursive: true})
+        await writeFile(resolve(root, 'plugins/Local.plugin.js'), `
+import {AViewerPluginSync} from 'threepipe'
+export default class LocalPlugin extends AViewerPluginSync { static PluginType = 'LocalPlugin' }
+`)
+
+        const result = await checkProject(root)
+
+        expect(result.ok, JSON.stringify(result, null, 2)).toBe(true)
+        expect(result.rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({kind: 'script', path: 'scripts/Local.script.js', status: 'pass'}),
+            expect.objectContaining({kind: 'script', path: 'declared-script', status: 'pass'}),
+            expect.objectContaining({kind: 'plugin', path: 'plugins/Local.plugin.js', status: 'pass'}),
+        ]))
+    })
+
+    it('measures Editable before components hide their authored preview in start', async () => {
+        const root = await project({scripts: ['scripts/HidePreview.script.js']}, [{
+            name: 'Preview',
+            mesh: 0,
+            extras: {EntityComponentPlugin: {
+                preview: {type: 'HidePreview', state: {}},
+            }},
+        }])
+        await mkdir(resolve(root, 'scripts'), {recursive: true})
+        await writeFile(resolve(root, 'scripts/HidePreview.script.js'), `
+import {Object3DComponent} from 'threepipe'
+export class HidePreview extends Object3DComponent {
+    static ComponentType = 'HidePreview'
+    start() { this.object.visible = false }
+}
+`)
+
+        const result = await checkProject(root)
+
+        expect(result.ok, JSON.stringify(result, null, 2)).toBe(true)
+        expect(result.outcomes).toContainEqual(expect.objectContaining({name: 'Editable', status: 'pass'}))
     })
 
     it('records all path, import, and registration failures and blocks publish unless skipped', async () => {

@@ -1,9 +1,13 @@
 import {execFile} from 'node:child_process'
 import {createRequire} from 'node:module'
 import {appendFile, mkdir, readFile, stat, writeFile} from 'node:fs/promises'
-import {resolve, sep} from 'node:path'
+import {relative, resolve, sep} from 'node:path'
 import {promisify} from 'node:util'
-import {parsePackageJSON, parsePackageJsonSettingsConfig} from '@blitzdev/engine/projectFormat'
+import {
+    isDependencyModuleSpecifier,
+    parsePackageJSON,
+    parsePackageJsonSettingsConfig,
+} from '@blitzdev/engine/projectFormat'
 import {createDevServer} from './server.ts'
 
 export interface CheckRow {
@@ -72,14 +76,15 @@ export async function checkProject(projectRoot = process.cwd()): Promise<CheckRe
 
         for (const definition of config.scripts) {
             try {
-                const path = await resolveModule(root, definition.import, false)
+                const isDependency = isDependencyModuleSpecifier(definition.import, packageJson)
+                const path = await resolveModule(root, definition.import, isDependency)
                 const componentTypes = await inspectScriptModule(root, path)
                 if (definition.active !== false) {
                     for (const type of componentTypes) registeredTypes.add(type)
                 }
                 rows.push({
                     kind: 'script',
-                    path: definition.import,
+                    path: resolvedModulePath(root, definition.import, path, isDependency),
                     status: 'pass',
                     detail: componentTypes.length ? componentTypes.join(', ') : 'no component types',
                 })
@@ -90,11 +95,14 @@ export async function checkProject(projectRoot = process.cwd()): Promise<CheckRe
 
         for (const definition of config.plugins) {
             try {
-                const isDependency = config.dependencies.some(({key}) =>
-                    definition.import === key || definition.import.startsWith(`${key}/`)
-                )
-                await resolveModule(root, definition.import, isDependency)
-                rows.push({kind: 'plugin', path: definition.import, status: 'pass', detail: 'resolved'})
+                const isDependency = isDependencyModuleSpecifier(definition.import, packageJson)
+                const path = await resolveModule(root, definition.import, isDependency)
+                rows.push({
+                    kind: 'plugin',
+                    path: resolvedModulePath(root, definition.import, path, isDependency),
+                    status: 'pass',
+                    detail: 'resolved',
+                })
             } catch (error) {
                 rows.push({kind: 'plugin', path: definition.import, status: 'fail', detail: errorMessage(error)})
             }
@@ -181,7 +189,7 @@ export function formatCheckTable(result: CheckResult): string {
     const widths = headings.map((heading, index) => Math.max(heading.length, ...values.map((row) => row[index].length)))
     const line = (cells: string[]) => cells.map((cell, index) => cell.padEnd(widths[index])).join('  ').trimEnd()
     const outcomeLines = result.outcomes.map((outcome) => {
-        const detail = outcome.codes.length ? `${outcome.codes.join(', ')} — ${outcome.summary}` : outcome.summary
+        const detail = outcome.codes.length ? `${outcome.codes.join(', ')}: ${outcome.summary}` : outcome.summary
         return `${outcome.name.padEnd(9)}  ${outcome.status.toUpperCase().padEnd(7)}  ${detail}`
     })
     return [
@@ -375,6 +383,10 @@ async function resolveModule(root: string, specifier: string, allowPackage: bool
     const metadata = await stat(path)
     if (!metadata.isFile()) throw new Error('path is not a file')
     return path
+}
+
+function resolvedModulePath(root: string, specifier: string, path: string, isDependency: boolean): string {
+    return isDependency ? specifier : relative(root, path).replaceAll('\\', '/')
 }
 
 function localProjectPath(root: string, path: string): string {

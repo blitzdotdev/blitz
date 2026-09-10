@@ -26,6 +26,7 @@ test('registers project component types before loading the scene that uses them'
             mainRan: Boolean((window as any).__startupOrderMainRan),
             registeredBeforePlugin: Boolean((window as any).__componentRegisteredBeforePlugin),
             registeredBeforeScriptPlugin: Boolean((window as any).__componentRegisteredBeforeScriptPlugin),
+            dependencyScriptLoaded: Boolean((window as any).__dependencyScriptLoaded),
         }
     })
 
@@ -35,6 +36,7 @@ test('registers project component types before loading the scene that uses them'
         mainRan: true,
         registeredBeforePlugin: true,
         registeredBeforeScriptPlugin: true,
+        dependencyScriptLoaded: true,
     })
     expect(unknownComponentWarnings).toEqual([])
     expect(await page.evaluate(() => (window as any).__startupOrderGame.dispose())).toMatchObject({ok: true})

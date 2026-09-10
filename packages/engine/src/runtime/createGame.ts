@@ -32,6 +32,7 @@ import {
     assetUrlPrefix,
     AssetsJSONManifest,
     ExternalPlugin,
+    isDependencyModuleSpecifier,
     parseAssetsJSONManifest,
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
@@ -68,13 +69,22 @@ export interface CreatedGame {
 type ModuleExports = Record<string, unknown>
 type RuntimeErrorHandler = (error: unknown) => void
 
-export async function createGame({
+export function createGame(options: CreateGameOptions): Promise<CreatedGame> {
+    return createProjectGame(options, true)
+}
+
+/** Load the saved project and generator previews without starting components, physics, the timeline, or main.js. */
+export function createStoppedGame(options: CreateGameOptions): Promise<CreatedGame> {
+    return createProjectGame(options, false)
+}
+
+async function createProjectGame({
     base,
     canvas,
     onError,
     fileRevisions = {},
     moduleRevision,
-}: CreateGameOptions): Promise<CreatedGame> {
+}: CreateGameOptions, start: boolean): Promise<CreatedGame> {
     const reportError = createErrorReporter(onError)
     let viewer: ThreeViewer | undefined
     let nestedAssets: RuntimeNestedAssetLoader | undefined
@@ -138,8 +148,8 @@ export async function createGame({
 
         nestedAssets = new RuntimeNestedAssetLoader(viewer, reportError)
 
-        await registerProjectScripts(viewer, config, baseUrl, fileRevisions, moduleRevision)
-        await registerProjectPlugins(viewer, config, baseUrl, fileRevisions, moduleRevision)
+        await registerProjectScripts(viewer, project, baseUrl, fileRevisions, moduleRevision)
+        await registerProjectPlugins(viewer, project, baseUrl, fileRevisions, moduleRevision)
 
         const sceneUrl = new URL(project.mainScene, baseUrl).href
         const loadedScene = await viewer.load(sceneUrl, {importAsModelRoot: true})
@@ -150,18 +160,20 @@ export async function createGame({
         await nestedAssets.waitForPending()
         await GeneratorComponent.waitForViewer(viewer)
 
-        viewer.timeline.reset()
-        viewer.timeline.start()
-        entityComponents.start()
-        physics.running = true
+        if (start) {
+            viewer.timeline.reset()
+            viewer.timeline.start()
+            entityComponents.start()
+            physics.running = true
 
-        const mainUrl = versionedProjectUrl('main.js', baseUrl, fileRevisions, moduleRevision)
-        const mainModule = await importModule(mainUrl.href)
-        if (mainModule.main !== undefined) {
-            if (typeof mainModule.main !== 'function') {
-                throw new Error('main.js export "main" must be a function')
+            const mainUrl = versionedProjectUrl('main.js', baseUrl, fileRevisions, moduleRevision)
+            const mainModule = await importModule(mainUrl.href)
+            if (mainModule.main !== undefined) {
+                if (typeof mainModule.main !== 'function') {
+                    throw new Error('main.js export "main" must be a function')
+                }
+                await mainModule.main({viewer})
             }
-            await mainModule.main({viewer})
         }
 
         const readyViewer = viewer
@@ -199,14 +211,15 @@ export async function createGame({
 
 async function registerProjectPlugins(
     viewer: ThreeViewer,
-    config: ProjectConfigSettings,
+    project: RuntimeProject,
     base: URL,
     fileRevisions: Readonly<Record<string, string>>,
     moduleRevision?: string,
 ) {
+    const {config, packageJson} = project
     for (const definition of config.plugins) {
         if (definition.active === false) continue
-        const specifier = resolvePluginSpecifier(definition, config, base, fileRevisions, moduleRevision)
+        const specifier = resolvePluginSpecifier(definition, packageJson, base, fileRevisions, moduleRevision)
         const module = await importModule(specifier)
         const plugin = findPluginExport(module, definition)
         if (viewer.getPlugin(plugin)) continue
@@ -216,16 +229,19 @@ async function registerProjectPlugins(
 
 async function registerProjectScripts(
     viewer: ThreeViewer,
-    config: ProjectConfigSettings,
+    project: RuntimeProject,
     base: URL,
     fileRevisions: Readonly<Record<string, string>>,
     moduleRevision?: string,
 ) {
+    const {config, packageJson} = project
     const modules: ModuleExports[] = []
     for (const definition of config.scripts) {
         if (definition.active === false) continue
-        const scriptUrl = versionedProjectUrl(definition.import, base, fileRevisions, moduleRevision)
-        modules.push(await importModule(scriptUrl.href))
+        const specifier = isDependencyModuleSpecifier(definition.import, packageJson)
+            ? definition.import
+            : versionedProjectUrl(definition.import, base, fileRevisions, moduleRevision).href
+        modules.push(await importModule(specifier))
     }
     await registerScripts(viewer, modules)
 }
@@ -248,14 +264,12 @@ function createURLModifier(base: URL, assets: AssetsJSONManifest) {
 
 function resolvePluginSpecifier(
     definition: ExternalPlugin,
-    config: ProjectConfigSettings,
+    packageJson: ProjectPackageJSON,
     base: URL,
     fileRevisions: Readonly<Record<string, string>>,
     moduleRevision?: string,
 ) {
-    const isDependency = config.dependencies.some(({key}) =>
-        definition.import === key || definition.import.startsWith(`${key}/`)
-    )
+    const isDependency = isDependencyModuleSpecifier(definition.import, packageJson)
     if (isDependency) return definition.import
     return versionedProjectUrl(definition.import, base, fileRevisions, moduleRevision).href
 }
