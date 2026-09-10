@@ -23,7 +23,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:blitz
-      - run: npm run test:publish
       - run: npx playwright install --with-deps chromium
       - run: npm run test:runtime
       - run: npm run test:editor

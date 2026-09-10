@@ -42,7 +42,7 @@
     "release:minor": "node scripts/set-version.mjs minor && npm run release",
     "release:major": "node scripts/set-version.mjs major && npm run release",
     "release:register": "node scripts/register-runtime.mjs",
-    "deploy:editor": "npm run build && npm run deploy -w packages/editor",
+    "deploy:editor": "npm run build && npm run deploy -w packages/editor && npm run release:register",
     "dev:editor": "npm run dev -w packages/editor"
   }
 }

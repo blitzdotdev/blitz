@@ -14,9 +14,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "test": "playwright test",
-    "deploy": "wrangler deploy && node ./scripts/register-runtime.mjs",
-    "deploy:r2-legacy": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist blitz-threepipe-v0/ && git tag v$npm_package_version",
-    "deploy-tp": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/ && git tag v$npm_package_version"
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@blueprintjs/core": "^5.19.1",
@@ -33,11 +31,9 @@
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",
     "@vitejs/plugin-react": "^4.2.1",
-    "dotenv": "^16.4.5",
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
-    "rclone.js": "^0.6.6",
     "sass": "^1.69.5",
     "typescript": "^5.7.2",
     "vite": "^6.3.5"

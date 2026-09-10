@@ -70,10 +70,9 @@ export async function setVersion({
     repositoryDirectory,
     requestedVersion,
     allowDirty = false,
-    runCommand = run,
 }) {
     if (!allowDirty) {
-        const status = runCommand('git', ['status', '--porcelain'], {cwd: repositoryDirectory}).trim()
+        const status = run('git', ['status', '--porcelain'], {cwd: repositoryDirectory}).trim()
         if (status) throw new Error('Refusing to set the version on a dirty git tree. Commit or stash changes, or pass --allow-dirty.')
     }
 
@@ -88,7 +87,7 @@ export async function setVersion({
 
     try {
         await rewriteManifests(repositoryDirectory, newVersion)
-        runCommand('npm', [
+        run('npm', [
             'install',
             '--package-lock-only',
             '--ignore-scripts',

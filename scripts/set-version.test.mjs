@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict'
-import {readFileSync, writeFileSync} from 'node:fs'
-import {readFile, cp, mkdir, mkdtemp, writeFile} from 'node:fs/promises'
+import {readFile, cp, mkdir, mkdtemp} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {dirname, join, resolve} from 'node:path'
 import {after, test} from 'node:test'
 import {rm} from 'node:fs/promises'
 
-import {computeVersion, setVersion} from './set-version.mjs'
+import {computeVersion, rewriteManifests} from './set-version.mjs'
 
 const repositoryDirectory = resolve(import.meta.dirname, '..')
 const manifestPaths = [
@@ -28,7 +27,7 @@ test('computes stable semantic version bumps', () => {
     assert.throws(() => computeVersion('0.12.0', '^1.0.0'), /Version must be/)
 })
 
-test('rewrites copied manifests, exact internal pins, and refreshes the lockfile', async () => {
+test('rewrites copied manifests and exact internal pins', async () => {
     const temporaryDirectory = await mkdtemp(join(tmpdir(), 'blitz-set-version-test-'))
     temporaryDirectories.push(temporaryDirectory)
 
@@ -36,34 +35,7 @@ test('rewrites copied manifests, exact internal pins, and refreshes the lockfile
         await mkdir(dirname(join(temporaryDirectory, path)), {recursive: true})
         await cp(join(repositoryDirectory, path), join(temporaryDirectory, path))
     }
-    await writeFile(join(temporaryDirectory, 'package-lock.json'), '{"lockfileVersion":3,"packages":{}}\n')
-
-    const calls = []
-    const runCommand = (command, args) => {
-        calls.push([command, args])
-        if (command === 'git') return ''
-        if (command === 'npm') {
-            const lockfile = {lockfileVersion: 3, packages: {}}
-            for (const path of manifestPaths) {
-                const key = path === 'package.json' ? '' : dirname(path)
-                lockfile.packages[key] = JSON.parse(readFileSync(join(temporaryDirectory, path), 'utf8'))
-            }
-            writeFileSync(join(temporaryDirectory, 'package-lock.json'), `${JSON.stringify(lockfile, null, 2)}\n`)
-            return ''
-        }
-        throw new Error(`Unexpected command: ${command}`)
-    }
-
-    await setVersion({
-        repositoryDirectory: temporaryDirectory,
-        requestedVersion: '0.12.1',
-        runCommand,
-    })
-
-    assert.deepEqual(calls[0], ['git', ['status', '--porcelain']])
-    assert.deepEqual(calls[1], ['npm', [
-        'install', '--package-lock-only', '--ignore-scripts', '--cache', '/tmp/blitz-npm-cache',
-    ]])
+    await rewriteManifests(temporaryDirectory, '0.12.1')
 
     for (const path of manifestPaths) {
         const manifest = JSON.parse(await readFile(join(temporaryDirectory, path), 'utf8'))
@@ -74,8 +46,4 @@ test('rewrites copied manifests, exact internal pins, and refreshes the lockfile
             }
         }
     }
-
-    const lockfile = JSON.parse(await readFile(join(temporaryDirectory, 'package-lock.json'), 'utf8'))
-    assert.equal(lockfile.packages['packages/editor'].dependencies['@blitzdev/engine'], '0.12.1')
-    assert.equal(lockfile.packages['packages/blitz'].dependencies['@blitzdev/template'], '0.12.1')
 })

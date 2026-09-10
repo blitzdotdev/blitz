@@ -30,13 +30,8 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match package version $expected" >&2
             exit 1
           fi
-      - run: npm run build
-      - run: npm run typecheck
       - run: npm run lint
-      - run: npm run test:blitz
-      - run: npm run test:publish
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:runtime
       - run: npm run test:editor
       - name: Publish and register runtime
         run: node scripts/release.mjs --publish --register

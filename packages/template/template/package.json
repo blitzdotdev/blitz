@@ -13,9 +13,6 @@
     "@blitzdev/blitz": "__BLITZ_VERSION__"
   },
   "blitz": {
-    "version": "__BLITZ_VERSION__",
-    "plugins": [],
-    "scripts": [],
-    "viewer": {}
+    "version": "__BLITZ_VERSION__"
   }
 }

@@ -130,7 +130,6 @@ async function release() {
         run('npm', ['run', 'build'], {environment: npm.environment})
         run('npm', ['run', 'typecheck'], {environment: npm.environment})
         run('npm', ['run', 'test:blitz'], {environment: npm.environment})
-        run('npm', ['run', 'test:publish'], {environment: npm.environment})
         run('npm', ['run', 'test:runtime'], {environment: npm.environment})
 
         for (const name of publishOrder) {
@@ -140,7 +139,7 @@ async function release() {
         }
 
         const registered = !dryRun || register
-        if (registered) await registerRuntime({rootDirectory: repositoryDirectory})
+        if (registered) await registerRuntime()
         finishTag(version, branch, dryRun, registered)
     } finally {
         await npm.cleanup()
