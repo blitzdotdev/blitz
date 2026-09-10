@@ -19,7 +19,7 @@ Setup, on this machine:
 4. Read AGENTS.md in the project. It is the guide. The engine and editor source are in node_modules, grep them when unsure.
 5. Start the editor: npx blitz dev --no-open, and tell me the URL it prints. Keep it running.
 6. Build the game in this folder: scripts, assets, package.json. The editor reloads scripts when you save them.
-7. When it plays, publish it: npx blitz publish. Tell me the live URL.
+7. When it plays, run npx blitz check and fix every failure. Then publish it with npx blitz publish. Tell me the live URL.
 Never print the deploy token or claim secret from .blitz/deploys.json.
 ```
 
@@ -28,4 +28,5 @@ What to expect today:
 - The editor URL opens in your browser and shows the project. Script saves by the agent hot-reload. The scene is a text glTF at `assets/main.scene.gltf`; the agent can edit it with scripts, and C2a is making that file deterministic with external buffers.
 - The live URL is `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/`, valid for 12 hours unless claimed. Claiming from the editor arrives with C2b; until then the agent can claim through the API in `docs/publish-api.md`.
 - You can open the project in the editor while the agent works, edit, and save. The agent's next `npx blitz publish` includes your edits, because both work on the same folder.
+- `npx blitz check` is the required step immediately before publish. It resolves configured scripts, plugins, and generators, imports scripts in Node, verifies component types in the main scene, and records the result in `.blitz/check.json`. Publish repeats the check unless `--no-check` is explicitly supplied.
 - Known gaps: no publish dialog in the editor yet, `blitz publish --help` and `--slug` land with C2b, and the store at `https://blitz-backend.blitzapp.workers.dev/` lists claimed games only.

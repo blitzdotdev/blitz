@@ -27,13 +27,21 @@ node_modules/threepipe/src            engine core, glTF, plugins
 node_modules/uiconfig-blueprint/src   editor UI kit
 ```
 
-The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Read `.blitz/state.json` and `.blitz/console.log` for the editor and runtime feedback loop. Keep secrets from `.blitz/deploys.json` private.
+The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Keep secrets from `.blitz/deploys.json` and `.blitz/dev.json` private.
+
+# Local feedback and health
+
+Read `.blitz/state.json` and `.blitz/console.log` for the editor and runtime feedback loop. While Play is active, the editor refreshes `state.json.updatedAt` every 5 seconds and writes its `clientId`. Treat a timestamp more than 15 seconds old as stale. A `pagehide` writes `playState: "stopped"`.
+
+The editor creates `.blitz/console.log` with a header when Play starts. It records `console.warn`, `console.error`, uncaught window errors, and unhandled promise rejections during Play. It deliberately does not record `console.log`; use the browser console for that level. Log forwarding is rate-limited.
+
+Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Blitz-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `blitz dev`. Keep that token out of logs and reports.
 
 # The scene file
 
 `package.json` names the scene in `mainScene`. The default is `assets/main.scene.gltf`. This text glTF file is the scene source of truth. Edit it with a script. Never edit it by hand.
 
-The editor writes stable, pretty JSON. Buffer bytes go in a sibling `.bin` file. Embedded images go in `assets/textures/`. Existing project image paths stay unchanged. Keep node and material names stable. Use names or `extras.gltfUUID` to find objects.
+The editor writes stable, pretty JSON. Buffer bytes go in a sibling `.bin` file. Embedded images go in `assets/textures/`. Existing project image paths stay unchanged. Keep node and material names stable. Use names or `extras.gltfUUID` to find objects. Keep each node's `extras.gltfUUID` and every key inside `extras.EntityComponentPlugin` stable; those are persistent scene and component ids, not reload counters.
 
 Use glTF Transform from JavaScript when possible:
 
@@ -88,7 +96,7 @@ Components live in node extras. The shape is:
 }
 ```
 
-Preserve every extras field you do not own. Preserve unknown glTF extensions too. Open the editor after a scripted edit. Read `.blitz/console.log` for parse and load errors.
+Preserve every extras field you do not own. Preserve unknown glTF extensions too. You may wire a component without the editor UI by writing its `{type, state}` entry under `extras.EntityComponentPlugin`, but its module must also be listed under `blitz.scripts`. Open the editor after a scripted edit. Read `.blitz/console.log` for parse and load errors.
 
 # Procedural content
 
@@ -185,19 +193,19 @@ class PlayerController extends Object3DComponent {
 class ScoreManagerPlugin extends AViewerPluginSync {
   static PluginType = 'ScoreManagerPlugin'
   score = 0
-  
+
   onAdded(viewer) {
     super.onAdded(viewer)
     viewer.addEventListener('preFrame', this._onSomeEvent)
     // Initialize when plugin is added to viewer
   }
-  
+
   onRemove(viewer) {
     viewer.removeEventListener('preFrame', this._onSomeEvent)
     // Cleanup when plugin is removed
     super.onRemove(viewer)
   }
-  
+
   addScore(points) { this.score += points }
   getScore() { return this.score }
 }
@@ -246,7 +254,7 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
     ```js
     class PlayerComponent extends Object3DComponent {
       speed = 5           // number
-      jumpHeight = 2.5    // number  
+      jumpHeight = 2.5    // number
       isGrounded = true   // boolean
       static StateProperties = ['speed', 'jumpHeight', 'isGrounded']
     }
@@ -275,7 +283,7 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
 # Common Game Development Patterns
 
 ## Input Handling
-- Pointer lock requires a focused browser window, so focus the game window before clicking to capture FPS input.
+- Pointer lock requires a focused browser window, so focus the game window before clicking to capture FPS input. Headless browsers normally refuse pointer lock. Keep a cursor-aim fallback for automated FPS testing; do not describe this as the editor refusing pointer lock.
 - For keyboard input, add event listeners in `start()` and remove in `stop()`:
   ```js
   start() {
@@ -291,6 +299,11 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
 - Clone objects: `const clone = original.clone()` then add to scene: `obj.parent.add(clone)`, or `viewer.scene.add(clone)`
 - For prefabs, load a glb file and clone it: `const prefab = await viewer.load('enemy.glb'); const instance = prefab.clone()`
 - Remove objects: `obj.parent.remove(obj)`, or `obj.removeFromParent()`, or remove and dispose(from gpu) of all sub-assets: `obj.dispose && obj.dispose(true)`
+- `dispose(true)` already recursively disposes children. Call it once on the root being removed; never call `dispose(true)` from inside that root's `traverse()` callback because disposal mutates the hierarchy during traversal.
+
+## HUD placement
+
+The editor canvas occupies only the viewport pane, not the full page. For a DOM HUD over the game, use `position: fixed` and copy `viewer.canvas.getBoundingClientRect()` into the HUD's `left`, `top`, `width`, and `height` whenever the canvas moves or resizes. A plain `inset: 0` overlay can cover editor panels.
 
 ## Asset Loading
 - Load assets in `start()`: `const model = await this.ctx.viewer.load('path/to/model.glb')`. Load them in `init` if also needed in edit mode.
@@ -320,7 +333,7 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
 - Use `setDirty()` on objects only when transforms actually change
 
 ## Debugging
-- Use `console.log` for debugging, visible in browser dev tools
+- Use `console.log` for verbose debugging in browser dev tools. Use `console.warn` or `console.error` when the message must also reach `.blitz/console.log` during Play.
 - Access any object by name: `viewer.scene.getObjectByName('PlayerMesh')`
 - Pause the game to inspect state: use the editor's pause button
 - In some cases, it might be better to show logs as HTML text over `this.ctx.viewer.canvas` instead of printing several logs in the console every frame, for the human developer to better see what's happening.
@@ -363,6 +376,20 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
 
 The `ThreeViewer` is the main class in threepipe to manage a scene, render, and add plugins.
 - Docs: https://threepipe.org/guide/viewer-api.html
+
+## Project viewer settings and materials
+
+`package.json` passes `blitz.viewer` into `ThreeViewer`. Supported JSON settings are `msaa`, `rgbm`, `zPrepass`, `renderScale`, `maxRenderScale`, `backgroundColor`, `modelRootScale`, `stencil`, `debug`, `tonemap`, `camera`, `maxHDRIntensity`, and `powerPreference`. For example: `{"blitz":{"viewer":{"msaa":true,"tonemap":false}}}`.
+
+Tonemapping is on by default. A new project has no environment map, so `PhysicalMaterial` can look very dark without image-based lighting even when scene lights exist. Use `UnlitMaterial` for flat colours. For lit procedural meshes, use `Mesh2` with `PhysicalMaterial`; `MeshStandardMaterial2` and `MeshBasicMaterial2` are deprecated and log errors. Add image-based lighting after the scene starts in `main.js`:
+
+```js
+export async function main({viewer}) {
+  await viewer.setEnvironmentMap('/blitz/assets/studio.hdr')
+}
+```
+
+`main({viewer})` runs after the scene and nested assets load, generators finish, and the timeline, components, and physics start. It is the right place for runtime setup that depends on the complete scene.
 
 ## Core Properties
 - `viewer.scene` - RootScene: Main scene for rendering (extends three.js Scene)
@@ -440,7 +467,7 @@ class ExampleComponent extends Object3DComponent {
     this._timerId = setInterval(() => { /* do something */ }, 1000)
 
     // Spawn objects
-    const obj = new Mesh(...)
+    const obj = new Mesh2(...)
     this._spawnedObjects.push(obj)
     this.ctx.viewer.scene.add(obj)
   }
@@ -479,7 +506,7 @@ class ExampleComponent extends Object3DComponent {
 class MoveInCircleComponent extends Object3DComponent {
   static StateProperties = ['running', 'radius', 'timeScale']
   static ComponentType = 'MoveInCircleComponent'
-  
+
   running = true
   radius = 2
   timeScale = 0.1
@@ -813,7 +840,7 @@ class EnemySystemComponent extends Object3DComponent {
     // Cleanup: remove container and all enemies when stopping
     if (this._enemyContainer) {
       this._enemyContainer.removeFromParent()
-      this._enemyContainer.traverse(c => c.dispose?.(true))
+      this._enemyContainer.dispose?.(true)
       this._enemyContainer = null
     }
   }
@@ -900,11 +927,13 @@ class EnemySystemComponent extends Object3DComponent {
 
 # Publishing
 
-Run `npx blitz pull` before every update and resolve any local and remote difference. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx blitz pull --force` overwrites them. Create a game with `npx blitz publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `blitz.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@blitzdev/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.blitz/deploys.json`, and prints the live URL. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
+Run `npx blitz pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx blitz pull --force` overwrites them. Then run `npx blitz check`. It imports configured scripts in Node, resolves plugins and Generator modules, verifies scene component types, prints a table, and writes `.blitz/check.json`; any failure exits 1. `blitz publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
 
-Publishing omits `package-lock.json`, `.env`, `.env.*`, `*.log`, and `.eslintrc*` by default. Add project-specific glob patterns under `blitz.publish.exclude` in `package.json`, for example `{"blitz":{"publish":{"exclude":["tools/**","AGENTS.md"]}}}`.
+Create a game with `npx blitz publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `blitz.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@blitzdev/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.blitz/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
 
-Run `npx blitz status` to print local deploy metadata and expiry without secrets. Run `npx blitz claim --email player@example.com --password "at-least-8-characters"` to register and claim every unclaimed local deploy. Add `--login` to use an existing account. Unknown flags fail with a nonzero exit code.
+Publishing omits `package-lock.json`, `.env`, `.env.*`, `*.log`, `.eslintrc*`, `AGENTS.md`, `samples/**`, `tools/**`, and root Markdown files other than `README.md` by default. It publishes a sanitized `package.json` without `devDependencies` or `file:` dependency specs. Add other project-specific glob patterns under `blitz.publish.exclude` in `package.json`.
+
+Run `npx blitz status` to print the live local dev server and deploy metadata without tokens or secrets. Run `npx blitz claim --email player@example.com --password "at-least-8-characters"` to register and claim every unclaimed local deploy. Add `--login` to use an existing account. Unknown flags fail with a nonzero exit code.
 
 # Limits
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import {execFileSync} from 'node:child_process'
-import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
+import {copyFile, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {dirname, join, resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
@@ -121,6 +121,10 @@ function finishTag(version, branch, dryRun, registered) {
 
 async function release() {
     const {dryRun, register} = parseArguments(process.argv.slice(2))
+    await copyFile(
+        resolve(repositoryDirectory, 'packages/template/template/AGENTS.md'),
+        resolve(repositoryDirectory, 'docs/agents.md'),
+    )
     const version = await validateLockstepVersion()
     const branch = verifyGitState(version)
     const npm = await createNpmEnvironment()

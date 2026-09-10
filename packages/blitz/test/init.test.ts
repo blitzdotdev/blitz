@@ -38,6 +38,7 @@ describe('initProject', () => {
         const instructions = await readFile(resolve(target, 'AGENTS.md'), 'utf8')
         expect(instructions).toContain('Pointer lock requires a focused browser window')
         expect(instructions).toContain('node_modules/@blitzdev/engine/dist/runtime.js')
+        expect(await readFile(resolve('../../docs/agents.md'))).toEqual(await readFile(resolve(templateRoot, 'AGENTS.md')))
     })
 })
 
