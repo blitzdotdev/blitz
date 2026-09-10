@@ -1,26 +1,36 @@
-# Testing Blitz with another agent, before npm publish
+# Testing Blitz with another agent
 
-The packages are not on npm yet. Another agent on this machine installs them from local tarballs. Rebuild the tarballs after each merge to `main`:
+The packages are on npm. Paste this to the other agent, with your own game idea in the first line:
+
+```
+Build me an FPS shooting practice game with Blitz.
+
+Setup:
+1. mkdir -p ~/blitz-games && cd ~/blitz-games
+2. npx @blitzdev/blitz init fps-practice && cd fps-practice && npm install
+3. Read AGENTS.md in the project. It is the guide. The engine and editor source are in node_modules, grep them when unsure.
+4. Start the editor: npx blitz dev --no-open, and tell me the URL it prints. Keep it running.
+5. Build the game in this folder: scripts, assets, package.json. The editor reloads scripts when you save them.
+6. When it plays, run npx blitz check and fix every failure. Then publish it with npx blitz publish. Tell me the live URL.
+Never print the deploy token or claim secret from .blitz/deploys.json.
+```
+
+Outside a project, `npx blitz` runs Blitz.js, an unrelated package with the same bare name. Use `npx @blitzdev/blitz` for init. Inside a project, `npx blitz` runs the local Blitz command.
+
+## Testing unreleased changes from this machine
+
+To test a build of `main` that is not published yet, pack the four packages into local tarballs after each merge:
 
 ```sh
 npm run build && rm -rf /Users/minjunes/blitz-packs && mkdir -p /Users/minjunes/blitz-packs && for p in engine editor blitz template; do npm pack --silent --pack-destination /Users/minjunes/blitz-packs ./packages/$p; done
 ```
 
-Paste this to the other agent, with your own game idea in the first line:
+Then replace step 2 of the paste block with these two lines:
 
 ```
-Build me an FPS shooting practice game with Blitz.
-
-Setup, on this machine:
-1. mkdir -p ~/blitz-games && cd ~/blitz-games
 2. node /Users/minjunes/blitz/packages/blitz/dist/cli.js init fps-practice && cd fps-practice
-3. npm install --save-dev --ignore-scripts --install-links --cache /tmp/blitz-npm-cache /Users/minjunes/blitz-packs/*.tgz
-   (the packages are not on npm yet; do not run a plain npm install; the resulting file: pins are accepted and resolved from the installed package versions)
-4. Read AGENTS.md in the project. It is the guide. The engine and editor source are in node_modules, grep them when unsure.
-5. Start the editor: npx blitz dev --no-open, and tell me the URL it prints. Keep it running.
-6. Build the game in this folder: scripts, assets, package.json. The editor reloads scripts when you save them.
-7. When it plays, run npx blitz check and fix every failure. Then publish it with npx blitz publish. Tell me the live URL.
-Never print the deploy token or claim secret from .blitz/deploys.json.
+   npm install --save-dev --ignore-scripts --install-links --cache /tmp/blitz-npm-cache /Users/minjunes/blitz-packs/*.tgz
+   (do not run a plain npm install; the file: pins resolve from the installed package versions)
 ```
 
 What to expect today:

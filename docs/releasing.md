@@ -24,6 +24,8 @@ After the version commit is clean and checked out on `main` or a release branch,
 npm run release
 ```
 
+After `npm publish` returns, the public registry can serve 404 for the new version for a minute or two while its read replicas catch up. A retry then fails with "cannot publish over the previously published versions", which confirms the publish landed. Wait, then verify with `npm view`.
+
 The `release:patch`, `release:minor`, and `release:major` aliases perform the version rewrite before invoking the release command. Because releases require a clean tree, use the explicit version/commit/release sequence above for production releases.
 
 ## Required secrets
