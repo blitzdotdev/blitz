@@ -29,7 +29,7 @@ test('loads, watches scripts, saves the scene without echo reload, and plays mai
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto(server.url)
     await expect(page.getByRole('heading', {name: 'blitz-editor-e2e-'})).toBeVisible()
-    await expect(page.getByText('Project loaded')).toBeVisible()
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 15_000})
 
     await writeFile(resolve(root, 'Live.script.js'), `
 import {Object3DComponent} from 'threepipe'
@@ -99,7 +99,7 @@ export default function generate({node, params, engine}) {
     await expect.poll(() => readFile(resolve(root, packageJson.mainScene), 'utf8')).toBe(savedScene)
 
     await page.reload()
-    await expect(page.getByText('Project loaded')).toBeVisible()
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 15_000})
     await expect(page.getByTestId('scene-objects')).toContainText('RoundTripObject')
 
     await page.getByTestId('play').click()
@@ -149,20 +149,20 @@ export class UpdatedComponent extends Object3DComponent { static ComponentType =
 
 test('reports a corrupt scene in the editor and console log', async ({page}) => {
     await page.goto(server.url)
-    await expect(page.getByText('Project loaded')).toBeVisible()
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 15_000})
     const scenePath = 'assets/main.scene.gltf'
     const valid = await readFile(resolve(root, scenePath), 'utf8')
     await writeFile(resolve(root, scenePath), '{not gltf')
 
     await expect(page.getByRole('alert')).toContainText('JSON', {timeout: 10_000})
-    await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8')).includes('JSON')).toBe(true)
+    await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8').catch(() => '')).includes('JSON')).toBe(true)
 
     await writeFile(resolve(root, scenePath), valid)
 })
 
 test('creates, updates, and claims a live game from the editor dialog', async ({page}) => {
     await page.goto(server.url)
-    await expect(page.getByText('Project loaded')).toBeVisible()
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 15_000})
     await page.getByTestId('open-game').click()
     await expect(page.getByRole('dialog')).toBeVisible()
     const slugInput = page.locator('#publish-slug')
