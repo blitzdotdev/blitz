@@ -7,6 +7,7 @@ const envMaps = [
     ['Empty Warehouse', 'https://samples.threepipe.org/minimal/empty_warehouse_01_1k.hdr', 'https://cdn.polyhaven.com/asset_img/thumbs/empty_warehouse_01.png?width=256&height=256'],
     ['Venice Sunset', 'https://samples.threepipe.org/minimal/venice_sunset_1k.hdr', 'https://cdn.polyhaven.com/asset_img/thumbs/venice_sunset.png?width=256&height=256'],
 ]
+
 export const libAssetTypes: TExternalFile[] = [{
     name: '3D Models',
     path: 'models-3d/',
@@ -33,3 +34,4 @@ export const libAssetTypes: TExternalFile[] = [{
     children: [],
 },
 ]
+

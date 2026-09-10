@@ -157,6 +157,7 @@ export const editorModesList: Record<EditorModes, EditorModesConfig & {
         features: ['post-processing', 'picking', 'damping','edit-mode']
     },
 }
+
 // export const editorModesInspectorConfig: Record<EditorModes, (v: ThreeViewer | null) => UiObjectConfig<any, 'panel'>> = {
 //     viewer: (v: ThreeViewer | null) => ({
 //         type: 'panel',
@@ -247,3 +248,4 @@ export const EditorModesButtonGroup: FC<{ editorMode: EditorModes, setEditorMode
         </div>
     )
 }
+

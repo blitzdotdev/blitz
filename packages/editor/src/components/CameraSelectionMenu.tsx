@@ -80,3 +80,4 @@ export const CameraSelectionMenu: FC<CameraSelectionMenuProps> = ({
         </Menu>
     );
 };
+

@@ -1,546 +1,515 @@
-import {useEffect, useRef, useState} from 'react'
-import {
-    Alignment,
-    Button,
-    ButtonGroup,
-    Card,
-    FormGroup,
-    InputGroup,
-    Intent,
-    Menu,
-    MenuItem,
-    Navbar,
-    Popover,
-    Slider,
-    Tag,
-    type TabId,
-} from '@blueprintjs/core'
-import {ConfigObject, ThemeSettingsMenuComponent, UiConfigRendererContext} from 'uiconfig-blueprint/lib/esm/lib'
-import {
-    CanvasSnapshotPlugin,
-    EditorViewWidgetPlugin,
-    PickingPlugin,
-    TransformControlsPlugin,
-    type IGeometry,
-    type IMaterial,
-    type IObject3D,
-    type SelectionObject,
-    type ITexture,
-} from 'threepipe'
+import React, {useContext, useEffect, useMemo, useReducer, useRef, useState} from 'react';
+import {isPackageProject} from '../utils/projectUtils.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
-import {EditModePlugin} from '../utils/EditModePlugin.ts'
-import {useManagerVersion} from '../utils/UseManager.ts'
-import {WindowPanesLayout} from './WindowPanesLayout.tsx'
-import {PlayModeButtonGroup} from './PlayModeButtonGroup.tsx'
-import {FilesPanel} from './FilesPanel.tsx'
-import {CameraSelectionMenu} from './CameraSelectionMenu.tsx'
-import {FileMetadataPanel, SourceEditorPanel} from './SourceEditorPanel.tsx'
-import {isEditableSourceFile} from '../utils/sourceFiles.ts'
-import {ExternalFilesPanel} from './ExternalFilesPanel.tsx'
+import {
+    BPComponentProps,
+    ConfigObjectGenerators,
+    InspectorStackComponent,
+    ThemeSettingsMenuComponent,
+    UiConfigRendererContext,
+    useConfigToStackItem,
+} from 'uiconfig-blueprint/lib/esm/lib'
+import {getOrCall, ISceneEventMap, ObjectPickerEventMap, PickingPlugin, ThreeViewer, TypedClass, TypeSystem, UiObjectConfig} from 'threepipe';
+import {EditorModes, EditorModesButtonGroup, editorModesInspectorConfig} from './EditorModes.tsx'
+import {Alignment, Button, Card, Divider, IconName, Navbar, Panel, PanelStack2, Popover, TabId} from '@blueprintjs/core'
+import {BPHierarchyComponent} from './BPHierarchyComponent.tsx'
+import {SaveFileButton, SaveProjectButton, useFileNeedsSave} from './SaveFileButton.tsx'
+import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
+import {BPMaterialsTreeComponent, MaterialHierarchyComponent} from "./BPMaterialsTreeComponent.tsx";
+import {BPTexturesTreeComponent, TextureHierarchyComponent} from "./BPTexturesTreeComponent.tsx";
+import {GeometryHierarchyComponent} from "./BPGeometriesTreeComponent.tsx";
+import {FilesPanel} from "./FilesPanel.tsx";
+import {
+    InspectorPanelComponent,
+    InspectorPanelProps,
+} from "./InspectorPanelComponent.tsx";
+import {MaybeElement} from "@blueprintjs/core/src/common/props";
+import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
+import {BPTreeFolderComponent} from "./BPTreeFolderComponent.tsx";
+import {iconForSelectionObject} from "../utils/icons.tsx";
+import {MemoryTab} from "./MemoryTab.tsx";
+import {AIAgentTab} from "./AIAgentTab.tsx";
+import {AIMCPTab} from "./AIMCPTab.tsx";
+import {PublishGameTab} from "./PublishGameTab.tsx";
+import {objToSelectItemRef, RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
+import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
+import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
+import {useProject} from "../utils/UseProject.ts";
+import {useManager} from "../utils/UseManager.ts";
+import {useAssets} from "../utils/AssetsProvider.ts";
+import {ExternalFilesPanel} from "./ExternalFilesPanel.tsx";
+import {DependenciesSectionComp, PluginsSectionComp, ScriptsSectionComp } from './ProjectSettingsComponents.tsx';
+import {isEditableSourceFile, SourceEditorPanel} from './SourceEditorPanel.tsx';
+import {ExportGameTab} from './ExportGameTab.tsx';
 
-export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
-    const manager = useManagerVersion()
-    const viewer = manager.get()
-    const ui = viewer.getPlugin(BlueprintJsUiPlugin2)
+
+export function RefUiConfigComponent(props: BPComponentProps<any>){
+    const uiConfigRenderer = useContext(UiConfigRendererContext)
+    const manager = useManager()
+    const classTypes = props.config.classTypes as Array<TypedClass> ?? []
+    const currentValue = uiConfigRenderer.methods.getValue(props.config, undefined)
+    const currentValueRef = useMemo(()=>{
+        const currentValueType = TypeSystem.GetType(currentValue, false)
+        const currentValueClass = currentValueType ? TypeSystem.GetClass(currentValueType) : undefined
+        return objToSelectItemRef(currentValueType, currentValueClass, currentValue);
+    }, [currentValue])
+    return <RefSelectionObjectComponent
+        object={currentValueRef}
+        objectType={classTypes}
+        label={uiConfigRenderer.methods.getLabel(props.config)}
+        allowNone={props.config.allowNull ?? false}
+        disabled={getOrCall(props.disabled ?? props.config.disabled??false) ?? false}
+        onChange={async (selected, e)=>{
+            console.log(selected)
+            let val: any = undefined
+            if(selected === null){
+                if(props.config.allowNull){
+                    val = null
+                }else {
+                    console.warn('Null selection not allowed here')
+                    return
+                }
+            }else if('cls' in selected) { // SelectItemRef
+                val = selected.item
+            }else if('entry' in selected){
+                const entry = selected.entry
+                if(!entry) return
+                const value = await manager.getAssetFromEntry(entry)
+                val = value
+            }
+            if(val === undefined) return
+            console.log(props.config)
+            await uiConfigRenderer.methods.setValue(props.config, val, {last: true})
+        }}
+    ></RefSelectionObjectComponent>
+}
+
+// @ts-ignore
+ConfigObjectGenerators.reference = RefUiConfigComponent
+ConfigObjectGenerators.image = BPTextureFileComponent
+
+const editorLeftTabs = {
+    objects: ObjectHierarchyComponent,
+    materials: MaterialHierarchyComponent,
+    textures: TextureHierarchyComponent,
+    geometries: GeometryHierarchyComponent,
+}
+ConfigObjectGenerators.hierarchy = BPHierarchyComponent
+ConfigObjectGenerators.materials = BPMaterialsTreeComponent
+ConfigObjectGenerators.textures = BPTexturesTreeComponent
+ConfigObjectGenerators.tree = BPTreeFolderComponent
+
+export function ThreeEditorComponent() {
+    const [viewer, setViewer] = useState<ThreeViewer | null>(null)
+    // const uiConfigRenderer = viewer.getPlugin(BlueprintJsUiPlugin2)!
+    const [uiConfigRenderer, setUiConfigRenderer] = useState<BlueprintJsUiPlugin2 | null>(null)
+    const manager = useManager()
+    const {selectedFiles, setSelectedFiles} = useAssets()
+    const { project } = useProject()
+    const [mcpBridge, setMcpBridge] = useState(manager.mcpBridge)
+    const [rightTabId, setRightTabId] = useState<TabId>('inspector')
+    const [bottomTabId, setBottomTabId] = useState<TabId>('files')
+    const [agentWorking, setAgentWorking] = useState(false)
+    const [sourceDraftDirty, setSourceDraftDirty] = useState(false)
+    const selectedSourceFile = selectedFiles.length === 1 && isEditableSourceFile(selectedFiles[0])
+        ? selectedFiles[0]
+        : null
+
+    useEffect(() => {
+        const syncBridge = () => setMcpBridge(manager.mcpBridge)
+        manager.addEventListener('mcpBridgeChange', syncBridge)
+        syncBridge()
+        return () => manager.removeEventListener('mcpBridgeChange', syncBridge)
+    }, [manager])
+
+    useEffect(() => {
+        if (selectedFiles.length) setRightTabId('inspector')
+    }, [selectedFiles])
+
+    useEffect(() => {
+        if (!viewer) return
+        const picking = viewer.getPlugin(PickingPlugin)
+        const inspectUiSelection = (event: ISceneEventMap['select']) => {
+            if (!event.ui || !event.value) return
+            setSelectedFiles([])
+            setRightTabId('inspector')
+        }
+        const inspectCanvasSelection = (event: ObjectPickerEventMap['selectedObjectChanged']) => {
+            if (!event.intersects || !event.value) return
+            setSelectedFiles([])
+            setRightTabId('inspector')
+        }
+        viewer.scene.addEventListener('select', inspectUiSelection)
+        picking?.addEventListener('selectedObjectChanged', inspectCanvasSelection)
+        return () => {
+            viewer.scene.removeEventListener('select', inspectUiSelection)
+            picking?.removeEventListener('selectedObjectChanged', inspectCanvasSelection)
+        }
+    }, [setSelectedFiles, viewer])
+
+    // const [splitSizes, setSplitSizes] = useState([0, 100, 0])
+
+    const [insConfig, setInsConfig] = useState<UiObjectConfig<any, 'panel'>>(editorModesInspectorConfig['import'](viewer))
+    // const [hierarchyConfig, setHierarchyConfig] = useState<UiObjectConfig<any, 'hierarchy'>>({type: 'hierarchy'})
+    // const [materialsLib, setMaterialsLib] = useState<UiObjectConfig<any, 'materials'>>({type: 'materials'})
+    // const [texturesLib, setTexturesLib] = useState<UiObjectConfig<any, 'textures'>>({type: 'textures'})
+    // const [geometriesLib, setGeometriesLib] = useState<UiObjectConfig<any, 'geometries'>>({type: 'geometries'})
+    // const [modelRoot, setModelRoot] = useState<IObject3D|null>(null)
+
+    // todo rename to settings mode
+    const [editorMode, setEditorMode] = useReducer((currentMode: EditorModes, mode: EditorModes): EditorModes=>{
+        const conf = editorModesInspectorConfig[mode](viewer)
+        setInsConfig(conf)
+        if(mode === currentMode) return mode
+        // manager.features.refresh(mode)
+        return mode
+    }, 'import')
+
+    useEffect(() => {
+        // const v = manager.reset(props)
+        let v
+        let pms
+        if (project && isPackageProject(project)){
+            // v = manager.loadProject(project, props) ?? manager.reset(props)
+            v = manager.get()
+            // todo load default scene settings first like empty env etc
+            // pms = projectFile ? manager.loadProjectFile(project, projectFile) : null
+        } else {
+            v = manager.get()
+            // file should only be files saved from this editor with scene settings.
+            // pms = project?.file ? v.load(project.file, {}) : null
+        }
+        setViewer(v)
+
+        // pms?.then((res)=>{
+        //     console.log(res)
+        //     console.log('Loaded file/scene')
+        // })
+
+        const p = v.getPlugin(BlueprintJsUiPlugin2)!
+        setUiConfigRenderer(p)
+        setInsConfig(editorModesInspectorConfig[editorMode](v))
+        // setHierarchyConfig({type: 'hierarchy',
+        //     uuid: Math.random().toString(36).substring(2, 15),
+        //     value: v.scene.modelRoot
+        // })
+        // setMaterialsLib({type: 'materials',
+        //     uuid: Math.random().toString(36).substring(2, 15),
+        //     value: v.scene.modelRoot
+        // })
+        // setTexturesLib({type: 'textures',
+        //     uuid: Math.random().toString(36).substring(2, 15),
+        //     value: v.scene.modelRoot
+        // })
+        // setGeometriesLib({type: 'geometries',
+        //     uuid: Math.random().toString(36).substring(2, 15),
+        //     value: v.scene.modelRoot
+        // })
+        // setModelRoot(v.scene.modelRoot)
+        // manager.features.refresh(editorMode)
+        return () => {
+            // setViewer(null)
+            // setUiConfigRenderer(null)
+            // setModelRoot(null)
+            // setProjectMeta(undefined)
+            // manager.loadProject(null)
+            // manager.loadProject(null)
+            // manager.loadScene(null) // todo
+        }
+    }, [manager, project?.file])
+
+    // useEffect(() => {
+    //     manager.features.refresh(editorMode)
+    // }, []);
+
     const canvasContainer = useRef<HTMLDivElement>(null)
-    const playCanvas = useRef<HTMLCanvasElement>(null)
-    const [playOverlay, setPlayOverlay] = useState(false)
-    const [checkpointing, setCheckpointing] = useState(false)
-    const [restoring, setRestoring] = useState(false)
-    const [rightPanel, setRightPanel] = useState<TabId>('inspector')
-
+    // add viewer.container to canvasContainer when it changes
     useEffect(() => {
-        if (!canvasContainer.current || viewer.container.parentElement === canvasContainer.current) return
-        canvasContainer.current.replaceChildren(viewer.container)
-        viewer.resize()
-    }, [viewer])
+        if(canvasContainer.current && viewer && viewer.container.parentElement !== canvasContainer.current){
+            canvasContainer.current.innerHTML = ''
+            canvasContainer.current.appendChild(viewer.container)
+            viewer.resize()
+        }
+    }, [canvasContainer.current, viewer])
 
-    useEffect(() => {
-        if (!playOverlay || !playCanvas.current) return
-        void manager.startPlay(playCanvas.current).then(() => {
-            if (!manager.isPlaying) setPlayOverlay(false)
-        })
-    }, [manager, playOverlay])
+    return !uiConfigRenderer || !viewer ? null : (
+        <UiConfigRendererContext.Provider value={uiConfigRenderer}>
+            <div
+                 // style={{backgroundColor: Colors.DARK_GRAY2, height: "100vh"}}>
+                 style={{
+                     height: "100%",
+                     position: "relative",
+                     // display: "flex", // flex is creating issues with panes and page layout.
+                    // flexDirection: "column",
+                    // gap: 0,
+                 }}
+            >
+                <Navbar key={project?.path ?? 'navbar'}>
+                    <Navbar.Group align={Alignment.START}>
+                        <svg width="352" height="605" className={"main-nav-logo"} viewBox="0 0 352 605" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M143.088 394.344C131.422 421.844 118.288 480.144 159.088 493.344C210.088 509.844 234.588 431.344 282.588 459.344C320.988 481.744 298.588 536.844 282.588 562.344" stroke="#1B3976" strokeWidth="14" strokeLinecap="round"/>
+                            <path d="M325.567 546.446L290.583 547.343C289.917 547.343 287.884 546.343 285.083 542.344C281.583 537.345 269.584 521.843 265.584 519.843C263.532 518.817 260.686 519.107 258.336 519.71C256.161 520.269 254.471 521.873 253.366 523.827C248.602 532.245 241.437 546.034 241.083 551.343C240.683 557.343 244.583 558.843 246.583 558.843H278.091C278.751 558.843 279.409 558.772 280.065 558.706C282.013 558.51 284.746 558.656 285.083 560.343C285.583 562.843 306.583 584.843 311.083 587.343C313.55 588.714 317.098 587.814 319.891 586.576C322.05 585.619 323.513 583.647 324.306 581.423C327.687 571.934 332.876 557.172 333.583 554.343C334.016 552.613 333.298 550.804 332.285 549.298C330.836 547.145 328.161 546.379 325.567 546.446Z" fill="#E7312C"/>
+                            <path d="M289.586 549.344C281.086 572.344 241.586 603.344 218.586 596.844" stroke="#E7312C" strokeWidth="14" strokeLinecap="round"/>
+                            <path d="M170.586 157.844C166.086 183.346 147.362 327.027 141.695 398.527C144.854 398.913 148.181 397.944 150.704 395.487L347.25 204.003C349.175 202.129 350.279 199.699 350.523 197.189C299.879 183.331 204.958 159.339 170.586 157.844Z" fill="#1F62C2"/>
+                            <path d="M208.426 0.763269C198.093 36.9288 176.086 118.846 170.586 157.844C204.958 159.339 299.879 183.331 350.523 197.189C350.776 194.583 350.102 191.889 348.458 189.637L213.281 4.5138C212.001 2.7609 210.303 1.49957 208.426 0.763269Z" fill="#4F99E6"/>
+                            <path d="M0.262264 158.337C45.1729 156.925 141.823 154.463 170.586 157.844C176.086 118.846 198.093 36.9288 208.426 0.763269C204.932 -0.607625 200.819 -0.158474 197.633 2.32675L3.08065 154.059C1.65078 155.174 0.693794 156.69 0.262264 158.337Z" fill="#266CCB"/>
+                            <path d="M141.695 398.527C147.362 327.027 166.086 183.346 170.586 157.844C141.823 154.463 45.1729 156.925 0.262264 158.337C-0.256772 160.318 -0.01564 162.488 1.07713 164.375L133.508 393.119C135.335 396.275 138.424 398.127 141.695 398.527Z" fill="#154FA9"/>
+                        </svg>
+                        <Navbar.Heading>
+                            Kite 3D
+                        </Navbar.Heading>
+                        {project && (<>
+                        <Navbar.Divider/>
+                        {/*<H5 style={{margin: "0"}}>{project}</H5>*/}
+                        {/*<H6 style={{margin: "0"}}>{scene}</H6>*/}
+                        <NavProjectFileName/>
+                        {/*<Button variant={"minimal"} size={"small"} icon="home" text="Home"/>*/}
+                        {/*<Button variant={"minimal"} size={"small"} icon="document" text="Files"/>*/}
+                        <Navbar.Divider/>
+                        </>)}
+                    </Navbar.Group>
+                    {project && (
+                    <Navbar.Group align={Alignment.START}>
+                        {isPackageProject(project) ? <SaveProjectButton/> : <SaveFileButton /> }
+                        <span
+                            className={`kite-agent-working-indicator${agentWorking ? ' is-active' : ''}`}
+                            role="status"
+                            aria-live="polite"
+                            aria-label="Agent is working"
+                            aria-hidden={!agentWorking}
+                        >
+                            <span className="kite-agent-working-dot" aria-hidden="true"/>
+                            <span>Agent is working</span>
+                        </span>
+                    </Navbar.Group>
+                    )}
+                    <Navbar.Group align={Alignment.END}>
+                        <PlayModeButtonGroup key="playmode" />
+                        <Navbar.Divider/>
+                        <Popover targetProps={{style: {}}}
+                                 minimal
+                                 targetTagName={"div"}
+                                 content={
+                                     <ThemeSettingsMenuComponent/>
+                                 } placement="bottom">
+                            <Button icon="cog" size={"small"} variant={"minimal"} text=""/>
+                        </Popover>
+                    </Navbar.Group>
+                </Navbar>
 
-    const stop = async () => {
-        await manager.stopPlay()
-        setPlayOverlay(false)
-    }
-
-    const dropFiles = (files: FileList) => {
-        void manager.importFiles(Array.from(files)).catch((error) => manager.reportError(error))
-    }
-
-    const checkpoint = async () => {
-        setCheckpointing(true)
-        try { await manager.createCheckpoint() } finally { setCheckpointing(false) }
-    }
-
-    const restore = async () => {
-        setRestoring(true)
-        try { await manager.restoreLastCheckpoint() } finally { setRestoring(false) }
-    }
-
-    if (!ui) return null
-    return <UiConfigRendererContext.Provider value={ui}>
-        <div className="three-editor-shell">
-            <Navbar>
-                <Navbar.Group align={Alignment.START}>
-                    <Button
-                        className="main-nav-logo-button"
-                        minimal
-                        aria-label="Welcome"
-                        onClick={() => manager.setWelcomeOpen(true)}
-                    ><img src="/logo.svg" alt="Blitz" className="main-nav-logo"/></Button>
-                    <h1 className="project-heading">{manager.project?.name || 'Blitz'}</h1>
-                    <Navbar.Divider/>
-                    <Button minimal icon="cube" text={`${manager.scenePath}${manager.loadedNeedsSave ? '*' : ''}`}/>
-                    <span className="editor-status" aria-live="polite">{manager.status}</span>
-                </Navbar.Group>
-                <Navbar.Group align={Alignment.END}>
-                    <Button
-                        data-testid="save-scene"
-                        icon="floppy-disk"
-                        minimal
-                        disabled={!manager.loadedNeedsSave}
-                        onClick={() => void manager.saveScene()}
-                    >Save</Button>
-                    <PlayModeButtonGroup onPlay={() => setPlayOverlay(true)} onStop={() => void stop()}/>
-                    <Button data-testid="open-game" icon="share" onClick={onOpenGame}>Open game</Button>
-                    <Button
-                        data-testid="check-game"
-                        icon="diagnosis"
-                        loading={manager.isChecking}
-                        disabled={manager.isChecking}
-                        onClick={() => void manager.runCheck()}
-                    >Check</Button>
-                    <Button
-                        data-testid="checkpoint-game"
-                        icon="git-commit"
-                        loading={checkpointing}
-                        disabled={checkpointing || restoring}
-                        onClick={() => void checkpoint()}
-                    >Checkpoint</Button>
-                    <Navbar.Divider/>
-                    <Popover minimal placement="bottom" content={<SettingsMenu restoring={restoring} onRestore={() => void restore()}/>}>
-                        <Button aria-label="Settings" icon="cog" minimal/>
-                    </Popover>
-                </Navbar.Group>
-            </Navbar>
-
-            {manager.checkResult && <div className="check-result-cards" data-testid="check-results">
-                {manager.checkResult.outcomes.map((outcome) => <Card key={outcome.name} compact>
-                    <Tag minimal intent={outcome.status === 'pass' ? Intent.SUCCESS : Intent.DANGER}>
-                        {outcome.name} {outcome.status.toUpperCase()}
-                    </Tag>
-                    <span>{outcome.codes.length ? outcome.codes.join(', ') : outcome.summary}</span>
-                </Card>)}
-            </div>}
-
-            <WindowPanesLayout
-                selectedPanels={{right: rightPanel}}
-                onSelectedPanelChange={(position, id) => {
-                    if (position === 'right') setRightPanel(id)
-                }}
-                panels={{
-                left: [
-                    {title: 'Objects', key: 'objects', className: 'hierarchy-stack', content: <ObjectsPanel/>},
-                    {title: 'Materials', key: 'materials', content: <MaterialsPanel/>},
-                    {title: 'Textures', key: 'textures', content: <TexturesPanel/>},
-                    {title: 'Geometries', key: 'geometries', content: <GeometriesPanel/>},
-                    {title: 'Scene', key: 'scene', content: <ScenePanel/>},
-                ],
-                center: [{
-                    title: 'Content',
-                    key: 'content',
-                    style: {position: 'relative', display: 'flex', flexDirection: 'column'},
-                    content: <div
-                        className="editorCanvasContainer"
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => {
-                            event.preventDefault()
-                            dropFiles(event.dataTransfer.files)
-                        }}
-                    >
-                        <div className="editor-canvas-mount" ref={canvasContainer}/>
-                        <ViewportControls/>
-                        {playOverlay && <canvas ref={playCanvas} className="game-canvas-overlay" data-testid="game-canvas"/>}
-                    </div>,
-                }],
-                bottom: [
-                    {title: 'Files', key: 'files', content: <FilesPanel onSelectFile={() => setRightPanel('inspector')}/>},
-                    {title: 'Library', key: 'library', content: <ExternalFilesPanel/>},
-                    {title: 'Timeline', key: 'timeline', content: <TimelinePanel/>},
-                ],
-                right: [
-                    {title: 'Inspector', key: 'inspector', content: <InspectorPanel/>},
-                    {title: 'Settings', key: 'settings', content: <SettingsPanel/>},
-                    {title: 'Project', key: 'project', content: <ProjectPanel/>},
-                ],
-            }}/>
-            {manager.error && <pre className="editor-error" role="alert">{manager.error}</pre>}
-        </div>
-    </UiConfigRendererContext.Provider>
-}
-
-function SettingsMenu({restoring, onRestore}: {restoring: boolean, onRestore(): void}) {
-    return <div>
-        <Menu>
-            <MenuItem
-                data-testid="restore-checkpoint"
-                icon="history"
-                text="Restore last checkpoint"
-                disabled={restoring}
-                onClick={onRestore}
-            />
-        </Menu>
-        <ThemeSettingsMenuComponent/>
-    </div>
-}
-
-function ObjectsPanel() {
-    const manager = useManagerVersion()
-    const viewer = manager.get()
-    return <div className="editor-panel-body" data-testid="scene-hierarchy">
-        <ObjectRow object={viewer.scene.modelRoot} label="Scene" depth={0}/>
-        {viewer.scene.defaultCamera && <ObjectRow object={viewer.scene.defaultCamera} label="Default Camera" depth={1}/>}
-    </div>
-}
-
-function ObjectRow({object, depth, label}: {object: IObject3D, depth: number, label?: string}) {
-    const manager = useManagerVersion()
-    const [expanded, setExpanded] = useState(true)
-    const generated = object.userData.blitzGenerated === true
-    const children = object.children || []
-    return <div className="hierarchy-row-group">
-        <div className="hierarchy-row" style={{paddingLeft: `${depth * 14 + 4}px`}}>
-            <Button
-                className="hierarchy-caret"
-                minimal
-                small
-                icon={children.length ? (expanded ? 'chevron-down' : 'chevron-right') : 'blank'}
-                onClick={() => setExpanded((value) => !value)}
-            />
-            <Button
-                minimal
-                small
-                icon={objectIcon(object)}
-                text={label || object.name || object.type || 'Unnamed'}
-                onClick={() => {
-                    manager.get().getPlugin(PickingPlugin)?.setSelectedObject(object)
-                    void manager.writeState()
-                }}
-            />
-            {generated && <Tag minimal intent={Intent.WARNING} className="generated-badge">generated</Tag>}
-        </div>
-        {expanded && children.map((child) => <ObjectRow key={child.uuid} object={child} depth={depth + 1}/>)}
-    </div>
-}
-
-function InspectorPanel() {
-    const manager = useManagerVersion()
-    const viewer = manager.get()
-    const picking = viewer.getPlugin(PickingPlugin)
-    const [, setSelectionVersion] = useState(0)
-
-    useEffect(() => {
-        const changed = () => setSelectionVersion((value) => value + 1)
-        picking?.addEventListener('selectedObjectChanged', changed)
-        return () => picking?.removeEventListener('selectedObjectChanged', changed)
-    }, [picking])
-
-    const selected = picking?.getSelectedObject()
-    const selection = !Array.isArray(selected) ? selected : undefined
-    const selectedFile = manager.manifest.find(({path}) => path === manager.selectedFilePath)
-    const showingFile = Boolean(selectedFile && !selection)
-    const object = (selection as IObject3D | undefined)?.isObject3D
-        ? selection as IObject3D
-        : undefined
-    const generators = object
-        ? manager.generatorStates.filter(({nodeName}) => nodeName === object.name)
-        : manager.generatorStates
-
-    return <div className="editor-panel-body inspector-stack" data-testid="generator-inspector">
-        <SourceEditorPanel selectedFile={showingFile && isEditableSourceFile(selectedFile) ? selectedFile : null}/>
-        {showingFile && selectedFile && !isEditableSourceFile(selectedFile) && <FileMetadataPanel entry={selectedFile}/>}
-        {!showingFile && !object && !generators.length && <p className="empty-panel-message">Select an object or file to inspect it.</p>}
-        {!showingFile && object && <>
-            <FormGroup label="Name" labelFor="inspector-object-name">
-                <InputGroup
-                    id="inspector-object-name"
-                    value={object.name}
-                    onChange={(event) => {
-                        object.name = event.target.value
-                        object.setDirty?.({change: 'name'})
+                <WindowPanesLayout
+                    key={viewer.scene.uuid} // force rerender when viewer change, because we might add events to the viewer in sub components like BPHierarchyComponent
+                    selectedTabIds={{right: rightTabId, bottom: bottomTabId}}
+                    onTabChange={(position, tabId) => {
+                        if (position === 'right') setRightTabId(tabId)
+                        if (position === 'bottom') setBottomTabId(tabId)
+                    }}
+                    panels={{
+                        left:
+                            Object.entries(editorLeftTabs).map(([k, TabPanel])=>({
+                                title: k,
+                                key: k,
+                                content: <TabPanel key={k} className={''}/>,
+                                className: 'hierarchy-stack'
+                            })),
+                        center: [{title: 'Content', style: {
+                            position: "relative",
+                            display: "flex",
+                            flexDirection: "column",
+                        }, content: <>
+                                <div className={"editorCanvasContainer"} key={"editorCanvasContainer"} ref={canvasContainer}></div>
+                            </>}],
+                        bottom: isPackageProject(manager.loadedProject) ? [{title: 'Files', key: 'files', content: <FilesPanel />},
+                            {title: 'Library', key: 'library', content: <ExternalFilesPanel />}]: null,
+                        right: [
+                            {
+                                title: 'Inspector',
+                                key: 'inspector',
+                                keepMounted: true,
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "row",
+                                },
+                                content: <>
+                                    <SourceEditorPanel selectedFile={selectedSourceFile} mcpBridge={mcpBridge} onDirtyChange={setSourceDraftDirty}/>
+                                    {!selectedSourceFile && <EditInspectorComponent
+                                        className={'inspector-stack'}
+                                    />}
+                                </>
+                            },
+                            {
+                                title: 'Settings',
+                                key: 'settings',
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                },
+                                content: <>
+                                    <EditorModesButtonGroup key="modes" {...{editorMode, setEditorMode}} />
+                                    <ModesInspector config={insConfig} className={'inspector-stack'}/>
+                                </>
+                            },
+                            {
+                                title: 'Project',
+                                key: 'project',
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                },
+                                content:
+                                <>
+                                {/*<Card className={"bpInspectorCard "} style={{borderRadius: 0}}>*/}
+                                    <ScriptsSectionComp/>
+                                    <Divider style={{margin: 0}}/>
+                                    <PluginsSectionComp/>
+                                    <Divider style={{margin: 0}}/>
+                                    <DependenciesSectionComp/>
+                                {/*</Card>*/}
+                                </>
+                            },
+                            {
+                                title: 'Memory',
+                                key: 'memory',
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                },
+                                content: <MemoryTab/>
+                            },
+                            {
+                                title: 'Create Game — Alpha',
+                                key: 'create-game-alpha',
+                                keepMounted: true,
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                },
+                                content: <AIAgentTab mcpBridge={mcpBridge} onWorkingChange={setAgentWorking}/>
+                            },
+                            {
+                                title: 'Export',
+                                key: 'export',
+                                keepMounted: true,
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                },
+                                content: <ExportGameTab mcpBridge={mcpBridge} sourceDraftDirty={sourceDraftDirty}/>
+                            },
+                            {
+                                title: 'Publish',
+                                key: 'publish',
+                                keepMounted: true,
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                },
+                                content: <PublishGameTab mcpBridge={mcpBridge} sourceDraftDirty={sourceDraftDirty}/>
+                            },
+                            {
+                                title: 'AI MCP Bridge',
+                                key: 'ai-mcp-bridge',
+                                style: {
+                                    position: "relative",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                },
+                                content: <AIMCPTab mcpBridge={mcpBridge}/>
+                            },
+                        ],
                     }}
                 />
-            </FormGroup>
-            {object.uiConfig && <ConfigObject
-                config={object.uiConfig}
-                openPanel={() => undefined}
-                closePanel={() => undefined}
-            />}
-        </>}
-        {!showingFile && selection && !object && selection.uiConfig && <ConfigObject
-            config={selection.uiConfig}
-            openPanel={() => undefined}
-            closePanel={() => undefined}
-        />}
-        {!showingFile && generators.map((generator) => <GeneratorInspector key={generator.componentId} generator={generator}/>)}
-    </div>
+            </div>
+        </UiConfigRendererContext.Provider>
+    );
+
 }
 
-function GeneratorInspector({generator}: {generator: ReturnType<typeof useManagerVersion>['generatorStates'][number]}) {
-    const manager = useManagerVersion()
-    const [module, setModule] = useState(generator.module)
-    const [params, setParams] = useState(JSON.stringify(generator.params, null, 2))
+// function getStackItem(){
+//     console.log('mount create stack')
+//     return
+// }
+const stackItems = [{
+    props: {},
+    renderPanel: InspectorPanelComponent,
+    title: ''
+} as Panel<InspectorPanelProps>]
+export function EditInspectorComponent({className}: {
+    className?: string
+}) {
+    // const {selectedInspectorItems, selectedFiles} = useAssets()
+    const [currentPanelStack, setCurrentPanelStack] = useState<Array<Panel<InspectorPanelProps>>>(stackItems);
 
-    useEffect(() => {
-        setModule(generator.module)
-        setParams(JSON.stringify(generator.params, null, 2))
-    }, [generator.module, generator.params])
+    // const isMultiple = selectedFiles.length > 1 || (!selectedFiles.length && selectedInspectorItems.length > 1)
+    // const canRenderInspector = selectedInspectorItems.length || selectedFiles.length
 
-    const apply = async () => {
-        try {
-            await manager.updateGenerator(generator, module, JSON.parse(params) as Record<string, unknown>)
-        } catch (error) {
-            await manager.reportError(error)
-        }
-    }
+    // console.log('mountrender EditInspectorComponent')
 
-    return <Card className="generator-inspector-card" compact>
-        <h3>Generator · {generator.nodeName}</h3>
-        <FormGroup label="Module">
-            <InputGroup
-                data-testid={`generator-module-${generator.nodeIndex}`}
-                value={module}
-                onChange={(event) => setModule(event.target.value)}
-                onBlur={() => void apply()}
-            />
-        </FormGroup>
-        <FormGroup label="Params">
-            <textarea
-                className="bp5-input generator-params-input"
-                data-testid={`generator-params-${generator.nodeIndex}`}
-                value={params}
-                onChange={(event) => setParams(event.target.value)}
-                onBlur={() => void apply()}
-            />
-        </FormGroup>
-        <ButtonGroup>
-            <Button data-testid={`bake-${generator.nodeIndex}`} onClick={() => void manager.requestBake(generator.nodeName)}>Bake</Button>
-            <Button data-testid={`force-bake-${generator.nodeIndex}`} intent={Intent.WARNING} onClick={() => {
-                if (window.confirm(`Force bake ${generator.nodeName}? Existing children or human edits may be replaced.`)) {
-                    void manager.requestBake(generator.nodeName, true)
-                }
-            }}>Force bake</Button>
-        </ButtonGroup>
-    </Card>
+    return (
+        <Card className={"bpInspectorCard " + className||''} style={{borderRadius: 0}}>
+            {/*<div >Inspector</div>*/}
+            {/*<div style={{width: "100%"}}>{selectedInspectorItems.object?.name || "Unnamed"}</div>*/}
+            {/*{isMultiple ? <div>*/}
+            {/*        <div style={{width: "100%"}} className={Classes.PANEL_STACK2_HEADER}>*/}
+            {/*            /!* two <span> tags here ensure title is centered as long as possible, with `flex: 1` styling *!/*/}
+            {/*            <span>{null}</span>*/}
+            {/*            <Text className={Classes.HEADING} ellipsize={true} title={"Inspector"}>*/}
+            {/*                Inspector*/}
+            {/*            </Text>*/}
+            {/*            <span />*/}
+            {/*        </div>*/}
+
+            {/*        {selectedFiles.length ? selectedFiles.map(f=><div key={f.path}>{f.name}</div>) :*/}
+            {/*        selectedInspectorItems.map((item, i)=><div key={i}>{item?.name || 'Unnamed'}</div>)}*/}
+            {/*</div> :*/}
+            <PanelStack2
+                className="inspectorPanelStack"
+                key="inspectorPanelStack"
+                         showPanelHeader={true}
+                         renderActivePanelOnly={false}
+                         onOpen={(p) => setCurrentPanelStack([...currentPanelStack, p] as any)}
+                         onClose={() => setCurrentPanelStack(currentPanelStack.slice(0, -1))}
+                         stack={currentPanelStack}/>
+            {/*}*/}
+        </Card>
+    )
 }
 
-function MaterialsPanel() {
-    const manager = useManagerVersion()
-    const materials = collectMaterials(manager.get().scene.modelRoot)
-    return <ResourceList values={materials} empty="No materials"/>
+export function ModesInspector({config, className}:{
+    config: UiObjectConfig<any, 'panel'>
+    className?: string
+}){
+    const insStackPanel = useConfigToStackItem(config)
+    return <InspectorStackComponent
+        className={className}
+        stackItem={insStackPanel}/>
+    // const config2 = useMemo(()=>{
+    //     return {
+    //         ...config,
+    //         type: 'folder',
+    //     }
+    // }, [config])
+    // return <ConfigObject config={config2} className={className} openPanel={()=>{}} closePanel={()=>{}}/>
 }
+export function NavProjectFileName(){
+    const { project} = useProject()
+    const manager = useManager()
 
-function TexturesPanel() {
-    const manager = useManagerVersion()
-    const textures = collectTextures(collectMaterials(manager.get().scene.modelRoot))
-    return <ResourceList values={textures} empty="No textures"/>
-}
+    const pkgProject = project && isPackageProject(project)
+    const projectIcon: IconName = pkgProject ? 'folder-close' : 'cubes'
+    const fileIcon: IconName|MaybeElement = !!manager.loadedScene ? 'cubes' : !!manager.loadedAssetObj ? iconForSelectionObject(manager.loadedAssetObj) : 'document'
 
-function GeometriesPanel() {
-    const manager = useManagerVersion()
-    const geometries = collectGeometries(manager.get().scene.modelRoot)
-    return <ResourceList values={geometries} empty="No geometries"/>
-}
-
-function ResourceList({values, empty}: {values: Exclude<SelectionObject, IObject3D | null>[], empty: string}) {
-    const manager = useManagerVersion()
-    return <div className="editor-panel-body">
-        {values.length ? <ul className="resource-list">{values.map((value) => <li key={value.uuid}>
-            <Button
-                minimal
-                small
-                text={value.name || value.uuid}
-                onClick={() => manager.get().getPlugin(PickingPlugin)?.setSelectedObject(value)}
-            />
-        </li>)}</ul>
-            : <p className="empty-panel-message">{empty}</p>}
-    </div>
-}
-
-function ScenePanel() {
-    const manager = useManagerVersion()
-    const viewer = manager.get()
-    return <div className="editor-panel-body">
-        <h3>{manager.scenePath}</h3>
-        <p>{viewer.scene.modelRoot.children.length} root objects</p>
-        <p>Camera: {viewer.scene.mainCamera.name || 'Default camera'}</p>
-        {viewer.scene.uiConfig && <ConfigObject
-            config={viewer.scene.uiConfig}
-            openPanel={() => undefined}
-            closePanel={() => undefined}
-        />}
-    </div>
-}
-
-function TimelinePanel() {
-    const manager = useManagerVersion()
-    const timeline = manager.get().timeline
-    const [time, setTime] = useState(timeline.time)
-    useEffect(() => {
-        const update = () => setTime(timeline.time)
-        timeline.addEventListener('update', update)
-        timeline.addEventListener('reset', update)
-        return () => {
-            timeline.removeEventListener('update', update)
-            timeline.removeEventListener('reset', update)
-        }
-    }, [timeline])
-    return <div className="timeline-panel editor-panel-body">
-        <ButtonGroup>
-            <Button icon="play" small onClick={() => timeline.start()}>Play</Button>
-            <Button icon="stop" small onClick={() => timeline.stop()}>Stop</Button>
-            <Button icon="reset" small onClick={() => timeline.reset()}>Reset</Button>
-        </ButtonGroup>
-        <Slider
-            min={0}
-            max={Math.max(timeline.endTime, 10)}
-            stepSize={0.01}
-            labelStepSize={0}
-            value={time}
-            onChange={(value) => {
-                timeline.time = value
-                setTime(value)
-            }}
-        />
-    </div>
-}
-
-function ProjectPanel() {
-    const manager = useManagerVersion()
-    const scripts = manager.project?.config.scripts || []
-    const plugins = manager.project?.config.plugins || []
-    return <div className="editor-panel-body project-panel">
-        <h3>Scripts</h3>
-        <ul>{scripts.map(({import: path}) => <li key={path}>{path}</li>)}</ul>
-        <h3>Plugins</h3>
-        <ul>{plugins.map(({import: path, className}) => <li key={`${path}:${className || ''}`}>{path}{className ? `:${className}` : ''}</li>)}</ul>
-        <h3>Component types</h3>
-        <ul data-testid="component-types">{manager.componentTypes.map((type) => <li key={type}>{type}</li>)}</ul>
-    </div>
-}
-
-function SettingsPanel() {
-    const manager = useManagerVersion()
-    return <div className="editor-panel-body settings-panel">
-        <h3>Viewport</h3>
-        <ButtonGroup vertical fill>
-            <Button icon="locate" onClick={() => manager.get().getPlugin(EditModePlugin)?.resetView()}>Reset camera</Button>
-            <Button icon="camera" onClick={() => void manager.snapshot()}>Snapshot PNG</Button>
-            <Button icon="export" onClick={() => void manager.exportGltf()}>Export text glTF</Button>
-        </ButtonGroup>
-        <h3>Scene</h3>
-        <p>Saved through the Blitz deterministic scene serializer.</p>
-    </div>
-}
-
-function ViewportControls() {
-    const manager = useManagerVersion()
-    const viewer = manager.get()
-    const [grid, setGrid] = useState(true)
-    const [transform, setTransform] = useState(true)
-    const [widgets, setWidgets] = useState(true)
-    const [editing, setEditing] = useState(true)
-    const [camera, setCamera] = useState<'perspective' | 'orthographic' | 'default'>('perspective')
-    const edit = viewer.getPlugin(EditModePlugin)
+    const [fileNeedsSave] = useFileNeedsSave()
+    if(!project) return null
     return <>
-        <div className="interactionControlsButtonContainer">
-            <ButtonGroup>
-            <Button
-                minimal
-                icon="move"
-                active={transform}
-                title="Transform controls"
-                onClick={() => {
-                    const next = !transform
-                    setTransform(next)
-                    const plugin = viewer.getPlugin(TransformControlsPlugin)
-                    next ? plugin?.enable(ViewportControls) : plugin?.disable(ViewportControls)
-                }}
-            />
-            <Button minimal icon="grid" active={grid} title="Grid" onClick={() => {
-                const next = !grid
-                setGrid(next)
-                edit?.toggleGrid(grid, next)
-            }}/>
-            <Button minimal icon="widget" active={widgets} title="Widgets" onClick={() => {
-                const next = !widgets
-                setWidgets(next)
-                const plugin = viewer.getPlugin(EditorViewWidgetPlugin)
-                if (plugin) plugin.enabled = next
-            }}/>
-            <Button minimal icon="locate" title="Reset camera" onClick={() => edit?.resetView()}/>
-            <Popover content={<CameraSelectionMenu currentCamera={camera} setCurrentCamera={setCamera}/>} placement="bottom">
-                <Button minimal icon="video" title="Select camera"/>
-            </Popover>
-            <Button minimal icon="camera" title="Snapshot" onClick={() => {
-                void viewer.getPlugin(CanvasSnapshotPlugin)?.downloadSnapshot('blitz-snapshot.png', {waitForProgressive: false})
-            }}/>
-            <Button minimal icon="fullscreen" title="Fullscreen" onClick={() => {
-                void viewer.container.parentElement?.requestFullscreen()
-            }}/>
-            </ButtonGroup>
-        </div>
-        <div className="interactionControlsButtonContainer" style={{right: 'var(--pt-grid-size)', left: 'unset'}}>
-            <ButtonGroup>
-                <Button minimal icon="edit" title="Edit mode" active={editing} onClick={() => {
-                    edit?.enable(ViewportControls)
-                    setEditing(true)
-                }}/>
-                <Button minimal icon="eye-open" title="Preview mode" active={!editing} onClick={() => {
-                    edit?.disable(ViewportControls)
-                    setEditing(false)
-                }}/>
-            </ButtonGroup>
-        </div>
+        {project && <Button variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>}
+        {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.glb$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
     </>
-}
-
-function objectIcon(object: IObject3D) {
-    if (object.isCamera) return 'camera'
-    if (object.isLight) return 'flash'
-    if (object.isMesh) return 'cube'
-    if (object.isScene) return 'layers'
-    return 'folder-close'
-}
-
-function collectMaterials(root: IObject3D): IMaterial[] {
-    const found = new Map<string, IMaterial>()
-    root.traverse((object) => {
-        const material = object.material
-        for (const item of Array.isArray(material) ? material : material ? [material] : []) found.set(item.uuid, item)
-    })
-    return [...found.values()]
-}
-
-function collectGeometries(root: IObject3D): IGeometry[] {
-    const found = new Map<string, IGeometry>()
-    root.traverse((object) => {
-        if (object.geometry) found.set(object.geometry.uuid, object.geometry)
-    })
-    return [...found.values()]
-}
-
-function collectTextures(materials: IMaterial[]): ITexture[] {
-    const found = new Map<string, ITexture>()
-    for (const material of materials) {
-        for (const value of Object.values(material)) {
-            const texture = value as ITexture | undefined
-            if (texture?.isTexture) found.set(texture.uuid, texture)
-        }
-    }
-    return [...found.values()]
 }

@@ -1,113 +1,93 @@
-import {Callout, Spinner, Tab, Tabs} from '@blueprintjs/core'
-import {useEffect, useMemo, useState} from 'react'
-import {useManager} from '../utils/UseManager.ts'
+import {useManager} from "../utils/UseManager.ts";
+import {libAssetTypes} from "../data/LibAssetTypes.tsx";
+import {useLiveQuery} from "@tanstack/react-db";
+import {libAssetCollection} from "../tsdb/libAsset.ts";
+import React, {useState} from "react";
+import {PopupMenuButton} from "./PopupMenuButton.tsx";
+import {Tab, Tabs} from "@blueprintjs/core";
+import {ExternalFilesGrid} from "./ExternalFilesGrid.tsx";
+import {SliderMenuItem} from "./FilesPanel.tsx";
+import {FileManifestEntry} from "../utils/AssetsProvider.ts";
 
-export const ASSET_LIBRARY_PROXY_URL = 'https://blitz-asset-library-proxy.blitzapp.workers.dev'
-
-export interface TExternalFile {
-    path: string
-    name: string
-    type: 'file' | 'directory'
-    children: TExternalFile[]
-    assetType?: string
-    libFileId?: string
-    isFSEntry?: false
-    icon?: string
-    size?: number
-    sha256?: string
-    mtime?: number
+export type TExternalFile = Omit<FileManifestEntry, 'handle'|'isFSEntry'|'children'>& {
+    children: TExternalFile[],
+    assetType?: string,
+    libFileId?: string // if this file is linked to a lib asset, store its id here}
+    isFSEntry?: false,
 }
 
-interface LibraryAsset {
-    id: string
-    name: string
-    fileUrl: string
-    thumbnailUrl: string
-    type: string
-}
-
-interface AssetGroup {
-    key: string
-    title: string
-}
-
-const groups: AssetGroup[] = [
-    {key: 'model', title: '3D Models'},
-    {key: 'material', title: 'Materials'},
-    {key: 'hdri', title: 'Environment Maps'},
-    {key: 'texture', title: 'Textures'},
-]
-
-export function ExternalFilesPanel() {
+export function ExternalFilesPanel({}: {}) {
+    // const {project} = useProject()
     const manager = useManager()
-    const [assets, setAssets] = useState<LibraryAsset[]>([])
-    const [loading, setLoading] = useState(true)
-    const [error, setError] = useState('')
 
-    useEffect(() => {
-        const controller = new AbortController()
-        void fetch(`${ASSET_LIBRARY_PROXY_URL}/assets/v1/list`, {signal: controller.signal})
-            .then(async (response) => {
-                if (!response.ok) throw new Error(`Asset library returned ${response.status}.`)
-                const body = await response.json() as {assets?: unknown}
-                if (!Array.isArray(body.assets)) throw new Error('Asset library returned an invalid response.')
-                setAssets(body.assets.filter(isLibraryAsset))
-            })
-            .catch((caught) => {
-                if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : String(caught))
-            })
-            .finally(() => {
-                if (!controller.signal.aborted) setLoading(false)
-            })
-        return () => controller.abort()
-    }, [])
+    const files: TExternalFile[] = libAssetTypes.map(p => ({...p, children: []}))
 
-    const grouped = useMemo(() => Object.fromEntries(groups.map(({key}) => [
-        key,
-        assets.filter((asset) => asset.type === key),
-    ])), [assets])
+    const {data: libAssets} = useLiveQuery((q) =>
+        q.from({libAsset: libAssetCollection})
+            // .where(({ todo }) => eq(todo.completed, false))
+            .orderBy(({libAsset}) => libAsset.name, 'asc')
+    )
 
-    if (loading) return <div className="asset-library-status"><Spinner size={24}/><span>Loading asset library...</span></div>
-    if (error) return <Callout intent="danger" title="Asset library unavailable">{error}</Callout>
+    libAssets.forEach(f => {
+        const f1 = {
+            ...f,
+            name: f.name,
+            type: 'file',
+            path: f.fileUrl || '',
+            icon: f.thumbnailUrl.replace('width=256&height=256', 'width=64&height=64'), // use smaller thumbnail
+            // variants: f.files || {},
+            libFileId: f.id,
+            children: []
+        } as TExternalFile
+        const group = files.find(f2 => f2.assetType === f.type)
+        if (!f1.path) {
+            console.log('No fileUrl for asset:', f, f.type)
+        } else if (group) {
+            group.children.push(f1)
+        } else {
+            console.log('No group found for asset type:', f1.type)
+        }
+    })
 
-    return <div className="asset-library" data-testid="asset-library">
-        <Tabs animate={false} renderActiveTabPanelOnly defaultSelectedTabId={groups[0].key}>
-            {groups.map((group) => <Tab
-                key={group.key}
-                id={group.key}
-                title={group.title}
-                panel={<AssetGrid
-                    assets={grouped[group.key] || []}
-                    onImport={(asset) => void manager.importUrl(asset.fileUrl).catch((caught) => manager.reportError(caught))}
-                />}
-            />)}
-        </Tabs>
-    </div>
-}
+    // const {refreshManifest} = useExternalAssets()
 
-function AssetGrid({assets, onImport}: {assets: LibraryAsset[], onImport(asset: LibraryAsset): void}) {
-    if (!assets.length) return <p className="asset-library-empty">No assets in this category.</p>
-    return <div className="asset-library-grid">
-        {assets.map((asset) => <button
-            className="asset-library-item"
-            data-testid="asset-library-item"
-            key={asset.id}
-            type="button"
-            title={`Double-click to import ${asset.name}`}
-            onDoubleClick={() => onImport(asset)}
+    // // console.log(fileManifest)
+    // useEffect(()=>{
+    //     refreshManifest()
+    // }, [refreshManifest]) // refreshManifest changes on project change
+
+    const [thumbSize, setThumbSize] = useState(32);
+
+    return !manager.loadedProject ? null : <div style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        // @ts-ignore
+        '--file-item-button-size': `${thumbSize}px`,
+    }}>
+        {/*<PanelHeader>*/}
+        {/*    /!*<FilesPanelBreadCrumbs/>*!/*/}
+        {/*    <div style={{flexGrow: 1}}></div>*/}
+        {/*</PanelHeader>*/}
+        <PopupMenuButton icon={"cog"} text={""} style={{
+            position: 'absolute',
+            right: 0, top: 0,
+            zIndex: 1,
+        }}>
+            <SliderMenuItem setThumbSize={setThumbSize} thumbSize={thumbSize}/>
+        </PopupMenuButton>
+        <Tabs
+            animate={false}
+            renderActiveTabPanelOnly={true}
+            size={"medium"}
+            vertical={false}
+            defaultSelectedTabId={"a"}
+            // style={{zIndex: 0}}
         >
-            <img src={asset.thumbnailUrl} alt=""/>
-            <span>{asset.name}</span>
-        </button>)}
-    </div>
-}
+            {files.map((f, i) => <Tab key={f.path} id={f.path} title={f.name} panel={<ExternalFilesGrid group={f}/>}/>)}
+        </Tabs>
 
-function isLibraryAsset(value: unknown): value is LibraryAsset {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-    const asset = value as Record<string, unknown>
-    return typeof asset.id === 'string'
-        && typeof asset.name === 'string'
-        && typeof asset.fileUrl === 'string'
-        && typeof asset.thumbnailUrl === 'string'
-        && typeof asset.type === 'string'
+        <div className={"files-panel-grid"}>
+        </div>
+    </div>
 }

@@ -1,7 +1,9 @@
 import {ImperativePanelHandle, Panel, PanelGroup, PanelResizeHandle} from "react-resizable-panels";
-import {CSSProperties, ReactNode, useCallback, useEffect, useRef, useState} from "react";
-import {Card, Tab, Tabs, type TabId} from "@blueprintjs/core";
+import {CSSProperties, ReactNode, useEffect, useRef, useState} from "react";
+import {Card, Tab, TabId, Tabs} from "@blueprintjs/core";
 import {toTitleCase} from "threepipe";
+import {EditPreviewButtonGroup} from "./EditPreviewButtonGroup.tsx";
+import {InteractionControlsButtonGroup} from "./InteractionControlsButtonGroup.tsx";
 import {WindowPanelFlap} from "./WindowPanelFlap.tsx";
 import {PopupDialogCard} from "./PopupDialogCard.tsx";
 
@@ -11,6 +13,7 @@ export interface WindowPanel{
     style?: CSSProperties
     key?: string
     className?: string
+    keepMounted?: boolean
 }
 export interface WindowPanesLayoutProps{
     panels: {
@@ -19,18 +22,16 @@ export interface WindowPanesLayoutProps{
         bottom: null | (WindowPanel|null)[]
         center: (WindowPanel|null)[]
     }
-    selectedPanels?: Partial<Record<'left' | 'right' | 'bottom' | 'center', TabId>>
-    onSelectedPanelChange?: (position: 'left' | 'right' | 'bottom' | 'center', id: TabId) => void
+    selectedTabIds?: Partial<Record<'left' | 'right' | 'bottom' | 'center', TabId>>
+    onTabChange?: (position: 'left' | 'right' | 'bottom' | 'center', tabId: TabId) => void
 }
 
-export function WindowPanesLayout({panels, selectedPanels, onSelectedPanelChange}: WindowPanesLayoutProps){
-    const leftPanelRef = useRef<ImperativePanelHandle>(null)
-    const rightPanelRef = useRef<ImperativePanelHandle>(null)
-    const bottomPanelRef = useRef<ImperativePanelHandle>(null)
+export function WindowPanesLayout({ panels, selectedTabIds, onTabChange }: WindowPanesLayoutProps){
+    const mountedPanels = useRef(new Set<string>())
     const panelRefs = {
-        left: leftPanelRef,
-        right: rightPanelRef,
-        bottom: bottomPanelRef,
+        left: useRef<ImperativePanelHandle>(null),
+        right: useRef<ImperativePanelHandle>(null),
+        bottom: useRef<ImperativePanelHandle>(null),
     };
 
     const [isExpanded, setIsExpanded] = useState(false);
@@ -47,20 +48,20 @@ export function WindowPanesLayout({panels, selectedPanels, onSelectedPanelChange
         }
     };
 
-    const toggleExpand = useCallback(() => {
+    const toggleExpand = () => {
         if (isExpanded) {
             // Restore panels
-            leftPanelRef.current?.expand();
-            rightPanelRef.current?.expand();
-            bottomPanelRef.current?.expand();
+            panelRefs.left.current?.expand();
+            panelRefs.right.current?.expand();
+            panelRefs.bottom.current?.expand();
         } else {
             // Collapse all panels
-            leftPanelRef.current?.collapse();
-            rightPanelRef.current?.collapse();
-            bottomPanelRef.current?.collapse();
+            panelRefs.left.current?.collapse();
+            panelRefs.right.current?.collapse();
+            panelRefs.bottom.current?.collapse();
         }
         setIsExpanded(!isExpanded);
-    }, [isExpanded]);
+    };
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -76,7 +77,7 @@ export function WindowPanesLayout({panels, selectedPanels, onSelectedPanelChange
         return () => {
             window.removeEventListener('keydown', handleKeyDown, true);
         };
-    }, [toggleExpand]);
+    }, [isExpanded]);
 
     const renderPanel  = (panel: WindowPanel, index = 0)=> {
         return <Card key={panel.key ?? index} style={panel.style} className={`window-panel-card ${panel.className || ''}`}>
@@ -86,25 +87,26 @@ export function WindowPanesLayout({panels, selectedPanels, onSelectedPanelChange
         </Card>
     }
 
-    const renderPanels  = (
-        p0: (WindowPanel|null)[],
-        position: 'left' | 'right' | 'bottom' | 'center',
-        vertical = false,
-    )=> {
+    const renderPanels  = (p0: (WindowPanel|null)[], position: 'left' | 'right' | 'bottom' | 'center', vertical = false)=> {
         const p = p0.filter(p=>!!p)
+        const retainedPanels = p.some(panel => panel.keepMounted)
+        const selected = selectedTabIds?.[position] ?? p[0]?.key ?? 'tab-0'
+        mountedPanels.current.add(`${position}:${selected}`)
         if(p.length > 1){
             return <Tabs
                 vertical={vertical}
                 animate={false}
-                renderActiveTabPanelOnly={position !== 'right'}
+                renderActiveTabPanelOnly={!retainedPanels}
                 size={"medium"}
                 className={"window-panels-tabs"}
-                selectedTabId={selectedPanels?.[position]}
-                onChange={(id) => onSelectedPanelChange?.(position, id)}
+                selectedTabId={selectedTabIds?.[position]}
+                onChange={tabId => onTabChange?.(position, tabId)}
             >
                 {p.map(({className, ...panel}, i)=>(
                     <Tab id={panel.key || `tab-${i}`} key={panel.key || i} panel={
-                        renderPanel(panel, i)
+                        !retainedPanels || selected === (panel.key || `tab-${i}`) ||
+                            (panel.keepMounted && mountedPanels.current.has(`${position}:${panel.key || `tab-${i}`}`))
+                            ? renderPanel(panel, i) : undefined
                     } panelClassName={className} title={toTitleCase(panel.title)} />
                 ))}
             </Tabs>
@@ -139,6 +141,8 @@ export function WindowPanesLayout({panels, selectedPanels, onSelectedPanelChange
                         className="center-top-panel"
                     >
                         {renderPanels(panels.center, 'center')}
+                        <InteractionControlsButtonGroup key="interaction-controls" />
+                        <EditPreviewButtonGroup key="editpreview" isExpanded={isExpanded} toggleExpand={toggleExpand} />
                         <PopupDialogCard/>
                         <WindowPanelFlap
                             isCollapsed={panelRefs.left.current?.isCollapsed() ?? false}

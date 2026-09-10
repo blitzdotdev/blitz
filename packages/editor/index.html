@@ -8,8 +8,10 @@
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Blitz Editor</title>
-    <script type="importmap">{"imports":{"threepipe":"/editor-runtime.js","three":"/editor-runtime.js","uiconfig.js":"/editor-runtime.js","ts-browser-helpers":"/editor-runtime.js","@blitzdev/engine":"/editor-runtime.js"}}</script>
+    <title>Kite Editor</title>
+    <!-- Import maps polyfill -->
+    <!-- Remove this when import maps will be widely supported -->
+    <script async src="https://ga.jspm.io/npm:es-module-shims@2.6.2/dist/es-module-shims.js"></script>
     <!--Scrollbar styling-->
     <style>
       * {
@@ -36,7 +38,6 @@
     </style>
   </head>
   <body>
-    <noscript>Blitz Editor requires JavaScript.</noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
