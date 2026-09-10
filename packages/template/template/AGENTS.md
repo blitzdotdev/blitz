@@ -13,7 +13,7 @@ npx blitz dev
 
 `blitz dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx blitz pull`; then run `npx blitz publish` and report the live URL it prints. Run `npx blitz <command> --help` for command-specific usage.
 
-`blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. Every command except `--help` and `--version` checks that pin. A different command version delegates to the installed project binary, or tells you to install dependencies or run the pinned package through `npx`.
+`blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except `--help` and `--version` checks the resolved version. A different command version delegates to the installed project binary, or tells you to install dependencies or run the pinned exact package through `npx`.
 
 Upgrade the project with `npx blitz upgrade`, or select an exact target with `npx blitz upgrade --to x.y.z`. Upgrade rewrites both version fields, runs `npm install --ignore-scripts`, applies engine migrations, validates the scene, and records a `blitz-upgrade` journal entry.
 
@@ -275,6 +275,7 @@ Access the threepipe viewer inside a component using `this.ctx.viewer`.
 # Common Game Development Patterns
 
 ## Input Handling
+- Pointer lock requires a focused browser window, so focus the game window before clicking to capture FPS input.
 - For keyboard input, add event listeners in `start()` and remove in `stop()`:
   ```js
   start() {
@@ -899,7 +900,9 @@ class EnemySystemComponent extends Object3DComponent {
 
 # Publishing
 
-Run `npx blitz pull` before every update and resolve any local and remote difference. Create a game with `npx blitz publish --slug my-game --name "My Game" --message "initial release"`. Later publishes reuse the saved deploy entry and can use `npx blitz publish --message "what changed"`. The command hashes the project, uploads missing blobs, creates a release, records it in `.blitz/deploys.json`, and prints the live URL. Publishing requires network access and a reachable Blitz cloud API.
+Run `npx blitz pull` before every update and resolve any local and remote difference. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx blitz pull --force` overwrites them. Create a game with `npx blitz publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `blitz.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@blitzdev/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.blitz/deploys.json`, and prints the live URL. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
+
+Publishing omits `package-lock.json`, `.env`, `.env.*`, `*.log`, and `.eslintrc*` by default. Add project-specific glob patterns under `blitz.publish.exclude` in `package.json`, for example `{"blitz":{"publish":{"exclude":["tools/**","AGENTS.md"]}}}`.
 
 Run `npx blitz status` to print local deploy metadata and expiry without secrets. Run `npx blitz claim --email player@example.com --password "at-least-8-characters"` to register and claim every unclaimed local deploy. Add `--login` to use an existing account. Unknown flags fail with a nonzero exit code.
 

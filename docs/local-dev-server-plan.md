@@ -23,7 +23,8 @@ blitz open             # opens the editor URL in the default browser
 | Route | Purpose |
 |---|---|
 | `GET /` | the editor UI for this version |
-| `GET /_blitz/runtime.js` | the runtime, used by play mode |
+| `GET /editor-runtime.js` | the editor's shared engine module graph, used by play mode |
+| `GET /api/import-map` | the editor and project dependency import map |
 | `GET /api/files` | manifest of the project: path, size, sha256, mtime, with the exclusion list applied |
 | `GET /files/<path>` | file bytes with the right MIME and `ETag: "<sha256>"`; scripts load as plain ES modules from here |
 | `PUT /files/<path>` | write; `If-Match: "<sha256>"` or `*`; `412` on mismatch; creates directories |
@@ -46,7 +47,7 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Versioning
 
-The project's `devDependencies` pin `@blitzdev/blitz` at one exact version. Every command except help and version compares itself with that pin. A mismatch delegates to the installed local binary or refuses with install and pinned `npx` instructions. `blitz upgrade [--to x.y.z]` updates the pin and `blitz.version`, installs without lifecycle scripts, runs engine migrations, validates the scene, and writes an upgrade journal entry. npm is the versioned store for editor, runtime, template, and `agents.md`. See `docs/open-source-split.md` for the packages.
+The project's `devDependencies` select `@blitzdev/blitz`. Exact specs are checked directly; other specs resolve through the installed package metadata. Every command except help and version compares itself with that version. A mismatch delegates to the installed local binary or refuses with install and pinned `npx` instructions. `blitz upgrade [--to x.y.z]` updates the pin and `blitz.version`, installs without lifecycle scripts, runs engine migrations, validates the scene, and writes an upgrade journal entry. npm is the versioned store for editor, runtime, template, and `agents.md`. See `docs/open-source-split.md` for the packages.
 
 ## No hosted editor
 

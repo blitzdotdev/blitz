@@ -1,14 +1,23 @@
 import type {ProjectEntry} from './types.ts'
 
 const EXCLUDED_DIRECTORIES = new Set(['.blitz', '.git', 'node_modules', 'dist'])
+const DEFAULT_EXCLUDES = ['package-lock.json', '.env', '.env.*', '*.log', '.eslintrc*']
+
+export interface WalkProjectOptions {
+    exclude?: string[]
+}
 
 /**
  * Walk a project using only the fixed release exclusions. Project .gitignore
  * rules are deliberately not interpreted.
  */
-export async function walkProject(dirHandle: FileSystemDirectoryHandle): Promise<ProjectEntry[]> {
+export async function walkProject(
+    dirHandle: FileSystemDirectoryHandle,
+    options: WalkProjectOptions = {},
+): Promise<ProjectEntry[]> {
     const entries: ProjectEntry[] = []
-    await walkDirectory(dirHandle, '', entries)
+    const excludes = [...DEFAULT_EXCLUDES, ...(options.exclude || [])]
+    await walkDirectory(dirHandle, '', entries, excludes)
     return entries.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)
 }
 
@@ -16,17 +25,33 @@ async function walkDirectory(
     directory: FileSystemDirectoryHandle,
     prefix: string,
     result: ProjectEntry[],
+    excludes: string[],
 ): Promise<void> {
     for await (const handle of directory.values()) {
         if (handle.name.startsWith('.')) continue
         const path = prefix ? `${prefix}/${handle.name}` : handle.name
         if (handle.kind === 'directory') {
             if (EXCLUDED_DIRECTORIES.has(handle.name)) continue
-            await walkDirectory(handle, path, result)
+            await walkDirectory(handle, path, result, excludes)
         } else {
+            if (excludes.some((pattern) => matchesGlob(path, pattern))) continue
             result.push({path, file: await handle.getFile()})
         }
     }
+}
+
+function matchesGlob(path: string, pattern: string): boolean {
+    const normalized = pattern.replace(/^\.\//, '').replaceAll('\\', '/')
+    if (!normalized || normalized.startsWith('/') || normalized.split('/').includes('..')) return false
+    const source = normalized.split('').map((character, index) => {
+        if (character === '*' && normalized[index + 1] === '*') return ''
+        if (character === '*' && normalized[index - 1] === '*') return '.*'
+        if (character === '*') return '[^/]*'
+        if (character === '?') return '[^/]'
+        return /[\\^$.*+?()[\]{}|]/.test(character) ? `\\${character}` : character
+    }).join('')
+    const expression = new RegExp(`^${source}$`)
+    return expression.test(path) || (!normalized.includes('/') && expression.test(path.split('/').at(-1) || ''))
 }
 
 export async function readProjectFile(

@@ -5,8 +5,11 @@ import {BLITZ_VERSION} from './versions.ts'
 
 export interface PinnedProject {
     root: string
+    /** The dependency spec written in package.json. */
     version: string
 }
+
+const EXACT_VERSION = /^\d+\.\d+\.\d+$/
 
 export async function findPinnedProject(start = process.cwd()): Promise<PinnedProject | undefined> {
     let directory = resolve(start)
@@ -34,11 +37,19 @@ export async function enforceVersionPin(
     if (process.env.BLITZ_IGNORE_VERSION_PIN === '1') return undefined
     const project = await findPinnedProject(options.cwd)
     const commandVersion = options.commandVersion || BLITZ_VERSION
-    if (!project || project.version === commandVersion) return undefined
+    if (!project) return undefined
+
+    const exactPin = EXACT_VERSION.test(project.version)
+    const installedVersion = exactPin ? undefined : await readInstalledVersion(project.root)
+    if (!exactPin && !installedVersion) {
+        throw new Error(`Project uses @blitzdev/blitz ${project.version}, but it is not installed. Run npm install before blitz ${command}.`)
+    }
+    const resolvedVersion = installedVersion || project.version
+    if (resolvedVersion === commandVersion) return undefined
 
     const localBin = resolve(project.root, 'node_modules/.bin/blitz')
     if (process.env.BLITZ_VERSION_DELEGATED !== '1' && await exists(localBin)) {
-        console.error(`Blitz ${commandVersion} does not match project pin ${project.version}; delegating to ${localBin}`)
+        console.error(`Blitz ${commandVersion} does not match project version ${resolvedVersion}; delegating to ${localBin}`)
         return spawnAndWait(localBin, args, {
             ...process.env,
             BLITZ_VERSION_DELEGATED: '1',
@@ -46,7 +57,25 @@ export async function enforceVersionPin(
         })
     }
 
+    if (!exactPin) {
+        throw new Error(`Installed @blitzdev/blitz is ${resolvedVersion}, but this command is ${commandVersion}. Run npm install and use the project binary.`)
+    }
     throw new Error(`Project pins @blitzdev/blitz ${project.version}. Run npm install, or npx @blitzdev/blitz@${project.version} ${command}`)
+}
+
+async function readInstalledVersion(projectRoot: string): Promise<string | undefined> {
+    try {
+        const manifest = JSON.parse(await readFile(
+            resolve(projectRoot, 'node_modules/@blitzdev/blitz/package.json'),
+            'utf8',
+        )) as {version?: unknown}
+        return typeof manifest.version === 'string' && EXACT_VERSION.test(manifest.version)
+            ? manifest.version
+            : undefined
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
+        throw error
+    }
 }
 
 async function exists(path: string): Promise<boolean> {

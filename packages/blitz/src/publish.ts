@@ -1,4 +1,5 @@
 import {findDeploySlug, readDeploys, writeDeploys} from './deploys.ts'
+import {projectDependencies} from '@blitzdev/engine/importMap'
 import {readProjectFile, walkProject, writeProjectFile} from './filesystem.ts'
 import {generateIndexHtml} from './indexHtml.ts'
 import {buildManifest, sha256} from './manifest.ts'
@@ -6,7 +7,6 @@ import type {
     CreatedAnonymousGame,
     DeployEntry,
     GameRecord,
-    ProjectDependency,
     ProjectEntry,
     PublishProgress,
     ReleaseManifest,
@@ -47,6 +47,7 @@ export interface PullProjectOptions {
     dirHandle: FileSystemDirectoryHandle
     api: PublishApi
     entry: DeployEntry
+    force?: boolean
 }
 
 export async function publishProject({
@@ -67,24 +68,30 @@ export async function publishProject({
     const packageFile = await readProjectFile(dirHandle, 'package.json')
     if (!packageFile) throw new Error('package.json is required to publish a project.')
     let packageJson = parsePackageJson(await packageFile.text())
-    const versionResult = usePinnedRuntimeVersion(packageJson)
+    const versionResult = await usePinnedRuntimeVersion(dirHandle, packageJson)
     packageJson = versionResult.packageJson
+    let releaseName = name || packageDisplayName(packageJson, slug)
 
     if (!entry) {
         onProgress?.({phase: 'creating', completed: 0, total: 1})
         const created = await api.createAnonymousGame({
             slug,
-            name: name || (typeof packageJson.name === 'string' ? packageJson.name : slug),
+            name: releaseName,
         })
+        releaseName = created.name || releaseName
         entry = deployEntryFromCreated(created)
         deploys.games[slug] = entry
         await writeDeploys(dirHandle, deploys)
         onProgress?.({phase: 'creating', completed: 1, total: 1, preview_url: entry.preview_url})
     }
     api.useGame(entry.game_id, entry.deploy_token)
+    if (entry.last_release_hash && !name) {
+        const existingGame = await api.getGame(entry.game_id)
+        if (existingGame.name) releaseName = existingGame.name
+    }
 
     onProgress?.({phase: 'walking', completed: 0, total: 1})
-    let projectEntries = await walkProject(dirHandle)
+    let projectEntries = await walkProject(dirHandle, {exclude: publishExcludes(packageJson)})
     onProgress?.({phase: 'walking', completed: 1, total: 1})
 
     if (versionResult.changed) {
@@ -97,25 +104,34 @@ export async function publishProject({
     }
 
     const version = versionResult.version
-    let runtime: RuntimeRecord
+    const installedRuntime = await readProjectFile(dirHandle, 'node_modules/@blitzdev/engine/dist/runtime.js')
+    if (!installedRuntime) {
+        throw new Error('The installed Blitz runtime is missing. Run npm install before publishing.')
+    }
+    const runtimeHash = await sha256(installedRuntime)
     try {
-        runtime = await api.getRuntime(version)
+        const registered = await api.getRuntime(version)
+        if (registered.sha256 !== runtimeHash) {
+            console.warn(`[blitz] Installed runtime ${runtimeHash} differs from registered ${version} runtime ${registered.sha256}; publishing the installed runtime.`)
+        }
     } catch (error) {
         if (isHttpNotFound(error)) {
-            throw new Error(`Blitz runtime ${version} is not registered. Upgrade the project or publish the matching runtime first.`)
+            console.warn(`[blitz] Runtime ${version} is not registered; publishing the installed runtime. A strict backend may reject this release.`)
+        } else {
+            console.warn(`[blitz] Could not compare runtime ${version} with the registry: ${error instanceof Error ? error.message : error}. Publishing the installed runtime.`)
         }
-        throw error
     }
     const indexHtml = generateIndexHtml({
-        name: name || (typeof packageJson.name === 'string' ? packageJson.name : slug),
+        name: releaseName,
         version,
-        dependencies: packageDependencies(packageJson),
+        dependencies: projectDependencies(packageJson),
     })
     const indexFile = await writeProjectFile(dirHandle, 'index.html', indexHtml)
     projectEntries = replaceEntry(projectEntries, {path: 'index.html', file: indexFile})
+    projectEntries = replaceEntry(projectEntries, {path: '_blitz/runtime.js', file: installedRuntime})
 
     onProgress?.({phase: 'hashing', completed: 0, total: projectEntries.length})
-    const manifest = await buildManifest(projectEntries, runtime)
+    const manifest = await buildManifest(projectEntries)
     onProgress?.({phase: 'hashing', completed: projectEntries.length, total: projectEntries.length})
 
     const hashes = [...new Set(Object.values(manifest.files).map(({sha256: hash}) => hash))]
@@ -127,7 +143,7 @@ export async function publishProject({
     }
     const uploads = missing.map((hash) => {
         const projectEntry = uploadByHash.get(hash)
-        if (!projectEntry) throw new Error(`The registered runtime blob ${hash} is missing from storage.`)
+        if (!projectEntry) throw new Error(`The release blob ${hash} is missing from the project upload set.`)
         return {hash, ...projectEntry}
     })
     await uploadWithPool(api, uploads, onProgress)
@@ -149,19 +165,30 @@ export async function pullProject({
     dirHandle,
     api,
     entry,
-}: PullProjectOptions): Promise<{release_hash: string; updated: string[]}> {
+    force = false,
+}: PullProjectOptions): Promise<{release_hash: string; updated: string[]; kept: string[]}> {
     const deploys = await readDeploys(dirHandle)
     const slug = findDeploySlug(deploys, entry)
     if (!slug) throw new Error('The deploy entry is not present in .blitz/deploys.json.')
+    if (!entry.last_release_hash) throw new Error('There is nothing to pull before the first publish.')
     api.useGame(entry.game_id, entry.deploy_token)
     const game = await api.getGame(entry.game_id)
     if (!game.active_release) throw new Error('The game does not have an active release to pull.')
     const release = await api.getRelease(game.active_release)
+    const previousRelease = await api.getRelease(entry.last_release_hash)
     const updated: string[] = []
+    const kept: string[] = []
     for (const path of Object.keys(release.files).sort()) {
         if (path === 'index.html' || path.startsWith('_blitz/')) continue
         const local = await readProjectFile(dirHandle, path)
-        if (local && await sha256(local) === release.files[path].sha256) continue
+        const localHash = local ? await sha256(local) : undefined
+        if (localHash === release.files[path].sha256) continue
+        const previousHash = previousRelease?.files[path]?.sha256
+        const modifiedLocally = localHash !== previousHash
+        if (modifiedLocally && !force) {
+            kept.push(path)
+            continue
+        }
         const blob = await api.downloadBlob(release.files[path].sha256)
         await writeProjectFile(dirHandle, path, blob)
         updated.push(path)
@@ -169,7 +196,7 @@ export async function pullProject({
     entry.last_release_hash = release.release_hash
     deploys.games[slug] = {...deploys.games[slug], last_release_hash: release.release_hash}
     await writeDeploys(dirHandle, deploys)
-    return {release_hash: release.release_hash, updated}
+    return {release_hash: release.release_hash, updated, kept}
 }
 
 function parsePackageJson(text: string): Record<string, unknown> {
@@ -180,18 +207,55 @@ function parsePackageJson(text: string): Record<string, unknown> {
     return value as Record<string, unknown>
 }
 
-function usePinnedRuntimeVersion(packageJson: Record<string, unknown>): {
+function packageDisplayName(packageJson: Record<string, unknown>, fallback: string): string {
+    const blitz = packageJson.blitz
+    if (blitz && typeof blitz === 'object' && !Array.isArray(blitz)) {
+        const configured = (blitz as Record<string, unknown>).name
+        if (typeof configured === 'string' && configured.trim()) return configured
+    }
+    return typeof packageJson.name === 'string' && packageJson.name.trim() ? packageJson.name : fallback
+}
+
+function publishExcludes(packageJson: Record<string, unknown>): string[] {
+    const blitz = packageJson.blitz
+    if (!blitz || typeof blitz !== 'object' || Array.isArray(blitz)) return []
+    const publish = (blitz as Record<string, unknown>).publish
+    if (publish === undefined) return []
+    if (!publish || typeof publish !== 'object' || Array.isArray(publish)) {
+        throw new Error('package.json blitz.publish must be an object.')
+    }
+    const exclude = (publish as Record<string, unknown>).exclude
+    if (exclude === undefined) return []
+    if (!Array.isArray(exclude) || exclude.some((value) => typeof value !== 'string')) {
+        throw new Error('package.json blitz.publish.exclude must be an array of glob strings.')
+    }
+    return exclude as string[]
+}
+
+async function usePinnedRuntimeVersion(dirHandle: FileSystemDirectoryHandle, packageJson: Record<string, unknown>): Promise<{
     packageJson: Record<string, unknown>
     version: string
     changed: boolean
-} {
+}> {
     const devDependencies = packageJson.devDependencies
     if (!devDependencies || typeof devDependencies !== 'object' || Array.isArray(devDependencies)) {
         throw new Error('package.json must pin @blitzdev/blitz in devDependencies.')
     }
-    const version = (devDependencies as Record<string, unknown>)['@blitzdev/blitz']
-    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) {
-        throw new Error('package.json devDependencies["@blitzdev/blitz"] must be an exact x.y.z version.')
+    const spec = (devDependencies as Record<string, unknown>)['@blitzdev/blitz']
+    if (typeof spec !== 'string' || !spec) {
+        throw new Error('package.json must specify @blitzdev/blitz in devDependencies.')
+    }
+    let version = spec
+    if (!/^\d+\.\d+\.\d+$/.test(spec)) {
+        const enginePackageFile = await readProjectFile(dirHandle, 'node_modules/@blitzdev/engine/package.json')
+        if (!enginePackageFile) {
+            throw new Error(`Project uses @blitzdev/blitz ${spec}, but @blitzdev/engine is not installed. Run npm install before publishing.`)
+        }
+        const enginePackage = parsePackageJson(await enginePackageFile.text())
+        if (typeof enginePackage.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(enginePackage.version)) {
+            throw new Error('Installed @blitzdev/engine package.json must have an exact x.y.z version.')
+        }
+        version = enginePackage.version
     }
     const rawBlitz = packageJson.blitz
     if (rawBlitz !== undefined && (!rawBlitz || typeof rawBlitz !== 'object' || Array.isArray(rawBlitz))) {
@@ -212,29 +276,6 @@ function usePinnedRuntimeVersion(packageJson: Record<string, unknown>): {
 
 function isHttpNotFound(error: unknown): boolean {
     return Boolean(error && typeof error === 'object' && 'status' in error && error.status === 404)
-}
-
-function packageDependencies(packageJson: Record<string, unknown>): ProjectDependency[] {
-    const result: ProjectDependency[] = []
-    const dependencies = packageJson.dependencies
-    if (dependencies && typeof dependencies === 'object' && !Array.isArray(dependencies)) {
-        for (const [key, version] of Object.entries(dependencies)) {
-            if (typeof version === 'string') result.push({key, version})
-        }
-    }
-    const blitz = packageJson.blitz
-    if (blitz && typeof blitz === 'object' && !Array.isArray(blitz)) {
-        const imports = (blitz as Record<string, unknown>).imports
-        if (imports && typeof imports === 'object' && !Array.isArray(imports)) {
-            for (const [key, value] of Object.entries(imports)) {
-                if (typeof value !== 'string') continue
-                result.push(value.startsWith('@')
-                    ? {key, version: value.slice(1)}
-                    : {key, version: '', url: value})
-            }
-        }
-    }
-    return result
 }
 
 function replaceEntry(entries: ProjectEntry[], next: ProjectEntry): ProjectEntry[] {

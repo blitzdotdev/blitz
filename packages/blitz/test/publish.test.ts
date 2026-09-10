@@ -1,4 +1,4 @@
-import {describe, expect, it} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import {
     canonicalizeManifest,
     generateIndexHtml,
@@ -39,6 +39,10 @@ describe('walkProject', () => {
         const root = new FakeDirectory('project')
         root.set('main.js', 'main')
         root.set('.env', 'secret')
+        root.set('.env.production', 'secret')
+        root.set('package-lock.json', '{}')
+        root.set('debug.log', 'debug')
+        root.set('.eslintrc.json', '{}')
         root.set('.gitignore', 'keep-me.txt')
         root.set('keep-me.txt', 'kept')
         root.set('.blitz/deploys.json', '{}')
@@ -53,6 +57,16 @@ describe('walkProject', () => {
             'keep-me.txt',
             'main.js',
         ])
+    })
+
+    it('honors project publish exclusion globs', async () => {
+        const root = new FakeDirectory('project')
+        root.set('main.js', 'main')
+        root.set('tools/build.mjs', 'private tool')
+        root.set('notes/draft.txt', 'draft')
+
+        expect((await walkProject(root.asHandle(), {exclude: ['tools/**', '**/*.txt']})).map(({path}) => path))
+            .toEqual(['main.js'])
     })
 })
 
@@ -81,12 +95,33 @@ describe('generateIndexHtml', () => {
         const importMap = JSON.parse(importMapText || '{}') as {imports: Record<string, string>}
         expect(importMap.imports.threepipe).toBe('./_blitz/runtime.js')
         expect(importMap.imports.three).toBe('./_blitz/runtime.js')
+        expect(importMap.imports['@blitzdev/engine']).toBe('./_blitz/runtime.js')
         expect(importMap.imports['extra-package']).toContain('https://esm.sh/extra-package@1.2.3?external=')
-        expect(importMap.imports['extra-package']).toContain('threepipe,three,uiconfig.js,ts-browser-helpers,extra-package')
+        expect(importMap.imports['extra-package']).toContain('threepipe,three,uiconfig.js,ts-browser-helpers,@blitzdev/engine,extra-package')
         expect(html).toContain("import {createGame} from './_blitz/runtime.js'")
         expect(html).toContain("base:new URL('./',location.href).href")
         expect(html).not.toContain('"/_blitz/runtime.js"')
         expect(html).toContain('<title>A &lt;Game&gt;</title>')
+        expect(html).toContain('<link rel="icon" href="./icon.svg">')
+    })
+
+    it('does not publish file dependency specs or local paths in the import map', () => {
+        const html = generateIndexHtml({
+            name: 'Tarball Game',
+            version: BLITZ_VERSION,
+            dependencies: [
+                {key: '@blitzdev/engine', version: 'file:../../packs/engine.tgz'},
+                {key: '@blitzdev/editor', version: 'file:../../packs/editor.tgz'},
+                {key: 'local-tools', version: 'file:../tools'},
+                {key: 'extra-package', version: '^1.2.3'},
+            ],
+        })
+        const importMap = readImportMap(html)
+
+        expect(importMap.imports['@blitzdev/engine']).toBe('./_blitz/runtime.js')
+        expect(importMap.imports).not.toHaveProperty('@blitzdev/editor')
+        expect(importMap.imports).not.toHaveProperty('local-tools')
+        expect(JSON.stringify(importMap)).not.toContain('../../packs')
     })
 })
 
@@ -139,6 +174,28 @@ describe('publishProject', () => {
         await publishProject({dirHandle: root.asHandle(), api, slug: 'sample-game', message: 'second'})
         expect(api.order).not.toContain('create')
         expect(api.releaseOptions).toEqual({message: 'second', base_release: 'd'.repeat(64)})
+        expect(await root.text('index.html')).toContain('<title>Sample Game</title>')
+    })
+
+    it('uses blitz.name by default and preserves the backend game name on updates', async () => {
+        const root = sampleProject()
+        const packageJson = JSON.parse(await root.text('package.json'))
+        packageJson.name = 'package-slug-name'
+        packageJson.blitz.name = 'Configured Game Name'
+        root.set('package.json', JSON.stringify(packageJson))
+        const api = new MockPublishApi()
+
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'name-game'})
+        expect(api.createdName).toBe('Configured Game Name')
+
+        api.gameName = 'Live Renamed Game'
+        api.nextReleaseHash = 'e'.repeat(64)
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'name-game'})
+        expect(await root.text('index.html')).toContain('<title>Live Renamed Game</title>')
+
+        api.nextReleaseHash = 'f'.repeat(64)
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'name-game', name: 'Explicit Update Name'})
+        expect(await root.text('index.html')).toContain('<title>Explicit Update Name</title>')
     })
 
     it('uses the exact project pin for blitz.version and the runtime lookup', async () => {
@@ -157,18 +214,114 @@ describe('publishProject', () => {
         expect(JSON.parse(await root.text('package.json')).blitz.version).toBe(pinned)
     })
 
-    it('reports an unregistered pinned runtime clearly', async () => {
+    it.each(['file:../../blitz-packs/blitzdev-blitz.tgz', '^9.8.0'])(
+        'uses the installed engine version when the Blitz spec is %s',
+        async (spec) => {
+            const root = sampleProject()
+            root.set('package.json', JSON.stringify({
+                name: 'Installed Version Game',
+                devDependencies: {'@blitzdev/blitz': spec},
+                blitz: {version: '1.2.3'},
+            }))
+            installEngine(root, '9.8.7', 'installed runtime')
+            const api = new MockPublishApi()
+
+            await publishProject({dirHandle: root.asHandle(), api, slug: 'installed-version-game'})
+
+            expect(api.runtimeVersion).toBe('9.8.7')
+            expect(JSON.parse(await root.text('package.json')).blitz.version).toBe('9.8.7')
+        },
+    )
+
+    it('publishes installed runtime bytes and only uses the registry for a mismatch warning', async () => {
+        const root = sampleProject()
+        installEngine(root, BLITZ_VERSION, 'new local runtime with Generator')
+        const localRuntime = await root.file('node_modules/@blitzdev/engine/dist/runtime.js')
+        const localHash = await sha256(localRuntime)
+        const api = new MockPublishApi()
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'local-runtime'})
+
+        expect(api.releasedManifest?.files['_blitz/runtime.js']).toMatchObject({
+            sha256: localHash,
+            size: localRuntime.size,
+            mime: 'text/javascript; charset=utf-8',
+        })
+        expect(await api.uploaded.get(localHash)?.text()).toBe('new local runtime with Generator')
+        expect(warning).toHaveBeenCalledWith(expect.stringContaining('publishing the installed runtime'))
+        warning.mockRestore()
+    })
+
+    it('applies blitz.publish.exclude to the release manifest', async () => {
+        const root = sampleProject()
+        const packageJson = JSON.parse(await root.text('package.json'))
+        packageJson.blitz.publish = {exclude: ['tools/**', 'AGENTS.md']}
+        root.set('package.json', JSON.stringify(packageJson))
+        root.set('tools/build.mjs', 'private build helper')
+        root.set('AGENTS.md', 'private instructions')
+        root.set('public.txt', 'ship this')
+        const api = new MockPublishApi()
+
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'exclude-game'})
+
+        expect(api.releasedManifest?.files).toHaveProperty('public.txt')
+        expect(api.releasedManifest?.files).not.toHaveProperty('tools/build.mjs')
+        expect(api.releasedManifest?.files).not.toHaveProperty('AGENTS.md')
+    })
+
+    it('continues when the installed runtime version is not registered', async () => {
         const root = sampleProject()
         const api = new MockPublishApi()
         api.getRuntime = async () => {
             throw Object.assign(new Error('not found'), {status: 404})
         }
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
         await expect(publishProject({dirHandle: root.asHandle(), api, slug: 'missing-runtime'}))
-            .rejects.toThrow(`Blitz runtime ${BLITZ_VERSION} is not registered`)
+            .resolves.toMatchObject({release_hash: expect.any(String)})
+        expect(warning).toHaveBeenCalledWith(expect.stringContaining('is not registered'))
+        warning.mockRestore()
+    })
+
+    it('leaves strict runtime enforcement to the release endpoint', async () => {
+        const root = sampleProject()
+        const api = new MockPublishApi()
+        api.getRuntime = async () => {
+            throw Object.assign(new Error('registry unavailable'), {status: 503})
+        }
+        api.putRelease = async () => {
+            throw Object.assign(new Error('unregistered_runtime'), {status: 409, code: 'unregistered_runtime'})
+        }
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+        await expect(publishProject({dirHandle: root.asHandle(), api, slug: 'strict-runtime'}))
+            .rejects.toThrow('unregistered_runtime')
+        expect(warning).toHaveBeenCalledWith(expect.stringContaining('Could not compare runtime'))
+        warning.mockRestore()
     })
 })
 
 describe('pullProject', () => {
+    it('reports nothing to pull when a game was created but has no published release', async () => {
+        const root = new FakeDirectory('pull-before-publish')
+        const entry = {
+            game_id: 'game-id',
+            deploy_token: 'tp_token',
+            claim_secret: 'claim-secret',
+            preview_url: 'https://gateway.example/pull-before-publish/',
+            expires_at: '2026-09-10 01:00:00',
+        }
+        await writeDeploys(root.asHandle(), {games: {'pull-before-publish': entry}})
+        const api = {
+            useGame: () => undefined,
+            getGame: async () => { throw new Error('should not query the game') },
+        } as unknown as PublishApi
+
+        await expect(pullProject({dirHandle: root.asHandle(), api, entry}))
+            .rejects.toThrow('There is nothing to pull before the first publish')
+    })
+
     it('downloads changed source files, skips generated files, and records the active release', async () => {
         const root = new FakeDirectory('pull')
         root.set('package.json', '{"name":"old"}')
@@ -195,7 +348,16 @@ describe('pullProject', () => {
         const api = {
             useGame: () => undefined,
             getGame: async () => ({id: 'game-id', slug: 'pull-game', name: 'Pull', active_release: releaseHash}),
-            getRelease: async () => ({
+            getRelease: async (hash: string) => hash === entry.last_release_hash ? {
+                release_hash: hash,
+                message: 'previous',
+                created_at: '2026-09-08 01:00:00',
+                active: false,
+                files: {
+                    'package.json': {sha256: await sha256(new Blob(['{"name":"old"}'])), size: 14},
+                    'main.js': {sha256: await sha256(sameMain), size: sameMain.size},
+                },
+            } : ({
                 release_hash: releaseHash,
                 message: 'remote',
                 created_at: '2026-09-09 01:00:00',
@@ -216,10 +378,53 @@ describe('pullProject', () => {
         } as PublishApi
 
         const result = await pullProject({dirHandle: root.asHandle(), api, entry})
-        expect(result).toEqual({release_hash: releaseHash, updated: ['package.json']})
+        expect(result).toEqual({release_hash: releaseHash, updated: ['package.json'], kept: []})
         expect(await root.text('package.json')).toBe('{"name":"new"}')
         expect(downloaded).toEqual([await sha256(nextPackage)])
         expect((await readDeploys(root.asHandle())).games['pull-game'].last_release_hash).toBe(releaseHash)
+    })
+
+    it('keeps files changed since the last release unless force is set', async () => {
+        const root = new FakeDirectory('pull-conflict')
+        root.set('main.js', 'local edit')
+        const previous = new Blob(['published'])
+        const remote = new Blob(['remote edit'])
+        const previousHash = await sha256(previous)
+        const remoteHash = await sha256(remote)
+        const previousReleaseHash = 'a'.repeat(64)
+        const remoteReleaseHash = 'b'.repeat(64)
+        const entry = {
+            game_id: 'game-id',
+            deploy_token: 'tp_token',
+            claim_secret: 'claim-secret',
+            preview_url: 'https://gateway.example/pull-conflict/',
+            expires_at: '2026-09-10 01:00:00',
+            last_release_hash: previousReleaseHash,
+        }
+        await writeDeploys(root.asHandle(), {games: {'pull-conflict': entry}})
+        const release = (hash: string): ReleaseRecord => ({
+            release_hash: hash,
+            message: null,
+            created_at: '2026-09-09 01:00:00',
+            active: hash === remoteReleaseHash,
+            files: {'main.js': hash === remoteReleaseHash
+                ? {sha256: remoteHash, size: remote.size}
+                : {sha256: previousHash, size: previous.size}},
+        })
+        const api = {
+            useGame: () => undefined,
+            getGame: async () => ({id: 'game-id', slug: 'pull-conflict', name: 'Pull', active_release: remoteReleaseHash}),
+            getRelease: async (hash: string) => release(hash),
+            downloadBlob: async () => remote,
+        } as PublishApi
+
+        const kept = await pullProject({dirHandle: root.asHandle(), api, entry})
+        expect(kept).toEqual({release_hash: remoteReleaseHash, updated: [], kept: ['main.js']})
+        expect(await root.text('main.js')).toBe('local edit')
+
+        const forced = await pullProject({dirHandle: root.asHandle(), api, entry, force: true})
+        expect(forced).toEqual({release_hash: remoteReleaseHash, updated: ['main.js'], kept: []})
+        expect(await root.text('main.js')).toBe('remote edit')
     })
 })
 
@@ -237,7 +442,13 @@ function sampleProject(): FakeDirectory {
     root.set('.gitignore', 'ignored-by-gitignore.txt')
     root.set('assets/main.scene.glb', Uint8Array.from([1, 2, 3]))
     root.set('Player.script.js', 'export class Player {}')
+    installEngine(root, BLITZ_VERSION, 'installed Blitz runtime')
     return root
+}
+
+function installEngine(root: FakeDirectory, version: string, runtime: string): void {
+    root.set('node_modules/@blitzdev/engine/package.json', JSON.stringify({version}))
+    root.set('node_modules/@blitzdev/engine/dist/runtime.js', runtime)
 }
 
 class MockPublishApi implements PublishApi {
@@ -248,17 +459,23 @@ class MockPublishApi implements PublishApi {
     nextReleaseHash = 'd'.repeat(64)
     releaseOptions?: {message?: string; base_release?: string}
     runtimeVersion?: string
+    releasedManifest?: ReleaseManifest
+    uploaded = new Map<string, Blob>()
+    createdName?: string
+    gameName = 'Sample Game'
 
     useGame(): void {
         this.order.push('use-game')
     }
 
-    async createAnonymousGame(): Promise<CreatedAnonymousGame> {
+    async createAnonymousGame(options: {slug: string; name?: string}): Promise<CreatedAnonymousGame> {
         this.order.push('create')
+        this.createdName = options.name
+        this.gameName = options.name || options.slug
         return {
             game_id: 'game-id',
             slug: 'sample-game',
-            name: 'Sample Game',
+            name: this.gameName,
             state: 'open',
             deploy_token: 'tp_token',
             claim_secret: 'claim-secret',
@@ -278,16 +495,18 @@ class MockPublishApi implements PublishApi {
         return this.missing ?? hashes.filter((hash) => hash !== 'c'.repeat(64))
     }
 
-    async uploadBlob(): Promise<void> {
+    async uploadBlob(hash: string, file: Blob): Promise<void> {
         this.order.push('upload')
+        this.uploaded.set(hash, file)
         this.activeUploads += 1
         this.maxUploads = Math.max(this.maxUploads, this.activeUploads)
         await new Promise((resolve) => setTimeout(resolve, 5))
         this.activeUploads -= 1
     }
 
-    async putRelease(_manifest: ReleaseManifest, options?: {message?: string; base_release?: string}) {
+    async putRelease(manifest: ReleaseManifest, options?: {message?: string; base_release?: string}) {
         this.order.push('release')
+        this.releasedManifest = manifest
         this.releaseOptions = options
         return {
             release_hash: this.nextReleaseHash,
@@ -296,7 +515,7 @@ class MockPublishApi implements PublishApi {
     }
 
     async getGame(): Promise<GameRecord> {
-        throw new Error('Not used')
+        return {id: 'game-id', slug: 'sample-game', name: this.gameName, active_release: this.nextReleaseHash}
     }
 
     async getRelease(): Promise<ReleaseRecord> {
@@ -306,4 +525,9 @@ class MockPublishApi implements PublishApi {
     async downloadBlob(): Promise<Blob> {
         throw new Error('Not used')
     }
+}
+
+function readImportMap(html: string): {imports: Record<string, string>} {
+    const text = html.match(/<script type="importmap">(.*?)<\/script>/s)?.[1]
+    return JSON.parse(text || '{}') as {imports: Record<string, string>}
 }

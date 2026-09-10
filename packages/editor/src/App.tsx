@@ -38,12 +38,22 @@ interface GeneratorEditorState {
     params: Record<string, unknown>
 }
 
+interface Deferred {
+    promise: Promise<void>
+    resolve(): void
+}
+
 export default function App() {
     const source = useMemo(() => new DevServerSource(), [])
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const gameRef = useRef<CreatedGame>()
     const hashes = useRef(new Map<string, string>())
     const saveTimer = useRef<ReturnType<typeof setTimeout>>()
+    const projectReadyRef = useRef<Deferred>(createDeferred())
+    const playPromiseRef = useRef<Promise<void>>()
+    const playActiveRef = useRef(false)
+    const consoleErrorTimesRef = useRef<number[]>([])
+    const consoleWriteQueueRef = useRef<Promise<void>>(Promise.resolve())
     const sceneTextRef = useRef('')
     const editorVersionRef = useRef(RUNTIME_VERSION)
     const [serverState, setServerState] = useState<ServerState>()
@@ -58,21 +68,30 @@ export default function App() {
     const [status, setStatus] = useState('Loading project…')
     const [publishDialogOpen, setPublishDialogOpen] = useState(false)
 
-    const appendConsoleError = useCallback(async (message: string) => {
-        let previous = ''
-        let ifMatch: string | '*' = '*'
-        try {
-            const current = await source.read('.blitz/console.log')
-            previous = decode(current.bytes)
-            ifMatch = current.sha256
-        } catch { /* first log entry */ }
-        const next = `${previous}${new Date().toISOString()} ${message}\n`.slice(-200_000)
-        try {
-            const result = await source.write('.blitz/console.log', encode(next), ifMatch)
-            hashes.current.set('.blitz/console.log', result.sha256)
-        } catch (error) {
-            if (!(error instanceof ProjectConflictError)) throw error
-        }
+    const appendConsoleError = useCallback((message: string): Promise<void> => {
+        const now = Date.now()
+        const recent = consoleErrorTimesRef.current.filter((time) => now - time < 10_000)
+        if (recent.length >= 20) return Promise.resolve()
+        recent.push(now)
+        consoleErrorTimesRef.current = recent
+        const write = consoleWriteQueueRef.current.then(async () => {
+            let previous = ''
+            let ifMatch: string | '*' = '*'
+            try {
+                const current = await source.read('.blitz/console.log')
+                previous = decode(current.bytes)
+                ifMatch = current.sha256
+            } catch { /* first log entry */ }
+            const next = `${previous}${new Date().toISOString()} ${message}\n`.slice(-200_000)
+            try {
+                const result = await source.write('.blitz/console.log', encode(next), ifMatch)
+                hashes.current.set('.blitz/console.log', result.sha256)
+            } catch (error) {
+                if (!(error instanceof ProjectConflictError)) throw error
+            }
+        })
+        consoleWriteQueueRef.current = write.catch(() => undefined)
+        return consoleWriteQueueRef.current
     }, [source])
 
     const reportError = useCallback(async (error: unknown) => {
@@ -80,6 +99,11 @@ export default function App() {
         setLastError(message)
         setStatus('Project error')
         await appendConsoleError(message)
+    }, [appendConsoleError])
+
+    const forwardPlayConsoleError = useCallback((values: unknown[]) => {
+        if (!playActiveRef.current) return
+        void appendConsoleError(`[console.error] ${values.map(formatConsoleValue).join(' ')}`)
     }, [appendConsoleError])
 
     const writeState = useCallback(async (isPlaying: boolean, error?: string) => {
@@ -140,6 +164,7 @@ export default function App() {
     }, [loadScriptTypes, source, writeState])
 
     const stop = useCallback(async () => {
+        playActiveRef.current = false
         gameRef.current?.dispose()
         gameRef.current = undefined
         setPlaying(false)
@@ -149,24 +174,40 @@ export default function App() {
     }, [lastError, writeState])
 
     const play = useCallback(async () => {
-        if (!canvasRef.current) return
-        gameRef.current?.dispose()
-        setStatus('Starting game…')
+        if (playPromiseRef.current) return playPromiseRef.current
+        const task = (async () => {
+            try {
+                await projectReadyRef.current.promise
+                if (!canvasRef.current) return
+                gameRef.current?.dispose()
+                gameRef.current = undefined
+                playActiveRef.current = true
+                setStatus('Starting game…')
+                const entries = await source.list()
+                const fileRevisions = Object.fromEntries(entries.map(({path, sha256}) => [path, sha256]))
+                const game = await createGame({
+                    base: new URL('/files/', location.origin).href,
+                    canvas: canvasRef.current,
+                    fileRevisions,
+                    onError: (error) => { void reportError(error) },
+                })
+                gameRef.current = game
+                await loadScriptTypes(entries)
+                setRuntimeHierarchy(readRuntimeHierarchy(game))
+                setPlaying(true)
+                setStatus('Playing')
+                await writeState(true)
+            } catch (error) {
+                playActiveRef.current = false
+                await reportError(error)
+                await writeState(false, error instanceof Error ? error.message : String(error))
+            }
+        })()
+        playPromiseRef.current = task
         try {
-            const game = await createGame({
-                base: new URL('/files/', location.origin).href,
-                canvas: canvasRef.current,
-                onError: (error) => { void reportError(error) },
-            })
-            gameRef.current = game
-            await loadScriptTypes(await source.list())
-            setRuntimeHierarchy(readRuntimeHierarchy(game))
-            setPlaying(true)
-            setStatus('Playing')
-            await writeState(true)
-        } catch (error) {
-            await reportError(error)
-            await writeState(false, error instanceof Error ? error.message : String(error))
+            await task
+        } finally {
+            if (playPromiseRef.current === task) playPromiseRef.current = undefined
         }
     }, [loadScriptTypes, reportError, source, writeState])
 
@@ -335,21 +376,34 @@ export default function App() {
     onProjectEventRef.current = onProjectEvent
 
     useEffect(() => {
-        void readProject().catch(reportError)
+        void readProject().then(
+            () => projectReadyRef.current.resolve(),
+            (error) => {
+                projectReadyRef.current.resolve()
+                void reportError(error)
+            },
+        )
         const unsubscribe = source.events((event) => {
             void onProjectEventRef.current(event).catch(reportError)
         })
         const onError = (event: ErrorEvent) => { void reportError(event.error || event.message) }
         const onRejection = (event: PromiseRejectionEvent) => { void reportError(event.reason) }
+        const originalConsoleError = console.error
+        console.error = (...values: unknown[]) => {
+            originalConsoleError(...values)
+            forwardPlayConsoleError(values)
+        }
         window.addEventListener('error', onError)
         window.addEventListener('unhandledrejection', onRejection)
         return () => {
             unsubscribe()
             window.removeEventListener('error', onError)
             window.removeEventListener('unhandledrejection', onRejection)
+            console.error = originalConsoleError
+            playActiveRef.current = false
             gameRef.current?.dispose()
         }
-    }, [readProject, reportError, source])
+    }, [forwardPlayConsoleError, readProject, reportError, source])
 
     return <main data-asset-library-proxy-url={serverState?.asset_library_proxy_url}>
         <header>
@@ -428,6 +482,20 @@ export default function App() {
             onClose={() => setPublishDialogOpen(false)}
         />
     </main>
+}
+
+function createDeferred(): Deferred {
+    let resolvePromise!: () => void
+    const promise = new Promise<void>((resolve) => {
+        resolvePromise = resolve
+    })
+    return {promise, resolve: resolvePromise}
+}
+
+function formatConsoleValue(value: unknown): string {
+    if (value instanceof Error) return `${value.message}\n${value.stack || ''}`
+    if (typeof value === 'string') return value
+    try { return JSON.stringify(value) } catch { return String(value) }
 }
 
 async function serializeScene(path: string, text: string) {

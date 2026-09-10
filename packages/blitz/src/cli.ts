@@ -21,7 +21,7 @@ Commands:
   init [dir]                  Create a Blitz project
   dev [--port <port>]         Start the local editor
   publish [options]           Publish the project
-  pull                        Pull the active release
+  pull [--force]              Pull the active release
   status                      Show local deploy status
   claim --email <email> --password <password> [--login]
                               Register or sign in, then claim local deploys
@@ -37,7 +37,7 @@ const COMMAND_USAGE: Record<string, string> = {
     init: 'Usage: blitz init [dir]',
     dev: 'Usage: blitz dev [--port <port>] [--no-open]',
     publish: 'Usage: blitz publish [--slug <slug>] [--name <name>] [--message <message>]',
-    pull: 'Usage: blitz pull',
+    pull: 'Usage: blitz pull [--force]',
     status: 'Usage: blitz status',
     claim: 'Usage: blitz claim --email <email> --password <password> [--login]',
     bake: 'Usage: blitz bake <nodeName> [--force]',
@@ -76,8 +76,12 @@ try {
         console.log(`Next: cd ${directory} && npm install && npx blitz dev`)
     } else if (command === 'dev') {
         const parsed = parseArgs(args, {'--port': 'value', '--no-open': 'boolean'})
-        const port = portOption(parsed.values['--port']) ?? 4321
-        const server = await runDev({port, noOpen: parsed.values['--no-open'] === true})
+        const port = portOption(parsed.values['--port'])
+        const server = await runDev({
+            port,
+            strictPort: port !== undefined,
+            noOpen: parsed.values['--no-open'] === true,
+        })
         console.log(`Blitz editor: ${server.url}`)
         console.log(`Project: ${server.projectRoot}`)
         const shutdown = async () => {
@@ -99,8 +103,9 @@ try {
         console.log(`Published ${result.release_hash}`)
         console.log(result.preview_url)
     } else if (command === 'pull') {
-        parseArgs(args, {})
-        const result = await pullFromDisk()
+        const parsed = parseArgs(args, {'--force': 'boolean'})
+        const result = await pullFromDisk(process.cwd(), {force: parsed.values['--force'] === true})
+        for (const path of result.kept) console.log(`${path}: modified locally, kept`)
         console.log(`Pulled ${result.release_hash}; updated ${result.updated.length} file(s).`)
     } else if (command === 'status') {
         parseArgs(args, {})

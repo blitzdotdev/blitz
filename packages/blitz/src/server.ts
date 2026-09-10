@@ -18,6 +18,7 @@ import {pipeline} from 'node:stream/promises'
 import {fileURLToPath} from 'node:url'
 import {serve, type HttpBindings} from '@hono/node-server'
 import {mimeTypeForPath} from '@blitzdev/engine/fileTypes'
+import {dependencyImportMap, projectDependencies} from '@blitzdev/engine/importMap'
 import {BLITZ_SERVER_CLIENT_ID, JOURNAL_PATH} from '@blitzdev/engine/paths'
 import {Hono, type Context, type Next} from 'hono'
 import {getCookie} from 'hono/cookie'
@@ -40,9 +41,9 @@ export interface ManifestEntry {
 export interface DevServerOptions {
     projectRoot?: string
     port?: number
+    strictPort?: boolean
     token?: string
     editorDirectory?: string
-    runtimePath?: string
     open?: boolean
     backendUrl?: string
     assetLibraryProxyUrl?: string
@@ -88,7 +89,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const projectRoot = await realpath(resolve(options.projectRoot || process.cwd()))
     const token = options.token || randomBytes(24).toString('base64url')
     const editorDirectory = options.editorDirectory || await resolvePackageDirectory('@blitzdev/editor') + '/dist'
-    const runtimePath = options.runtimePath || resolve(await resolvePackageDirectory('@blitzdev/engine'), 'dist/runtime.js')
     const clients = new Map<SSEStreamingApi, string | undefined>()
     const pendingCommands = new Map<string, PendingCommand>()
     const pendingEvents = new Map<string, PendingEvent>()
@@ -128,13 +128,17 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
 
     const serveIndex = async (c: Context<AppEnv>) => {
         if (new URL(c.req.url).searchParams.get('t') !== token) return textResponse('Missing or invalid Blitz token', 401)
-        const response = await serveStaticFile(resolve(editorDirectory, 'index.html'), editorDirectory)
+        const source = await readFile(resolve(editorDirectory, 'index.html'), 'utf8')
+        const response = new Response(await injectProjectImportMap(source, projectRoot), {
+            headers: {'Content-Type': 'text/html; charset=utf-8'},
+        })
         response.headers.set('Set-Cookie', `blitz-token=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`)
         return response
     }
     app.get('/', serveIndex)
     app.get('/index.html', serveIndex)
-    app.get('/_blitz/runtime.js', () => serveStaticFile(runtimePath, dirname(runtimePath)))
+    app.get('/favicon.ico', () => serveStaticFile(resolve(editorDirectory, 'favicon.ico'), editorDirectory))
+    app.get('/api/import-map', async () => jsonResponse(await readProjectImportMap(projectRoot)))
     app.get('/api/files', async () => jsonResponse(await buildManifest(projectRoot)))
     app.get('/api/state', async () => jsonResponse(await projectState(projectRoot, assetLibraryProxyUrl)))
     app.get('/api/events', (c) => {
@@ -322,7 +326,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     })
     app.notFound(() => textResponse('Not found', 404))
 
-    const server = serve({fetch: app.fetch, port: options.port ?? 4321, hostname: '127.0.0.1'}) as Server
+    const requestedPort = options.port ?? 4321
+    const attempts = options.strictPort || requestedPort === 0 ? 1 : 20
+    let server!: Server
 
     async function broadcast(event: string, data: unknown): Promise<void> {
         await Promise.all([...clients.keys()].map(async (client) => {
@@ -355,14 +361,22 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         pendingEvents.set(path, {path, client: effectiveClient, forcedType: effectiveType, timer})
     }
 
-    await new Promise<void>((resolveListen, reject) => {
-        if (server.listening) return resolveListen()
-        server.once('error', reject)
-        server.once('listening', () => {
-            server.off('error', reject)
-            resolveListen()
-        })
-    })
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const candidatePort = requestedPort === 0 ? 0 : requestedPort + attempt
+        server = serve({fetch: app.fetch, port: candidatePort, hostname: '127.0.0.1'}) as Server
+        try {
+            await waitForListening(server)
+            break
+        } catch (error) {
+            if (!isAddressInUse(error)) throw error
+            if (options.strictPort) {
+                throw new Error(`Port ${candidatePort} is already in use. Choose another port with --port.`)
+            }
+            if (attempt === attempts - 1) {
+                throw new Error(`Ports ${requestedPort}-${requestedPort + attempts - 1} are already in use.`)
+            }
+        }
+    }
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('Unable to determine dev server address')
     const port = address.port
@@ -477,6 +491,21 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     }
 }
 
+function waitForListening(server: Server): Promise<void> {
+    return new Promise((resolveListen, reject) => {
+        if (server.listening) return resolveListen()
+        server.once('error', reject)
+        server.once('listening', () => {
+            server.off('error', reject)
+            resolveListen()
+        })
+    })
+}
+
+function isAddressInUse(error: unknown): boolean {
+    return error instanceof Error && 'code' in error && error.code === 'EADDRINUSE'
+}
+
 async function readMainSceneSnapshot(root: string): Promise<{path: string, text?: string}> {
     let path = 'assets/main.scene.gltf'
     try {
@@ -550,6 +579,20 @@ async function projectState(root: string, assetLibraryProxyUrl: string) {
         server_version: BLITZ_VERSION,
         asset_library_proxy_url: assetLibraryProxyUrl,
     }
+}
+
+async function readProjectImportMap(root: string): Promise<{imports: Record<string, string>}> {
+    const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown>
+    return dependencyImportMap(projectDependencies(packageJson), '/editor-runtime.js')
+}
+
+async function injectProjectImportMap(html: string, root: string): Promise<string> {
+    const importMap = JSON.stringify(await readProjectImportMap(root)).replace(/</g, '\\u003c')
+    const script = `<script type="importmap">${importMap}</script>`
+    if (/<script type="importmap">.*?<\/script>/s.test(html)) {
+        return html.replace(/<script type="importmap">.*?<\/script>/s, script)
+    }
+    return html.replace('</head>', `${script}\n</head>`)
 }
 
 async function safeProjectPath(root: string, relativePath: string, allowMissing = false): Promise<string> {

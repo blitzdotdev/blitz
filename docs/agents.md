@@ -15,7 +15,7 @@ The last command prints `http://127.0.0.1:4321/?t=...`. Edit source files while 
 
 Run `npx blitz <command> --help` for command-specific usage. Unknown flags fail with a nonzero exit code.
 
-`blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. Every command except `--help` and `--version` checks that pin. A different command version delegates to `node_modules/.bin/blitz` when it is installed, or asks you to run `npm install` or the matching `npx @blitzdev/blitz@<version>` command.
+`blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed `node_modules/@blitzdev/blitz/package.json`. Every command except `--help` and `--version` checks the resolved version. A different command version delegates to `node_modules/.bin/blitz` when it is installed, or asks you to run `npm install` or the matching exact package through `npx`.
 
 Upgrade both stamped fields, install dependencies without lifecycle scripts, run engine migrations, validate the scene, and journal the change with:
 
@@ -24,13 +24,13 @@ npx blitz upgrade
 npx blitz upgrade --to x.y.z
 ```
 
-Before every update, run `npx blitz pull` and resolve any local and remote differences. Publish with an explicit slug when creating a game:
+Before every update, run `npx blitz pull` and resolve any local and remote differences. Pull keeps locally modified files and lists them; use `npx blitz pull --force` only when the active release should overwrite them. Publish with an explicit slug when creating a game:
 
 ```sh
 npx blitz publish --slug my-game --name "My Game" --message "initial release"
 ```
 
-Later publishes reuse the saved deploy entry and can use `npx blitz publish --message "what changed"`. The command reports the live URL. `npx blitz status` prints the local deploy metadata and expiry without secrets.
+Later publishes reuse the saved deploy entry and live game name, and can use `npx blitz publish --message "what changed"`. The name defaults to `blitz.name`, then `name`, on first publish. Publish hashes and uploads the installed `node_modules/@blitzdev/engine/dist/runtime.js`; the runtime registry is only a drift warning unless the backend enables strict registration. Set `blitz.publish.exclude` to a list of globs for project files that must not ship. The command reports the live URL. `npx blitz status` prints the local deploy metadata and expiry without secrets.
 
 Claim every unclaimed game recorded in `.blitz/deploys.json` by registering an account:
 
@@ -111,6 +111,7 @@ Editor writes carry the editor client id. API writes use `X-Blitz-Client`. Watch
 ## Limits
 
 - Source scripts are native ES modules. Declare bare imports in `package.json`.
+- Pointer lock requires a focused browser window, so focus the game window before clicking to capture FPS input.
 - Generator module paths must be project-relative and same-origin.
 - The main glTF must not contain data URLs.
 - Keep the external `.bin` and texture files with the glTF.

@@ -1,24 +1,29 @@
 import {defineConfig} from 'vite'
 import react from '@vitejs/plugin-react'
 import replace from '@rollup/plugin-replace'
-import {importMapPlugin} from 'importmap-vite-plugin'
+import {resolve} from 'node:path'
 
 export default defineConfig({
-    build: {sourcemap: true},
+    build: {
+        sourcemap: true,
+        rollupOptions: {
+            preserveEntrySignatures: 'strict',
+            input: {
+                app: resolve(__dirname, 'index.html'),
+                'editor-runtime': resolve(__dirname, 'src/editorRuntime.ts'),
+            },
+            output: {
+                entryFileNames: (chunk) => chunk.name === 'editor-runtime'
+                    ? 'editor-runtime.js'
+                    : 'assets/[name]-[hash].js',
+            },
+        },
+    },
     plugins: [
         react(),
         replace({
             'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
             preventAssignment: true,
-        }),
-        importMapPlugin({
-            imports: {
-                '@blitzdev/engine': '/_blitz/runtime.js',
-                threepipe: '/_blitz/runtime.js',
-                three: '/_blitz/runtime.js',
-                'uiconfig.js': '/_blitz/runtime.js',
-                'ts-browser-helpers': '/_blitz/runtime.js',
-            },
         }),
     ],
 })

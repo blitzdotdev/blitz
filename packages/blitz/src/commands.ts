@@ -129,11 +129,18 @@ export async function upgradeProject(
     return {from, to}
 }
 
-export async function runDev(options: {projectRoot?: string, port?: number, noOpen?: boolean, backendUrl?: string} = {}): Promise<DevServer> {
+export async function runDev(options: {
+    projectRoot?: string
+    port?: number
+    strictPort?: boolean
+    noOpen?: boolean
+    backendUrl?: string
+} = {}): Promise<DevServer> {
     const projectRoot = resolve(options.projectRoot || process.cwd())
     const server = await createDevServer({
         projectRoot,
         port: options.port,
+        strictPort: options.strictPort,
         backendUrl: options.backendUrl || backendUrl(),
         publish: async (publishOptions, emit) => publishFromDisk(projectRoot, {
             ...publishOptions,
@@ -201,16 +208,17 @@ export async function claimFromDisk(
     return statusFromDisk(projectRoot)
 }
 
-export async function pullFromDisk(projectRoot = process.cwd()) {
+export async function pullFromDisk(projectRoot = process.cwd(), options: {force?: boolean} = {}) {
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
     const existing = Object.entries(deploys.games)[0]
-    if (!existing) throw new Error('No deploy exists yet. Run blitz publish first.')
+    if (!existing?.[1].last_release_hash) throw new Error('There is nothing to pull before the first publish.')
     const [, entry] = existing
     return pullProject({
         dirHandle: directory,
         api: new BlitzApi({baseUrl: backendUrl()}),
         entry,
+        force: options.force === true,
     })
 }
 

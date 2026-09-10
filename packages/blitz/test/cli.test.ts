@@ -44,6 +44,7 @@ describe('blitz CLI', () => {
         const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-'))
         cleanup.push(() => rm(root, {recursive: true, force: true}))
         await execute(process.execPath, [cli, 'init', root])
+        await installEngine(root, BLITZ_VERSION)
 
         const result = await execute(process.execPath, [
             cli,
@@ -70,8 +71,55 @@ describe('blitz CLI', () => {
 
         const result = await execute(process.execPath, [cli, 'status'], {cwd: root})
 
-        expect(result.stderr).toContain(`Blitz ${BLITZ_VERSION} does not match project pin 9.9.9; delegating`)
+        expect(result.stderr).toContain(`Blitz ${BLITZ_VERSION} does not match project version 9.9.9; delegating`)
         expect(JSON.parse(result.stdout.trim())).toEqual(['status'])
+    })
+
+    it.each(['file:../../blitz-packs/blitzdev-blitz.tgz', '^0.12.0'])(
+        'resolves a %s spec from the installed package version',
+        async (spec) => {
+            const root = await pinnedProject(spec)
+            await installPackageVersion(root, BLITZ_VERSION)
+
+            const result = await execute(process.execPath, [cli, 'status'], {cwd: root})
+
+            expect(result.stdout).toContain('No deploys')
+            expect(result.stderr).toBe('')
+        },
+    )
+
+    it('delegates a non-exact spec when the installed package has a different version', async () => {
+        const root = await pinnedProject('file:../../blitz-packs/blitzdev-blitz.tgz')
+        await installPackageVersion(root, '9.9.9')
+        const binDirectory = resolve(root, 'node_modules/.bin')
+        await mkdir(binDirectory, {recursive: true})
+        const fakeBin = resolve(binDirectory, 'blitz')
+        await writeFile(fakeBin, '#!/usr/bin/env node\nconsole.log("delegated file pin")\n')
+        await chmod(fakeBin, 0o755)
+
+        const result = await execute(process.execPath, [cli, 'status'], {cwd: root})
+
+        expect(result.stderr).toContain(`does not match project version 9.9.9; delegating`)
+        expect(result.stdout).toContain('delegated file pin')
+    })
+
+    it('accepts an exact version spec without requiring an installed package', async () => {
+        const root = await pinnedProject(BLITZ_VERSION)
+
+        const result = await execute(process.execPath, [cli, 'status'], {cwd: root})
+
+        expect(result.stdout).toContain('No deploys')
+        expect(result.stderr).toBe('')
+    })
+
+    it('refuses a non-exact spec with an npm install hint when no package is installed', async () => {
+        const root = await pinnedProject('file:../../blitz-packs/blitzdev-blitz.tgz')
+
+        await expect(execute(process.execPath, [cli, 'status'], {cwd: root}))
+            .rejects.toMatchObject({
+                code: 1,
+                stderr: expect.stringContaining('it is not installed. Run npm install before blitz status'),
+            })
     })
 
     it('refuses a mismatch when the pinned binary is not installed', async () => {
@@ -80,6 +128,16 @@ describe('blitz CLI', () => {
             .rejects.toMatchObject({
                 code: 1,
                 stderr: expect.stringContaining('Run npm install, or npx @blitzdev/blitz@9.9.8 status'),
+            })
+    })
+
+    it('explains that there is nothing to pull before the first publish', async () => {
+        const root = await pinnedProject(BLITZ_VERSION)
+
+        await expect(execute(process.execPath, [cli, 'pull'], {cwd: root}))
+            .rejects.toMatchObject({
+                code: 1,
+                stderr: expect.stringContaining('There is nothing to pull before the first publish'),
             })
     })
 
@@ -99,6 +157,7 @@ describe('blitz CLI', () => {
         const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-publish-pin-'))
         cleanup.push(() => rm(root, {recursive: true, force: true}))
         await execute(process.execPath, [cli, 'init', root])
+        await installEngine(root, pinned)
         const packagePath = resolve(root, 'package.json')
         const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
             devDependencies: Record<string, string>, blitz: {version: string}
@@ -126,4 +185,17 @@ async function pinnedProject(version: string): Promise<string> {
         blitz: {version},
     }))
     return root
+}
+
+async function installPackageVersion(root: string, version: string): Promise<void> {
+    const packageDirectory = resolve(root, 'node_modules/@blitzdev/blitz')
+    await mkdir(packageDirectory, {recursive: true})
+    await writeFile(resolve(packageDirectory, 'package.json'), JSON.stringify({version}))
+}
+
+async function installEngine(root: string, version: string): Promise<void> {
+    const packageDirectory = resolve(root, 'node_modules/@blitzdev/engine')
+    await mkdir(resolve(packageDirectory, 'dist'), {recursive: true})
+    await writeFile(resolve(packageDirectory, 'package.json'), JSON.stringify({version}))
+    await writeFile(resolve(packageDirectory, 'dist/runtime.js'), 'installed test runtime')
 }

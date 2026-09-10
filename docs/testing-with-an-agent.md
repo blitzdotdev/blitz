@@ -14,8 +14,8 @@ Build me an FPS shooting practice game with Blitz.
 Setup, on this machine:
 1. mkdir -p ~/blitz-games && cd ~/blitz-games
 2. node /Users/minjunes/blitz/packages/blitz/dist/cli.js init fps-practice && cd fps-practice
-3. npm install --ignore-scripts --install-links --cache /tmp/blitz-npm-cache /Users/minjunes/blitz-packs/*.tgz
-   (the packages are not on npm yet; do not run a plain npm install)
+3. npm install --save-dev --ignore-scripts --install-links --cache /tmp/blitz-npm-cache /Users/minjunes/blitz-packs/*.tgz
+   (the packages are not on npm yet; do not run a plain npm install; the resulting file: pins are accepted and resolved from the installed package versions)
 4. Read AGENTS.md in the project. It is the guide. The engine and editor source are in node_modules, grep them when unsure.
 5. Start the editor: npx blitz dev --no-open, and tell me the URL it prints. Keep it running.
 6. Build the game in this folder: scripts, assets, package.json. The editor reloads scripts when you save them.

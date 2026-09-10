@@ -1,4 +1,4 @@
-import type {ManifestFile, ProjectEntry, ReleaseManifest, RuntimeRecord} from './types.ts'
+import type {ManifestFile, ProjectEntry, ReleaseManifest} from './types.ts'
 
 const MIME_TYPES: Record<string, string> = {
     html: 'text/html; charset=utf-8',
@@ -14,16 +14,12 @@ export async function sha256(file: Blob): Promise<string> {
     return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export async function buildManifest(
-    entries: ProjectEntry[],
-    runtime: Pick<RuntimeRecord, 'sha256' | 'size'>,
-): Promise<ReleaseManifest> {
+export async function buildManifest(entries: ProjectEntry[]): Promise<ReleaseManifest> {
     const files: Record<string, ManifestFile> = {}
     const sorted = [...entries].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0)
     for (const entry of sorted) {
         files[entry.path] = descriptor(entry.path, await sha256(entry.file), entry.file.size)
     }
-    files['_blitz/runtime.js'] = descriptor('_blitz/runtime.js', runtime.sha256, runtime.size)
     return {files: sortFiles(files)}
 }
 

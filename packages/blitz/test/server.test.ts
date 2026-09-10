@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto'
 import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises'
-import {request} from 'node:http'
+import {createServer as createHttpServer, request} from 'node:http'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, describe, expect, it} from 'vitest'
@@ -11,7 +11,9 @@ import {NodeProjectDirectory} from '../src/node-filesystem.ts'
 import {readProjectFile, walkProject, writeProjectFile} from '../src/filesystem.ts'
 import {startMockBackend} from './mockBackend.ts'
 import {BLITZ_SERVER_CLIENT_ID} from '@blitzdev/engine/paths'
+import {projectDependencies} from '@blitzdev/engine/importMap'
 import {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from '../src/versions.ts'
+import {generateIndexHtml} from '../src/indexHtml.ts'
 
 const cleanup: Array<() => Promise<void>> = []
 
@@ -156,6 +158,38 @@ describe('Blitz dev server', () => {
         })
     })
 
+    it('injects the same dependency map used by published games', async () => {
+        const {server, root, headers} = await startServer()
+        const packageJson = {
+            name: 'import-map-test',
+            dependencies: {
+                '@blitzdev/engine': 'file:../../packs/engine.tgz',
+                gsap: '^3.12.5',
+                local: 'file:../local',
+            },
+            blitz: {version: BLITZ_VERSION},
+        }
+        await writeFile(resolve(root, 'package.json'), JSON.stringify(packageJson))
+
+        const development = await (await fetch(`${base(server)}/api/import-map`, {headers})).json() as {
+            imports: Record<string, string>
+        }
+        const publishedHtml = generateIndexHtml({
+            name: packageJson.name,
+            version: BLITZ_VERSION,
+            dependencies: projectDependencies(packageJson),
+        })
+        const published = JSON.parse(publishedHtml.match(/<script type="importmap">(.*?)<\/script>/s)?.[1] || '{}') as {
+            imports: Record<string, string>
+        }
+        const normalizeRuntime = (imports: Record<string, string>) => Object.fromEntries(
+            Object.entries(imports).map(([key, value]) => [key, value.replace('/editor-runtime.js', './_blitz/runtime.js')]),
+        )
+
+        expect(normalizeRuntime(development.imports)).toEqual(published.imports)
+        expect(JSON.stringify(development)).not.toContain('../../packs')
+    })
+
     it('rejects bad tokens, non-local Host headers, traversal, and symlinks', async () => {
         const {server, root, headers} = await startServer()
         expect((await fetch(`${base(server)}/api/files`)).status).toBe(401)
@@ -209,12 +243,45 @@ describe('Blitz dev server', () => {
         })
     })
 
-    it('starts a real server and serves the editor and runtime from one origin', async () => {
+    it('serves the editor, its shared runtime bridge, and favicon from one origin', async () => {
         const {server} = await startServer()
         expect((await fetch(server.url)).status).toBe(200)
         expect(await (await fetch(server.url)).text()).toContain('test editor')
-        expect(await (await fetch(`${base(server)}/_blitz/runtime.js`)).text()).toContain('runtime')
+        expect(await (await fetch(`${base(server)}/editor-runtime.js`)).text()).toContain('editor runtime')
+        expect((await fetch(`${base(server)}/_blitz/runtime.js`)).status).toBe(404)
+        expect((await fetch(`${base(server)}/favicon.ico`)).status).toBe(200)
         expect((await stat(resolve(server.projectRoot, '.blitz/dev.json'))).isFile()).toBe(true)
+    })
+
+    it('tries the next port by default and treats an explicit port as strict', async () => {
+        const blocker = createHttpServer()
+        await new Promise<void>((resolveListen, reject) => {
+            blocker.once('error', reject)
+            blocker.listen(0, '127.0.0.1', resolveListen)
+        })
+        cleanup.push(() => new Promise<void>((resolveClose, reject) =>
+            blocker.close((error) => error ? reject(error) : resolveClose())))
+        const address = blocker.address()
+        if (!address || typeof address === 'string') throw new Error('Test blocker did not bind')
+        const root = await temporaryProject()
+        const editor = resolve(root, 'editor')
+        await mkdir(editor)
+        await writeFile(resolve(editor, 'index.html'), '<!doctype html><head></head><title>test editor</title>')
+
+        const fallback = await createDevServer({
+            projectRoot: root,
+            editorDirectory: editor,
+            port: address.port,
+        })
+        cleanup.push(() => fallback.close())
+        expect(fallback.port).toBe(address.port + 1)
+
+        await expect(createDevServer({
+            projectRoot: root,
+            editorDirectory: editor,
+            port: address.port,
+            strictPort: true,
+        })).rejects.toThrow(`Port ${address.port} is already in use`)
     })
 
     it('fails bake clearly when no editor is connected', async () => {
@@ -271,6 +338,9 @@ async function temporaryProject(): Promise<string> {
     await writeFile(resolve(root, 'main.js'), 'export async function main() {}\n')
     await mkdir(resolve(root, 'assets'), {recursive: true})
     await writeFile(resolve(root, 'assets/main.scene.gltf'), '{"asset":{"version":"2.0"},"nodes":[]}\n')
+    await mkdir(resolve(root, 'node_modules/@blitzdev/engine/dist'), {recursive: true})
+    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/package.json'), JSON.stringify({version: BLITZ_VERSION}))
+    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/dist/runtime.js'), 'installed runtime')
     return root
 }
 
@@ -286,15 +356,14 @@ async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull' | 
     const root = await temporaryProject()
     const editor = resolve(root, 'editor')
     await mkdir(editor)
-    await writeFile(resolve(editor, 'index.html'), '<!doctype html><title>test editor</title>')
-    const runtimePath = resolve(root, 'runtime.js')
-    await writeFile(runtimePath, 'export const runtime = true')
+    await writeFile(resolve(editor, 'index.html'), '<!doctype html><head><script type="importmap">{"imports":{}}</script></head><title>test editor</title>')
+    await writeFile(resolve(editor, 'editor-runtime.js'), 'export const editor = "editor runtime"')
+    await writeFile(resolve(editor, 'favicon.ico'), 'icon')
     const server = await createDevServer({
         projectRoot: root,
         port: 0,
         token: 'test-token',
         editorDirectory: editor,
-        runtimePath,
         ...options,
     })
     cleanup.push(() => server.close())

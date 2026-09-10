@@ -37,7 +37,6 @@
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
-    "importmap-vite-plugin": "^0.1.0",
     "rclone.js": "^0.6.6",
     "sass": "^1.69.5",
     "typescript": "^5.7.2",

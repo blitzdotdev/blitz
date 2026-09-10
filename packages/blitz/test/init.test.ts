@@ -35,6 +35,9 @@ describe('initProject', () => {
             devDependencies: {'@blitzdev/blitz': BLITZ_VERSION},
             blitz: {version: BLITZ_VERSION},
         })
+        const instructions = await readFile(resolve(target, 'AGENTS.md'), 'utf8')
+        expect(instructions).toContain('Pointer lock requires a focused browser window')
+        expect(instructions).toContain('node_modules/@blitzdev/engine/dist/runtime.js')
     })
 })
 
