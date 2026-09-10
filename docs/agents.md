@@ -37,6 +37,35 @@ The editor creates `.blitz/console.log` with a header when Play starts. It recor
 
 Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Blitz-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `blitz dev`. Keep that token out of logs and reports.
 
+# Authored versus runtime game content
+
+Every meaningful system must have a useful stopped-mode representation under `viewer.scene.modelRoot`: direct named objects; a selectable `template` copied for Play; or a `generator` with bounded preview output. Tag stable sources with `setAuthoringMetadata`. Generator output is tagged automatically, excluded from saves, and replaced rather than multiplied on rerun or reload.
+
+Keep runtime roots outside `modelRoot` through `RuntimeObjectOwner`. Treat `start()` as repeatable and `stop()`/`destroy()` as mandatory: remove listeners, timers, DOM, physics state, effects, and every runtime root. Never delete or mutate the authored template.
+
+```js
+start() {
+  this.stop()
+  const source = this.ctx.viewer.scene.modelRoot.getObjectByName('Enemy Template')
+  this.runtime = new RuntimeObjectOwner('enemy-spawner')
+  const root = this.runtime.attachRuntimeRoot(new Group(), this.ctx.viewer.scene, source)
+  this.runtime.cloneFrom(source, root, {position: [4, 0, 0]})
+}
+stop() { this.runtime?.cleanup(); this.runtime = undefined }
+```
+
+Use a Generator component for saved parameters plus a deterministic preview:
+
+```js
+export default function generate({node, params, engine}) {
+  const preview = new engine.Mesh(new engine.BoxGeometry(params.width, 1, 1), new engine.MeshStandardMaterial())
+  preview.name = 'Platform Preview'
+  node.add(preview)
+}
+```
+
+Keep Play state out of the saved scene. The saved camera must frame authored content and stay outside solid geometry on every load, including reloads of an existing scene. Before calling a change done, Stop, run `npx blitz check`, and read `.blitz/check.json`; Playable, Editable, and Persisted are separate outcomes.
+
 # The scene file
 
 `package.json` names the scene in `mainScene`. The default is `assets/main.scene.gltf`. This text glTF file is the scene source of truth. Edit it with a script. Never edit it by hand.
