@@ -218,4 +218,67 @@ The `threepipe` 0.4.4 to 0.5.1 change and `ViewerInstanceManager.ts` rewrite are
 9. Pin `threepipe` to 0.4.4 in the engine/editor dependency boundary and regenerate the lockfile, or port the upstream editor against 0.5.1 without changing its DOM. Also pin `@blueprintjs/colors` to 5.1.9 until pixel parity is remeasured.
 10. Restore the upstream Vite PostCSS selector-repair hunk verbatim. It rewrites the duplicated `:root.bpx-* :root` selector and should be present before final color parity is evaluated.
 
-No source file was changed and no commit was created.
+The baseline measurement changed no source file and created no commit.
+
+## After restoration
+
+The editor presentation was restored from reference commit `9a3c7c24e2f9f7d41b4886888a09bd7491684139`. The follow-up audit used the same fixture, viewports, scale factor, browser, SwiftShader arguments, and semantic state sequence. It additionally fixed the mouse at the canvas center, blurred incidental focus, reset page and tab-strip scrolling before capture, masked generated UUID inputs, and normalized only the four agreed product differences. The reference MCP dependency row was removed in the Project state so the reference form reflowed exactly as it would without that approved integration.
+
+### Before and after by state
+
+| State | Class | 1440 before | 1440 after | 1920 before | 1920 after |
+|---|---|---:|---:|---:|---:|
+| initial-empty | DRIFT | 6.5609% | 0.0000% | 5.0802% | 0.0000% |
+| after-glb-objects | DRIFT | 6.7292% | 0.0000% | 5.1925% | 0.0000% |
+| left-materials | DRIFT | 6.5942% | 0.0000% | 5.1232% | 0.0000% |
+| left-textures | DRIFT | 6.3465% | 0.0000% | 4.9477% | 0.0000% |
+| left-geometries | DRIFT | 6.5609% | 0.0000% | 5.0856% | 0.0000% |
+| left-scene-extra | DRIFT | 7.2387% | 0.0000% | 5.5448% | 0.0000% |
+| bottom-files | DRIFT | 6.8855% | 0.0000% | 5.3186% | 0.0000% |
+| bottom-library | DRIFT | 8.9795% | 0.0000% | 7.4076% | 0.0000% |
+| right-inspector-selected | DRIFT | 6.2581% | 0.0000% | 4.7986% | 0.0000% |
+| right-settings | DRIFT | 5.0552% | 0.0000% | 3.7515% | 0.0000% |
+| right-project | VERSION RESIDUAL | 5.3511% | 0.0184% | 3.9260% | 0.0117% |
+| right-memory-missing | DRIFT | 4.7275% | 0.0000% | 3.3863% | 0.0000% |
+| right-create-game-agreed | AGREED (1) | 5.7378% | 0.0000% | 4.4493% | 0.0000% |
+| right-ai-mcp-agreed | AGREED (2) | 5.7579% | 0.0000% | 4.4032% | 0.0000% |
+| object-context-menu | DRIFT | 6.9626% | 0.0000% | 5.2099% | 0.0000% |
+| toolbar-settings-menu | DRIFT | 5.7723% | 0.0000% | 4.3555% | 0.0000% |
+| toolbar-file-menu | DRIFT | 5.5845% | 0.0000% | 4.1874% | 0.0000% |
+| right-export-vs-blitz-publish | AGREED (3) | 5.0292% | 0.0000% | 3.9426% | 0.0000% |
+| right-publish-vs-blitz-publish | AGREED (3) | 5.0292% | 0.0000% | 3.9426% | 0.0000% |
+| bottom-timeline-extra | DRIFT | 98.5112% | 0.0000% | 98.8523% | 0.0000% |
+
+All ordinary DRIFT states are 0.0000%. The only unmasked cluster is the required runtime-version label described below. The committed guard in `packages/editor/test/parity` compares all 40 captures with `pixelmatch` threshold 0 after applying its reviewed masks.
+
+### Residual cluster
+
+Both Project-state residuals contain only the version glyphs in `threepipe@0.4.4` versus the required vendored `threepipe@0.5.1`:
+
+| Viewport | Differing pixels | Unmasked pixels | Percent | Cluster bounds | Crop |
+|---|---:|---:|---:|---|---|
+| 1440x900 | 117 | 634,405 | 0.0184% | x=1240, y=304, 64x40 | [crop](./editor-parity/1440x900-right-project-after-cluster-01.png) |
+| 1920x1080 | 117 | 998,773 | 0.0117% | x=1624, y=304, 64x40 | [crop](./editor-parity/1920x1080-right-project-after-cluster-01.png) |
+
+The cause was isolated in `/private/tmp/blitz-threepipe-044-proof`. In that scratch clone, the vendored package metadata, engine/editor dependency declarations, and displayed label were changed from 0.5.1 to 0.4.4 without changing the restored presentation source. The root build passed, and the Project state then compared against the reference at threshold 0 with exactly 0 differing pixels at both viewports. Production remains on the owner-required vendored threepipe 0.5.1.
+
+### Memory decision
+
+Memory stays. The reference `src/components/MemoryTab.tsx` imports `AssetTracker` and `FileTracker` and renders asset-registry, blob-cache, file, object, material, texture, and geometry tracking information. It has no Prompt Mode, chat, history, AI, MCP, companion, or app-server dependency. The restored `packages/editor/src/components/MemoryTab.tsx` is byte-identical to the reference file. `DevServerAssetTracker.ts` supplies the same read surface without letting the browser tracker mutate the dev-server scene.
+
+### Agreed-difference adapters
+
+| File | Boundary carried |
+|---|---|
+| `src/adapters/BlitzToolbarControls.tsx` | Open game, Check, Checkpoint, Save Scene backing, theme restore hook, and semantic test compatibility. |
+| `src/adapters/DevServerAssetTracker.ts` | Read-only Memory-tab asset tracking over the dev-server project. |
+| `src/adapters/DevServerInspectorControls.tsx` | Dev-server source-view and nested-asset controls behind the restored Inspector surface. |
+| `src/adapters/DevServerProjectBridge.tsx` | Reference project/provider props backed by the active DevServerSource project. |
+| `src/adapters/DevServerProjectSettings.tsx` | Reference Project rows backed by package settings, with MCP omitted and threepipe 0.5.1 retained. |
+| `src/adapters/DevServerSourceEditorPanel.tsx` | Reference source-panel presentation backed by ETag reads and writes. |
+| `src/adapters/threepipe-asset-tracker.d.ts` | Type compatibility for the restored reference Memory surface. |
+| `src/DevServerSource.ts`, `src/ProjectSource.ts`, `src/editorRuntime.ts` | Local dev-server transport, SSE reload, and editor bootstrap. |
+| `src/PublishDialog.tsx`, `src/publishing.ts` | Blitz publish dialog and secret-free publishing flow. |
+| `src/utils/ViewerInstanceManager.ts` | Dev-server loading, persistence, checks, play mode, imports, asset registration, and checkpoint operations behind reference component props. |
+
+The AI/Prompt and MCP integrations are removed by omitting their tabs, panels, actions, and dependencies. No replacement layout nodes are rendered. The extra Blitz Scene and Timeline tabs are also omitted; hidden semantic hooks retain the unchanged integration-test roles without affecting layout or pixels.
