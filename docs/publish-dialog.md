@@ -1,7 +1,7 @@
 # Publish a game: runtime, release convention, and the "Open game" dialog
 
 Date: 2026-09-09. Status: spec for build. Paths are relative to the monorepo root.
-Code facts were verified against `apps/editor`, `packages/threepipe`, `backend`, and `game-gateway` on this date.
+Code facts were verified against `packages/editor`, `packages/threepipe`, `backend`, and `game-gateway` on this date.
 `backend/` and `game-gateway/` are owned by another agent. This spec lists what they must add. It does not edit them.
 
 This spec covers three things:
@@ -90,10 +90,10 @@ Example:
 
 ### 4.1 Bundle
 
-- Add a second build input to `apps/editor/vite.config.ts`. Output name is fixed: `runtime.js`. No content hash in the name.
-- The bundle exports `createGame` and re-exports everything from `threepipe`, `uiconfig.js`, and `ts-browser-helpers`. The editor already re-exports these in `apps/editor/src/import-map/threepipe.ts`.
+- Add a second build input to `packages/editor/vite.config.ts`. Output name is fixed: `runtime.js`. No content hash in the name.
+- The bundle exports `createGame` and re-exports everything from `threepipe`, `uiconfig.js`, and `ts-browser-helpers`. The editor already re-exports these in `packages/editor/src/import-map/threepipe.ts`.
 - The bundle includes the runtime plugin set. Each `@threepipe/*` plugin package has exactly one bare external, `threepipe`, so bundling works.
-- The version is the editor version from `apps/editor/package.json`.
+- The version is the editor version from `packages/editor/package.json`.
 - The release pipeline uploads `runtime.js` once per version through the admin route in 4.2. The editor R2 bucket sits on a different Cloudflare account than the games workers, so the upload must go through the backend.
 
 ### 4.2 Runtime registry
@@ -108,7 +108,7 @@ Backend additions:
 
 ### 4.3 Generated index.html
 
-The deploy client writes this file. `<version>` is `blitz.version`. Dependency entries mirror `apps/editor/src/utils/importMaps.ts:30-50`: `https://esm.sh/<key>@<version>?external=<all known keys>`.
+The deploy client writes this file. `<version>` is `blitz.version`. Dependency entries mirror `packages/editor/src/utils/importMaps.ts:30-50`: `https://esm.sh/<key>@<version>?external=<all known keys>`.
 
 ```html
 <!doctype html>
@@ -139,11 +139,11 @@ The deploy client writes this file. `<version>` is `blitz.version`. Dependency e
 
 Steps, in order:
 
-1. Fetch `package.json` and `assets.json` under `base`. Reuse the parsers in `apps/editor/src/utils/project.ts:33-51` and `:240-338` as they are.
+1. Fetch `package.json` and `assets.json` under `base`. Reuse the parsers in `packages/editor/src/utils/project.ts:33-51` and `:240-338` as they are.
 2. Create `ThreeViewer({canvas, ...config.viewer, plugins})`. Runtime plugins only: `EntityComponentPlugin`, `GBufferPlugin`, `CannonPhysicsPlugin`, `PopmotionPlugin`, `GLTFAnimationPlugin`, `GLTFMeshOptDecodePlugin`, the format loaders the project uses, and `HtmlUiComponent` as a component type. No dropzone, picking, transform controls, widgets, edit mode, snapshot, exporter, or Blueprint UI. Set `viewer.timeline.endTime = 0`.
-3. Add one URL modifier before any load. `/blitz/@<id>/f.<ext>` becomes `base` plus `assets.json.files[id].path`. `/blitz/<path>` becomes `base` plus `<path>`. The editor has this hook commented out at `apps/editor/src/utils/ViewerInstanceManager.ts:362-369`.
-4. Extract the nested-asset loader from `apps/editor/src/utils/AssetTracker.ts` with the editor flag off. Scenes store nested references as `userData.rootPath` in the `/blitz/@<id>/` form (`ViewerInstanceManager.ts:1015`).
-5. Import each entry of `blitz.plugins`, then call `viewer.addPlugin`. Import each entry of `blitz.scripts`, then call `addComponentType` for every export with `ComponentType`. Extract the export walk from `apps/editor/src/utils/ScriptUtil.ts:470-574`. On a URL source, scripts are plain same-origin ES modules. Relative imports resolve natively. Bare imports resolve through the import map. No service worker.
+3. Add one URL modifier before any load. `/blitz/@<id>/f.<ext>` becomes `base` plus `assets.json.files[id].path`. `/blitz/<path>` becomes `base` plus `<path>`. The editor has this hook commented out at `packages/editor/src/utils/ViewerInstanceManager.ts:362-369`.
+4. Extract the nested-asset loader from `packages/editor/src/utils/AssetTracker.ts` with the editor flag off. Scenes store nested references as `userData.rootPath` in the `/blitz/@<id>/` form (`ViewerInstanceManager.ts:1015`).
+5. Import each entry of `blitz.plugins`, then call `viewer.addPlugin`. Import each entry of `blitz.scripts`, then call `addComponentType` for every export with `ComponentType`. Extract the export walk from `packages/editor/src/utils/ScriptUtil.ts:470-574`. On a URL source, scripts are plain same-origin ES modules. Relative imports resolve natively. Bare imports resolve through the import map. No service worker.
 6. Await all registrations. Then `viewer.load(sceneUrl, {importAsModelRoot: true})`. Await the nested loading promise.
 7. `timeline.reset()`, `timeline.start()`, component plugin `start()`, physics `running = true`.
 8. Import `main.js` and call `main({viewer})`. Route rejections to `onError`.
@@ -158,7 +158,7 @@ Ordering rules the engine forces:
 | The timeline loops every 2 seconds unless `endTime` is 0. | `packages/threepipe/src/utils/ViewerTimeline.ts:55`, `:66` |
 | Updates run only after `timeline.start()` and the component plugin `start()`. | `EntityComponentPlugin.ts:183` |
 
-Do not reuse `buildProjectBundleCode` in `apps/editor/src/utils/project.ts:340-541` or `apps/editor/src/player.ts`. Both are broken at the syntax level.
+Do not reuse `buildProjectBundleCode` in `packages/editor/src/utils/project.ts:340-541` or `packages/editor/src/player.ts`. Both are broken at the syntax level.
 
 ## 5. The "Open game" dialog
 
@@ -217,7 +217,7 @@ Gateway change in `game-gateway/src/index.ts:68`. An open game with no `active_r
 
 ### 5.6 `.blitz/deploys.json`
 
-Gitignored. Add it to the gitignore template in `apps/editor/src/data/projectTemplates.ts`. Note the current template writes `./kite/...` paths without the leading dot. Fix that in the same change.
+Gitignored. Add it to the gitignore template in `packages/editor/src/data/projectTemplates.ts`. Note the current template writes `./kite/...` paths without the leading dot. Fix that in the same change.
 
 ```json
 {
@@ -258,7 +258,7 @@ Editor, this repo:
 1. Runtime build entry and `createGame`, section 4.
 2. Deploy client module: file walk, hashing, manifest build, index.html generation, the API calls, and `.blitz/deploys.json`.
 3. The dialog UI, section 5.
-4. Runtime release step in `apps/editor/scripts/upload-r2.mjs`: after the R2 sync, `PUT /api/v1/runtimes/<version>` with `dist/runtime.js`.
+4. Runtime release step in `packages/editor/scripts/upload-r2.mjs`: after the R2 sync, `PUT /api/v1/runtimes/<version>` with `dist/runtime.js`.
 
 ## 7. Build order
 

@@ -51,7 +51,7 @@ The editor code comes from repalash's private `threepipe-blueprint-editor`. Conf
 
 ## What changes in the layout
 
-- `apps/editor` becomes `packages/editor` and gets a publishable package.json.
-- `packages/engine` is created from `apps/editor/src/runtime`, `src/plugins`, and the runtime-only utils. Phase A already isolated `src/runtime` from React and UI code.
+- `packages/editor` becomes `packages/editor` and gets a publishable package.json.
+- `packages/engine` is created from `packages/editor/src/runtime`, `src/plugins`, and the runtime-only utils. Phase A already isolated `src/runtime` from React and UI code.
 - `packages/blitz` and `packages/template` are new.
 - There is no hosted editor. The `blitz-editor` worker on workers.dev is a test artifact from today and goes away after C1.

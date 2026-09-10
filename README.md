@@ -1,60 +1,41 @@
 # Blitz
 
-This repository is an npm workspace for the Blitz editor and its supporting packages.
+Blitz is an open, local-first game editor and runtime built on threepipe. The editor is served only by the `blitz` command and works against the project directory on the same `127.0.0.1` origin.
 
-## Layout
+## Start a game
 
-- `apps/editor/` is the Blitz browser editor.
-- `packages/threepipe/` is the vendored `repalash/threepipe` `master` branch with full history.
-- `packages/uiconfig-blueprint/` is the vendored `repalash/uiconfig-blueprint` `dev` branch with full history.
-- `services/asset-library-proxy/` is the editor asset-library proxy.
-- `services/backend/` is the Hono and teenybase API worker for game publishing.
-- `services/game-gateway/` is the worker that serves published game assets.
-- `docs/publish-api.md` documents the publishing API contract.
-- `docs/backend-build-report-2026-09-09.md` records the backend build and deployment handoff.
+Node.js 20 or newer is required.
 
-## Commands
-
-Install with `npm install --ignore-scripts --cache /tmp/blitz-npm-cache`.
-
-- `npm run build:threepipe` builds `packages/threepipe/lib/`.
-- `npm run build:ui` builds `packages/uiconfig-blueprint/dist/` and `packages/uiconfig-blueprint/lib/esm/`.
-- `npm run build:editor` builds `apps/editor/dist/`.
-- `npm run build` runs all three builds in dependency order.
-- `npm run typecheck` type-checks the editor.
-- `npm run typecheck:services` type-checks the backend and game gateway.
-- `npm run test:backend` runs the backend unit and local-worker integration tests.
-- `npm run test:gateway` runs the game gateway unit tests.
-- `npm run dev:editor` starts the editor development server.
-
-Use `--cache /tmp/blitz-npm-cache` and `--ignore-scripts` on every npm install.
-
-## Deploying
-
-The backend and game gateway deploy from their default `wrangler.jsonc` files to workers.dev. Do not use either worker's `wrangler.prod.jsonc`, which configures routes for `blitz.dev` and `*.app.blitz.dev`, until those domains are detached from teenybase.
-
-### Editor hosting
-
-The editor is hosted at <https://blitz-editor.blitzapp.workers.dev/>. Run `npm run deploy:editor` from the repository root to build and deploy it, or run `npm run deploy -w apps/editor` to deploy the existing editor build. Routes for `blitz.dev` will be added after the domain handover.
-
-## Upstream sync
-
-The vendored packages keep their upstream history, so a pull merges cleanly into the prefix.
-
-Apple Git has no `git subtree`. Use the subtree merge strategy, which works with any git:
-
-```
-git pull -s subtree -Xsubtree=packages/threepipe threepipe master
-git pull -s subtree -Xsubtree=packages/uiconfig-blueprint uiconfig-blueprint dev
+```sh
+npx @blitzdev/blitz init my-game
+cd my-game
+npm install
+npx blitz dev
 ```
 
-If a git with `git subtree` is installed (for example Homebrew git), these are equivalent:
+The last command prints a tokenized editor URL. Edit project files directly; the editor watches and reloads them. Before a release, run `npx blitz pull`, then `npx blitz publish --message "what changed"`. `npx blitz open` reopens the active development URL.
 
+## Packages
+
+- `packages/engine`: `@blitzdev/engine`, the UI-free runtime, project format, scripting helpers, and game plugins.
+- `packages/editor`: `@blitzdev/editor`, the static React editor served by `blitz dev`.
+- `packages/blitz`: `@blitzdev/blitz`, the command, localhost server, disk adapter, and publishing client.
+- `packages/template`: `@blitzdev/template`, real files copied by `blitz init`.
+- `packages/threepipe` and `packages/uiconfig-blueprint`: vendored Apache-2.0 upstream source.
+
+All public packages use Apache-2.0 and ship source for agent inspection. Cloud services are a separate concern and are not part of the root workspace build.
+
+## Repository checks
+
+```sh
+npm install --ignore-scripts --cache /tmp/blitz-npm-cache
+npm run build
+npm run typecheck
+npm run lint
+npm run test:runtime
+npm run test:publish
+npm run test:blitz
+npm test -w packages/editor
 ```
-git subtree pull --prefix=packages/threepipe threepipe master
-git subtree pull --prefix=packages/uiconfig-blueprint uiconfig-blueprint dev
-```
 
-## Dependency notes
-
-`three` and `@types/three` are pinned in the root `overrides` to repalash's patched release tarballs on GitHub. threepipe needs that patched build, and the old `pkg.threepipe.org` registry is gone. If those release URLs disappear, the install breaks. A mirror under the blitzdotdev org is the fix.
+The root workspace is `packages/*`. See `docs/layout.md`, `docs/local-dev-server-plan.md`, `docs/open-source-split.md`, `docs/publish-api.md`, and `docs/agents.md` for the contracts.

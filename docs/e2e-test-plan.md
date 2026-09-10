@@ -22,7 +22,7 @@ Status: plan. Run it on the test domains after Phase B, the GC pass, and the ass
 | E7 | Drop a glb into the canvas | Asset in `assets/`, entry in `assets.json`, loads via `/blitz/@id/`. |
 | E8 | Asset library panel | Polyhaven list loads through the deployed asset proxy. |
 | E9 | Reload the editor tab | Project reopens with no prompt. |
-| E10 | Existing Playwright suite in `apps/editor/tests` | Passes, or each failure is triaged as pre-existing. |
+| E10 | Existing Playwright suite in `packages/editor/tests` | Passes, or each failure is triaged as pre-existing. |
 
 ## 2. Publish from the editor (Phase B)
 
@@ -75,7 +75,7 @@ Status: plan. Run it on the test domains after Phase B, the GC pass, and the ass
 
 ## 6. Regression suites
 
-- `npm run test:backend`, `npm run test:gateway`, `npm run test:runtime`, the Phase B dialog tests, and `apps/editor/tests`.
+- `npm run test:backend`, `npm run test:gateway`, `npm run test:runtime`, the Phase B dialog tests, and `packages/editor/tests`.
 - Run them before and after each deploy to the test domains.
 
 ## Exit rule
