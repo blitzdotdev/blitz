@@ -49,6 +49,7 @@ import {DevServerSource} from '../DevServerSource.ts'
 import {ProjectConflictError, type ProjectEvent, type ProjectFileEntry} from '../ProjectSource.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {EditModePlugin} from './EditModePlugin.ts'
+import {writeEditorState, type EditorState} from './editorState.ts'
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 const encode = (text: string) => new TextEncoder().encode(text)
@@ -122,9 +123,16 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     private consoleWriteQueue: Promise<void> = Promise.resolve()
     private stateWriteQueue: Promise<void> = Promise.resolve()
     private originalConsoleError?: typeof console.error
+    private originalConsoleWarn?: typeof console.warn
     private editorVersion = RUNTIME_VERSION
     private readonly onWindowError = (event: ErrorEvent) => void this.reportError(event.error || event.message)
     private readonly onUnhandledRejection = (event: PromiseRejectionEvent) => void this.reportError(event.reason)
+    private readonly onPageHide = () => {
+        this.isPlaying = false
+        this.isStartingPlay = false
+        this.stopHeartbeat()
+        void this.writeState()
+    }
 
     constructor(source: DevServerSource) {
         super()
@@ -160,7 +168,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             void this.onProjectEvent(event).catch((error) => this.reportError(error))
         })
         this.installErrorForwarding()
-        this.heartbeat = setInterval(() => void this.writeState(), 5_000)
+        window.addEventListener('pagehide', this.onPageHide)
         return this.initializing
     }
 
@@ -468,6 +476,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.game?.dispose()
             this.game = undefined
             this.setStatus('Starting game…')
+            await this.appendConsoleLine(`# Blitz play log started ${new Date().toISOString()}; levels: console.warn, console.error, uncaught errors`, false)
             const entries = await this.source.list()
             const fileRevisions = Object.fromEntries(entries.map(({path, sha256}) => [path, sha256]))
             this.get().renderEnabled = false
@@ -478,9 +487,11 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 onError: (error) => void this.reportError(error),
             })
             this.isPlaying = true
+            this.startHeartbeat()
             this.setStatus('Playing')
             await this.writeState()
         } catch (error) {
+            this.stopHeartbeat()
             this.get().renderEnabled = true
             await this.reportError(error)
             await this.writeState(errorMessage(error))
@@ -495,6 +506,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.game = undefined
         this.isPlaying = false
         this.isStartingPlay = false
+        this.stopHeartbeat()
         this.playCanvas = undefined
         if (this.viewer) {
             this.viewer.renderEnabled = true
@@ -564,7 +576,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     async writeState(error?: string) {
         const write = this.stateWriteQueue.then(async () => {
-            const state = {
+            const state: EditorState = {
                 editorVersion: this.editorVersion,
                 engineVersion: RUNTIME_VERSION,
                 projectLoaded: this.projectLoaded,
@@ -575,12 +587,12 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 clientId: this.source.clientId,
             }
             try {
-                const result = await this.source.write(
-                    '.blitz/state.json',
-                    encode(`${JSON.stringify(state, null, 2)}\n`),
+                const sha256 = await writeEditorState(
+                    this.source,
+                    state,
                     this.hashes.get('.blitz/state.json') || '*',
                 )
-                this.hashes.set('.blitz/state.json', result.sha256)
+                this.hashes.set('.blitz/state.json', sha256)
             } catch (caught) {
                 if (!(caught instanceof ProjectConflictError)) throw caught
             }
@@ -601,6 +613,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.consoleErrorTimes = this.consoleErrorTimes.filter((time) => now - time < 10_000)
         if (this.consoleErrorTimes.length >= 20) return Promise.resolve()
         this.consoleErrorTimes.push(now)
+        return this.appendConsoleLine(message)
+    }
+
+    private appendConsoleLine(message: string, timestamp = true): Promise<void> {
         const write = this.consoleWriteQueue.then(async () => {
             let previous = ''
             let ifMatch: string | '*' = this.hashes.get('.blitz/console.log') || '*'
@@ -609,7 +625,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 previous = decode(current.bytes)
                 ifMatch = current.sha256
             } catch { /* first log entry */ }
-            const next = `${previous}${new Date().toISOString()} ${message}\n`.slice(-200_000)
+            const line = timestamp ? `${new Date().toISOString()} ${message}` : message
+            const next = `${previous}${line}\n`.slice(-200_000)
             try {
                 const result = await this.source.write('.blitz/console.log', encode(next), ifMatch)
                 this.hashes.set('.blitz/console.log', result.sha256)
@@ -625,10 +642,17 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         window.addEventListener('error', this.onWindowError)
         window.addEventListener('unhandledrejection', this.onUnhandledRejection)
         this.originalConsoleError = console.error
+        this.originalConsoleWarn = console.warn
         console.error = (...values: unknown[]) => {
             this.originalConsoleError?.(...values)
             if (this.isPlaying || this.isStartingPlay) {
                 void this.appendConsoleError(`[console.error] ${values.map(formatConsoleValue).join(' ')}`)
+            }
+        }
+        console.warn = (...values: unknown[]) => {
+            this.originalConsoleWarn?.(...values)
+            if (this.isPlaying || this.isStartingPlay) {
+                void this.appendConsoleError(`[console.warn] ${values.map(formatConsoleValue).join(' ')}`)
             }
         }
     }
@@ -731,11 +755,23 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.dispatchEvent({type: 'stateChange'})
     }
 
+    private startHeartbeat() {
+        this.stopHeartbeat()
+        this.heartbeat = setInterval(() => void this.writeState(), 5_000)
+    }
+
+    private stopHeartbeat() {
+        if (!this.heartbeat) return
+        clearInterval(this.heartbeat)
+        this.heartbeat = undefined
+    }
+
     dispose() {
         this.unsubscribe?.()
-        if (this.heartbeat) clearInterval(this.heartbeat)
+        this.stopHeartbeat()
         window.removeEventListener('error', this.onWindowError)
         window.removeEventListener('unhandledrejection', this.onUnhandledRejection)
+        window.removeEventListener('pagehide', this.onPageHide)
         this.game?.dispose()
         if (this.viewer) {
             this.viewer.scene.removeEventListener('sceneUpdate', this.onEditSceneUpdate)
@@ -743,6 +779,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.viewer.container.remove()
         }
         if (this.originalConsoleError) console.error = this.originalConsoleError
+        if (this.originalConsoleWarn) console.warn = this.originalConsoleWarn
         delete (window as Window & {viewer?: ThreeViewer}).viewer
     }
 }

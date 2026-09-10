@@ -30,6 +30,7 @@ import {useManagerVersion} from '../utils/UseManager.ts'
 import {WindowPanesLayout} from './WindowPanesLayout.tsx'
 import {PlayModeButtonGroup} from './PlayModeButtonGroup.tsx'
 import {FilesPanel} from './FilesPanel.tsx'
+import {CameraSelectionMenu} from './CameraSelectionMenu.tsx'
 
 export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
     const manager = useManagerVersion()
@@ -108,13 +109,13 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                     style: {position: 'relative', display: 'flex', flexDirection: 'column'},
                     content: <div
                         className="editorCanvasContainer"
-                        ref={canvasContainer}
                         onDragOver={(event) => event.preventDefault()}
                         onDrop={(event) => {
                             event.preventDefault()
                             dropFiles(event.dataTransfer.files)
                         }}
                     >
+                        <div className="editor-canvas-mount" ref={canvasContainer}/>
                         <ViewportControls/>
                         {playOverlay && <canvas ref={playCanvas} className="game-canvas-overlay" data-testid="game-canvas"/>}
                     </div>,
@@ -139,6 +140,7 @@ function ObjectsPanel() {
     const viewer = manager.get()
     return <div className="editor-panel-body" data-testid="scene-hierarchy">
         <ObjectRow object={viewer.scene.modelRoot} label="Scene" depth={0}/>
+        {viewer.scene.defaultCamera && <ObjectRow object={viewer.scene.defaultCamera} label="Default Camera" depth={1}/>}
     </div>
 }
 
@@ -384,9 +386,12 @@ function ViewportControls() {
     const [grid, setGrid] = useState(true)
     const [transform, setTransform] = useState(true)
     const [widgets, setWidgets] = useState(true)
+    const [editing, setEditing] = useState(true)
+    const [camera, setCamera] = useState<'perspective' | 'orthographic' | 'default'>('perspective')
     const edit = viewer.getPlugin(EditModePlugin)
-    return <div className="interactionControlsButtonContainer">
-        <ButtonGroup>
+    return <>
+        <div className="interactionControlsButtonContainer">
+            <ButtonGroup>
             <Button
                 minimal
                 icon="move"
@@ -411,11 +416,30 @@ function ViewportControls() {
                 if (plugin) plugin.enabled = next
             }}/>
             <Button minimal icon="locate" title="Reset camera" onClick={() => edit?.resetView()}/>
+            <Popover content={<CameraSelectionMenu currentCamera={camera} setCurrentCamera={setCamera}/>} placement="bottom">
+                <Button minimal icon="video" title="Select camera"/>
+            </Popover>
             <Button minimal icon="camera" title="Snapshot" onClick={() => {
                 void viewer.getPlugin(CanvasSnapshotPlugin)?.downloadSnapshot('blitz-snapshot.png', {waitForProgressive: false})
             }}/>
-        </ButtonGroup>
-    </div>
+            <Button minimal icon="fullscreen" title="Fullscreen" onClick={() => {
+                void viewer.container.parentElement?.requestFullscreen()
+            }}/>
+            </ButtonGroup>
+        </div>
+        <div className="interactionControlsButtonContainer" style={{right: 'var(--pt-grid-size)', left: 'unset'}}>
+            <ButtonGroup>
+                <Button minimal icon="edit" title="Edit mode" active={editing} onClick={() => {
+                    edit?.enable(ViewportControls)
+                    setEditing(true)
+                }}/>
+                <Button minimal icon="eye-open" title="Preview mode" active={!editing} onClick={() => {
+                    edit?.disable(ViewportControls)
+                    setEditing(false)
+                }}/>
+            </ButtonGroup>
+        </div>
+    </>
 }
 
 function objectIcon(object: IObject3D) {

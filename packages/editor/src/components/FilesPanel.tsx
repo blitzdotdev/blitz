@@ -26,9 +26,13 @@ export function FilesPanel() {
             compact
         >{path} is not listed in package.json blitz.scripts or blitz.plugins and will not be registered.</Callout>)}
         <ul data-testid="project-files" className="file-list">
-            {manager.manifest.map(({path}) => <li key={path}>{path}</li>)}
+            {manager.manifest.filter(({path}) => !isPrivateBlitzFile(path)).map(({path}) => <li key={path}>{path}</li>)}
         </ul>
     </div>
+}
+
+function isPrivateBlitzFile(path: string): boolean {
+    return path === '.blitz/deploys.json' || path === '.blitz/dev.json'
 }
 
 export function SliderMenuItem({thumbSize, setThumbSize, icon = 'rect-width'}: {

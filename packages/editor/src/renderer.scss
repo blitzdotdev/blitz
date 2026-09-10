@@ -119,9 +119,15 @@ body{
 .editorCanvasContainer{
   width: 100%;
   height: 100%;
+  position: relative;
 
   .bp5-dark & {
   }
+}
+
+.editor-canvas-mount {
+  position: absolute;
+  inset: 0;
 }
 
 .hierarchy-stack .folderContent{

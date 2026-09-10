@@ -1,5 +1,5 @@
 import {expect, test} from '@playwright/test'
-import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
+import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
@@ -26,6 +26,7 @@ test.beforeAll(async () => {
 export async function main({viewer}) {
     window.__blitzMainRuns = (window.__blitzMainRuns || 0) + 1
     window.__blitzLoopTicks = 0
+    window.__blitzRuntimeViewer = viewer
     viewer.addEventListener('preFrame', () => { window.__blitzLoopTicks += 1 })
 }
 `)
@@ -73,6 +74,7 @@ export class UnlistedComponent extends Object3DComponent { static ComponentType 
     await mkdir(resolve(root, 'node_modules/@blitzdev/engine/dist'), {recursive: true})
     await writeFile(resolve(root, 'node_modules/@blitzdev/engine/package.json'), await readFile(resolve(engineRoot, 'package.json')))
     await writeFile(resolve(root, 'node_modules/@blitzdev/engine/dist/runtime.js'), await readFile(resolve(engineRoot, 'dist/runtime.js')))
+    await symlink(resolve(engineRoot, '../../node_modules/threepipe'), resolve(root, 'node_modules/threepipe'))
     backend = await startMockBackend()
     server = await runDev({projectRoot: root, port: 0, noOpen: true, backendUrl: backend.url})
 })
@@ -87,6 +89,15 @@ test('loads the restored panels, watches generators, and saves text glTF without
     test.setTimeout(90_000)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
+    await page.route('**/api/files', async (route) => {
+        const response = await route.fetch()
+        const files = await response.json() as Array<Record<string, unknown>>
+        await route.fulfill({response, json: [
+            ...files,
+            {path: '.blitz/deploys.json', size: 1, sha256: 'a'.repeat(64), mtime: 0},
+            {path: '.blitz/dev.json', size: 1, sha256: 'b'.repeat(64), mtime: 0},
+        ]})
+    })
     await page.goto(server.url)
 
     await expect(page.getByRole('heading', {name: 'blitz-editor-e2e-'})).toBeVisible()
@@ -101,6 +112,8 @@ test('loads the restored panels, watches generators, and saves text glTF without
     await expect(hierarchy).toContainText(/Tree 0\s*generated/)
     await expect(hierarchy).toContainText(/Tree 1\s*generated/)
     await expect(page.getByTestId('unlisted-script-warning').filter({hasText: 'Unlisted.script.js'})).toBeVisible()
+    await expect(page.getByTestId('project-files')).not.toContainText('.blitz/deploys.json')
+    await expect(page.getByTestId('project-files')).not.toContainText('.blitz/dev.json')
 
     await page.getByRole('tab', {name: 'Project'}).click()
     await expect(page.getByTestId('component-types')).toContainText('HotScript')
@@ -177,11 +190,18 @@ test('queues Play during project load and keeps one overlay update loop through 
     await page.getByTestId('play').click()
     await expect(page.getByTestId('game-canvas')).toBeVisible()
     await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
+    expect(await page.evaluate(() => (window as unknown as {
+        __blitzRuntimeViewer?: {getPlugin(type: string): {hasComponentType(type: string): boolean} | undefined}
+    }).__blitzRuntimeViewer?.getPlugin('EntityComponentPlugin')?.hasComponentType('UnlistedComponent'))).toBe(false)
     await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).playState).toBe('playing')
     const agentState = JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')) as Record<string, unknown>
     expect(agentState).toMatchObject({projectLoaded: true, playState: 'playing'})
     expect(agentState.clientId).toEqual(expect.any(String))
     expect(agentState.updatedAt).toEqual(expect.any(String))
+    const firstUpdatedAt = agentState.updatedAt
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).updatedAt, {
+        timeout: 10_000,
+    }).not.toBe(firstUpdatedAt)
     await expect.poll(() => page.evaluate(() => (window as unknown as {__blitzLoopTicks?: number}).__blitzLoopTicks || 0)).toBeGreaterThan(10)
 
     const editViewerUuid = await page.evaluate(() => (window as unknown as {viewer: {scene: {uuid: string}}}).viewer.scene.uuid)
@@ -201,11 +221,14 @@ test('queues Play during project load and keeps one overlay update loop through 
     expect(moduleUrls.some((url) => /\/files\/Hot\.plugin\.js\?v=[a-f\d]{64}$/.test(url))).toBe(true)
 
     await page.evaluate(() => {
+        console.warn('[warn-forwarding-check] visible')
         for (let index = 0; index < 30; index += 1) console.error(`[rate-limit-check] ${index}`)
     })
     await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8').catch(() => '')).includes('[HotScript] v2')).toBe(true)
     await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8').catch(() => '')).includes('[rate-limit-check] 0')).toBe(true)
     const consoleLog = await readFile(resolve(root, '.blitz/console.log'), 'utf8')
+    expect(consoleLog.split('\n')[0]).toMatch(/^# Blitz play log started .*; levels: console\.warn, console\.error, uncaught errors$/)
+    expect(consoleLog).toContain('[console.warn] [warn-forwarding-check] visible')
     expect(consoleLog.match(/\[rate-limit-check\]/g)?.length || 0).toBeLessThanOrEqual(20)
 
     await page.getByTestId('play').click()
@@ -215,6 +238,39 @@ test('queues Play during project load and keeps one overlay update loop through 
     await page.waitForTimeout(200)
     expect(await page.evaluate(() => (window as unknown as {__blitzLoopTicks: number}).__blitzLoopTicks)).toBe(stoppedAt)
     expect(await page.evaluate(() => (window as unknown as {viewer: {scene: {uuid: string}}}).viewer.scene.uuid)).toBe(editViewerUuid)
+})
+
+test('writes stopped state on pagehide while playing', async ({page}) => {
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await page.getByTestId('play').click()
+    await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).playState).toBe('playing')
+
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')))
+
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).playState).toBe('stopped')
+})
+
+test('keeps the upstream viewport chrome and Default Camera on an empty project', async ({page}) => {
+    const emptyRoot = await mkdtemp(resolve(tmpdir(), 'blitz-editor-empty-'))
+    await initProject(emptyRoot)
+    const emptyServer = await runDev({projectRoot: emptyRoot, port: 0, noOpen: true})
+    try {
+        await page.goto(emptyServer.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await expect(page.getByTitle('Transform controls')).toBeVisible()
+        await expect(page.getByTitle('Edit mode')).toBeVisible()
+        await expect(page.getByTitle('Preview mode')).toBeVisible()
+        await expect(page.getByTitle('Snapshot')).toBeVisible()
+        await expect(page.getByTitle('Fullscreen')).toBeVisible()
+        await page.getByTitle('Select camera').click()
+        await expect(page.getByRole('menuitem', {name: 'Default Camera'})).toBeVisible()
+        await expect(page.getByTestId('scene-hierarchy')).toContainText('Default Camera')
+    } finally {
+        await emptyServer.close()
+        await rm(emptyRoot, {recursive: true, force: true})
+    }
 })
 
 test('reports a corrupt scene in the editor and console log', async ({page}) => {
