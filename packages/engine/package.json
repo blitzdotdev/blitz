@@ -1,6 +1,6 @@
 {
   "name": "@blitzdev/engine",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "The open Blitz game runtime, project format, scripting helpers, and game plugins.",
   "type": "module",
   "license": "Apache-2.0",
@@ -12,20 +12,50 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./fileTypes": {"types": "./dist/fileTypes.d.ts", "import": "./dist/fileTypes.js"},
-    "./paths": {"types": "./dist/paths.d.ts", "import": "./dist/paths.js"},
-    "./sceneSerialization": {"types": "./dist/sceneSerialization.d.ts", "import": "./dist/sceneSerialization.js"},
-    "./authoring": {"types": "./dist/authoring.d.ts", "import": "./dist/authoring.js"},
-    "./authoringValidation": {"types": "./dist/authoringValidation.d.ts", "import": "./dist/authoringValidation.js"},
-    "./version": {"types": "./dist/runtime/version.d.ts", "import": "./dist/version.js"},
-    "./projectFormat": {"types": "./dist/runtime/projectFormat.d.ts", "import": "./dist/projectFormat.js"},
-    "./migrations": {"types": "./dist/runtime/migrations.d.ts", "import": "./dist/migrations.js"},
-    "./importMap": {"types": "./dist/importMap.d.ts", "import": "./dist/importMap.js"},
+    "./fileTypes": {
+      "types": "./dist/fileTypes.d.ts",
+      "import": "./dist/fileTypes.js"
+    },
+    "./paths": {
+      "types": "./dist/paths.d.ts",
+      "import": "./dist/paths.js"
+    },
+    "./sceneSerialization": {
+      "types": "./dist/sceneSerialization.d.ts",
+      "import": "./dist/sceneSerialization.js"
+    },
+    "./authoring": {
+      "types": "./dist/authoring.d.ts",
+      "import": "./dist/authoring.js"
+    },
+    "./authoringValidation": {
+      "types": "./dist/authoringValidation.d.ts",
+      "import": "./dist/authoringValidation.js"
+    },
+    "./version": {
+      "types": "./dist/runtime/version.d.ts",
+      "import": "./dist/version.js"
+    },
+    "./projectFormat": {
+      "types": "./dist/runtime/projectFormat.d.ts",
+      "import": "./dist/projectFormat.js"
+    },
+    "./migrations": {
+      "types": "./dist/runtime/migrations.d.ts",
+      "import": "./dist/migrations.js"
+    },
+    "./importMap": {
+      "types": "./dist/importMap.d.ts",
+      "import": "./dist/importMap.js"
+    },
     "./runtime.js": "./dist/runtime.js",
     "./package.json": "./package.json",
     "./src/*": "./src/*"
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "vite build && vite build --config vite.runtime.config.ts",
     "typecheck": "tsc --noEmit",
