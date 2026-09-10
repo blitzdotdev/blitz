@@ -1,5 +1,5 @@
-import {execFile} from 'node:child_process'
-import {chmod, mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
+import {execFile, spawn} from 'node:child_process'
+import {chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {promisify} from 'node:util'
@@ -11,12 +11,58 @@ import {initializeGitRepository} from '../src/git.ts'
 const execute = promisify(execFile)
 const cli = resolve('dist/cli.js')
 const cleanup: Array<() => Promise<void>> = []
+const workflow = `Blitz builds browser 3D games with an agent and a local editor.
+Workflow:
+  npx @blitzdev/blitz init my-game && cd my-game && npm install
+  Read AGENTS.md in the project. It is the guide: engine API, scene file, rules.
+  npx blitz dev        keeps the local editor running while you edit
+  npx blitz check      run it and fix every failure before you publish
+  npx blitz publish    prints the live URL`
+
+const rootUsage = `${workflow}
+
+Usage: blitz <command> [options]
+
+Commands:
+  init [dir] [--no-git]       Create a Blitz project and Git repository
+  dev [--port <port>]         Start the local editor
+  doctor [--port <port>]      Check the local development prerequisites
+  checkpoint [label]          Commit a project checkpoint
+  restore [hash]              Restore files from a checkpoint
+  archive                     Write a sanitized project source ZIP
+  publish [options]           Publish the project
+  pull [--force]              Pull the active release
+  status                      Show local deploy status
+  claim --email <email> --password <password> [--login]
+                              Register or sign in, then claim local deploys
+  bake <nodeName> [--force]   Bake a Generator node
+  check                       Check Playable, Editable, and Persisted outcomes
+  journal [options]           Read the edit journal
+  open                        Open the running local editor
+  sources                     Locate installed source
+  upgrade [--to <x.y.z>]      Upgrade the project Blitz version
+
+Run blitz <command> --help for command usage.`
 
 afterEach(async () => {
     while (cleanup.length) await cleanup.pop()!()
 })
 
 describe('blitz CLI', () => {
+    it('starts no-argument and root help output with the agent workflow', async () => {
+        const results = await Promise.all([
+            execute(process.execPath, [cli]),
+            execute(process.execPath, [cli, '--help']),
+        ])
+
+        expect(workflow.split('\n')).toHaveLength(7)
+        for (const result of results) {
+            expect(result.stdout.trim()).toBe(rootUsage)
+            expect(result.stdout).not.toContain(String.fromCharCode(27))
+            expect(result.stderr).toBe('')
+        }
+    })
+
     it.each(['dev', 'check', 'publish', 'doctor', 'checkpoint', 'restore', 'archive', 'status'])(
         'refuses %s outside a Blitz project root',
         async (command) => {
@@ -49,6 +95,7 @@ describe('blitz CLI', () => {
             })
             for (const result of [emptyResult, packageOnlyResult] as Array<{stderr: string}>) {
                 expect(result.stderr).toContain('cd into a Blitz project or run blitz init')
+                expect(result.stderr.trim()).toMatch(/Start with: npx @blitzdev\/blitz init my-game$/)
             }
         },
     )
@@ -81,6 +128,27 @@ describe('blitz CLI', () => {
 
         await expect(readFile(resolve(root, '.git/HEAD'), 'utf8')).rejects.toMatchObject({code: 'ENOENT'})
         expect(result.stdout).toContain('Git repository: skipped (--no-git)')
+        expect(result.stdout.trim().split('\n').at(-1)).toBe(
+            'Then read AGENTS.md in the project before you write code. '
+            + 'Build, run npx blitz check, then npx blitz publish.',
+        )
+    })
+
+    it('prints the guide, verification, and publish loop when dev starts', async () => {
+        const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-dev-guide-'))
+        cleanup.push(() => rm(root, {recursive: true, force: true}))
+        await execute(process.execPath, [cli, 'init', root, '--no-git'])
+        const canonicalRoot = await realpath(root)
+
+        const result = await captureDevStartup(root)
+        const lines = result.stdout.trim().split('\n')
+
+        expect(result.stderr).toBe('')
+        expect(lines.at(-3)).toMatch(/^Blitz editor: http:\/\/127\.0\.0\.1:\d+\/\?t=/)
+        expect(lines.at(-2)).toBe(`Project: ${canonicalRoot}`)
+        expect(lines.at(-1)).toBe(
+            'Guide: AGENTS.md in this folder. Verify with npx blitz check. Publish with npx blitz publish.',
+        )
     })
 
     it('prints a tracked parent decision and requires opt-in for its checkpoints', async () => {
@@ -349,6 +417,60 @@ describe('blitz CLI', () => {
         expect(JSON.parse(await readFile(packagePath, 'utf8')).blitz.version).toBe(pinned)
     })
 })
+
+describe('agent testing guide', () => {
+    it('uses one request line and relies on the CLI to carry the loop', async () => {
+        const document = await readFile(resolve('../../docs/testing-with-an-agent.md'), 'utf8')
+        const pasteBlock = document.match(/```\n([\s\S]*?)\n```/)?.[1]
+
+        expect(pasteBlock).toBe(
+            'use npx @blitzdev/blitz and build me an FPS shooting practice game\n'
+            + 'Never print the deploy token or claim secret from .blitz/deploys.json.',
+        )
+        expect(document).toContain('The CLI output carries the loop')
+        expect(document).toContain('## Testing unreleased changes from this machine')
+    })
+})
+
+async function captureDevStartup(root: string): Promise<{stdout: string, stderr: string}> {
+    const child = spawn(process.execPath, [cli, 'dev', '--port', '0', '--no-open'], {
+        cwd: root,
+        stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+        stdout += chunk
+    })
+    child.stderr.on('data', (chunk: string) => {
+        stderr += chunk
+    })
+    const exit = new Promise<{code: number | null, signal: NodeJS.Signals | null}>((resolveExit, reject) => {
+        child.once('error', reject)
+        child.once('exit', (code, signal) => resolveExit({code, signal}))
+    })
+
+    try {
+        await waitFor(() => stdout.includes('\nProject: '), 5_000)
+    } finally {
+        child.kill('SIGINT')
+    }
+    const stopped = await exit
+    if (stopped.code !== 0) {
+        throw new Error(`blitz dev exited with ${stopped.code ?? stopped.signal}: ${stderr}`)
+    }
+    return {stdout, stderr}
+}
+
+async function waitFor(predicate: () => boolean, timeout: number): Promise<void> {
+    const started = Date.now()
+    while (!predicate()) {
+        if (Date.now() - started >= timeout) throw new Error(`Timed out after ${timeout}ms`)
+        await new Promise((resolveWait) => setTimeout(resolveWait, 10))
+    }
+}
 
 async function pinnedProject(version: string): Promise<string> {
     const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-pin-'))

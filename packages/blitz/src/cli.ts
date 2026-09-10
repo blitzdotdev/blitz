@@ -22,7 +22,15 @@ import {doctorProject, formatDoctorTable} from './doctor.ts'
 import {checkpointProject, gitRepositoryRoot, restoreProject} from './git.ts'
 import {assertBlitzProjectRoot} from './project-root.ts'
 
-const ROOT_USAGE = `Usage: blitz <command> [options]
+const ROOT_USAGE = `Blitz builds browser 3D games with an agent and a local editor.
+Workflow:
+  npx @blitzdev/blitz init my-game && cd my-game && npm install
+  Read AGENTS.md in the project. It is the guide: engine API, scene file, rules.
+  npx blitz dev        keeps the local editor running while you edit
+  npx blitz check      run it and fix every failure before you publish
+  npx blitz publish    prints the live URL
+
+Usage: blitz <command> [options]
 
 Commands:
   init [dir] [--no-git]       Create a Blitz project and Git repository
@@ -106,6 +114,10 @@ try {
                 : `Git repository: tracked parent repository at ${repository}`)
         }
         console.log(`Next: cd ${directory} && npm install && npx blitz dev`)
+        console.log(
+            'Then read AGENTS.md in the project before you write code. '
+            + 'Build, run npx blitz check, then npx blitz publish.',
+        )
     } else if (command === 'doctor') {
         const parsed = parseArgs(args, {'--port': 'value'})
         const result = await doctorProject(process.cwd(), {port: portOption(parsed.values['--port'])})
@@ -138,6 +150,7 @@ try {
         })
         console.log(`Blitz editor: ${server.url}`)
         console.log(`Project: ${server.projectRoot}`)
+        console.log('Guide: AGENTS.md in this folder. Verify with npx blitz check. Publish with npx blitz publish.')
         const shutdown = async () => {
             await server.close()
             process.exit(0)
