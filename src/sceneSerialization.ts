@@ -53,6 +53,7 @@ export async function serializeSceneGltf(
         preserveUUIDs: true,
         viewerConfig: options.viewerConfig ?? true,
         embedUrlImages: false,
+        onlyVisible: true,
         jsonSpaces: 2,
     }, false)
     if (!blob) throw new Error('The scene exporter returned no glTF data')
