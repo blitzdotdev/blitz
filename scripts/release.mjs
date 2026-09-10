@@ -7,6 +7,7 @@ import {dirname, join, resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
 
 import {registerRuntime} from './register-runtime.mjs'
+import {uploadAgentsMd} from './upload-agents-md.mjs'
 
 const repositoryDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const publishOrder = ['engine', 'template', 'editor', 'blitz']
@@ -106,7 +107,7 @@ async function createNpmEnvironment() {
 function finishTag(version, branch, dryRun, registered) {
     const tag = `v${version}`
     if (dryRun) {
-        console.log(`Dry run complete; ${registered ? 'registered the runtime by request but' : 'skipped runtime registration and'} tag ${tag}.`)
+        console.log(`Dry run complete; ${registered ? 'performed backend uploads by request but' : 'skipped backend uploads and'} tag ${tag}.`)
         console.log(`After a real release, push with: git push origin ${branch ? `${branch} ` : ''}${tag}`)
         return
     }
@@ -143,7 +144,10 @@ async function release() {
         }
 
         const registered = !dryRun || register
-        if (registered) await registerRuntime()
+        if (registered) {
+            await registerRuntime()
+            await uploadAgentsMd()
+        }
         finishTag(version, branch, dryRun, registered)
     } finally {
         await npm.cleanup()

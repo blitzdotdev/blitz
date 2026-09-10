@@ -31,9 +31,10 @@ jobs:
             exit 1
           fi
       - run: npm run lint
+      - run: npm run test:scripts
       - run: npx playwright install --with-deps chromium
       - run: npm run test:editor
-      - name: Publish and register runtime
+      - name: Publish, register runtime, and upload agents guide
         run: node scripts/release.mjs --publish --register
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

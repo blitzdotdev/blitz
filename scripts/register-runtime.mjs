@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url'
 
 const repositoryDirectory = resolve(fileURLToPath(new URL('..', import.meta.url)))
 
-function parseEnvironment(contents) {
+export function parseEnvironment(contents) {
     const result = {}
     for (const rawLine of contents.split(/\r?\n/)) {
         const line = rawLine.trim()
@@ -24,7 +24,7 @@ function parseEnvironment(contents) {
     return result
 }
 
-async function loadReleaseEnvironment(rootDirectory) {
+export async function loadReleaseEnvironment(rootDirectory) {
     let localEnvironment = {}
     try {
         localEnvironment = parseEnvironment(await readFile(resolve(rootDirectory, '.env.local'), 'utf8'))
