@@ -16,8 +16,9 @@ import {basename, dirname, extname, resolve, sep} from 'node:path'
 import {pipeline} from 'node:stream/promises'
 import {fileURLToPath} from 'node:url'
 import {mimeTypeForPath} from '@blitzdev/engine/fileTypes'
-import {DEPLOYS_PATH} from '@blitzdev/engine/paths'
+import {DEPLOYS_PATH, JOURNAL_PATH} from '@blitzdev/engine/paths'
 import {RUNTIME_VERSION} from '@blitzdev/engine/version'
+import {checkBakeSafety, type BakeJournalEntry} from './bake.ts'
 
 export interface ManifestEntry {
     path: string
@@ -53,6 +54,17 @@ interface PendingEvent {
     timer: ReturnType<typeof setTimeout>
 }
 
+interface CommandResult {
+    ok: boolean
+    error?: string
+    [key: string]: unknown
+}
+
+interface PendingCommand {
+    resolve: (result: CommandResult) => void
+    timer: ReturnType<typeof setTimeout>
+}
+
 const SERVER_VERSION = '0.12.0'
 const SERVER_CLIENT_ID = 'blitz-server'
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
@@ -62,7 +74,8 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const token = options.token || randomBytes(24).toString('base64url')
     const editorDirectory = options.editorDirectory || await resolvePackageDirectory('@blitzdev/editor') + '/dist'
     const runtimePath = options.runtimePath || resolve(await resolvePackageDirectory('@blitzdev/engine'), 'dist/runtime.js')
-    const clients = new Set<ServerResponse>()
+    const clients = new Map<ServerResponse, string | undefined>()
+    const pendingCommands = new Map<string, PendingCommand>()
     const pendingEvents = new Map<string, PendingEvent>()
     const recentWrites = new Map<string, number>()
     const knownHashes = new Map<string, string>()
@@ -107,9 +120,44 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                     Connection: 'keep-alive',
                 })
                 response.write(': connected\n\n')
-                clients.add(response)
+                clients.set(response, request.headers['x-blitz-client'] as string | undefined)
                 request.on('close', () => clients.delete(response))
                 return
+            }
+            if (request.method === 'POST' && url.pathname === '/api/bake') {
+                const body = await readJsonBody(request)
+                const nodeName = typeof body.nodeName === 'string' ? body.nodeName.trim() : ''
+                const force = body.force === true
+                if (!nodeName) return json(response, 400, {error: {code: 'invalid_node', message: 'nodeName is required.'}})
+                if (![...clients.values()].some(Boolean)) {
+                    return json(response, 409, {error: {code: 'editor_not_connected', message: 'No editor is connected. Open the URL from blitz dev and try again.'}})
+                }
+                const {document, journal} = await readBakeInputs(projectRoot)
+                const safety = checkBakeSafety(document, nodeName, journal, force)
+                if (!safety.ok) return json(response, 409, {error: {code: safety.code, message: safety.reason}})
+
+                const id = randomBytes(16).toString('hex')
+                const result = await new Promise<CommandResult>((resolveCommand) => {
+                    const timer = setTimeout(() => {
+                        pendingCommands.delete(id)
+                        resolveCommand({ok: false, error: 'The connected editor did not finish the bake within 30 seconds.'})
+                    }, 30_000)
+                    pendingCommands.set(id, {resolve: resolveCommand, timer})
+                    broadcast('command', {id, command: 'bake', nodeName, force})
+                })
+                return result.ok
+                    ? json(response, 200, result)
+                    : json(response, 409, {error: {code: 'bake_failed', message: result.error || 'Bake failed.'}})
+            }
+            const commandResultMatch = request.method === 'POST' && /^\/api\/commands\/([a-f\d]+)$/.exec(url.pathname)
+            if (commandResultMatch) {
+                const pending = pendingCommands.get(commandResultMatch[1])
+                if (!pending) return json(response, 404, {error: {code: 'command_not_found', message: 'Command is no longer pending.'}})
+                const body = await readJsonBody(request) as CommandResult
+                clearTimeout(pending.timer)
+                pendingCommands.delete(commandResultMatch[1])
+                pending.resolve({...body, ok: body.ok === true})
+                return json(response, 202, {accepted: true})
             }
             if (request.method === 'POST' && url.pathname === '/api/publish') {
                 if (!options.publish) return json(response, 501, {error: {code: 'publish_unavailable', message: 'Publish is not configured.'}})
@@ -180,7 +228,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
 
     function broadcast(event: string, data: unknown) {
         const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-        for (const client of clients) client.write(frame)
+        for (const client of clients.keys()) client.write(frame)
     }
 
     function scheduleEvent(path: string, client?: string, forcedType?: PendingEvent['forcedType']) {
@@ -236,7 +284,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         console.warn(`[blitz] file watching is unavailable: ${error instanceof Error ? error.message : error}`)
     }
     const keepAlive = setInterval(() => {
-        for (const client of clients) client.write(': keepalive\n\n')
+        for (const client of clients.keys()) client.write(': keepalive\n\n')
     }, 15_000)
     keepAlive.unref()
 
@@ -252,7 +300,12 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             watcher?.close()
             clearInterval(keepAlive)
             for (const pending of pendingEvents.values()) clearTimeout(pending.timer)
-            for (const client of clients) client.end()
+            for (const client of clients.keys()) client.end()
+            for (const command of pendingCommands.values()) {
+                clearTimeout(command.timer)
+                command.resolve({ok: false, error: 'The development server closed before the bake finished.'})
+            }
+            pendingCommands.clear()
             await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()))
             await unlink(resolve(projectRoot, '.blitz/dev.json')).catch(() => undefined)
         },
@@ -297,6 +350,26 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         mutationQueue = run.then(() => undefined, () => undefined)
         return run
     }
+}
+
+async function readBakeInputs(root: string): Promise<{
+    document: Parameters<typeof checkBakeSafety>[0]
+    journal: BakeJournalEntry[]
+}> {
+    const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as {mainScene?: unknown}
+    if (typeof packageJson.mainScene !== 'string') throw new Error('package.json mainScene must be a string')
+    const scenePath = await safeProjectPath(root, packageJson.mainScene)
+    const document = JSON.parse(await readFile(scenePath, 'utf8')) as Parameters<typeof checkBakeSafety>[0]
+    let journal: BakeJournalEntry[] = []
+    try {
+        journal = (await readFile(resolve(root, JOURNAL_PATH), 'utf8'))
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => JSON.parse(line) as BakeJournalEntry)
+    } catch (error) {
+        if (!isMissing(error)) throw error
+    }
+    return {document, journal}
 }
 
 function manifestHashes(entries: ManifestEntry[]): Map<string, string> {

@@ -5,9 +5,11 @@ import {
     GeneratorComponent,
     registerScripts,
     RUNTIME_VERSION,
+    serializeSceneGltf,
     serializeSceneGltfDocument,
     walkScriptExports,
     type CreatedGame,
+    type SerializedSceneGltf,
 } from '@blitzdev/engine'
 import {DevServerSource} from './DevServerSource.ts'
 import {ProjectConflictError, type ProjectEvent, type ProjectFileEntry} from './ProjectSource.ts'
@@ -162,6 +164,25 @@ export default function App() {
         }
     }, [loadScriptTypes, reportError, source, writeState])
 
+    const writeSerializedScene = useCallback(async (serialized: SerializedSceneGltf) => {
+        for (const file of serialized.files) {
+            const written = await source.write(file.path, file.bytes, hashes.current.get(file.path) || '*')
+            hashes.current.set(file.path, written.sha256)
+        }
+        const binPath = scenePath.replace(/\.gltf$/i, '.bin')
+        const hasBin = (serialized.document.buffers as Array<{uri?: string}> | undefined)
+            ?.some(({uri}) => uri === binPath.split('/').pop())
+        if (!hasBin && hashes.current.has(binPath)) {
+            await source.delete(binPath)
+            hashes.current.delete(binPath)
+        }
+        const result = await source.write(scenePath, serialized.gltf, hashes.current.get(scenePath) || '*')
+        hashes.current.set(scenePath, result.sha256)
+        sceneTextRef.current = decode(serialized.gltf)
+        setSceneText(sceneTextRef.current)
+        setDirty(false)
+    }, [scenePath, source])
+
     const saveScene = useCallback(async () => {
         if (saveTimer.current) {
             clearTimeout(saveTimer.current)
@@ -169,22 +190,7 @@ export default function App() {
         }
         try {
             const serialized = await serializeScene(scenePath, sceneTextRef.current)
-            for (const file of serialized.files) {
-                const written = await source.write(file.path, file.bytes, hashes.current.get(file.path) || '*')
-                hashes.current.set(file.path, written.sha256)
-            }
-            const binPath = scenePath.replace(/\.gltf$/i, '.bin')
-            const hasBin = (serialized.document.buffers as Array<{uri?: string}> | undefined)
-                ?.some(({uri}) => uri === binPath.split('/').pop())
-            if (!hasBin && hashes.current.has(binPath)) {
-                await source.delete(binPath)
-                hashes.current.delete(binPath)
-            }
-            const result = await source.write(scenePath, serialized.gltf, hashes.current.get(scenePath) || '*')
-            hashes.current.set(scenePath, result.sha256)
-            sceneTextRef.current = decode(serialized.gltf)
-            setSceneText(sceneTextRef.current)
-            setDirty(false)
+            await writeSerializedScene(serialized)
             setStatus('Scene saved')
         } catch (error) {
             if (!(error instanceof ProjectConflictError)) return reportError(error)
@@ -199,7 +205,7 @@ export default function App() {
                 setStatus('Kept unsaved editor scene')
             }
         }
-    }, [reportError, scenePath, source])
+    }, [reportError, scenePath, source, writeSerializedScene])
 
     const sceneObjectNames = useMemo(() => readSceneObjectNames(scenePath, sceneText), [scenePath, sceneText])
     const generatorStates = useMemo(() => readGeneratorStates(scenePath, sceneText), [scenePath, sceneText])
@@ -232,7 +238,62 @@ export default function App() {
         }
     }, [saveScene])
 
+    const performBake = useCallback(async (nodeName: string) => {
+        if (!gameRef.current) await play()
+        const game = gameRef.current
+        if (!game) throw new Error('The game could not be started for baking')
+        const matches: Array<ReturnType<typeof game.viewer.scene.modelRoot.getObjectByName>> = []
+        game.viewer.scene.modelRoot.traverse((object) => {
+            if (object.name === nodeName) matches.push(object)
+        })
+        if (matches.length !== 1 || !matches[0]) throw new Error(`Generator node is not unique: ${nodeName}`)
+        const node = matches[0]
+        const component = EntityComponentPlugin.GetComponent(node, GeneratorComponent)
+        if (!component) throw new Error(`Generator component not found on ${nodeName}`)
+        await component.run()
+        await GeneratorComponent.waitForViewer(game.viewer)
+        const generated = node.children.filter((child) => child.userData.blitzGenerated === true)
+        const bakedFrom = {
+            module: component.module,
+            params: JSON.parse(JSON.stringify(component.params)) as Record<string, unknown>,
+            ts: new Date().toISOString(),
+        }
+        for (const child of generated) {
+            child.traverse((descendant) => {
+                delete descendant.userData.blitzGenerated
+                delete descendant.userData.excludeFromExport
+            })
+        }
+        game.viewer.getPlugin(EntityComponentPlugin)?.removeComponent(node, component.uuid)
+        node.userData.blitzBakedFrom = bakedFrom
+        node._sChildren = [...node.children]
+        node.setDirty?.({change: 'userData.blitzBakedFrom', source: 'blitz bake'})
+
+        const serialized = await serializeSceneGltf(game.viewer, {scenePath})
+        await writeSerializedScene(serialized)
+        setRuntimeHierarchy(readRuntimeHierarchy(game))
+        setStatus(`Baked ${nodeName}`)
+        return {ok: true, nodeName, children: generated.length}
+    }, [play, scenePath, writeSerializedScene])
+
+    const requestBake = useCallback(async (nodeName: string, force = false) => {
+        if (!source.bake) throw new Error('Bake is not supported by this project source')
+        setStatus(`Baking ${nodeName}…`)
+        await source.bake(nodeName, force)
+    }, [source])
+
     const onProjectEvent = useCallback(async (event: ProjectEvent) => {
+        if (event.type === 'command' && event.command === 'bake' && typeof event.id === 'string' && typeof event.nodeName === 'string') {
+            try {
+                const result = await performBake(event.nodeName)
+                await source.commandResult?.(event.id, result)
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                await source.commandResult?.(event.id, {ok: false, error: message})
+                await reportError(error)
+            }
+            return
+        }
         if (event.client === source.clientId || !event.path) return
         if (event.sha256 && hashes.current.get(event.path) === event.sha256) return
         if (event.sha256) hashes.current.set(event.path, event.sha256)
@@ -262,7 +323,7 @@ export default function App() {
             setDirty(false)
             setStatus('Scene reloaded from disk')
         }
-    }, [dirty, loadScriptTypes, play, readProject, scenePath, source])
+    }, [dirty, loadScriptTypes, performBake, play, readProject, reportError, scenePath, source])
 
     const onProjectEventRef = useRef(onProjectEvent)
     onProjectEventRef.current = onProjectEvent
@@ -323,6 +384,12 @@ export default function App() {
                             }
                         }}
                     /></label>
+                    <button data-testid={`bake-${generator.nodeIndex}`} onClick={() => void requestBake(generator.nodeName).catch(reportError)}>Bake</button>
+                    <button data-testid={`force-bake-${generator.nodeIndex}`} onClick={() => {
+                        if (window.confirm(`Force bake ${generator.nodeName}? Existing children or human edits may be replaced.`)) {
+                            void requestBake(generator.nodeName, true).catch(reportError)
+                        }
+                    }}>Force bake</button>
                 </fieldset>)}</div>
             </aside>
             <div className="stage"><canvas ref={canvasRef} data-testid="game-canvas"/></div>

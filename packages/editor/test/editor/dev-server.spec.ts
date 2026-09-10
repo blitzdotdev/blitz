@@ -114,6 +114,19 @@ export default function generate({node, params, engine}) {
     await expect(page.getByText('Generator.js regenerated')).toBeVisible({timeout: 15_000})
     await expect(page.getByTestId('scene-hierarchy')).toContainText('Reloaded tree 3 generated')
 
+    await page.getByTestId('bake-0').click()
+    await expect(page.getByText('Baked RoundTripObject')).toBeVisible({timeout: 20_000})
+    const bakedSceneText = await readFile(resolve(root, packageJson.mainScene), 'utf8')
+    const bakedScene = JSON.parse(bakedSceneText) as {
+        nodes: Array<{name?: string, children?: number[], extras?: Record<string, unknown>}>
+    }
+    const bakedRoot = bakedScene.nodes.find(({name}) => name === 'RoundTripObject')
+    expect(bakedRoot?.children).toHaveLength(4)
+    expect(bakedRoot?.extras).toHaveProperty('blitzBakedFrom')
+    expect(bakedSceneText).not.toContain('blitzGenerated')
+    expect(bakedSceneText).not.toContain('excludeFromExport')
+    expect(bakedSceneText).not.toContain('"type": "Generator"')
+
     await writeFile(resolve(root, 'Live.script.js'), `
 import {Object3DComponent} from 'threepipe'
 export class UpdatedComponent extends Object3DComponent { static ComponentType = 'UpdatedComponent' }

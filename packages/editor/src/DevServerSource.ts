@@ -74,8 +74,27 @@ export class DevServerSource implements ProjectSource {
         return url.href
     }
 
+    async bake(nodeName: string, force = false): Promise<Record<string, unknown>> {
+        return this.json('/api/bake', {
+            method: 'POST',
+            headers: this.headers({'Content-Type': 'application/json'}),
+            body: JSON.stringify({nodeName, force}),
+        })
+    }
+
+    async commandResult(id: string, result: Record<string, unknown>): Promise<void> {
+        await this.json(`/api/commands/${encodeURIComponent(id)}`, {
+            method: 'POST',
+            headers: this.headers({'Content-Type': 'application/json'}),
+            body: JSON.stringify(result),
+        })
+    }
+
     private async readEvents(listener: (event: ProjectEvent) => void, signal: AbortSignal): Promise<void> {
-        const response = await fetch(this.url('/api/events'), {headers: this.headers(), signal})
+        const response = await fetch(this.url('/api/events'), {
+            headers: this.headers({'X-Blitz-Client': this.clientId}),
+            signal,
+        })
         if (!response.ok || !response.body) throw new Error(`Cannot watch project: ${response.status}`)
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
@@ -96,9 +115,12 @@ export class DevServerSource implements ProjectSource {
         }
     }
 
-    private async json<T>(path: string): Promise<T> {
-        const response = await fetch(this.url(path), {headers: this.headers()})
-        if (!response.ok) throw new Error(`${path} failed: ${response.status}`)
+    private async json<T>(path: string, init?: RequestInit): Promise<T> {
+        const response = await fetch(this.url(path), init || {headers: this.headers()})
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({})) as {error?: {message?: string}}
+            throw new Error(body.error?.message || `${path} failed: ${response.status}`)
+        }
         return response.json() as Promise<T>
     }
 

@@ -96,6 +96,38 @@ export async function openCurrentProject(projectRoot = process.cwd()): Promise<s
     return state.url
 }
 
+export async function bakeFromEditor(
+    nodeName: string,
+    options: {projectRoot?: string, force?: boolean} = {},
+): Promise<Record<string, unknown>> {
+    if (!nodeName.trim()) throw new Error('A Generator node name is required.')
+    const projectRoot = resolve(options.projectRoot || process.cwd())
+    let state: {url?: unknown, token?: unknown}
+    try {
+        state = JSON.parse(await readFile(resolve(projectRoot, '.blitz/dev.json'), 'utf8')) as typeof state
+    } catch {
+        throw new Error('No Blitz development server is running. Start blitz dev first.')
+    }
+    if (typeof state.url !== 'string' || typeof state.token !== 'string') {
+        throw new Error('.blitz/dev.json does not contain a valid development server connection.')
+    }
+    const response = await fetch(new URL('/api/bake', state.url), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Blitz-Token': state.token,
+            'X-Blitz-Client': 'blitz-bake',
+        },
+        body: JSON.stringify({nodeName, force: options.force === true}),
+    })
+    const body = await response.json().catch(() => ({})) as {
+        error?: {message?: string}
+        [key: string]: unknown
+    }
+    if (!response.ok) throw new Error(body.error?.message || `Bake failed with status ${response.status}.`)
+    return body
+}
+
 export async function sourcesInstructions(projectRoot = process.cwd()): Promise<string> {
     const source = resolve(projectRoot, 'node_modules/threepipe/src')
     try {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {initProject, openCurrentProject, publishFromDisk, pullFromDisk, runDev, sourcesInstructions} from './commands.ts'
+import {bakeFromEditor, initProject, openCurrentProject, publishFromDisk, pullFromDisk, runDev, sourcesInstructions} from './commands.ts'
 
 const [command = 'help', ...args] = process.argv.slice(2)
 
@@ -34,8 +34,12 @@ try {
         console.log(await openCurrentProject())
     } else if (command === 'sources') {
         console.log(await sourcesInstructions())
+    } else if (command === 'bake') {
+        const nodeName = args.find((value) => !value.startsWith('-')) || ''
+        const result = await bakeFromEditor(nodeName, {force: args.includes('--force')})
+        console.log(`Baked ${String(result.nodeName || nodeName)}`)
     } else {
-        console.log('Usage: blitz <init [dir] | dev [--port 4321] [--no-open] | publish [--message text] | pull | open | sources>')
+        console.log('Usage: blitz <init [dir] | dev [--port 4321] [--no-open] | publish [--message text] | pull | bake <nodeName> [--force] | open | sources>')
         if (command !== 'help' && command !== '--help' && command !== '-h') process.exitCode = 1
     }
 } catch (error) {

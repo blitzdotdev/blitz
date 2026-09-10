@@ -11,7 +11,7 @@ export interface ProjectReadResult {
 }
 
 export interface ProjectEvent {
-    type: 'change' | 'add' | 'unlink' | 'publish'
+    type: 'change' | 'add' | 'unlink' | 'publish' | 'command'
     path?: string
     sha256?: string
     client?: string
@@ -25,6 +25,8 @@ export interface ProjectSource {
     write(path: string, bytes: Uint8Array, ifMatch: string | '*'): Promise<{sha256: string}>
     delete(path: string): Promise<void>
     events(listener: (event: ProjectEvent) => void): () => void
+    bake?(nodeName: string, force?: boolean): Promise<Record<string, unknown>>
+    commandResult?(id: string, result: Record<string, unknown>): Promise<void>
 }
 
 export class ProjectConflictError extends Error {

@@ -120,6 +120,19 @@ describe('Blitz dev server', () => {
         expect(await (await fetch(`${base(server)}/_blitz/runtime.js`)).text()).toContain('runtime')
         expect((await stat(resolve(server.projectRoot, '.blitz/dev.json'))).isFile()).toBe(true)
     })
+
+    it('fails bake clearly when no editor is connected', async () => {
+        const {server, headers} = await startServer()
+        const response = await fetch(`${base(server)}/api/bake`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({nodeName: 'Forest'}),
+        })
+        expect(response.status).toBe(409)
+        expect(await response.json()).toMatchObject({
+            error: {code: 'editor_not_connected', message: expect.stringContaining('No editor is connected')},
+        })
+    })
 })
 
 async function temporaryProject(): Promise<string> {

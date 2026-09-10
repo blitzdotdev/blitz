@@ -9,7 +9,9 @@ export {publishProject, pullProject} from './publish.ts'
 export {NodeProjectDirectory} from './node-filesystem.ts'
 export {createDevServer} from './server.ts'
 export type {DevServer, DevServerOptions} from './server.ts'
-export {initProject, runDev, publishFromDisk, pullFromDisk, openCurrentProject, sourcesInstructions} from './commands.ts'
+export {checkBakeSafety} from './bake.ts'
+export type {BakeJournalEntry, BakeSafetyResult} from './bake.ts'
+export {bakeFromEditor, initProject, runDev, publishFromDisk, pullFromDisk, openCurrentProject, sourcesInstructions} from './commands.ts'
 export type {
     ExistingDeployTarget,
     PublishApi,
