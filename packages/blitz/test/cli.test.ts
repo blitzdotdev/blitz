@@ -139,7 +139,8 @@ describe('blitz CLI', () => {
     })
 
     it('rejects unknown flags with a clear message and nonzero exit code', async () => {
-        await expect(execute(process.execPath, [cli, 'publish', '--bogus']))
+        const root = await pinnedProject(BLITZ_VERSION)
+        await expect(execute(process.execPath, [cli, 'publish', '--bogus'], {cwd: root}))
             .rejects.toMatchObject({code: 1, stderr: expect.stringContaining('Unknown flag: --bogus')})
     })
 
