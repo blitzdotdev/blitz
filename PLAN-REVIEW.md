@@ -71,7 +71,9 @@ BUILT means done, verified, and on `main` unless a branch is named. RUNNING mean
 - DONE: P2 (merge `2a7749c`): server-side import rewrite with content hashes through es-module-lexer; re-export chains, cycles, and dynamic imports reload; negative control proven.
 - DONE: P6 (merge `9a7f06d`): `blitz doctor`, `blitz init` creates a git repo, `blitz checkpoint` and `blitz restore` with editor buttons and server routes, `blitz archive`; 101 CLI tests, 17 editor tests. Known nit: doctor reports a busy default port as FAIL although `blitz dev` picks a free port.
 - DONE: E2E run 3 with a clean-memory agent on tarballs from `f2eea7d`: FPS Range built, `blitz check` passed Playable, Editable, Persisted in both modes, published and verified live; the agent reported six gaps (script paths without `./` in the editor, the editor check validating the viewport camera instead of the saved one, viewer settings not applied in the editor, journal noise on key order, `dirty` stuck for 15 s after a check, non-listed module hot reload which P2 fixes). Session review running.
-- RUNNING: P4 source editing in the Inspector (`p4-source-editor`). Then fix pass H for the run 3 findings, then the E2E gate.
+- DONE: P4 (merge `3e51928`): source editing in the Inspector as a view over the project files, drafts in memory, `If-Match` writes, conflict banner with Reload and Overwrite, publish refused while dirty; 24 editor Playwright tests. One publish-dialog test is timing-sensitive under load and passes alone; hardening it goes into fix pass H.
+- All six integration passes P1 to P6 are merged. Tarballs repacked from `3e51928`.
+- NEXT: the run 3 session review (running), then fix pass H for its findings plus the doctor port nit and the flaky test, then E2E run 4 on the result and the gate.
 
 Build order agreed (revised, evening): Phase A done, Phase B part 1 running, then C1 blitz command, local dev server, editor source, then C2 cloud source, dialog, glTF model. See `docs/local-dev-server-plan.md`.
 
