@@ -97,7 +97,7 @@ describe('Blitz dev server', () => {
         expect(backend.requests.find(({path}) => path.endsWith('/claim'))?.authorization).toBe('Bearer jwt-login')
     })
 
-    it('publishes with slug, name, and message through the local route and mocked backend', async () => {
+    it('streams publish progress and returns the result through the local route', async () => {
         const backend = await startMockBackend()
         cleanup.push(() => backend.close())
         let projectRoot = ''
@@ -112,10 +112,58 @@ describe('Blitz dev server', () => {
             body: JSON.stringify({slug: 'route-game', name: 'Route Game', message: 'from proxy'}),
         })
         expect(response.status, await response.clone().text()).toBe(200)
-        expect(await response.json()).toMatchObject({preview_url: `${backend.url}/preview/route-game/`})
+        expect(response.headers.get('content-type')).toContain('text/event-stream')
+        const events = parseSse(await response.text())
+        expect(events).toContainEqual({
+            event: 'publish:progress',
+            data: expect.objectContaining({phase: 'walking', done: 0, total: 1}),
+        })
+        expect(events).toContainEqual({
+            event: 'publish:progress',
+            data: expect.objectContaining({phase: 'verifying', done: expect.any(Number), total: expect.any(Number)}),
+        })
+        expect(events.at(-1)).toEqual({
+            event: 'publish:result',
+            data: expect.objectContaining({preview_url: `${backend.url}/preview/route-game/`}),
+        })
         expect(backend.games.get('route-game')?.name).toBe('Route Game')
         expect(backend.releaseCount('route-game')).toBe(1)
         expect(backend.requests.find(({path}) => path.endsWith('/releases'))?.body).toMatchObject({message: 'from proxy'})
+    })
+
+    it('refuses a duplicate publish request while one is streaming', async () => {
+        let started!: () => void
+        const isStarted = new Promise<void>((resolveStarted) => { started = resolveStarted })
+        let finish!: () => void
+        const canFinish = new Promise<void>((resolveFinish) => { finish = resolveFinish })
+        const {server, headers} = await startServer({
+            publish: async (_options, emit) => {
+                emit({phase: 'walking', done: 0, total: 1})
+                started()
+                await canFinish
+                return {preview_url: 'https://example.test/game/', release_hash: 'a'.repeat(64)}
+            },
+        })
+        const first = fetch(`${base(server)}/api/publish`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({slug: 'first'}),
+        })
+        await isStarted
+
+        try {
+            const duplicate = await fetch(`${base(server)}/api/publish`, {
+                method: 'POST',
+                headers: {...headers, 'Content-Type': 'application/json'},
+                body: JSON.stringify({slug: 'second'}),
+            })
+
+            expect(duplicate.status).toBe(409)
+            expect(await duplicate.json()).toMatchObject({error: {code: 'publish_locked'}})
+        } finally {
+            finish()
+        }
+        expect(parseSse(await (await first).text()).at(-1)?.event).toBe('publish:result')
     })
 
     it('serves a manifest, MIME, ETags, conditional writes, and state', async () => {
@@ -415,6 +463,16 @@ async function readJournalLines(path: string): Promise<Array<Record<string, unkn
     } catch {
         return []
     }
+}
+
+function parseSse(value: string): Array<{event: string, data: Record<string, unknown>}> {
+    return value.trim().split(/\r?\n\r?\n/).map((block) => {
+        const lines = block.split(/\r?\n/)
+        const event = lines.find((line) => line.startsWith('event:'))?.slice('event:'.length).trim() || ''
+        const data = lines.filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice('data:'.length).trimStart()).join('\n')
+        return {event, data: JSON.parse(data) as Record<string, unknown>}
+    }).filter(({event}) => Boolean(event))
 }
 
 async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull' | 'backendUrl'> = {}) {

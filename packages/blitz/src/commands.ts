@@ -1,15 +1,16 @@
 import {spawn} from 'node:child_process'
+import {randomUUID} from 'node:crypto'
 import {createRequire} from 'node:module'
-import {readFile, readdir, stat, writeFile, mkdir} from 'node:fs/promises'
+import {mkdir, open, readFile, readdir, stat, unlink, writeFile} from 'node:fs/promises'
 import {dirname, relative, resolve, sep} from 'node:path'
 import {pathToFileURL} from 'node:url'
 import openBrowser from 'open'
-import {BlitzApi} from './api.ts'
+import {BlitzApi, sanitizeDiagnostic} from './api.ts'
 import {readDeploys, writeDeploys} from './deploys.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {publishProject, pullProject} from './publish.ts'
 import {createDevServer, type DevServer} from './server.ts'
-import type {PublishProgress} from './types.ts'
+import type {DeploysFile, PublishProgress} from './types.ts'
 import {appendJournalEntry, readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
 import {BLITZ_VERSION} from './versions.ts'
 import {checkProject} from './check.ts'
@@ -23,6 +24,7 @@ export interface PublishFromDiskOptions {
     message?: string
     backendUrl?: string
     noCheck?: boolean
+    noVerify?: boolean
 }
 
 export interface PublicDeployEntry {
@@ -162,32 +164,84 @@ export async function publishFromDisk(
     options: PublishFromDiskOptions = {},
     onProgress?: (progress: PublishProgress) => void,
 ): Promise<{preview_url: string, release_hash: string}> {
-    if (!options.noCheck) {
-        const check = await checkProject(projectRoot)
-        if (!check.ok) {
-            const first = check.rows.find(({status}) => status === 'fail')
-            const outcome = check.outcomes.find(({status}) => status === 'fail')
-            const detail = first
-                ? `${first.kind} ${first.path}: ${first.detail}`
-                : outcome ? `${outcome.name}${outcome.codes.length ? ` ${outcome.codes.join(', ')}` : ''}: ${outcome.summary}` : ''
-            const error = new Error(`Project check failed${detail ? `: ${detail}` : ''}. Run blitz check for details, or use --no-check to skip it.`)
-            Object.assign(error, {status: 422, code: 'check_failed'})
-            throw error
+    const root = resolve(projectRoot)
+    const releaseLock = await acquirePublishLock(root)
+    const directory = new NodeProjectDirectory(root).asHandle()
+    let slug = options.slug || ''
+    try {
+        const deploys = await readDeploys(directory)
+        const existing = Object.entries(deploys.games)[0]
+        const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as {name?: string}
+        slug ||= existing?.[0] || slugify(packageJson.name || root.split(sep).at(-1) || 'blitz-game')
+        const selected = deploys.games[slug]
+        if (selected && !selected.claimed) {
+            const hasZone = /[zZ]|[+-]\d\d:\d\d$/.test(selected.expires_at)
+            const expiresAt = Date.parse(selected.expires_at.replace(' ', 'T') + (hasZone ? '' : 'Z'))
+            if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) delete deploys.games[slug]
         }
+        deploys.last_publish = {slug, status: 'publishing', updated_at: new Date().toISOString()}
+        await writeDeploys(directory, deploys)
+        await assertEditorAllowsPublish(root)
+
+        if (!options.noCheck) {
+            const check = await checkProject(root)
+            if (!check.ok) {
+                const first = check.rows.find(({status}) => status === 'fail')
+                const outcome = check.outcomes.find(({status}) => status === 'fail')
+                const detail = first
+                    ? `${first.kind} ${first.path}: ${first.detail}`
+                    : outcome ? `${outcome.name}${outcome.codes.length ? ` ${outcome.codes.join(', ')}` : ''}: ${outcome.summary}` : ''
+                const error = new Error(`Project check failed${detail ? `: ${detail}` : ''}. Run blitz check for details, or use --no-check to skip it.`)
+                Object.assign(error, {status: 422, code: 'check_failed'})
+                throw error
+            }
+        }
+        const result = await publishProject({
+            dirHandle: directory,
+            api: new BlitzApi({baseUrl: options.backendUrl || backendUrl()}),
+            slug,
+            name: options.name,
+            message: options.message,
+            verify: options.noVerify !== true,
+            onProgress,
+        })
+        const updated = await readDeploys(directory)
+        updated.last_publish = {
+            slug,
+            status: 'succeeded',
+            updated_at: new Date().toISOString(),
+            release_hash: result.release_hash,
+        }
+        await writeDeploys(directory, updated)
+        return result
+    } catch (error) {
+        const current: DeploysFile = await readDeploys(directory).catch(() => ({games: {}}))
+        const secrets = Object.values(current.games).flatMap(({deploy_token, claim_secret}) => [deploy_token, claim_secret])
+        const message = sanitizeDiagnostic(error instanceof Error ? error.message : error, secrets)
+        const status = error && typeof error === 'object' && 'status' in error && typeof error.status === 'number'
+            ? error.status
+            : undefined
+        const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+            ? error.code
+            : undefined
+        if (slug) {
+            current.last_publish = {
+                slug,
+                status: 'failed',
+                updated_at: new Date().toISOString(),
+                error: message,
+                ...(status === undefined ? {} : {error_status: status}),
+                ...(code === undefined ? {} : {error_code: code}),
+            }
+            await writeDeploys(directory, current).catch(() => undefined)
+        }
+        const safeError = new Error(message)
+        if (status !== undefined) Object.assign(safeError, {status})
+        if (code !== undefined) Object.assign(safeError, {code})
+        throw safeError
+    } finally {
+        await releaseLock()
     }
-    const directory = new NodeProjectDirectory(projectRoot).asHandle()
-    const deploys = await readDeploys(directory)
-    const existing = Object.entries(deploys.games)[0]
-    const packageJson = JSON.parse(await readFile(resolve(projectRoot, 'package.json'), 'utf8')) as {name?: string}
-    const slug = options.slug || existing?.[0] || slugify(packageJson.name || projectRoot.split(sep).at(-1) || 'blitz-game')
-    return publishProject({
-        dirHandle: directory,
-        api: new BlitzApi({baseUrl: options.backendUrl || backendUrl()}),
-        slug,
-        name: options.name,
-        message: options.message,
-        onProgress,
-    })
 }
 
 export async function statusFromDisk(projectRoot = process.cwd()): Promise<PublicDeployEntry[]> {
@@ -266,6 +320,72 @@ export async function pullFromDisk(projectRoot = process.cwd(), options: {force?
         entry,
         force: options.force === true,
     })
+}
+
+const EDITOR_HEARTBEAT_FRESH_MS = 15_000
+const PUBLISH_LOCK_STALE_MS = 10 * 60_000
+
+async function assertEditorAllowsPublish(root: string): Promise<void> {
+    let state: {playState?: unknown, dirty?: unknown, updatedAt?: unknown}
+    try {
+        state = JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')) as typeof state
+    } catch {
+        return
+    }
+    if (typeof state.updatedAt !== 'string') return
+    const updatedAt = Date.parse(state.updatedAt)
+    if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > EDITOR_HEARTBEAT_FRESH_MS) return
+    if (state.playState === 'playing') {
+        throw Object.assign(new Error('Stop Play in the editor before publishing.'), {
+            status: 409,
+            code: 'editor_playing',
+        })
+    }
+    if (state.dirty === true) {
+        throw Object.assign(new Error('Save the unsaved editor draft before publishing.'), {
+            status: 409,
+            code: 'editor_dirty',
+        })
+    }
+}
+
+async function acquirePublishLock(root: string): Promise<() => Promise<void>> {
+    const lockPath = resolve(root, '.blitz/publish.lock')
+    const owner = {pid: process.pid, created_at: new Date().toISOString(), id: randomUUID()}
+    await mkdir(resolve(root, '.blitz'), {recursive: true})
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+            const handle = await open(lockPath, 'wx', 0o600)
+            try {
+                await handle.writeFile(`${JSON.stringify(owner)}\n`, 'utf8')
+            } finally {
+                await handle.close()
+            }
+            return async () => {
+                try {
+                    const current = JSON.parse(await readFile(lockPath, 'utf8')) as {id?: unknown}
+                    if (current.id === owner.id) await unlink(lockPath)
+                } catch { /* already released or replaced */ }
+            }
+        } catch (error) {
+            if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+            const metadata = await stat(lockPath).catch(() => undefined)
+            if (!metadata) continue
+            let value: {pid?: unknown, created_at?: unknown} = {}
+            try { value = JSON.parse(await readFile(lockPath, 'utf8')) as typeof value } catch { /* use mtime */ }
+            const createdAt = typeof value.created_at === 'string' ? Date.parse(value.created_at) : metadata.mtimeMs
+            const age = Math.max(0, Date.now() - (Number.isFinite(createdAt) ? createdAt : metadata.mtimeMs))
+            if (age <= PUBLISH_LOCK_STALE_MS) {
+                const pid = Number.isInteger(value.pid) ? ` by pid ${value.pid}` : ''
+                throw Object.assign(new Error(`Another publish is already running${pid} (${formatAge(age)} old).`), {
+                    status: 409,
+                    code: 'publish_locked',
+                })
+            }
+            await unlink(lockPath).catch(() => undefined)
+        }
+    }
+    throw new Error('Could not acquire .blitz/publish.lock after replacing a stale lock.')
 }
 
 function processIsAlive(pid: number): boolean {

@@ -17,6 +17,11 @@ export interface RuntimeRecord {
     version: string
     sha256: string
     size: number
+    runtimes?: Array<{
+        sha256: string
+        size: number
+        created_at: string
+    }>
 }
 
 export interface DeployEntry {
@@ -31,6 +36,17 @@ export interface DeployEntry {
 
 export interface DeploysFile {
     games: Record<string, DeployEntry>
+    last_publish?: PublishStatus
+}
+
+export interface PublishStatus {
+    slug: string
+    status: 'publishing' | 'succeeded' | 'failed'
+    updated_at: string
+    release_hash?: string
+    error?: string
+    error_status?: number
+    error_code?: string
 }
 
 export interface ProjectDependency {
@@ -39,11 +55,11 @@ export interface ProjectDependency {
     url?: string
 }
 
-export type PublishProgressPhase = 'creating' | 'walking' | 'hashing' | 'uploading' | 'releasing' | 'complete'
+export type PublishProgressPhase = 'creating' | 'walking' | 'hashing' | 'uploading' | 'releasing' | 'verifying' | 'complete'
 
 export interface PublishProgress {
     phase: PublishProgressPhase
-    completed: number
+    done: number
     total: number
     path?: string
     preview_url?: string

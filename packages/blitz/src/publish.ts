@@ -3,7 +3,7 @@ import {projectDependencies} from '@blitzdev/engine/importMap'
 import {readProjectFile, walkProject, writeProjectFile} from './filesystem.ts'
 import {generateIndexHtml} from './indexHtml.ts'
 import {buildManifest, sha256} from './manifest.ts'
-import {BlitzApi} from './api.ts'
+import {BlitzApi, sanitizeDiagnostic} from './api.ts'
 import type {
     CreatedAnonymousGame,
     DeployEntry,
@@ -17,6 +17,7 @@ export interface PublishProjectOptions {
     slug: string
     message?: string
     name?: string
+    verify?: boolean
     onProgress?: (progress: PublishProgress) => void
 }
 
@@ -33,6 +34,7 @@ export async function publishProject({
     slug,
     message,
     name,
+    verify = true,
     onProgress,
 }: PublishProjectOptions): Promise<{preview_url: string; release_hash: string}> {
     const deploys = await readDeploys(dirHandle)
@@ -44,27 +46,9 @@ export async function publishProject({
     packageJson = versionResult.packageJson
     let releaseName = name || packageDisplayName(packageJson, slug)
 
-    if (!entry) {
-        onProgress?.({phase: 'creating', completed: 0, total: 1})
-        const created = await api.createAnonymousGame({
-            slug,
-            name: releaseName,
-        })
-        releaseName = created.name || releaseName
-        entry = deployEntryFromCreated(created)
-        deploys.games[slug] = entry
-        await writeDeploys(dirHandle, deploys)
-        onProgress?.({phase: 'creating', completed: 1, total: 1, preview_url: entry.preview_url})
-    }
-    api.useGame(entry.game_id, entry.deploy_token)
-    if (entry.last_release_hash && !name) {
-        const existingGame = await api.getGame(entry.game_id)
-        if (existingGame.name) releaseName = existingGame.name
-    }
-
-    onProgress?.({phase: 'walking', completed: 0, total: 1})
+    onProgress?.({phase: 'walking', done: 0, total: 1})
     let projectEntries = await walkProject(dirHandle, {exclude: publishExcludes(packageJson)})
-    onProgress?.({phase: 'walking', completed: 1, total: 1})
+    onProgress?.({phase: 'walking', done: 1, total: 1})
 
     if (versionResult.changed) {
         const updated = await writeProjectFile(
@@ -79,6 +63,24 @@ export async function publishProject({
         file: publishedPackageFile(packageJson),
     })
 
+    if (!entry) {
+        onProgress?.({phase: 'creating', done: 0, total: 1})
+        const created = await api.createAnonymousGame({
+            slug,
+            name: releaseName,
+        })
+        releaseName = created.name || releaseName
+        entry = deployEntryFromCreated(created)
+        deploys.games[slug] = entry
+        await writeDeploys(dirHandle, deploys)
+        onProgress?.({phase: 'creating', done: 1, total: 1, preview_url: entry.preview_url})
+    }
+    api.useGame(entry.game_id, entry.deploy_token)
+    if (entry.last_release_hash && !name) {
+        const existingGame = await api.getGame(entry.game_id)
+        if (existingGame.name) releaseName = existingGame.name
+    }
+
     const version = versionResult.version
     const installedRuntime = await readProjectFile(dirHandle, 'node_modules/@blitzdev/engine/dist/runtime.js')
     if (!installedRuntime) {
@@ -87,14 +89,19 @@ export async function publishProject({
     const runtimeHash = await sha256(installedRuntime)
     try {
         const registered = await api.getRuntime(version)
-        if (registered.sha256 !== runtimeHash) {
+        const registeredHashes = registered.runtimes?.map(({sha256: hash}) => hash) || [registered.sha256]
+        if (!registeredHashes.includes(runtimeHash)) {
             console.warn(`[blitz] Installed runtime ${runtimeHash} differs from registered ${version} runtime ${registered.sha256}; publishing the installed runtime.`)
         }
     } catch (error) {
         if (isHttpNotFound(error)) {
             console.warn(`[blitz] Runtime ${version} is not registered; publishing the installed runtime. A strict backend may reject this release.`)
         } else {
-            console.warn(`[blitz] Could not compare runtime ${version} with the registry: ${error instanceof Error ? error.message : error}. Publishing the installed runtime.`)
+            const detail = sanitizeDiagnostic(error instanceof Error ? error.message : error, [
+                entry.deploy_token,
+                entry.claim_secret,
+            ])
+            console.warn(`[blitz] Could not compare runtime ${version} with the registry: ${detail}. Publishing the installed runtime.`)
         }
     }
     const indexHtml = generateIndexHtml({
@@ -107,9 +114,9 @@ export async function publishProject({
     projectEntries = replaceEntry(projectEntries, {path: 'index.html', file: indexFile})
     projectEntries = replaceEntry(projectEntries, {path: '_blitz/runtime.js', file: installedRuntime})
 
-    onProgress?.({phase: 'hashing', completed: 0, total: projectEntries.length})
+    onProgress?.({phase: 'hashing', done: 0, total: projectEntries.length})
     const manifest = await buildManifest(projectEntries)
-    onProgress?.({phase: 'hashing', completed: projectEntries.length, total: projectEntries.length})
+    onProgress?.({phase: 'hashing', done: projectEntries.length, total: projectEntries.length})
 
     const hashes = [...new Set(Object.values(manifest.files).map(({sha256: hash}) => hash))]
     const missing = await api.missingBlobs(hashes)
@@ -125,10 +132,10 @@ export async function publishProject({
     })
     await api.uploadBlobs(
         uploads.map(({hash, file, path}) => ({sha256: hash, file, path})),
-        ({completed, total, path}) => onProgress?.({phase: 'uploading', completed, total, path}),
+        ({completed, total, path}) => onProgress?.({phase: 'uploading', done: completed, total, path}),
     )
 
-    onProgress?.({phase: 'releasing', completed: 0, total: 1})
+    onProgress?.({phase: 'releasing', done: 0, total: 1})
     const release = await api.putRelease(manifest, {
         message: message ?? (entry.last_release_hash ? 'update' : 'initial'),
         base_release: entry.last_release_hash,
@@ -139,9 +146,11 @@ export async function publishProject({
     entry.last_release_hash = release.release_hash
     deploys.games[slug] = entry
     await writeDeploys(dirHandle, deploys)
-    onProgress?.({phase: 'releasing', completed: 1, total: 1})
-    onProgress?.({phase: 'complete', completed: 1, total: 1})
-    return {preview_url: release.preview_url || entry.preview_url, release_hash: release.release_hash}
+    onProgress?.({phase: 'releasing', done: 1, total: 1})
+    const previewUrl = release.preview_url || entry.preview_url
+    if (verify) await verifyRelease(api, previewUrl, manifest, onProgress)
+    onProgress?.({phase: 'complete', done: 1, total: 1})
+    return {preview_url: previewUrl, release_hash: release.release_hash}
 }
 
 export async function pullProject({
@@ -288,4 +297,41 @@ function deployEntryFromCreated(created: CreatedAnonymousGame): DeployEntry {
         preview_url: created.preview_url,
         expires_at: created.expires_at,
     }
+}
+
+async function verifyRelease(
+    api: BlitzApi,
+    previewUrl: string,
+    manifest: Awaited<ReturnType<typeof buildManifest>>,
+    onProgress?: (progress: PublishProgress) => void,
+): Promise<void> {
+    const files = Object.entries(manifest.files).sort(([left], [right]) => left.localeCompare(right))
+    onProgress?.({phase: 'verifying', done: 0, total: files.length})
+    for (const [index, [path, expected]] of files.entries()) {
+        let lastHash = 'unavailable'
+        let lastError: unknown
+        for (let attempt = 1; attempt <= 5; attempt += 1) {
+            try {
+                const url = new URL(path.split('/').map(encodeURIComponent).join('/'), ensureTrailingSlash(previewUrl))
+                url.searchParams.set('_blitz_verify', `${Date.now()}-${attempt}`)
+                lastHash = await sha256(await api.downloadPublicFile(url.href))
+                if (lastHash === expected.sha256) {
+                    lastError = undefined
+                    break
+                }
+            } catch (error) {
+                lastError = error
+            }
+            if (attempt < 5) await new Promise((resolve) => setTimeout(resolve, Math.min(100 * 2 ** (attempt - 1), 1_000)))
+        }
+        if (lastError || lastHash !== expected.sha256) {
+            const detail = lastError instanceof Error ? lastError.message : `received SHA-256 ${lastHash}`
+            throw new Error(`Published file verification failed for ${path}: expected SHA-256 ${expected.sha256}; ${detail}.`)
+        }
+        onProgress?.({phase: 'verifying', done: index + 1, total: files.length, path})
+    }
+}
+
+function ensureTrailingSlash(value: string): string {
+    return value.endsWith('/') ? value : `${value}/`
 }
