@@ -8,6 +8,7 @@ import {NodeProjectDirectory} from './node-filesystem.ts'
 import {publishProject, pullProject} from './publish.ts'
 import {createDevServer, type DevServer} from './server.ts'
 import type {PublishProgress} from './types.ts'
+import {readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
 
 const BACKEND_URL = process.env.BLITZ_BACKEND_URL || 'https://blitz-backend.blitzapp.workers.dev'
 
@@ -126,6 +127,13 @@ export async function bakeFromEditor(
     }
     if (!response.ok) throw new Error(body.error?.message || `Bake failed with status ${response.status}.`)
     return body
+}
+
+export async function journalFromDisk(
+    projectRoot = process.cwd(),
+    options: ReadJournalOptions = {},
+): Promise<JournalEntry[]> {
+    return readJournal(resolve(projectRoot), options)
 }
 
 export async function sourcesInstructions(projectRoot = process.cwd()): Promise<string> {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import {bakeFromEditor, initProject, openCurrentProject, publishFromDisk, pullFromDisk, runDev, sourcesInstructions} from './commands.ts'
+import {bakeFromEditor, initProject, journalFromDisk, openCurrentProject, publishFromDisk, pullFromDisk, runDev, sourcesInstructions} from './commands.ts'
 
 const [command = 'help', ...args] = process.argv.slice(2)
 
@@ -38,8 +38,14 @@ try {
         const nodeName = args.find((value) => !value.startsWith('-')) || ''
         const result = await bakeFromEditor(nodeName, {force: args.includes('--force')})
         console.log(`Baked ${String(result.nodeName || nodeName)}`)
+    } else if (command === 'journal') {
+        const entries = await journalFromDisk(process.cwd(), {
+            since: stringOption(args, '--since'),
+            limit: integerOption(args, '-n'),
+        })
+        for (const entry of entries) console.log(JSON.stringify(entry))
     } else {
-        console.log('Usage: blitz <init [dir] | dev [--port 4321] [--no-open] | publish [--message text] | pull | bake <nodeName> [--force] | open | sources>')
+        console.log('Usage: blitz <init [dir] | dev [--port 4321] [--no-open] | publish [--message text] | pull | bake <nodeName> [--force] | journal [--since iso] [-n count] | open | sources>')
         if (command !== 'help' && command !== '--help' && command !== '-h') process.exitCode = 1
     }
 } catch (error) {
@@ -57,5 +63,13 @@ function numberOption(args: string[], name: string): number | undefined {
     if (raw === undefined) return undefined
     const value = Number(raw)
     if (!Number.isInteger(value) || value < 0 || value > 65535) throw new Error(`${name} must be a valid port`)
+    return value
+}
+
+function integerOption(args: string[], name: string): number | undefined {
+    const raw = stringOption(args, name)
+    if (raw === undefined) return undefined
+    const value = Number(raw)
+    if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`)
     return value
 }

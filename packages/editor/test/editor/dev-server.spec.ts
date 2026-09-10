@@ -83,6 +83,13 @@ export default function generate({node, params, engine}) {
     expect((await readFile(resolve(root, 'assets/main.scene.bin'))).byteLength).toBe(36)
     expect((await readdir(resolve(root, 'assets/textures'))).length).toBe(1)
     await expect(page.getByText('Scene saved')).toBeVisible()
+    const journal = (await readFile(resolve(root, '.blitz/journal.jsonl'), 'utf8'))
+        .split('\n').filter(Boolean).map((line) => JSON.parse(line) as {
+            client: string
+            summary: {nodesAdded: Array<{name?: string}>}
+        })
+    expect(journal[0].client).not.toBe('external')
+    expect(journal[0].summary.nodesAdded).toContainEqual({name: 'RoundTripObject'})
 
     await page.getByTestId('save-scene').click()
     await expect.poll(() => readFile(resolve(root, packageJson.mainScene), 'utf8')).toBe(savedScene)

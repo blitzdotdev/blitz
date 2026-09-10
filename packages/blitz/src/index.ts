@@ -11,7 +11,11 @@ export {createDevServer} from './server.ts'
 export type {DevServer, DevServerOptions} from './server.ts'
 export {checkBakeSafety} from './bake.ts'
 export type {BakeJournalEntry, BakeSafetyResult} from './bake.ts'
-export {bakeFromEditor, initProject, runDev, publishFromDisk, pullFromDisk, openCurrentProject, sourcesInstructions} from './commands.ts'
+export {diffSceneGltf, diffSceneGltfText} from './scene-diff.ts'
+export type {SceneComponentChange, SceneDiff, SceneIdentity, SceneMaterialChange, SceneNodeRename, SceneTransformChange} from './scene-diff.ts'
+export {appendSceneJournal, readJournal} from './journal.ts'
+export type {JournalEntry, ReadJournalOptions} from './journal.ts'
+export {bakeFromEditor, initProject, journalFromDisk, runDev, publishFromDisk, pullFromDisk, openCurrentProject, sourcesInstructions} from './commands.ts'
 export type {
     ExistingDeployTarget,
     PublishApi,

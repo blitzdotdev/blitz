@@ -19,6 +19,7 @@ import {mimeTypeForPath} from '@blitzdev/engine/fileTypes'
 import {DEPLOYS_PATH, JOURNAL_PATH} from '@blitzdev/engine/paths'
 import {RUNTIME_VERSION} from '@blitzdev/engine/version'
 import {checkBakeSafety, type BakeJournalEntry} from './bake.ts'
+import {appendSceneJournal} from './journal.ts'
 
 export interface ManifestEntry {
     path: string
@@ -77,8 +78,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const clients = new Map<ServerResponse, string | undefined>()
     const pendingCommands = new Map<string, PendingCommand>()
     const pendingEvents = new Map<string, PendingEvent>()
-    const recentWrites = new Map<string, number>()
     const knownHashes = new Map<string, string>()
+    let {path: mainScenePath, text: lastSceneText} = await readMainSceneSnapshot(projectRoot)
+    let sceneJournalQueue = Promise.resolve()
     let serverMutationActive = false
     let mutationQueue = Promise.resolve()
     let watcher: FSWatcher | undefined
@@ -179,22 +181,37 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 if (request.method === 'PUT') {
                     const existed = await fileExists(filePath)
                     const currentHash = existed ? await hashFile(filePath) : undefined
+                    const beforeSceneText = relativePath === mainScenePath && existed
+                        ? await readFile(filePath, 'utf8')
+                        : undefined
                     const ifMatch = request.headers['if-match']
                     if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
                         return json(response, 412, {error: {code: 'precondition_failed', message: 'The file changed on disk.'}, sha256: currentHash})
                     }
                     await mkdir(dirname(filePath), {recursive: true})
                     const temporary = resolve(dirname(filePath), `.${basename(filePath)}.blitz-${randomBytes(8).toString('hex')}`)
+                    let sha256 = ''
                     try {
                         await pipeline(request, createWriteStream(temporary, {flags: 'wx'}))
+                        sha256 = await hashFile(temporary)
+                        knownHashes.set(relativePath, sha256)
                         await rename(temporary, filePath)
                     } catch (error) {
+                        if (currentHash) knownHashes.set(relativePath, currentHash)
+                        else knownHashes.delete(relativePath)
                         await unlink(temporary).catch(() => undefined)
                         throw error
                     }
-                    const sha256 = await hashFile(filePath)
-                    knownHashes.set(relativePath, sha256)
-                    recentWrites.set(relativePath, Date.now())
+                    if (relativePath === mainScenePath) {
+                        const afterSceneText = await readFile(filePath, 'utf8')
+                        const requestedClient = request.headers['x-blitz-client'] as string | undefined
+                        const client = pendingCommands.size ? 'blitz-bake' : requestedClient || 'external'
+                        await recordSceneWrite(beforeSceneText, afterSceneText, client)
+                    } else if (relativePath === 'package.json') {
+                        const snapshot = await readMainSceneSnapshot(projectRoot)
+                        mainScenePath = snapshot.path
+                        lastSceneText = snapshot.text
+                    }
                     scheduleEvent(relativePath, request.headers['x-blitz-client'] as string | undefined, existed ? 'change' : 'add')
                     return json(response, existed ? 200 : 201, {path: relativePath, sha256})
                 }
@@ -203,7 +220,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                     if (!existed) return send(response, 404, 'Not found')
                     await unlink(filePath)
                     knownHashes.delete(relativePath)
-                    recentWrites.set(relativePath, Date.now())
                     scheduleEvent(relativePath, request.headers['x-blitz-client'] as string | undefined, 'unlink')
                     return send(response, 204)
                 }
@@ -276,7 +292,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             const path = normalizeRelativePath(filename.toString())
             if (!path || !isIncludedPath(path)) return
             if (serverMutationActive) return
-            if (Date.now() - (recentWrites.get(path) || 0) < 600) return
             void scheduleWatchedFile(path)
         })
         watcher.on('error', (error) => console.warn(`[blitz] watcher: ${error.message}`))
@@ -316,12 +331,36 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             const target = await safeProjectPath(projectRoot, path)
             const metadata = await lstat(target)
             if (!metadata.isFile()) return
+            if (await hashFile(target) === knownHashes.get(path)) return
+            if (path === mainScenePath) {
+                const current = await readFile(target, 'utf8')
+                await recordSceneWrite(lastSceneText, current, 'external', true)
+            } else if (path === 'package.json') {
+                const snapshot = await readMainSceneSnapshot(projectRoot)
+                mainScenePath = snapshot.path
+                lastSceneText = snapshot.text
+            }
         } catch (error) {
             // A missing path is an unlink only when it was previously a file in
             // the manifest. Recursive watchers also report removed directories.
             if (!isMissing(error) || !knownHashes.has(path)) return
         }
         scheduleEvent(path)
+    }
+
+    function recordSceneWrite(
+        before: string | undefined,
+        after: string,
+        client: string,
+        deduplicate = false,
+    ): Promise<void> {
+        const task = sceneJournalQueue.then(async () => {
+            if (deduplicate && after === lastSceneText) return
+            await appendSceneJournal(projectRoot, deduplicate ? lastSceneText : before, after, client)
+            lastSceneText = after
+        })
+        sceneJournalQueue = task.catch(() => undefined)
+        return task
     }
 
     function runServerMutation<T>(operation: () => Promise<T>): Promise<T> {
@@ -334,12 +373,14 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 try {
                     const after = manifestHashes(await buildManifest(projectRoot))
                     const changedPaths = new Set([...before.keys(), ...after.keys()])
-                    const now = Date.now()
                     for (const path of changedPaths) {
                         const previous = before.get(path)
                         const current = after.get(path)
                         if (previous === current) continue
-                        recentWrites.set(path, now)
+                        if (path === mainScenePath && current) {
+                            const after = await readFile(resolve(projectRoot, path), 'utf8')
+                            await recordSceneWrite(lastSceneText, after, SERVER_CLIENT_ID, true)
+                        }
                         scheduleEvent(path, SERVER_CLIENT_ID, current ? (previous ? 'change' : 'add') : 'unlink')
                     }
                 } finally {
@@ -349,6 +390,20 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         })
         mutationQueue = run.then(() => undefined, () => undefined)
         return run
+    }
+}
+
+async function readMainSceneSnapshot(root: string): Promise<{path: string, text?: string}> {
+    let path = 'assets/main.scene.gltf'
+    try {
+        const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as {mainScene?: unknown}
+        if (typeof packageJson.mainScene === 'string') path = normalizeRelativePath(packageJson.mainScene)
+    } catch { /* use the default path */ }
+    try {
+        const scenePath = await safeProjectPath(root, path)
+        return {path, text: await readFile(scenePath, 'utf8')}
+    } catch {
+        return {path}
     }
 }
 

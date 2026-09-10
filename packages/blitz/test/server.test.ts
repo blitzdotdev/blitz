@@ -133,13 +133,51 @@ describe('Blitz dev server', () => {
             error: {code: 'editor_not_connected', message: expect.stringContaining('No editor is connected')},
         })
     })
+
+    it('journals API and watcher scene writes with semantic summaries', async () => {
+        const {server, root, headers} = await startServer()
+        const scenePath = resolve(root, 'assets/main.scene.gltf')
+        const current = await fetch(`${base(server)}/files/assets/main.scene.gltf`, {headers})
+        const response = await fetch(`${base(server)}/files/assets/main.scene.gltf`, {
+            method: 'PUT',
+            headers: {
+                ...headers,
+                'If-Match': current.headers.get('etag')!,
+                'X-Blitz-Client': 'editor-journal-test',
+            },
+            body: JSON.stringify({asset: {version: '2.0'}, nodes: [{name: 'Human node'}]}),
+        })
+        expect(response.status).toBe(200)
+        const journalPath = resolve(root, '.blitz/journal.jsonl')
+        await expect.poll(async () => readJournalLines(journalPath)).toMatchObject([{
+            client: 'editor-journal-test',
+            summary: {nodesAdded: [{name: 'Human node'}]},
+        }])
+
+        await writeFile(scenePath, JSON.stringify({asset: {version: '2.0'}, nodes: [{name: 'Agent node'}]}))
+        await expect.poll(async () => (await readJournalLines(journalPath)).length).toBe(2)
+        expect(await readJournalLines(journalPath)).toMatchObject([
+            {client: 'editor-journal-test'},
+            {client: 'external'},
+        ])
+    })
 })
 
 async function temporaryProject(): Promise<string> {
     const root = await mkdtemp(resolve(tmpdir(), 'blitz-server-'))
     cleanup.push(() => rm(root, {recursive: true, force: true}))
     await writeFile(resolve(root, 'package.json'), '{"name":"server-test"}\n')
+    await mkdir(resolve(root, 'assets'), {recursive: true})
+    await writeFile(resolve(root, 'assets/main.scene.gltf'), '{"asset":{"version":"2.0"},"nodes":[]}\n')
     return root
+}
+
+async function readJournalLines(path: string): Promise<Array<Record<string, unknown>>> {
+    try {
+        return (await readFile(path, 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>)
+    } catch {
+        return []
+    }
 }
 
 async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull'> = {}) {

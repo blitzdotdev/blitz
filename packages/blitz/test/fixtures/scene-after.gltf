@@ -1,0 +1,24 @@
+{
+  "asset": {"version": "2.0"},
+  "nodes": [
+    {
+      "name": "New root",
+      "mesh": 0,
+      "translation": [1, 2, 3],
+      "extras": {
+        "gltfUUID": "root-uuid",
+        "EntityComponentPlugin": {
+          "generator": {"type": "Generator", "state": {"module": "forest.js", "params": {"count": 3}}},
+          "spin": {"type": "Spin", "state": {"speed": 1}}
+        }
+      }
+    },
+    {"name": "Added", "extras": {"gltfUUID": "added-uuid"}}
+  ],
+  "meshes": [{"primitives": [{"material": 0}]}],
+  "materials": [{
+    "name": "Ground",
+    "pbrMetallicRoughness": {"roughnessFactor": 0.25},
+    "extras": {"gltfUUID": "material-uuid"}
+  }]
+}
