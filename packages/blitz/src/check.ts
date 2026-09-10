@@ -188,9 +188,23 @@ export function formatCheckTable(result: CheckResult): string {
     const values = result.rows.map((row) => [row.kind, row.status.toUpperCase(), row.path, row.detail])
     const widths = headings.map((heading, index) => Math.max(heading.length, ...values.map((row) => row[index].length)))
     const line = (cells: string[]) => cells.map((cell, index) => cell.padEnd(widths[index])).join('  ').trimEnd()
-    const outcomeLines = result.outcomes.map((outcome) => {
+    const outcomeLines = result.outcomes.flatMap((outcome) => {
         const detail = outcome.codes.length ? `${outcome.codes.join(', ')}: ${outcome.summary}` : outcome.summary
-        return `${outcome.name.padEnd(9)}  ${outcome.status.toUpperCase().padEnd(7)}  ${detail}`
+        const lines = [`${outcome.name.padEnd(9)}  ${outcome.status.toUpperCase().padEnd(7)}  ${detail}`]
+        const validation = projectValidationReport(outcome)
+        if (!validation) return lines
+        const results = Array.isArray(validation.results) ? validation.results.filter(isRecord) : []
+        const summary = results.length === 1 && typeof results[0].summary === 'string'
+            ? results[0].summary
+            : validation.summary
+        lines.push(`  Project validation ${String(validation.status).toUpperCase()}: ${summary}`)
+        if (results.length > 1) {
+            for (const result of results) {
+                if (!isRecord(result) || typeof result.summary !== 'string') continue
+                lines.push(`    ${String(result.status).toUpperCase()}: ${result.summary}`)
+            }
+        }
+        return lines
     })
     return [
         line(headings),
@@ -200,6 +214,14 @@ export function formatCheckTable(result: CheckResult): string {
         ...outcomeLines,
         `Check ${result.ok ? 'passed' : 'failed'} (${result.rows.length} static row(s)).`,
     ].join('\n')
+}
+
+function projectValidationReport(outcome: CheckOutcome): Record<string, unknown> | undefined {
+    if (outcome.name !== 'Playable' || !isRecord(outcome.report)) return undefined
+    const value = outcome.report.projectValidation
+    return isRecord(value) && ['pass', 'fail'].includes(String(value.status)) && typeof value.summary === 'string'
+        ? value
+        : undefined
 }
 
 const outcomeNames: CheckOutcome['name'][] = ['Playable', 'Editable', 'Persisted']

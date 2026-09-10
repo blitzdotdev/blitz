@@ -408,13 +408,21 @@ describe('Blitz dev server', () => {
     })
 
     it('serves the editor, its shared runtime bridge, and favicon from one origin', async () => {
-        const {server} = await startServer()
+        const {server, root} = await startServer()
         expect((await fetch(server.url)).status).toBe(200)
         expect(await (await fetch(server.url)).text()).toContain('Blitz Editor')
         expect((await fetch(`${base(server)}/editor-runtime.js`)).status).toBe(200)
         expect((await fetch(`${base(server)}/_blitz/runtime.js`)).status).toBe(404)
         expect((await fetch(`${base(server)}/favicon.ico`)).status).toBe(200)
         expect((await stat(resolve(server.projectRoot, '.blitz/dev.json'))).isFile()).toBe(true)
+        const dev = JSON.parse(await readFile(resolve(root, '.blitz/dev.json'), 'utf8')) as {
+            origin: string
+            url: string
+        }
+        expect(dev.origin).toBe(base(server))
+        expect(new URL(dev.url).searchParams.has('t')).toBe(true)
+        expect(dev.origin).not.toContain('?')
+        expect(dev.origin).not.toContain(server.token)
     })
 
     it('tries the next port by default and treats an explicit port as strict', async () => {

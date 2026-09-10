@@ -163,16 +163,8 @@ export class BlitzApi {
         const uploadedByIndex = uploads.map(() => 0)
         let completed = 0
         await mapPool(uploads, 4, async (upload, index) => {
-            await this.uploadBlob(upload.sha256, upload.file, (uploaded) => {
-                uploadedByIndex[index] = uploaded
-                onProgress?.({
-                    completed,
-                    total: uploads.length,
-                    bytesUploaded: uploadedByIndex.reduce((total, value) => total + value, 0),
-                    bytesTotal,
-                    path: upload.path,
-                })
-            })
+            await this.uploadBlob(upload.sha256, upload.file)
+            uploadedByIndex[index] = upload.file.size
             completed += 1
             onProgress?.({
                 completed,

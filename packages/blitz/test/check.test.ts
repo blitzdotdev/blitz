@@ -3,7 +3,7 @@ import {createServer} from 'node:http'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, describe, expect, it, vi} from 'vitest'
-import {checkProject} from '../src/check.ts'
+import {checkProject, formatCheckTable} from '../src/check.ts'
 import {initProject, publishFromDisk} from '../src/commands.ts'
 import {BLITZ_VERSION} from '../src/versions.ts'
 import {startMockBackend} from './mockBackend.ts'
@@ -177,6 +177,34 @@ export class HidePreview extends Object3DComponent {
 
         expect(result.ok, JSON.stringify(result, null, 2)).toBe(true)
         expect(result.outcomes).toContainEqual(expect.objectContaining({name: 'Editable', status: 'pass'}))
+    })
+
+    it('records and prints project validation results on Playable pass and fail', async () => {
+        const root = await project({}, [{name: 'Triangle', mesh: 0}])
+        const writeValidation = (status: 'pass' | 'fail') => writeFile(resolve(root, 'main.js'), `
+import {registerGameValidation} from '@blitzdev/engine'
+export function main() {
+    registerGameValidation(() => ({status: '${status}', summary: 'Fixture validation ${status}.'}))
+}
+`)
+
+        await writeValidation('pass')
+        const passing = await checkProject(root)
+        expect(passing.outcomes).toContainEqual(expect.objectContaining({
+            name: 'Playable',
+            status: 'pass',
+            report: expect.objectContaining({projectValidation: expect.objectContaining({status: 'pass'})}),
+        }))
+        expect(formatCheckTable(passing)).toContain('Project validation PASS: Fixture validation pass.')
+
+        await writeValidation('fail')
+        const failing = await checkProject(root)
+        expect(failing.outcomes).toContainEqual(expect.objectContaining({
+            name: 'Playable',
+            status: 'fail',
+            report: expect.objectContaining({projectValidation: expect.objectContaining({status: 'fail'})}),
+        }))
+        expect(formatCheckTable(failing)).toContain('Project validation FAIL: Fixture validation fail.')
     })
 
     it('records all path, import, and registration failures and blocks publish unless skipped', async () => {

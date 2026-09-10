@@ -20,6 +20,7 @@ import {
 import type {
     DeployEntry,
     DeploysFile,
+    PublishProgress,
     ReleaseManifest,
 } from '../src/index.ts'
 import {FakeDirectory} from './fakeDirectory.ts'
@@ -183,12 +184,12 @@ describe('publishProject', () => {
     it('creates, prepares, uploads four at a time, releases, and reuses the base release', async () => {
         const root = sampleProject()
         const {api, backend} = await testApi()
-        const progress: string[] = []
+        const progress: PublishProgress[] = []
         const first = await publishProject({
             dirHandle: root.asHandle(),
             api,
             slug: 'sample-game',
-            onProgress: ({phase}) => progress.push(phase),
+            onProgress: (value) => progress.push(value),
         })
 
         expect(first).toEqual({
@@ -203,9 +204,13 @@ describe('publishProject', () => {
             .toBeLessThan(paths.findIndex((path) => path.endsWith('/releases')))
         expect(backend.maxActiveUploads).toBe(4)
         expect(releaseRequest(backend).body).not.toHaveProperty('base_release')
-        expect(progress.at(-1)).toBe('complete')
+        expect(progress.at(-1)?.phase).toBe('complete')
+        const uploads = progress.filter(({phase}) => phase === 'uploading')
+        expect(uploads.map(({done}) => done)).toEqual(uploads.map((_, index) => index + 1))
+        expect(new Set(uploads.map(({path}) => path)).size).toBe(uploads.length)
         expect(JSON.parse(await root.text('package.json')).blitz.version).toBe(BLITZ_VERSION)
-        expect(await root.text('index.html')).toContain("./_blitz/runtime.js")
+        await expect(root.file('index.html')).rejects.toThrow()
+        expect(await root.text('.blitz/publish/index.html')).toContain("./_blitz/runtime.js")
         const stored = await readDeploys(root.asHandle())
         expect(stored.games['sample-game'].last_release_hash).toBe(first.release_hash)
 
@@ -213,7 +218,7 @@ describe('publishProject', () => {
         await publishProject({dirHandle: root.asHandle(), api, slug: 'sample-game', message: 'second'})
         expect(backend.requests.slice(requestCount).some(({path}) => path.includes('/new-game/'))).toBe(false)
         expect(releaseRequest(backend).body).toMatchObject({message: 'second', base_release: first.release_hash})
-        expect(await root.text('index.html')).toContain('<title>Sample Game</title>')
+        expect(await root.text('.blitz/publish/index.html')).toContain('<title>Sample Game</title>')
     })
 
     it('uses blitz.name by default and preserves the backend game name on updates', async () => {
@@ -229,10 +234,10 @@ describe('publishProject', () => {
 
         backend.games.get('name-game')!.name = 'Live Renamed Game'
         await publishProject({dirHandle: root.asHandle(), api, slug: 'name-game'})
-        expect(await root.text('index.html')).toContain('<title>Live Renamed Game</title>')
+        expect(await root.text('.blitz/publish/index.html')).toContain('<title>Live Renamed Game</title>')
 
         await publishProject({dirHandle: root.asHandle(), api, slug: 'name-game', name: 'Explicit Update Name'})
-        expect(await root.text('index.html')).toContain('<title>Explicit Update Name</title>')
+        expect(await root.text('.blitz/publish/index.html')).toContain('<title>Explicit Update Name</title>')
     })
 
     it('uses the exact project pin for blitz.version and the runtime lookup', async () => {
@@ -288,7 +293,7 @@ describe('publishProject', () => {
         })
         const upload = backend.requests.find(({method, path}) => method === 'PUT' && path.endsWith(`/blobs/${localHash}`))
         expect((upload?.body as Buffer).toString()).toBe('new local runtime with Generator')
-        expect(await root.text('index.html')).toContain(`<meta name="blitz-runtime" content="${BLITZ_VERSION} ${localHash}">`)
+        expect(await root.text('.blitz/publish/index.html')).toContain(`<meta name="blitz-runtime" content="${BLITZ_VERSION} ${localHash}">`)
         expect(warning).toHaveBeenCalledWith(expect.stringContaining('publishing the installed runtime'))
         warning.mockRestore()
     })
