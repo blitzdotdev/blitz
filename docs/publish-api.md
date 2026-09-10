@@ -327,7 +327,7 @@ An existing object is idempotent and returns `200` with `uploaded:false`. The de
 
 Every successful upload also upserts the D1 blob inventory row without changing an existing release reference count. A newly uploaded, unreferenced object starts at `ref_count = 0` and receives the GC grace period.
 
-Errors: `400 invalid_hash`, `400 invalid_content_length`, `400 body_required`, `411 content_length_required`, `413 blob_too_large`, `422 hash_mismatch`, plus game-auth errors.
+Worker JSON errors: `400 invalid_hash`, `400 body_required`, `413 blob_too_large`, `422 hash_mismatch`, plus game-auth errors. Direct Worker callers can also receive `400 invalid_content_length` or `411 content_length_required`; Cloudflare handles or normalizes those framing cases before a public request reaches the Worker. See Request limits for the public-edge behavior.
 
 ## Releases
 
@@ -427,7 +427,7 @@ Success: `201`.
 {"version":"1.2.3","sha256":"<sha256>","size":123456}
 ```
 
-Errors: `400 invalid_runtime_version`, `400 invalid_content_length`, `400 content_length_mismatch`, `400 body_required`, `401 invalid_runtime_token`, `409 runtime_blob_conflict`, `411 content_length_required`, `413 runtime_too_large`.
+Worker JSON errors: `400 invalid_runtime_version`, `400 body_required`, `401 invalid_runtime_token`, `409 runtime_blob_conflict`, `413 runtime_too_large`. Direct Worker callers can also receive `400 invalid_content_length`, `400 content_length_mismatch`, or `411 content_length_required`; Cloudflare handles or normalizes those framing cases before a public request reaches the Worker. See Request limits for the public-edge behavior.
 
 ### Get a runtime version
 
@@ -580,7 +580,16 @@ Anonymous game creation has exact fixed-minute limits of 10 requests per IP and 
 
 Atomic D1 counters are authoritative for all three scopes. Cloudflare's native rate-limit bindings run first with the same caps as cheap edge shields, so a flood does not produce a D1 write for every request. The KV namespace is not part of counting; its lockdown key can still disable anonymous creation.
 
-Blob and runtime uploads must send the exact bytes for their declared size or URL hash. Cloudflare's public edge normalizes a chunked upload into a sized request before it reaches the Worker, so public clients must not rely on receiving `411` for a missing `Content-Length`. Wrong blob bytes return `422 hash_mismatch`; invalid or mismatched lengths and missing bodies return `400`. The `411 content_length_required` branch remains for direct callers that reach the Worker without a content length.
+Blob and runtime upload clients must send the exact bytes for their declared size. Blob bytes must also match the SHA-256 in the URL. Public-edge framing behavior is:
+
+- A chunked upload without `Content-Length` reaches the Worker as a sized body, so public clients must not rely on `411`. The `411 content_length_required` branch remains for direct Worker callers.
+- A malformed length such as `Content-Length: abc` is rejected by Cloudflare with a `400 Bad Request` HTML page before the Worker runs.
+- A declared length longer than the body is rejected before the Worker runs: HTTP/2 receives Cloudflare's `400 Bad Request` HTML page, while HTTP/1.1 may receive a connection close or reset without an HTTP response.
+- A declared length shorter than a blob body reaches the Worker truncated to the declared length and returns `422 hash_mismatch` when those bytes do not match the URL hash.
+- `Content-Length: 0` with no body reaches the Worker and returns JSON `400 body_required`.
+- Wrong blob bytes with otherwise valid framing return JSON `422 hash_mismatch`; uploads over the configured blob or runtime limit return JSON `413`.
+
+Because some framing errors never reach the Worker, public clients must accept a non-JSON edge error or connection failure instead of assuming every upload failure has a Worker error code.
 
 ## Complete curl walkthrough
 

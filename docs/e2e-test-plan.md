@@ -48,7 +48,7 @@ Status: plan, revised after the domain cutover for the final architecture: the e
 | P6 | Popup blocked | Link shown in the dialog. |
 | P7 | Network loss during hashing | Dialog stays open with retry. Nothing sent. |
 | P8 | Upload fails mid-way, retry | Spinner keeps polling. Retry completes with deduped blobs. |
-| P9 | Sign in with email, then Google, then claim | Claim clears expiry. The dialog shows no expiry. |
+| P9 | Sign in with email, then Google, then claim | Claim clears expiry. The dialog shows no expiry. The editor Playwright test covers Google claim continuation with a mocked backend; a live claim needs a real Google account and verifiable credential and remains a manual check. |
 | P10 | Copy prompt | Text contains the slug and no secrets. |
 
 ## 3. Agent path
@@ -72,7 +72,7 @@ Status: plan, revised after the domain cutover for the final architecture: the e
 | B6 | Claim secret used twice | Second use 403 or 409. |
 | B7 | 11 creates from one IP in a minute | 429 on the 11th. |
 | B8 | Manifest path with `..`, backslash, or leading slash | 400. |
-| B9 | Upload without `Content-Length`, with wrong hash, over the limit | 411, 422, 413. No residual object. |
+| B9 | Exercise upload framing, hash, empty-body, and size-limit cases through the public edge | Chunked without `Content-Length` reaches the Worker as a sized body; wrong blob bytes return JSON 422; an empty body with `Content-Length: 0` returns Worker JSON 400; malformed or longer-than-body lengths are rejected at the edge with HTML 400 or an HTTP/1.1 close/reset; a shorter-than-body blob is truncated and returns JSON 422; an oversized upload returns JSON 413. No residual object. |
 | B10 | Reconciliation cron after an orphan object is put in R2 | Row created, then swept after grace. |
 
 ## 5. Gateway on a real zone (host mode)
