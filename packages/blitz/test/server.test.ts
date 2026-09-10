@@ -5,8 +5,11 @@ import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, describe, expect, it} from 'vitest'
 import {createDevServer, type DevServer, type DevServerOptions} from '../src/server.ts'
+import {publishFromDisk} from '../src/commands.ts'
+import {readDeploys, writeDeploys} from '../src/deploys.ts'
 import {NodeProjectDirectory} from '../src/node-filesystem.ts'
 import {readProjectFile, walkProject, writeProjectFile} from '../src/filesystem.ts'
+import {startMockBackend} from './mockBackend.ts'
 
 const cleanup: Array<() => Promise<void>> = []
 
@@ -25,6 +28,92 @@ describe('NodeProjectDirectory', () => {
 })
 
 describe('Blitz dev server', () => {
+    it('proxies slug checks, registration, and login through the configured backend', async () => {
+        const backend = await startMockBackend()
+        cleanup.push(() => backend.close())
+        const {server, headers} = await startServer({backendUrl: backend.url})
+
+        const slug = await fetch(`${base(server)}/api/slug/proxy-game`, {headers})
+        expect(slug.status).toBe(200)
+        expect(await slug.json()).toEqual({slug: 'proxy-game', available: true})
+
+        const register = await fetch(`${base(server)}/api/auth/register`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({email: 'new@example.com', username: 'new_player', password: 'password123'}),
+        })
+        expect(register.status).toBe(201)
+        const registerBody = await register.json()
+        expect(registerBody).toMatchObject({token: 'jwt-register', user: {username: 'new_player'}})
+        expect(JSON.stringify(registerBody)).not.toContain('refresh-register')
+
+        const login = await fetch(`${base(server)}/api/auth/login`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({identity: 'new@example.com', password: 'password123'}),
+        })
+        expect(login.status).toBe(200)
+        expect(await login.json()).toMatchObject({token: 'jwt-login'})
+        expect(backend.requests.map(({path}) => path)).toEqual(expect.arrayContaining([
+            '/api/v1/slugs/proxy-game',
+            '/api/v1/auth/register',
+            '/api/v1/auth/login',
+        ]))
+    })
+
+    it('claims with the in-memory JWT and local claim secret, then omits secrets from deploys', async () => {
+        const backend = await startMockBackend()
+        cleanup.push(() => backend.close())
+        const created = await fetch(`${backend.url}/api/v1/new-game/claim-game?name=Claim`, {method: 'POST'})
+        const game = await created.json() as {
+            game_id: string, deploy_token: string, claim_secret: string, preview_url: string, expires_at: string
+        }
+        const {server, root, headers} = await startServer({backendUrl: backend.url})
+        const directory = new NodeProjectDirectory(root).asHandle()
+        await writeDeploys(directory, {games: {'claim-game': game}})
+
+        await fetch(`${base(server)}/api/auth/login`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({identity: 'player@example.com', password: 'password123'}),
+        })
+        const claim = await fetch(`${base(server)}/api/claim`, {
+            method: 'POST',
+            headers: {...headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({slug: 'claim-game'}),
+        })
+        expect(claim.status).toBe(200)
+        expect(await claim.json()).toMatchObject({slug: 'claim-game', claimed: true})
+
+        const publicDeploys = await (await fetch(`${base(server)}/api/deploys`, {headers})).json() as unknown
+        expect(publicDeploys).toMatchObject({games: [{slug: 'claim-game', game_id: game.game_id, claimed: true}]})
+        expect(JSON.stringify(publicDeploys)).not.toContain('deploy_token')
+        expect(JSON.stringify(publicDeploys)).not.toContain('claim_secret')
+        expect((await readDeploys(directory)).games['claim-game'].claimed).toBe(true)
+        expect(backend.requests.find(({path}) => path.endsWith('/claim'))?.authorization).toBe('Bearer jwt-login')
+    })
+
+    it('publishes with slug, name, and message through the local route and mocked backend', async () => {
+        const backend = await startMockBackend()
+        cleanup.push(() => backend.close())
+        let projectRoot = ''
+        const started = await startServer({
+            backendUrl: backend.url,
+            publish: (options, emit) => publishFromDisk(projectRoot, {...options, backendUrl: backend.url}, emit),
+        })
+        projectRoot = started.root
+        const response = await fetch(`${base(started.server)}/api/publish`, {
+            method: 'POST',
+            headers: {...started.headers, 'Content-Type': 'application/json'},
+            body: JSON.stringify({slug: 'route-game', name: 'Route Game', message: 'from proxy'}),
+        })
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({preview_url: `${backend.url}/preview/route-game/`})
+        expect(backend.games.get('route-game')?.name).toBe('Route Game')
+        expect(backend.releaseCount('route-game')).toBe(1)
+        expect(backend.requests.find(({path}) => path.endsWith('/releases'))?.body).toMatchObject({message: 'from proxy'})
+    })
+
     it('serves a manifest, MIME, ETags, conditional writes, and state', async () => {
         const {server, root, headers} = await startServer()
         await writeFile(resolve(root, 'hello.js'), 'export const hello = true\n')
@@ -167,6 +256,8 @@ async function temporaryProject(): Promise<string> {
     const root = await mkdtemp(resolve(tmpdir(), 'blitz-server-'))
     cleanup.push(() => rm(root, {recursive: true, force: true}))
     await writeFile(resolve(root, 'package.json'), '{"name":"server-test"}\n')
+    await writeFile(resolve(root, 'assets.json'), '{"files":{},"version":1}\n')
+    await writeFile(resolve(root, 'main.js'), 'export async function main() {}\n')
     await mkdir(resolve(root, 'assets'), {recursive: true})
     await writeFile(resolve(root, 'assets/main.scene.gltf'), '{"asset":{"version":"2.0"},"nodes":[]}\n')
     return root
@@ -180,7 +271,7 @@ async function readJournalLines(path: string): Promise<Array<Record<string, unkn
     }
 }
 
-async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull'> = {}) {
+async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull' | 'backendUrl'> = {}) {
     const root = await temporaryProject()
     const editor = resolve(root, 'editor')
     await mkdir(editor)

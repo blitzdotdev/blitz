@@ -3,14 +3,30 @@ import {dirname, relative, resolve, sep} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import openBrowser from 'open'
 import {BlitzApi} from './api.ts'
-import {readDeploys} from './deploys.ts'
+import {readDeploys, writeDeploys} from './deploys.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {publishProject, pullProject} from './publish.ts'
 import {createDevServer, type DevServer} from './server.ts'
 import type {PublishProgress} from './types.ts'
 import {readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
 
-const BACKEND_URL = process.env.BLITZ_BACKEND_URL || 'https://blitz-backend.blitzapp.workers.dev'
+const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
+
+export interface PublishFromDiskOptions {
+    slug?: string
+    name?: string
+    message?: string
+    backendUrl?: string
+}
+
+export interface PublicDeployEntry {
+    game_id: string
+    slug: string
+    preview_url: string
+    expires_at: string
+    last_release_hash?: string
+    claimed: boolean
+}
 
 export async function initProject(directory = '.'): Promise<string> {
     const target = resolve(directory)
@@ -46,12 +62,16 @@ export async function initProject(directory = '.'): Promise<string> {
     return target
 }
 
-export async function runDev(options: {projectRoot?: string, port?: number, noOpen?: boolean} = {}): Promise<DevServer> {
+export async function runDev(options: {projectRoot?: string, port?: number, noOpen?: boolean, backendUrl?: string} = {}): Promise<DevServer> {
     const projectRoot = resolve(options.projectRoot || process.cwd())
     const server = await createDevServer({
         projectRoot,
         port: options.port,
-        publish: async (message, emit) => publishFromDisk(projectRoot, message, emit),
+        backendUrl: options.backendUrl || backendUrl(),
+        publish: async (publishOptions, emit) => publishFromDisk(projectRoot, {
+            ...publishOptions,
+            backendUrl: options.backendUrl || backendUrl(),
+        }, emit),
         pull: async () => pullFromDisk(projectRoot),
     })
     if (!options.noOpen) await openBrowser(server.url)
@@ -60,21 +80,58 @@ export async function runDev(options: {projectRoot?: string, port?: number, noOp
 
 export async function publishFromDisk(
     projectRoot = process.cwd(),
-    message?: string,
-    onProgress?: (progress: unknown) => void,
+    options: PublishFromDiskOptions | string = {},
+    onProgress?: (progress: PublishProgress) => void,
 ): Promise<{preview_url: string, release_hash: string}> {
+    const publishOptions = typeof options === 'string' ? {message: options} : options
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
     const existing = Object.entries(deploys.games)[0]
     const packageJson = JSON.parse(await readFile(resolve(projectRoot, 'package.json'), 'utf8')) as {name?: string}
-    const slug = existing?.[0] || slugify(packageJson.name || projectRoot.split(sep).at(-1) || 'blitz-game')
+    const slug = publishOptions.slug || existing?.[0] || slugify(packageJson.name || projectRoot.split(sep).at(-1) || 'blitz-game')
     return publishProject({
         dirHandle: directory,
-        api: new BlitzApi({baseUrl: BACKEND_URL}),
+        api: new BlitzApi({baseUrl: publishOptions.backendUrl || backendUrl()}),
         slug,
-        message,
-        onProgress: onProgress as ((progress: PublishProgress) => void) | undefined,
+        name: publishOptions.name,
+        message: publishOptions.message,
+        onProgress,
     })
+}
+
+export async function statusFromDisk(projectRoot = process.cwd()): Promise<PublicDeployEntry[]> {
+    const directory = new NodeProjectDirectory(projectRoot).asHandle()
+    const deploys = await readDeploys(directory)
+    return Object.entries(deploys.games).map(([slug, entry]) => ({
+        game_id: entry.game_id,
+        slug,
+        preview_url: entry.preview_url,
+        expires_at: entry.expires_at,
+        last_release_hash: entry.last_release_hash,
+        claimed: entry.claimed === true,
+    }))
+}
+
+export async function claimFromDisk(
+    options: {email: string, password: string, login?: boolean},
+    projectRoot = process.cwd(),
+): Promise<PublicDeployEntry[]> {
+    const directory = new NodeProjectDirectory(projectRoot).asHandle()
+    const deploys = await readDeploys(directory)
+    const games = Object.entries(deploys.games)
+    if (!games.length) throw new Error('No deploy exists yet. Run blitz publish first.')
+    const api = new BlitzApi({baseUrl: backendUrl()})
+    const auth = options.login
+        ? await api.login({identity: options.email, password: options.password})
+        : await api.register({email: options.email, username: usernameFromEmail(options.email), password: options.password})
+    api.useToken(auth.token)
+    for (const [slug, entry] of games) {
+        if (entry.claimed) continue
+        await api.claim(slug, entry.claim_secret)
+        deploys.games[slug] = {...entry, claimed: true}
+        await writeDeploys(directory, deploys)
+    }
+    return statusFromDisk(projectRoot)
 }
 
 export async function pullFromDisk(projectRoot = process.cwd()) {
@@ -85,7 +142,7 @@ export async function pullFromDisk(projectRoot = process.cwd()) {
     const [, entry] = existing
     return pullProject({
         dirHandle: directory,
-        api: new BlitzApi({baseUrl: BACKEND_URL}),
+        api: new BlitzApi({baseUrl: backendUrl()}),
         entry,
     })
 }
@@ -160,8 +217,18 @@ function packageName(name: string): string {
     return normalized || 'blitz-game'
 }
 
-function slugify(name: string): string {
+export function slugify(name: string): string {
     let slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/--+/g, '-')
     if (slug.length < 3) slug = `${slug || 'game'}-game`
     return slug.slice(0, 49).replace(/-+$/, '')
+}
+
+function backendUrl(): string {
+    return process.env.BLITZ_BACKEND_URL || DEFAULT_BACKEND_URL
+}
+
+function usernameFromEmail(email: string): string {
+    let username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
+    if (!/^[a-z]/.test(username)) username = `player_${username}`
+    return (username || 'player').slice(0, 30)
 }

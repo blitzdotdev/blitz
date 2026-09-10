@@ -26,6 +26,7 @@ export interface DeployEntry {
     preview_url: string
     expires_at: string
     last_release_hash?: string
+    claimed?: boolean
 }
 
 export interface DeploysFile {
@@ -45,6 +46,7 @@ export interface PublishProgress {
     completed: number
     total: number
     path?: string
+    preview_url?: string
 }
 
 export interface CreatedAnonymousGame extends DeployEntry {

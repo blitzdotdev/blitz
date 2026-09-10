@@ -9,7 +9,27 @@ npm install
 npx blitz dev
 ```
 
-The last command prints `http://127.0.0.1:4321/?t=...`. Edit source files while it runs. Read `.blitz/state.json` and `.blitz/console.log` for feedback. Before publishing, run `npx blitz pull`, then `npx blitz publish --message "what changed"`; report the live URL.
+The last command prints `http://127.0.0.1:4321/?t=...`. Edit source files while it runs. Read `.blitz/state.json` and `.blitz/console.log` for feedback.
+
+## Command line
+
+Run `npx blitz <command> --help` for command-specific usage. Unknown flags fail with a nonzero exit code.
+
+Before every update, run `npx blitz pull` and resolve any local and remote differences. Publish with an explicit slug when creating a game:
+
+```sh
+npx blitz publish --slug my-game --name "My Game" --message "initial release"
+```
+
+Later publishes reuse the saved deploy entry and can use `npx blitz publish --message "what changed"`. The command reports the live URL. `npx blitz status` prints the local deploy metadata and expiry without secrets.
+
+Claim every unclaimed game recorded in `.blitz/deploys.json` by registering an account:
+
+```sh
+npx blitz claim --email player@example.com --password "at-least-8-characters"
+```
+
+Add `--login` to sign in to an existing account instead of registering. The command uses each locally stored claim secret but never prints it.
 
 Installed source is available at `node_modules/@blitzdev/engine/src`, `node_modules/@blitzdev/editor/src`, `node_modules/@blitzdev/blitz/src`, `node_modules/threepipe/src`, and `node_modules/uiconfig-blueprint/src`. The full scripting API, lifecycle guidance, examples, publishing rules, and limits are copied into each new project's `AGENTS.md` by `blitz init`.
 

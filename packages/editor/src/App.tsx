@@ -12,6 +12,7 @@ import {
     type SerializedSceneGltf,
 } from '@blitzdev/engine'
 import {DevServerSource} from './DevServerSource.ts'
+import {PublishDialog} from './PublishDialog.tsx'
 import {ProjectConflictError, type ProjectEvent, type ProjectFileEntry} from './ProjectSource.ts'
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
@@ -52,6 +53,7 @@ export default function App() {
     const [runtimeHierarchy, setRuntimeHierarchy] = useState<HierarchyEntry[]>([])
     const [lastError, setLastError] = useState<string>()
     const [status, setStatus] = useState('Loading project…')
+    const [publishDialogOpen, setPublishDialogOpen] = useState(false)
 
     const appendConsoleError = useCallback(async (message: string) => {
         let previous = ''
@@ -351,6 +353,7 @@ export default function App() {
             <div><h1>{serverState?.name || 'Blitz'}</h1><p>{status}</p></div>
             <button data-testid="play" onClick={() => void (playing ? stop() : play())}>{playing ? 'Stop' : 'Play'}</button>
             <button data-testid="save-scene" disabled={!sceneText} onClick={() => void saveScene()}>Save scene</button>
+            <button data-testid="open-game" onClick={() => setPublishDialogOpen(true)}>Open game</button>
         </header>
         <section className="workspace">
             <aside>
@@ -414,6 +417,12 @@ export default function App() {
             </section>
         </section>
         {lastError && <pre role="alert">{lastError}</pre>}
+        <PublishDialog
+            isOpen={publishDialogOpen}
+            name={serverState?.name || 'Blitz game'}
+            source={source}
+            onClose={() => setPublishDialogOpen(false)}
+        />
     </main>
 }
 

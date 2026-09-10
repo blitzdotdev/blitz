@@ -16,10 +16,13 @@ import {basename, dirname, extname, resolve, sep} from 'node:path'
 import {pipeline} from 'node:stream/promises'
 import {fileURLToPath} from 'node:url'
 import {mimeTypeForPath} from '@blitzdev/engine/fileTypes'
-import {DEPLOYS_PATH, JOURNAL_PATH} from '@blitzdev/engine/paths'
+import {JOURNAL_PATH} from '@blitzdev/engine/paths'
 import {RUNTIME_VERSION} from '@blitzdev/engine/version'
 import {checkBakeSafety, type BakeJournalEntry} from './bake.ts'
 import {appendSceneJournal} from './journal.ts'
+import {NodeProjectDirectory} from './node-filesystem.ts'
+import {readDeploys, writeDeploys} from './deploys.ts'
+import type {PublishProgress} from './types.ts'
 
 export interface ManifestEntry {
     path: string
@@ -35,7 +38,11 @@ export interface DevServerOptions {
     editorDirectory?: string
     runtimePath?: string
     open?: boolean
-    publish?: (message: string | undefined, emit: (data: unknown) => void) => Promise<{preview_url: string, release_hash: string}>
+    backendUrl?: string
+    publish?: (
+        options: {slug?: string, name?: string, message?: string},
+        emit: (data: PublishProgress) => void,
+    ) => Promise<{preview_url: string, release_hash: string}>
     pull?: () => Promise<unknown>
 }
 
@@ -69,6 +76,7 @@ interface PendingCommand {
 const SERVER_VERSION = '0.12.0'
 const SERVER_CLIENT_ID = 'blitz-server'
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
+const DEFAULT_BACKEND_URL = 'https://blitz-backend.blitzapp.workers.dev'
 
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
     const projectRoot = await realpath(resolve(options.projectRoot || process.cwd()))
@@ -85,6 +93,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     let mutationQueue = Promise.resolve()
     let watcher: FSWatcher | undefined
     let closing = false
+    let platformToken: string | undefined
+    const backendUrl = (options.backendUrl || process.env.BLITZ_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '')
+    const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
 
     for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)
 
@@ -114,6 +125,57 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             }
             if (request.method === 'GET' && url.pathname === '/api/state') {
                 return json(response, 200, await projectState(projectRoot))
+            }
+            const slugMatch = request.method === 'GET' && /^\/api\/slug\/([^/]+)$/.exec(url.pathname)
+            if (slugMatch) {
+                return proxyBackendJson(response, `${backendUrl}/api/v1/slugs/${encodeURIComponent(decodeURIComponent(slugMatch[1]))}`)
+            }
+            if (request.method === 'GET' && url.pathname === '/api/deploys') {
+                const deploys = await readDeploys(projectDirectory)
+                return json(response, 200, {
+                    games: Object.entries(deploys.games).map(([slug, entry]) => ({
+                        game_id: entry.game_id,
+                        slug,
+                        preview_url: entry.preview_url,
+                        expires_at: entry.expires_at,
+                        last_release_hash: entry.last_release_hash,
+                        claimed: entry.claimed === true,
+                    })),
+                })
+            }
+            if (request.method === 'POST' && (url.pathname === '/api/auth/register' || url.pathname === '/api/auth/login')) {
+                const body = await readJsonBody(request)
+                const path = url.pathname.endsWith('/register') ? '/api/v1/auth/register' : '/api/v1/auth/login'
+                const backendResponse = await fetch(`${backendUrl}${path}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body),
+                })
+                const payload = await readBackendPayload(backendResponse)
+                if (!backendResponse.ok) return backendJson(response, backendResponse, payload)
+                if (!isRecord(payload) || typeof payload.token !== 'string') {
+                    return json(response, 502, {error: {code: 'invalid_backend_response', message: 'The Blitz backend returned an invalid authentication response.'}})
+                }
+                platformToken = payload.token
+                return json(response, backendResponse.status, {user: payload.user, token: payload.token})
+            }
+            if (request.method === 'POST' && url.pathname === '/api/claim') {
+                if (!platformToken) return json(response, 401, {error: {code: 'authentication_required', message: 'Sign in before claiming a game.'}})
+                const body = await readJsonBody(request)
+                const slug = typeof body.slug === 'string' ? body.slug : ''
+                const deploys = await readDeploys(projectDirectory)
+                const entry = deploys.games[slug]
+                if (!entry) return json(response, 404, {error: {code: 'deploy_not_found', message: `No local deploy exists for ${slug}.`}})
+                const backendResponse = await fetch(`${backendUrl}/api/v1/games/${encodeURIComponent(slug)}/claim`, {
+                    method: 'POST',
+                    headers: {'Authorization': `Bearer ${platformToken}`, 'Content-Type': 'application/json'},
+                    body: JSON.stringify({secret: entry.claim_secret}),
+                })
+                const payload = await readBackendPayload(backendResponse)
+                if (!backendResponse.ok) return backendJson(response, backendResponse, payload)
+                deploys.games[slug] = {...entry, claimed: true}
+                await writeDeploys(projectDirectory, deploys)
+                return json(response, backendResponse.status, payload)
             }
             if (request.method === 'GET' && url.pathname === '/api/events') {
                 response.writeHead(200, {
@@ -165,7 +227,11 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 if (!options.publish) return json(response, 501, {error: {code: 'publish_unavailable', message: 'Publish is not configured.'}})
                 const body = await readJsonBody(request)
                 const result = await runServerMutation(() => options.publish!(
-                    typeof body.message === 'string' ? body.message : undefined,
+                    {
+                        slug: typeof body.slug === 'string' ? body.slug : undefined,
+                        name: typeof body.name === 'string' ? body.name : undefined,
+                        message: typeof body.message === 'string' ? body.message : undefined,
+                    },
                     (data) => { broadcast('publish', data) },
                 ))
                 return json(response, 200, result)
@@ -237,8 +303,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             return send(response, 404, 'Not found')
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Internal server error'
-            const status = /Invalid project path|forbidden|symlink|escape/i.test(message) ? 403 : 500
-            return json(response, status, {error: {code: status === 403 ? 'invalid_path' : 'internal_error', message}})
+            const status = httpErrorStatus(error) ?? (/Invalid project path|forbidden|symlink|escape/i.test(message) ? 403 : 500)
+            const code = httpErrorCode(error) ?? (status === 403 ? 'invalid_path' : 'internal_error')
+            return json(response, status, {error: {code, message}})
         }
     })
 
@@ -459,13 +526,10 @@ function isIncludedPath(path: string): boolean {
 
 async function projectState(root: string) {
     let packageJson: Record<string, unknown> = {}
-    let deploys: unknown = {games: {}}
     try { packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown> } catch { /* optional */ }
-    try { deploys = JSON.parse(await readFile(resolve(root, DEPLOYS_PATH), 'utf8')) as unknown } catch { /* optional */ }
     return {
         name: typeof packageJson.name === 'string' ? packageJson.name : basename(root),
         versions: {server: SERVER_VERSION, engine: RUNTIME_VERSION, editor: SERVER_VERSION},
-        deploys,
         server_version: SERVER_VERSION,
     }
 }
@@ -568,6 +632,39 @@ function send(response: ServerResponse, status: number, body = '') {
 function json(response: ServerResponse, status: number, body: unknown) {
     const text = JSON.stringify(body)
     response.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(text)}).end(text)
+}
+
+async function proxyBackendJson(response: ServerResponse, url: string, init?: RequestInit): Promise<void> {
+    const backendResponse = await fetch(url, init)
+    return backendJson(response, backendResponse, await readBackendPayload(backendResponse))
+}
+
+async function readBackendPayload(response: Response): Promise<unknown> {
+    const text = await response.text()
+    if (!text) return {}
+    try { return JSON.parse(text) as unknown } catch {
+        return {error: {code: `http_${response.status}`, message: text}}
+    }
+}
+
+function backendJson(response: ServerResponse, backendResponse: Response, payload: unknown): void {
+    const retryAfter = backendResponse.headers.get('Retry-After')
+    if (retryAfter) response.setHeader('Retry-After', retryAfter)
+    json(response, backendResponse.status, payload)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function httpErrorStatus(error: unknown): number | undefined {
+    if (!isRecord(error)) return undefined
+    return typeof error.status === 'number' && error.status >= 400 && error.status <= 599 ? error.status : undefined
+}
+
+function httpErrorCode(error: unknown): string | undefined {
+    if (!isRecord(error)) return undefined
+    return typeof error.code === 'string' ? error.code : undefined
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
