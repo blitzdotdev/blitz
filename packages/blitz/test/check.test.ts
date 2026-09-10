@@ -1,7 +1,8 @@
 import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises'
+import {createServer} from 'node:http'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
-import {afterEach, describe, expect, it} from 'vitest'
+import {afterEach, describe, expect, it, vi} from 'vitest'
 import {checkProject} from '../src/check.ts'
 import {publishFromDisk} from '../src/commands.ts'
 import {BLITZ_VERSION} from '../src/versions.ts'
@@ -14,6 +15,45 @@ afterEach(async () => {
 })
 
 describe('blitz check', () => {
+    it('falls back to headless checks when a live older server returns 404', async () => {
+        const root = await project({}, [{name: 'Triangle', mesh: 0}])
+        const olderServer = createServer((request, response) => {
+            if (request.url === '/api/state') {
+                response.writeHead(200, {'Content-Type': 'application/json'}).end('{"name":"old-server"}')
+            } else {
+                response.writeHead(404, {'Content-Type': 'text/html'}).end('Not found')
+            }
+        })
+        await new Promise<void>((resolveListen, reject) => {
+            olderServer.once('error', reject)
+            olderServer.listen(0, '127.0.0.1', () => {
+                olderServer.off('error', reject)
+                resolveListen()
+            })
+        })
+        cleanup.push(() => new Promise<void>((resolveClose, reject) =>
+            olderServer.close((error) => error ? reject(error) : resolveClose())))
+        const address = olderServer.address()
+        if (!address || typeof address === 'string') throw new Error('Older test server did not bind')
+        const oldDev = {
+            url: `http://127.0.0.1:${address.port}/?t=old-token`,
+            token: 'old-token',
+        }
+        await mkdir(resolve(root, '.blitz'), {recursive: true})
+        await writeFile(resolve(root, '.blitz/dev.json'), JSON.stringify(oldDev))
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+        const result = await checkProject(root)
+
+        expect(result.mode).toBe('headless')
+        expect(result.ok).toBe(true)
+        expect(warning).toHaveBeenCalledOnce()
+        expect(warning).toHaveBeenCalledWith(expect.stringContaining('Restart blitz dev'))
+        expect(JSON.parse(await readFile(resolve(root, '.blitz/check.json'), 'utf8'))).toMatchObject({ok: true})
+        expect(JSON.parse(await readFile(resolve(root, '.blitz/dev.json'), 'utf8'))).toEqual(oldDev)
+        warning.mockRestore()
+    })
+
     it('imports configured scripts, lists their types, and validates plugins, generators, and scene components', async () => {
         const root = await project({
             scripts: ['./Player.script.js'],

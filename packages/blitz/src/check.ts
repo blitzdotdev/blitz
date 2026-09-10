@@ -209,13 +209,17 @@ interface DevConnection {
 async function runRuntimeChecks(root: string): Promise<RuntimeCheckResult> {
     const connection = await runningDevConnection(root)
     if (connection) {
-        const editorResult = await requestEditorCheck(connection)
-        if (editorResult) return editorResult
+        const editor = await requestEditorCheck(connection)
+        if (editor.result) return editor.result
+        return runHeadlessCheck(root, editor.incompatible ? undefined : connection, editor.incompatible)
     }
     return runHeadlessCheck(root, connection)
 }
 
-async function requestEditorCheck(connection: DevConnection): Promise<RuntimeCheckResult | undefined> {
+async function requestEditorCheck(connection: DevConnection): Promise<{
+    result?: RuntimeCheckResult
+    incompatible?: boolean
+}> {
     let response: Response
     try {
         response = await fetch(new URL('/api/check', connection.url), {
@@ -223,18 +227,33 @@ async function requestEditorCheck(connection: DevConnection): Promise<RuntimeChe
             headers: {'X-Blitz-Token': connection.token, 'X-Blitz-Client': 'blitz-check'},
         })
     } catch {
-        return undefined
+        return {}
     }
-    if (response.status === 409) {
-        const body = await response.json().catch(() => ({})) as {error?: {code?: string}}
-        if (body.error?.code === 'editor_not_connected') return undefined
+    if (response.status === 404) return incompatibleEditorCheck()
+    let payload: unknown
+    try {
+        payload = await response.json()
+    } catch {
+        return incompatibleEditorCheck()
     }
+    if (response.status === 409
+        && isRecord(payload)
+        && isRecord(payload.error)
+        && payload.error.code === 'editor_not_connected') return {}
     if (!response.ok) throw new Error(`The open editor check failed with status ${response.status}.`)
-    const payload = await response.json() as unknown
-    return parseRuntimeCheckResult(payload, 'editor')
+    return {result: parseRuntimeCheckResult(payload, 'editor')}
 }
 
-async function runHeadlessCheck(root: string, existing?: DevConnection): Promise<RuntimeCheckResult> {
+function incompatibleEditorCheck(): {incompatible: true} {
+    console.warn('[blitz] Restart blitz dev to enable editor-hosted checks; using the headless check instead.')
+    return {incompatible: true}
+}
+
+async function runHeadlessCheck(
+    root: string,
+    existing?: DevConnection,
+    preserveDevFile = false,
+): Promise<RuntimeCheckResult> {
     let chromium: BrowserLauncher
     try {
         chromium = (checkRequire('playwright') as {chromium: BrowserLauncher}).chromium
@@ -244,6 +263,8 @@ async function runHeadlessCheck(root: string, existing?: DevConnection): Promise
 
     let server: Awaited<ReturnType<typeof createDevServer>> | undefined
     let browser: BrowserHandle | undefined
+    const devPath = resolve(root, '.blitz/dev.json')
+    const previousDevFile = preserveDevFile ? await readFile(devPath).catch(() => undefined) : undefined
     try {
         let connection = existing
         if (!connection) {
@@ -272,6 +293,7 @@ async function runHeadlessCheck(root: string, existing?: DevConnection): Promise
     } finally {
         await browser?.close().catch(() => undefined)
         await server?.close().catch(() => undefined)
+        if (previousDevFile) await writeFile(devPath, previousDevFile, {mode: 0o600})
     }
 }
 

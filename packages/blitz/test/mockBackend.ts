@@ -27,6 +27,16 @@ export async function startMockBackend(options: {
     runtimeVersions?: string[]
     runtimeStatus?: number
     releaseStatus?: number
+    runtimeHashes?: string[]
+    createStatuses?: number[]
+    missingStatuses?: number[]
+    uploadStatuses?: number[]
+    releaseStatuses?: number[]
+    uploadConnectionLoss?: 'before' | 'after'
+    uploadTimeouts?: number
+    corruptPreviewPath?: string
+    corruptPreviewReads?: number
+    failureMessage?: string
 } = {}): Promise<MockBackend> {
     const games = new Map<string, MockGame>()
     const blobs = new Map<string, Buffer>()
@@ -36,6 +46,9 @@ export async function startMockBackend(options: {
     let baseUrl = ''
     let activeUploads = 0
     let maxActiveUploads = 0
+    let connectionLosses = options.uploadConnectionLoss ? 1 : 0
+    let uploadTimeouts = options.uploadTimeouts || 0
+    let corruptPreviewReads = options.corruptPreviewReads ?? Number.POSITIVE_INFINITY
 
     const server = createServer(async (request, response) => {
         const url = new URL(request.url || '/', baseUrl || 'http://127.0.0.1')
@@ -60,6 +73,8 @@ export async function startMockBackend(options: {
         }
         const newGame = request.method === 'POST' && /^\/api\/v1\/new-game\/([^/]+)$/.exec(url.pathname)
         if (newGame) {
+            const failure = options.createStatuses?.shift()
+            if (failure) return sendFailure(response, failure, options.failureMessage)
             const slug = decodeURIComponent(newGame[1])
             const reason = slugReason(slug, games)
             if (reason) return sendJson(response, reason === 'slug_taken' ? 409 : 400, {error: {code: reason, message: reason}})
@@ -91,7 +106,17 @@ export async function startMockBackend(options: {
             return sendJson(response, options.runtimeStatus, {error: {code: 'runtime_unavailable', message: 'Runtime unavailable.'}})
         }
         if (runtimeMatch && (options.runtimeVersions || [BLITZ_VERSION]).includes(decodeURIComponent(runtimeMatch[1]))) {
-            return sendJson(response, 200, {version: decodeURIComponent(runtimeMatch[1]), sha256: runtimeHash, size: runtime.byteLength})
+            const hashes = options.runtimeHashes || [runtimeHash]
+            return sendJson(response, 200, {
+                version: decodeURIComponent(runtimeMatch[1]),
+                sha256: hashes[0],
+                size: runtime.byteLength,
+                runtimes: hashes.map((sha256, index) => ({
+                    sha256,
+                    size: runtime.byteLength,
+                    created_at: new Date(Date.now() - index * 1_000).toISOString(),
+                })),
+            })
         }
         const claim = request.method === 'POST' && /^\/api\/v1\/games\/([^/]+)\/claim$/.exec(url.pathname)
         if (claim) {
@@ -108,23 +133,51 @@ export async function startMockBackend(options: {
         }
         const missing = request.method === 'POST' && /^\/api\/v1\/games\/([^/]+)\/blobs\/missing$/.exec(url.pathname)
         if (missing) {
+            const failure = options.missingStatuses?.shift()
+            if (failure) return sendFailure(response, failure, options.failureMessage)
             const hashes = Array.isArray(record(body).hashes) ? record(body).hashes as string[] : []
             return sendJson(response, 200, {missing: hashes.filter((hash) => hash !== runtimeHash && !blobs.has(hash))})
+        }
+        const blobHead = request.method === 'HEAD' && /^\/api\/v1\/games\/([^/]+)\/blobs\/([a-f\d]{64})$/.exec(url.pathname)
+        if (blobHead) {
+            const bytes = blobHead[2] === runtimeHash ? runtime : blobs.get(blobHead[2])
+            if (!bytes) return sendJson(response, 404, {error: {code: 'blob_not_found', message: 'Blob not found.'}})
+            response.writeHead(200, {'Content-Length': String(bytes.byteLength), ETag: `"${blobHead[2]}"`}).end()
+            return
         }
         const upload = request.method === 'PUT' && /^\/api\/v1\/games\/([^/]+)\/blobs\/([a-f\d]{64})$/.exec(url.pathname)
         if (upload) {
             const bytes = Buffer.isBuffer(body) ? body : Buffer.alloc(0)
+            const failure = options.uploadStatuses?.shift()
+            if (failure) return sendFailure(response, failure, options.failureMessage)
+            if (uploadTimeouts > 0) {
+                uploadTimeouts -= 1
+                await new Promise((resolveDelay) => setTimeout(resolveDelay, 100))
+                if (response.destroyed) return
+            }
+            if (connectionLosses > 0 && options.uploadConnectionLoss === 'before') {
+                connectionLosses -= 1
+                request.socket.destroy()
+                return
+            }
             activeUploads += 1
             maxActiveUploads = Math.max(maxActiveUploads, activeUploads)
             await new Promise((resolveDelay) => setTimeout(resolveDelay, 5))
             blobs.set(upload[2], bytes)
             activeUploads -= 1
+            if (connectionLosses > 0 && options.uploadConnectionLoss === 'after') {
+                connectionLosses -= 1
+                request.socket.destroy()
+                return
+            }
             return sendJson(response, 201, {sha256: upload[2], size: bytes.byteLength, uploaded: true})
         }
         const release = request.method === 'PUT' && /^\/api\/v1\/games\/([^/]+)\/releases$/.exec(url.pathname)
         if (release) {
             const game = findGame(decodeURIComponent(release[1]), games)
             if (!game) return sendJson(response, 404, {error: {code: 'game_not_found', message: 'Game not found.'}})
+            const failure = options.releaseStatuses?.shift()
+            if (failure) return sendFailure(response, failure, options.failureMessage)
             if (options.releaseStatus) {
                 return sendJson(response, options.releaseStatus, {error: {code: 'unregistered_runtime', message: 'unregistered_runtime'}})
             }
@@ -170,8 +223,22 @@ export async function startMockBackend(options: {
             response.writeHead(200, {'Content-Type': 'application/octet-stream'}).end(bytes)
             return
         }
-        if (request.method === 'GET' && /^\/preview\/[^/]+\/$/.test(url.pathname)) {
-            return sendHtml(response, '<!doctype html><title>Mock published game</title>')
+        const preview = request.method === 'GET' && /^\/preview\/([^/]+)\/(.*)$/.exec(url.pathname)
+        if (preview) {
+            const game = games.get(decodeURIComponent(preview[1]))
+            const path = preview[2]
+                ? preview[2].split('/').map(decodeURIComponent).join('/')
+                : 'index.html'
+            const descriptor = game?.releases.find(({active}) => active)?.files[path]
+            const bytes = descriptor?.sha256 === runtimeHash ? runtime : descriptor ? blobs.get(descriptor.sha256) : undefined
+            if (!bytes) return sendJson(response, 404, {error: {code: 'asset_not_found', message: 'Asset not found.'}})
+            if (path === options.corruptPreviewPath && corruptPreviewReads > 0) {
+                corruptPreviewReads -= 1
+                response.writeHead(200, {'Content-Type': 'application/octet-stream'}).end('corrupt bytes')
+                return
+            }
+            response.writeHead(200, {'Content-Type': 'application/octet-stream'}).end(bytes)
+            return
         }
         return sendJson(response, 404, {error: {code: 'not_found', message: 'Mock route not found.'}})
     })
@@ -231,9 +298,12 @@ function sqlDate(milliseconds: number): string {
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
-    response.writeHead(status, {'Content-Type': 'application/json'}).end(JSON.stringify(body))
+    response.writeHead(status, {
+        'Content-Type': 'application/json',
+        ...(status === 429 || status >= 500 ? {'Retry-After': '0'} : {}),
+    }).end(JSON.stringify(body))
 }
 
-function sendHtml(response: ServerResponse, body: string): void {
-    response.writeHead(200, {'Content-Type': 'text/html'}).end(body)
+function sendFailure(response: ServerResponse, status: number, message = `Injected HTTP ${status}`): void {
+    sendJson(response, status, {error: {code: `injected_${status}`, message}})
 }

@@ -16,6 +16,7 @@ import {
 import {checkProject, formatCheckTable} from './check.ts'
 import {enforceVersionPin} from './version-pin.ts'
 import {BLITZ_VERSION} from './versions.ts'
+import {sanitizeDiagnostic} from './api.ts'
 
 const ROOT_USAGE = `Usage: blitz <command> [options]
 
@@ -39,7 +40,7 @@ Run blitz <command> --help for command usage.`
 const COMMAND_USAGE: Record<string, string> = {
     init: 'Usage: blitz init [dir]',
     dev: 'Usage: blitz dev [--port <port>] [--no-open] [--force]',
-    publish: 'Usage: blitz publish [--slug <slug>] [--name <name>] [--message <message>] [--no-check]',
+    publish: 'Usage: blitz publish [--slug <slug>] [--name <name>] [--message <message>] [--no-check] [--no-verify]',
     pull: 'Usage: blitz pull [--force]',
     status: 'Usage: blitz status',
     claim: 'Usage: blitz claim --email <email> --password <password> [--login]',
@@ -96,15 +97,22 @@ try {
         process.once('SIGINT', shutdown)
         process.once('SIGTERM', shutdown)
     } else if (command === 'publish') {
-        const parsed = parseArgs(args, {'--slug': 'value', '--name': 'value', '--message': 'value', '--no-check': 'boolean'})
+        const parsed = parseArgs(args, {
+            '--slug': 'value',
+            '--name': 'value',
+            '--message': 'value',
+            '--no-check': 'boolean',
+            '--no-verify': 'boolean',
+        })
         const result = await publishFromDisk(process.cwd(), {
             slug: valueOption(parsed.values['--slug']),
             name: valueOption(parsed.values['--name']),
             message: valueOption(parsed.values['--message']),
             noCheck: parsed.values['--no-check'] === true,
+            noVerify: parsed.values['--no-verify'] === true,
         }, (value) => {
-            const progress = value as {phase?: string, completed?: number, total?: number, path?: string}
-            console.log(`[${progress.phase}] ${progress.completed}/${progress.total}${progress.path ? ` ${progress.path}` : ''}`)
+            const progress = value as {phase?: string, done?: number, total?: number, path?: string}
+            console.log(`[${progress.phase}] ${progress.done}/${progress.total}${progress.path ? ` ${progress.path}` : ''}`)
         })
         console.log(`Published ${result.release_hash}`)
         console.log(result.preview_url)
@@ -159,7 +167,7 @@ try {
         console.log(`Upgraded Blitz from ${result.from} to ${result.to}`)
     }
 } catch (error) {
-    console.error(`blitz: ${error instanceof Error ? error.message : error}`)
+    console.error(`blitz: ${sanitizeDiagnostic(error instanceof Error ? error.message : error)}`)
     process.exitCode = 1
 }
 

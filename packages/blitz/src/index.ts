@@ -1,4 +1,4 @@
-export {BlitzApi, BlitzApiError} from './api.ts'
+export {BlitzApi, BlitzApiError, sanitizeDiagnostic} from './api.ts'
 export type {BlitzApiOptions, BlobUpload, BlobUploadProgress} from './api.ts'
 export {checkProject, formatCheckTable} from './check.ts'
 export type {CheckResult, CheckRow} from './check.ts'
@@ -46,6 +46,7 @@ export type {
     ProjectEntry,
     PublishProgress,
     PublishProgressPhase,
+    PublishStatus,
     ReleaseManifest,
     ReleaseRecord,
     RuntimeRecord,

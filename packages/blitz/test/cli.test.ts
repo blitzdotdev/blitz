@@ -62,6 +62,34 @@ describe('blitz CLI', () => {
         expect(deploys.games).toHaveProperty('agent-picked-slug')
     })
 
+    it('never prints deploy tokens or claim secrets from a failed publish', async () => {
+        const deployToken = 'tp_diagnostic-game'
+        const claimSecret = 'secret_diagnostic-game'
+        const backend = await startMockBackend({
+            releaseStatuses: [400],
+            failureMessage: `failure included ${deployToken} and ${claimSecret}`,
+        })
+        cleanup.push(() => backend.close())
+        const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-redaction-'))
+        cleanup.push(() => rm(root, {recursive: true, force: true}))
+        await execute(process.execPath, [cli, 'init', root])
+        await installEngine(root, BLITZ_VERSION)
+
+        let output = ''
+        try {
+            await execute(process.execPath, [
+                cli, 'publish', '--slug', 'diagnostic-game', '--no-check', '--no-verify',
+            ], {cwd: root, env: {...process.env, BLITZ_BACKEND_URL: backend.url}})
+        } catch (error) {
+            const result = error as {stdout?: string, stderr?: string}
+            output = `${result.stdout || ''}\n${result.stderr || ''}`
+        }
+
+        expect(output).toContain('[redacted]')
+        expect(output).not.toContain('tp_')
+        expect(output).not.toContain(claimSecret)
+    })
+
     it('delegates a mismatch to the installed pinned binary with the same arguments', async () => {
         const root = await pinnedProject('9.9.9')
         const binDirectory = resolve(root, 'node_modules/.bin')

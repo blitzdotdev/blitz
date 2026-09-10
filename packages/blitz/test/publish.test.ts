@@ -1,9 +1,15 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
+import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises'
+import {createServer} from 'node:http'
+import {tmpdir} from 'node:os'
+import {resolve} from 'node:path'
 import {
     BlitzApi,
     canonicalizeManifest,
     generateIndexHtml,
     manifestHash,
+    NodeProjectDirectory,
+    publishFromDisk,
     pullProject,
     publishProject,
     readDeploys,
@@ -22,9 +28,11 @@ import {BLITZ_VERSION} from '../src/versions.ts'
 import {startMockBackend, type MockBackend} from './mockBackend.ts'
 
 const backends: MockBackend[] = []
+const projectRoots: string[] = []
 
 afterEach(async () => {
     while (backends.length) await backends.pop()!.close()
+    while (projectRoots.length) await rm(projectRoots.pop()!, {recursive: true, force: true})
 })
 
 const MANIFEST_GOLDENS = {
@@ -270,6 +278,18 @@ describe('publishProject', () => {
         warning.mockRestore()
     })
 
+    it('accepts an installed runtime hash found anywhere in the version registry list', async () => {
+        const root = sampleProject()
+        const localHash = await sha256(await root.file('node_modules/@blitzdev/engine/dist/runtime.js'))
+        const {api} = await testApi({runtimeHashes: ['f'.repeat(64), localHash]})
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'registered-runtime'})
+
+        expect(warning).not.toHaveBeenCalled()
+        warning.mockRestore()
+    })
+
     it('uploads a sanitized package manifest and sends its description as release metadata', async () => {
         const root = sampleProject()
         const packageJson = JSON.parse(await root.text('package.json'))
@@ -332,6 +352,218 @@ describe('publishProject', () => {
             .rejects.toThrow('unregistered_runtime')
         expect(warning).toHaveBeenCalledWith(expect.stringContaining('Could not compare runtime'))
         warning.mockRestore()
+    })
+})
+
+describe('publish reliability', () => {
+    it('reports a slug conflict without saving credentials', async () => {
+        const root = sampleProject()
+        const {api, backend} = await testApi()
+        await fetch(`${backend.url}/api/v1/new-game/conflict-game`, {method: 'POST'})
+
+        await expect(publishProject({dirHandle: root.asHandle(), api, slug: 'conflict-game'}))
+            .rejects.toMatchObject({status: 409, code: 'slug_taken'})
+        expect((await readDeploys(root.asHandle())).games).not.toHaveProperty('conflict-game')
+    })
+
+    it.each([
+        ['rate limit', {uploadStatuses: [429]}],
+        ['server failure', {uploadStatuses: [503]}],
+    ] as const)('reconciles and retries a blob upload after a %s', async (_name, fault) => {
+        const root = sampleProject()
+        const {api, backend} = await testApi(fault)
+
+        await expect(publishProject({dirHandle: root.asHandle(), api, slug: 'retry-upload'}))
+            .resolves.toMatchObject({release_hash: expect.any(String)})
+        expect(backend.requests.some(({method, path}) => method === 'HEAD' && path.includes('/blobs/'))).toBe(true)
+    })
+
+    it('retries a transient release failure', async () => {
+        const root = sampleProject()
+        const {api, backend} = await testApi({releaseStatuses: [503]})
+
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'retry-release'})
+
+        expect(backend.requests.filter(({method, path}) => method === 'PUT' && path.endsWith('/releases'))).toHaveLength(2)
+        expect(backend.releaseCount('retry-release')).toBe(1)
+    })
+
+    it('recovers from an upload timeout and connection loss before the write', async () => {
+        for (const fault of [{uploadTimeouts: 1}, {uploadConnectionLoss: 'before' as const}]) {
+            const root = sampleProject()
+            const backend = await startMockBackend(fault)
+            backends.push(backend)
+            const api = new BlitzApi({baseUrl: backend.url, requestTimeoutMs: 20})
+
+            await expect(publishProject({dirHandle: root.asHandle(), api, slug: `loss-${backends.length}`}))
+                .resolves.toMatchObject({release_hash: expect.any(String)})
+            expect(backend.requests.some(({method}) => method === 'HEAD')).toBe(true)
+        }
+    })
+
+    it('does not repeat an uncertain PUT when reconciliation finds the blob', async () => {
+        const root = sampleProject()
+        const {api, backend} = await testApi({uploadConnectionLoss: 'after'})
+
+        await publishProject({dirHandle: root.asHandle(), api, slug: 'uncertain-write'})
+
+        const heads = backend.requests.filter(({method, path}) => method === 'HEAD' && path.includes('/blobs/'))
+        expect(heads).toHaveLength(1)
+        const reconciledHash = heads[0].path.split('/').at(-1)
+        expect(backend.requests.filter(({method, path}) => method === 'PUT' && path.endsWith(`/${reconciledHash}`)))
+            .toHaveLength(1)
+    })
+
+    it('fails on the first public asset whose SHA-256 never matches', async () => {
+        const root = sampleProject()
+        const {api, backend} = await testApi({corruptPreviewPath: '_blitz/runtime.js'})
+
+        await expect(publishProject({dirHandle: root.asHandle(), api, slug: 'hash-mismatch'}))
+            .rejects.toThrow('Published file verification failed for _blitz/runtime.js')
+        expect(backend.requests.filter(({path}) => path.startsWith('/preview/hash-mismatch/_blitz/runtime.js')))
+            .toHaveLength(5)
+    })
+
+    it('skips public asset verification when explicitly disabled', async () => {
+        const root = sampleProject()
+        const {api, backend} = await testApi({corruptPreviewPath: '_blitz/runtime.js'})
+
+        await expect(publishProject({dirHandle: root.asHandle(), api, slug: 'no-verification', verify: false}))
+            .resolves.toMatchObject({release_hash: expect.any(String)})
+        expect(backend.requests.some(({path}) => path.startsWith('/preview/no-verification/'))).toBe(false)
+    })
+
+    it.each([
+        ['playing', {playState: 'playing', dirty: false}, 'Stop Play'],
+        ['dirty', {playState: 'stopped', dirty: true}, 'unsaved editor draft'],
+    ] as const)('refuses a fresh %s editor state', async (_name, editorState, message) => {
+        const root = await diskProject()
+        const backend = await startMockBackend()
+        backends.push(backend)
+        await mkdir(resolve(root, '.blitz'), {recursive: true})
+        await writeFile(resolve(root, '.blitz/state.json'), JSON.stringify({
+            ...editorState,
+            updatedAt: new Date().toISOString(),
+        }))
+
+        await expect(publishFromDisk(root, {
+            slug: `state-${_name}`,
+            backendUrl: backend.url,
+            noCheck: true,
+            noVerify: true,
+        })).rejects.toThrow(message)
+        expect(backend.games.size).toBe(0)
+        expect((await readDeploys(new NodeProjectDirectory(root).asHandle())).last_publish)
+            .toMatchObject({status: 'failed'})
+    })
+
+    it('rejects project symlinks before creating a remote game', async () => {
+        const root = await diskProject()
+        const backend = await startMockBackend()
+        backends.push(backend)
+        await symlink(resolve(root, 'main.js'), resolve(root, 'linked-main.js'))
+
+        await expect(publishFromDisk(root, {
+            slug: 'symlink-game', backendUrl: backend.url, noCheck: true, noVerify: true,
+        })).rejects.toThrow('project contains a symlink: linked-main.js')
+        expect(backend.games.size).toBe(0)
+    })
+
+    it('refuses a fresh publish lock and replaces one older than ten minutes', async () => {
+        const root = await diskProject()
+        const backend = await startMockBackend()
+        backends.push(backend)
+        const lockPath = resolve(root, '.blitz/publish.lock')
+        await mkdir(resolve(root, '.blitz'), {recursive: true})
+        await writeFile(lockPath, JSON.stringify({pid: 123, created_at: new Date().toISOString()}))
+
+        await expect(publishFromDisk(root, {
+            slug: 'locked-game', backendUrl: backend.url, noCheck: true, noVerify: true,
+        })).rejects.toThrow('Another publish is already running by pid 123')
+
+        await writeFile(lockPath, JSON.stringify({
+            pid: 123,
+            created_at: new Date(Date.now() - 11 * 60_000).toISOString(),
+        }))
+        await expect(publishFromDisk(root, {
+            slug: 'locked-game', backendUrl: backend.url, noCheck: true, noVerify: true,
+        })).resolves.toMatchObject({release_hash: expect.any(String)})
+        await expect(readFile(lockPath, 'utf8')).rejects.toMatchObject({code: 'ENOENT'})
+    })
+
+    it('replaces expired anonymous credentials when recreating a game', async () => {
+        const root = await diskProject()
+        const backend = await startMockBackend()
+        backends.push(backend)
+        const directory = new NodeProjectDirectory(root).asHandle()
+        await writeDeploys(directory, {games: {'expired-game': {
+            game_id: 'expired-id',
+            deploy_token: 'tp_expired',
+            claim_secret: 'expired-secret',
+            preview_url: 'https://expired.invalid/',
+            expires_at: '2020-01-01 00:00:00',
+        }}})
+
+        await publishFromDisk(root, {
+            slug: 'expired-game', backendUrl: backend.url, noCheck: true, noVerify: true,
+        })
+
+        const current = await readDeploys(directory)
+        expect(current.games['expired-game'].game_id).not.toBe('expired-id')
+        expect(backend.games.has('expired-game')).toBe(true)
+    })
+
+    it('persists a redacted failed result after release verification fails', async () => {
+        const root = await diskProject()
+        const backend = await startMockBackend({
+            corruptPreviewPath: '_blitz/runtime.js',
+            failureMessage: 'unused',
+        })
+        backends.push(backend)
+
+        await expect(publishFromDisk(root, {
+            slug: 'status-game', backendUrl: backend.url, noCheck: true,
+        })).rejects.toThrow('Published file verification failed')
+
+        const deploys = await readDeploys(new NodeProjectDirectory(root).asHandle())
+        expect(deploys.games['status-game'].last_release_hash).toMatch(/^[a-f\d]{64}$/)
+        expect(deploys.last_publish).toMatchObject({slug: 'status-game', status: 'failed'})
+        expect(Date.parse(deploys.last_publish!.updated_at)).not.toBeNaN()
+    })
+
+    it('writes publishing status to disk before interruptible network work starts', async () => {
+        const root = await diskProject()
+        let requestStarted!: () => void
+        const started = new Promise<void>((resolveStarted) => { requestStarted = resolveStarted })
+        const server = createServer(() => requestStarted())
+        await new Promise<void>((resolveListen, reject) => {
+            server.once('error', reject)
+            server.listen(0, '127.0.0.1', () => {
+                server.off('error', reject)
+                resolveListen()
+            })
+        })
+        const address = server.address()
+        if (!address || typeof address === 'string') throw new Error('Interrupt test server did not bind')
+        const outcome = publishFromDisk(root, {
+            slug: 'interrupted-game',
+            backendUrl: `http://127.0.0.1:${address.port}`,
+            noCheck: true,
+            noVerify: true,
+        }).catch((error) => error as Error)
+
+        let publishError: Error | undefined
+        try {
+            await started
+            const deploys = await readDeploys(new NodeProjectDirectory(root).asHandle())
+            expect(deploys.last_publish).toMatchObject({slug: 'interrupted-game', status: 'publishing'})
+            expect(Date.parse(deploys.last_publish!.updated_at)).not.toBeNaN()
+        } finally {
+            server.closeAllConnections()
+            publishError = await outcome
+            await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()))
+        }
+        expect(publishError).toBeInstanceOf(Error)
     })
 })
 
@@ -450,6 +682,26 @@ async function putRemoteRelease(api: BlitzApi, files: Record<string, Blob>) {
         return [path, {sha256: hash, size: file.size}] as const
     }))
     return api.putRelease({files: Object.fromEntries(descriptors)})
+}
+
+async function diskProject(): Promise<string> {
+    const root = await mkdtemp(resolve(tmpdir(), 'blitz-publish-reliability-'))
+    projectRoots.push(root)
+    await writeFile(resolve(root, 'package.json'), JSON.stringify({
+        name: 'Reliability Game',
+        mainScene: 'assets/main.scene.gltf',
+        devDependencies: {'@blitzdev/blitz': BLITZ_VERSION},
+        blitz: {version: BLITZ_VERSION},
+    }))
+    await writeFile(resolve(root, 'assets.json'), JSON.stringify({files: {}, version: 1}))
+    await writeFile(resolve(root, 'main.js'), 'export async function main() {}\n')
+    await mkdir(resolve(root, 'assets'), {recursive: true})
+    await writeFile(resolve(root, 'assets/main.scene.gltf'), '{"asset":{"version":"2.0"}}\n')
+    const engine = resolve(root, 'node_modules/@blitzdev/engine')
+    await mkdir(resolve(engine, 'dist'), {recursive: true})
+    await writeFile(resolve(engine, 'package.json'), JSON.stringify({version: BLITZ_VERSION}))
+    await writeFile(resolve(engine, 'dist/runtime.js'), 'mock Blitz runtime')
+    return root
 }
 
 function readImportMap(html: string): {imports: Record<string, string>} {

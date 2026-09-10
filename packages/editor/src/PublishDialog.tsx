@@ -17,19 +17,24 @@ interface PublishDialogProps {
     isOpen: boolean
     name: string
     source: DevServerSource
+    beforePublish(): Promise<boolean>
     onClose(): void
 }
 
 type Availability = 'checking' | 'available' | 'taken' | 'reserved' | 'invalid' | 'error'
 type RetryAction = 'publish' | 'claim'
+const GOOGLE_SIGN_IN_ORIGINS = new Set([
+    'https://blitz.dev',
+    'https://blitz-backend.blitzapp.workers.dev',
+])
 
-export function PublishDialog({isOpen, name, source, onClose}: PublishDialogProps) {
+export function PublishDialog({isOpen, name, source, beforePublish, onClose}: PublishDialogProps) {
     const [deploys, setDeploys] = useState<DeployView[]>()
     const [slug, setSlug] = useState('')
     const [availability, setAvailability] = useState<Availability>('checking')
     const [availabilityNonce, setAvailabilityNonce] = useState(0)
     const [publishing, setPublishing] = useState(false)
-    const [progress, setProgress] = useState({phase: '', completed: 0, total: 1})
+    const [progress, setProgress] = useState({phase: '', done: 0, total: 1})
     const [error, setError] = useState('')
     const [retryAction, setRetryAction] = useState<RetryAction>()
     const [fallbackUrl, setFallbackUrl] = useState('')
@@ -44,13 +49,27 @@ export function PublishDialog({isOpen, name, source, onClose}: PublishDialogProp
 
     const entry = deploys?.[0]
     const expired = Boolean(entry && isExpired(entry))
-    const showCreate = deploys !== undefined && (!entry || expired)
-    const progressValue = progress.total > 0 ? progress.completed / progress.total : 0
+    const pendingInitialRelease = Boolean(entry && !expired && !entry.last_release_hash)
+    const showCreate = deploys !== undefined && (!entry || expired || pendingInitialRelease)
+    const progressValue = progress.total > 0 ? progress.done / progress.total : 0
+    const showGoogleSignIn = GOOGLE_SIGN_IN_ORIGINS.has(window.location.origin)
 
     const refreshDeploys = useCallback(async () => {
         const result = await source.deploys()
         setDeploys(result.games)
+        if (result.last_publish?.status === 'failed') {
+            setError(errorMessage(new DevServerRequestError(
+                result.last_publish.error_status || 500,
+                result.last_publish.error_code || 'publish_failed',
+                result.last_publish.error || 'The previous publish did not finish.',
+            )))
+            setRetryAction('publish')
+        } else if (result.last_publish?.status === 'publishing') {
+            setError('The previous publish was interrupted. Retry to finish it.')
+            setRetryAction('publish')
+        }
         const first = result.games[0]
+        if (first && !first.last_release_hash) setFallbackUrl(first.preview_url)
         if (first && isExpired(first)) setSlug(first.slug)
         else if (!first) setSlug((current) => current || slugify(name))
         return first
@@ -70,6 +89,10 @@ export function PublishDialog({isOpen, name, source, onClose}: PublishDialogProp
 
     useEffect(() => {
         if (!isOpen || !showCreate) return
+        if (pendingInitialRelease) {
+            setAvailability('available')
+            return
+        }
         setAvailability('checking')
         let cancelled = false
         const timer = setTimeout(() => {
@@ -84,22 +107,7 @@ export function PublishDialog({isOpen, name, source, onClose}: PublishDialogProp
             cancelled = true
             clearTimeout(timer)
         }
-    }, [availabilityNonce, isOpen, showCreate, slug, source])
-
-    useEffect(() => {
-        if (!isOpen) return
-        return source.events((event) => {
-            if (event.type !== 'publish') return
-            const phase = typeof event.phase === 'string' ? event.phase : ''
-            const completed = typeof event.completed === 'number' ? event.completed : 0
-            const total = typeof event.total === 'number' ? event.total : 1
-            setProgress({phase, completed, total})
-            if (typeof event.preview_url === 'string') {
-                setFallbackUrl(event.preview_url)
-                navigatePopup(event.preview_url)
-            }
-        })
-    }, [isOpen, source])
+    }, [availabilityNonce, isOpen, pendingInitialRelease, showCreate, slug, source])
 
     const publish = async (creating: boolean) => {
         if (creating) {
@@ -109,18 +117,29 @@ export function PublishDialog({isOpen, name, source, onClose}: PublishDialogProp
         setPublishing(true)
         setError('')
         setRetryAction(undefined)
-        setProgress({phase: creating ? 'creating' : 'walking', completed: 0, total: 1})
+        setProgress({phase: 'walking', done: 0, total: 1})
         try {
+            if (!await beforePublish()) {
+                popup.current?.close()
+                popup.current = null
+                throw new Error('Save the editor scene before publishing.')
+            }
             const result = await source.publish({
                 slug: creating ? slug : entry?.slug,
                 name,
                 message: creating ? 'initial' : 'update',
+            }, (next) => {
+                setProgress({phase: next.phase, done: next.done, total: next.total})
+                if (next.preview_url) {
+                    setFallbackUrl(next.preview_url)
+                    navigatePopup(next.preview_url)
+                }
             })
             setFallbackUrl(result.preview_url)
             navigatePopup(result.preview_url)
             await refreshDeploys()
         } catch (caught) {
-            if (caught instanceof DevServerRequestError && caught.status === 409 && creating) {
+            if (caught instanceof DevServerRequestError && caught.code === 'slug_taken' && creating) {
                 popup.current?.close()
                 popup.current = null
                 setAvailability('taken')
@@ -142,7 +161,7 @@ export function PublishDialog({isOpen, name, source, onClose}: PublishDialogProp
     }
 
     const copyPrompt = async () => {
-        const prompt = `Read AGENTS.md. Run npx blitz publish --slug ${slug} and report the URL. If .blitz/deploys.json exists, follow the pull rule and run npx blitz pull before publishing.`
+        const prompt = `Deploy the Blitz game in this folder to a live URL.\nRead https://blitz.dev/agents.md and follow the Deploy section.\nUse the slug "${slug}". If .blitz/deploys.json exists, reuse its deploy_token.\nOtherwise create a new anonymous game. Report the preview URL when done.`
         await navigator.clipboard.writeText(prompt)
     }
 
@@ -216,10 +235,10 @@ export function PublishDialog({isOpen, name, source, onClose}: PublishDialogProp
 
             {publishing && <div className="publish-progress" aria-live="polite">
                 <ProgressBar value={progressValue} animate stripes/>
-                <span>{progressLabel(progress.phase, progress.completed, progress.total)}</span>
+                <span>{progressLabel(progress.phase, progress.done, progress.total)}</span>
             </div>}
 
-            {entry && !expired && !publishing && <>
+            {entry?.last_release_hash && !expired && !publishing && <>
                 <Callout intent={Intent.SUCCESS} title="Your game is live">
                     <a data-testid="live-url" href={entry.preview_url} target="_blank" rel="noreferrer">{entry.preview_url}</a>
                 </Callout>
@@ -244,6 +263,9 @@ export function PublishDialog({isOpen, name, source, onClose}: PublishDialogProp
                         <Button data-testid="claim-game" type="submit" intent={Intent.SUCCESS} loading={claiming}>
                             {authMode === 'register' ? 'Register and claim' : 'Log in and claim'}
                         </Button>
+                        {showGoogleSignIn && <Button data-testid="google-sign-in" type="button">
+                            Continue with Google
+                        </Button>}
                     </form>
                 </>}
                 {entry.claimed && <Callout data-testid="claimed-notice" intent={Intent.SUCCESS}>
@@ -270,9 +292,9 @@ function availabilityFromReason(reason: string | undefined): Availability {
     return 'invalid'
 }
 
-function progressLabel(phase: string, completed: number, total: number): string {
-    const label = ({creating: 'Creating game', walking: 'Reading project', hashing: 'Preparing files', uploading: 'Uploading files', releasing: 'Creating release', complete: 'Published'} as Record<string, string>)[phase] || 'Publishing'
-    return total > 1 ? `${label}: ${completed} of ${total}` : label
+function progressLabel(phase: string, done: number, total: number): string {
+    const label = ({creating: 'Creating game', walking: 'Reading project', hashing: 'Preparing files', uploading: 'Uploading files', releasing: 'Creating release', verifying: 'Verifying live files', complete: 'Published'} as Record<string, string>)[phase] || 'Publishing'
+    return total > 1 ? `${label}: ${done} of ${total}` : label
 }
 
 function errorMessage(error: unknown): string {

@@ -29,6 +29,7 @@ import {checkBakeSafety, type BakeJournalEntry} from './bake.ts'
 import {appendSceneJournal} from './journal.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {readDeploys, writeDeploys} from './deploys.ts'
+import {sanitizeDiagnostic} from './api.ts'
 import type {PublishProgress} from './types.ts'
 import {BLITZ_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 
@@ -99,6 +100,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     let watcher: FSWatcher | undefined
     let closing = false
     let platformToken: string | undefined
+    let publishActive = false
     const backendUrl = (options.backendUrl || process.env.BLITZ_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, '')
     const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
 
@@ -166,6 +168,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 last_release_hash: entry.last_release_hash,
                 claimed: entry.claimed === true,
             })),
+            last_publish: deploys.last_publish,
         })
     })
     for (const mode of ['register', 'login'] as const) {
@@ -198,7 +201,13 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             body: JSON.stringify({secret: entry.claim_secret}),
         })
         const payload = await readBackendPayload(backendResponse)
-        if (!backendResponse.ok) return backendJson(backendResponse, payload)
+        if (!backendResponse.ok) {
+            const safePayload = JSON.parse(sanitizeDiagnostic(
+                JSON.stringify(payload),
+                [platformToken, entry.deploy_token, entry.claim_secret],
+            )) as unknown
+            return backendJson(backendResponse, safePayload)
+        }
         deploys.games[slug] = {...entry, claimed: true}
         await writeDeploys(projectDirectory, deploys)
         return jsonResponse(payload, backendResponse.status)
@@ -259,15 +268,38 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     app.post('/api/publish', async (c) => {
         if (!options.publish) return jsonResponse({error: {code: 'publish_unavailable', message: 'Publish is not configured.'}}, 501)
         const body = await readJsonBody(c.req.raw)
-        const result = await runServerMutation(() => options.publish!(
-            {
-                slug: typeof body.slug === 'string' ? body.slug : undefined,
-                name: typeof body.name === 'string' ? body.name : undefined,
-                message: typeof body.message === 'string' ? body.message : undefined,
-            },
-            (data) => { void broadcast('publish', data) },
-        ))
-        return jsonResponse(result)
+        if (publishActive) return jsonResponse({error: {code: 'publish_locked', message: 'Another publish is already running.'}}, 409)
+        publishActive = true
+        return streamSSE(c, async (stream) => {
+            let writes = Promise.resolve()
+            const writeEvent = (event: string, data: unknown) => {
+                writes = writes.then(() => stream.writeSSE({event, data: JSON.stringify(data)})).catch(() => undefined)
+            }
+            try {
+                const result = await runServerMutation(() => options.publish!(
+                    {
+                        slug: typeof body.slug === 'string' ? body.slug : undefined,
+                        name: typeof body.name === 'string' ? body.name : undefined,
+                        message: typeof body.message === 'string' ? body.message : undefined,
+                    },
+                    (data) => {
+                        writeEvent('publish:progress', data)
+                        void broadcast('publish:progress', data)
+                    },
+                ))
+                await writes
+                await stream.writeSSE({event: 'publish:result', data: JSON.stringify(result)})
+            } catch (error) {
+                await writes
+                await stream.writeSSE({event: 'publish:error', data: JSON.stringify({
+                    status: httpErrorStatus(error) ?? 500,
+                    code: httpErrorCode(error) ?? 'publish_failed',
+                    message: sanitizeDiagnostic(error instanceof Error ? error.message : error),
+                })})
+            } finally {
+                publishActive = false
+            }
+        })
     })
     app.post('/api/pull', async () => {
         if (!options.pull) return jsonResponse({error: {code: 'pull_unavailable', message: 'Pull is not configured.'}}, 501)

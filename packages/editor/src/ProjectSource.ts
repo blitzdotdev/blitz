@@ -11,7 +11,7 @@ export interface ProjectReadResult {
 }
 
 export interface ProjectEvent {
-    type: 'change' | 'add' | 'unlink' | 'publish' | 'command'
+    type: 'change' | 'add' | 'unlink' | 'publish:progress' | 'command'
     path?: string
     sha256?: string
     client?: string

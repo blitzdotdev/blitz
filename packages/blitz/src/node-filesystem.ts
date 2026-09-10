@@ -54,6 +54,7 @@ export class NodeProjectDirectory {
     async *values() {
         for (const entry of await readdir(this.directory, {withFileTypes: true})) {
             const target = this.child(entry.name)
+            if (entry.isSymbolicLink()) throw new Error(`The project contains a symlink: ${this.relativePath(target)}`)
             if (entry.isDirectory()) yield new NodeProjectDirectory(this.root, target)
             else if (entry.isFile()) yield this.fileHandle(target)
         }
@@ -91,6 +92,9 @@ export class NodeProjectDirectory {
         if (target !== this.root && !target.startsWith(`${this.root}${sep}`)) {
             throw new Error(`Path escapes project: ${target}`)
         }
+    }
+    private relativePath(target: string): string {
+        return target.slice(this.root.length + 1).replaceAll('\\', '/')
     }
 }
 
