@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os'
 import {afterEach, describe, expect, it} from 'vitest'
 import {selectProjectMigrations, upgradeProject} from '../src/commands.ts'
 import {checkProject} from '../src/check.ts'
+import {doctorProject, type DoctorResult} from '../src/doctor.ts'
 import {migrateLegacyProject} from '../src/legacy.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 
@@ -85,6 +86,99 @@ describe('upgradeProject', () => {
         },
     )
 
+    it.each([
+        ['@blitzdev/engine', 'file:../../blitz-packs/blitzdev-engine-0.12.0.tgz', 'dependencies', undefined,
+            `Removed @blitzdev/engine from dependencies; kite3d provides ${KITE3D_VERSION}.`],
+        ['@blitzdev/editor', 'link:../../blitz/packages/editor', 'devDependencies', undefined,
+            `Removed @blitzdev/editor from devDependencies; kite3d provides ${KITE3D_VERSION}.`],
+        ['@blitzdev/template', 'https://example.com/blitzdev-template-0.12.0.tgz', 'dependencies', undefined,
+            `Removed @blitzdev/template from dependencies; kite3d provides ${KITE3D_VERSION}.`],
+        ['@blitzdev/engine', '0.12.0', 'devDependencies', KITE3D_VERSION,
+            `Pinned @blitzdev/engine to ${KITE3D_VERSION} in devDependencies.`],
+        ['@blitzdev/editor', '^0.12.0', 'dependencies', KITE3D_VERSION,
+            `Pinned @blitzdev/editor to ${KITE3D_VERSION} in dependencies.`],
+    ] as const)(
+        'migrates direct package %s with specifier %s from %s',
+        async (packageName, specifier, section, expected, change) => {
+            const root = await legacyUpgradeFixture('0.12.2', 'devDependencies')
+            const packagePath = resolve(root, 'package.json')
+            const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
+                dependencies?: Record<string, string>
+                devDependencies?: Record<string, string>
+            }
+            packageJson[section] = {...packageJson[section], [packageName]: specifier}
+            await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
+
+            const changes = await migrateLegacyProject(root, KITE3D_VERSION)
+            const migrated = JSON.parse(await readFile(packagePath, 'utf8')) as typeof packageJson
+
+            expect(migrated[section]?.[packageName]).toBe(expected)
+            expect(changes).toContain(change)
+        },
+    )
+
+    it('aligns direct package entries during a normal targeted upgrade', async () => {
+        const root = await upgradeFixture()
+        const packagePath = resolve(root, 'package.json')
+        const packageJson = JSON.parse(await readFile(packagePath, 'utf8'))
+        packageJson.dependencies = {
+            '@blitzdev/editor': '^1.0.0',
+            '@blitzdev/template': 'https://example.com/blitzdev-template-1.0.0.tgz',
+        }
+        packageJson.devDependencies['@blitzdev/engine'] = 'file:../../packs/blitzdev-engine-1.0.0.tgz'
+        await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
+        const restorePath = await useFakeNpm(root)
+
+        let result: Awaited<ReturnType<typeof upgradeProject>>
+        try {
+            result = await upgradeProject(root, {to: '2.0.0'})
+        } finally {
+            restorePath()
+        }
+
+        expect(result.changes).toEqual([
+            'Pinned @blitzdev/editor to 2.0.0 in dependencies.',
+            'Removed @blitzdev/template from dependencies; kite3d provides 2.0.0.',
+            'Removed @blitzdev/engine from devDependencies; kite3d provides 2.0.0.',
+        ])
+        expect(JSON.parse(await readFile(packagePath, 'utf8'))).toMatchObject({
+            dependencies: {'@blitzdev/editor': '2.0.0'},
+            devDependencies: {kite3d: '2.0.0'},
+            kite3d: {version: '2.0.0'},
+        })
+        expect(JSON.parse(await readFile(packagePath, 'utf8')).dependencies)
+            .not.toHaveProperty('@blitzdev/template')
+        expect(JSON.parse(await readFile(packagePath, 'utf8')).devDependencies)
+            .not.toHaveProperty('@blitzdev/engine')
+    })
+
+    it('leaves matching packages for doctor after upgrading a four-pin tarball project', async () => {
+        const root = await fourPinLegacyUpgradeFixture()
+        const restorePath = await useFakeNpm(root, true)
+
+        try {
+            await upgradeProject(root)
+        } finally {
+            restorePath()
+        }
+
+        const result = await doctorProject(root, {
+            port: 0,
+            fetch: async () => new Response(null, {status: 503}),
+            checkPlaywright: async () => 'fixture browser',
+        })
+        expect(doctorRow(result, 'packages')).toEqual({
+            check: 'packages',
+            status: 'pass',
+            detail: [
+                `kite3d ${KITE3D_VERSION}`,
+                `@blitzdev/editor ${KITE3D_VERSION}`,
+                `@blitzdev/engine ${KITE3D_VERSION}`,
+                `@blitzdev/template ${KITE3D_VERSION}`,
+            ].join(', '),
+        })
+    })
+
     it('leaves the legacy project unchanged when an asset rewrite is not writable', async () => {
         const root = await legacyUpgradeFixture('0.12.2', 'devDependencies')
         const packagePath = resolve(root, 'package.json')
@@ -118,16 +212,68 @@ describe('upgradeProject', () => {
     })
 })
 
-async function useFakeNpm(root: string): Promise<() => void> {
+async function useFakeNpm(root: string, simulateInstall = false): Promise<() => void> {
     const bin = resolve(root, 'bin')
     await mkdir(bin)
-    await writeFile(resolve(bin, 'npm'), '#!/bin/sh\nexit 0\n')
+    const install = simulateInstall ? `
+import {mkdir, readFile, writeFile} from 'node:fs/promises'
+import {resolve} from 'node:path'
+const root = process.cwd()
+const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
+const target = manifest.devDependencies?.kite3d || manifest.dependencies?.kite3d
+for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine', '@blitzdev/template']) {
+    const direct = manifest.devDependencies?.[name] || manifest.dependencies?.[name]
+    const version = name !== 'kite3d' && direct?.startsWith('file:') ? '0.12.0' : target
+    const packageRoot = resolve(root, 'node_modules', name)
+    await mkdir(packageRoot, {recursive: true})
+    const packagePath = resolve(packageRoot, 'package.json')
+    const packageJson = JSON.parse(await readFile(packagePath, 'utf8').catch(() => '{}'))
+    await writeFile(packagePath, JSON.stringify({...packageJson, name, version}))
+}
+` : ''
+    await writeFile(resolve(bin, 'npm'), `#!/usr/bin/env node\n${install}`)
     await chmod(resolve(bin, 'npm'), 0o755)
     const originalPath = process.env.PATH
     process.env.PATH = `${bin}${delimiter}${originalPath || ''}`
     return () => {
         process.env.PATH = originalPath
     }
+}
+
+async function fourPinLegacyUpgradeFixture(): Promise<string> {
+    const root = await mkdtemp(resolve(import.meta.dirname, 'upgrade-four-pin-'))
+    roots.push(root)
+    await cp(resolve(import.meta.dirname, 'fixtures/legacy-four-pin-project'), root, {recursive: true})
+    await installRuntimeFixture(root, '0.12.0')
+    return root
+}
+
+async function installRuntimeFixture(root: string, version: string): Promise<void> {
+    for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine', '@blitzdev/template']) {
+        const packageRoot = resolve(root, 'node_modules', name)
+        await mkdir(packageRoot, {recursive: true})
+        await writeFile(resolve(packageRoot, 'package.json'), JSON.stringify({name, version}))
+    }
+    const engine = resolve(root, 'node_modules/@blitzdev/engine')
+    await writeFile(resolve(engine, 'package.json'), JSON.stringify({
+        name: '@blitzdev/engine',
+        version,
+        type: 'module',
+        exports: {
+            './package.json': './package.json',
+            './projectFormat': './projectFormat.js',
+            './migrations': './migrations.js',
+        },
+    }))
+    await writeFile(resolve(engine, 'projectFormat.js'), `
+export const parsePackageJSON = JSON.parse
+export const parseAssetsJSONManifest = JSON.parse
+export async function parsePackageJsonSettingsConfig() {}
+export function validateSceneSource(_path, text) {
+    if (!JSON.parse(text).asset) throw new Error('missing glTF asset')
+}
+`)
+    await writeFile(resolve(engine, 'migrations.js'), 'export const PROJECT_MIGRATIONS = []\n')
 }
 
 async function upgradeFixture(): Promise<string> {
@@ -191,4 +337,10 @@ async function legacyUpgradeFixture(
     packageJson[section] = {...packageJson[section], '@blitzdev/blitz': specifier}
     await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
     return root
+}
+
+function doctorRow(result: DoctorResult, check: DoctorResult['rows'][number]['check']) {
+    const found = result.rows.find((candidate) => candidate.check === check)
+    if (!found) throw new Error(`Missing doctor row ${check}`)
+    return found
 }
