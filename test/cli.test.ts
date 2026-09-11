@@ -132,8 +132,8 @@ describe('kite3d CLI', () => {
         await writeFile(resolve(bin, 'npm'), `#!/usr/bin/env node
 import {mkdir, symlink} from 'node:fs/promises'
 import {resolve} from 'node:path'
-await mkdir(resolve('node_modules/@blitzdev'), {recursive: true})
-await symlink(${JSON.stringify(resolve(import.meta.dirname, '../../engine'))}, resolve('node_modules/@blitzdev/engine'), 'dir')
+await mkdir(resolve('node_modules/@kite3d'), {recursive: true})
+await symlink(${JSON.stringify(resolve(import.meta.dirname, '../../engine'))}, resolve('node_modules/@kite3d/engine'), 'dir')
 `)
         await chmod(resolve(bin, 'npm'), 0o755)
 
@@ -616,7 +616,7 @@ async function installPackageVersion(root: string, version: string): Promise<voi
 }
 
 async function installEngine(root: string, version: string): Promise<void> {
-    const packageDirectory = resolve(root, 'node_modules/@blitzdev/engine')
+    const packageDirectory = resolve(root, 'node_modules/@kite3d/engine')
     await mkdir(resolve(packageDirectory, 'dist'), {recursive: true})
     await writeFile(resolve(packageDirectory, 'package.json'), JSON.stringify({version}))
     await writeFile(resolve(packageDirectory, 'dist/runtime.js'), 'installed test runtime')

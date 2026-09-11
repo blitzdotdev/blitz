@@ -1,6 +1,6 @@
 import {appendFile, mkdir, readFile} from 'node:fs/promises'
 import {dirname, resolve} from 'node:path'
-import {KITE3D_SERVER_CLIENT_ID, JOURNAL_PATH} from '@blitzdev/engine/paths'
+import {KITE3D_SERVER_CLIENT_ID, JOURNAL_PATH} from '@kite3d/engine/paths'
 import {diffSceneGltfText, type SceneDiff} from './scene-diff.ts'
 
 export interface JournalEntry {

@@ -61,7 +61,7 @@ packageJson.kite3d ||= {}
 packageJson.kite3d.version ||= runtimeVersion
 await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
 const dependencies = Object.entries(packageJson.dependencies || {}).map(([key, version]) => ({key, version}))
-const runtimeBytes = await readFile(resolve(project, 'node_modules/@blitzdev/engine/dist/runtime.js'))
+const runtimeBytes = await readFile(resolve(project, 'node_modules/@kite3d/engine/dist/runtime.js'))
 const runtimeHash = createHash('sha256').update(runtimeBytes).digest('hex')
 const html = generateIndexHtml({name: packageJson.name, version: runtimeVersion, runtimeHash, dependencies})
 await writeFile(resolve(project, 'index.html'), html)

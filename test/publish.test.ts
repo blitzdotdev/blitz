@@ -118,9 +118,9 @@ describe('generateIndexHtml', () => {
         const importMap = JSON.parse(importMapText || '{}') as {imports: Record<string, string>}
         expect(importMap.imports.threepipe).toBe('./_blitz/runtime.js')
         expect(importMap.imports.three).toBe('./_blitz/runtime.js')
-        expect(importMap.imports['@blitzdev/engine']).toBe('./_blitz/runtime.js')
+        expect(importMap.imports['@kite3d/engine']).toBe('./_blitz/runtime.js')
         expect(importMap.imports['extra-package']).toContain('https://esm.sh/extra-package@1.2.3?external=')
-        expect(importMap.imports['extra-package']).toContain('threepipe,three,uiconfig.js,ts-browser-helpers,@blitzdev/engine,extra-package')
+        expect(importMap.imports['extra-package']).toContain('threepipe,three,uiconfig.js,ts-browser-helpers,@kite3d/engine,extra-package')
         expect(html).toContain("import {createGame} from './_blitz/runtime.js'")
         expect(html).toContain("base:new URL('./',location.href).href")
         expect(html).not.toContain('"/_blitz/runtime.js"')
@@ -135,16 +135,16 @@ describe('generateIndexHtml', () => {
             version: KITE3D_VERSION,
             runtimeHash: 'abc123',
             dependencies: [
-                {key: '@blitzdev/engine', version: 'file:../../packs/engine.tgz'},
-                {key: '@blitzdev/editor', version: 'file:../../packs/editor.tgz'},
+                {key: '@kite3d/engine', version: 'file:../../packs/engine.tgz'},
+                {key: '@kite3d/editor', version: 'file:../../packs/editor.tgz'},
                 {key: 'local-tools', version: 'file:../tools'},
                 {key: 'extra-package', version: '^1.2.3'},
             ],
         })
         const importMap = readImportMap(html)
 
-        expect(importMap.imports['@blitzdev/engine']).toBe('./_blitz/runtime.js')
-        expect(importMap.imports).not.toHaveProperty('@blitzdev/editor')
+        expect(importMap.imports['@kite3d/engine']).toBe('./_blitz/runtime.js')
+        expect(importMap.imports).not.toHaveProperty('@kite3d/editor')
         expect(importMap.imports).not.toHaveProperty('local-tools')
         expect(JSON.stringify(importMap)).not.toContain('../../packs')
     })
@@ -322,7 +322,7 @@ describe('publishProject', () => {
     it('publishes installed runtime bytes and only uses the registry for a mismatch warning', async () => {
         const root = sampleProject()
         installEngine(root, KITE3D_VERSION, 'new local runtime with Generator')
-        const localRuntime = await root.file('node_modules/@blitzdev/engine/dist/runtime.js')
+        const localRuntime = await root.file('node_modules/@kite3d/engine/dist/runtime.js')
         const localHash = await sha256(localRuntime)
         const {api, backend} = await testApi()
         const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -344,7 +344,7 @@ describe('publishProject', () => {
 
     it('accepts an installed runtime hash found anywhere in the version registry list', async () => {
         const root = sampleProject()
-        const localHash = await sha256(await root.file('node_modules/@blitzdev/engine/dist/runtime.js'))
+        const localHash = await sha256(await root.file('node_modules/@kite3d/engine/dist/runtime.js'))
         const {api} = await testApi({runtimeHashes: ['f'.repeat(64), localHash]})
         const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
@@ -735,8 +735,8 @@ function sampleProject(): FakeDirectory {
 }
 
 function installEngine(root: FakeDirectory, version: string, runtime: string): void {
-    root.set('node_modules/@blitzdev/engine/package.json', JSON.stringify({version}))
-    root.set('node_modules/@blitzdev/engine/dist/runtime.js', runtime)
+    root.set('node_modules/@kite3d/engine/package.json', JSON.stringify({version}))
+    root.set('node_modules/@kite3d/engine/dist/runtime.js', runtime)
 }
 
 async function testApi(options: Parameters<typeof startMockBackend>[0] = {}) {
@@ -788,7 +788,7 @@ async function diskProject(): Promise<string> {
 }
 
 async function installDiskEngine(root: string): Promise<void> {
-    const engine = resolve(root, 'node_modules/@blitzdev/engine')
+    const engine = resolve(root, 'node_modules/@kite3d/engine')
     await mkdir(resolve(engine, 'dist'), {recursive: true})
     await writeFile(resolve(engine, 'package.json'), JSON.stringify({version: KITE3D_VERSION}))
     await writeFile(resolve(engine, 'dist/runtime.js'), 'mock Kite3D runtime')

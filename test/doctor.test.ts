@@ -98,9 +98,9 @@ describe('kite3d doctor', () => {
             .toMatchObject({status: 'pass', detail: expect.stringContaining(`^${KITE3D_VERSION}`)})
     })
 
-    it('fails the packages row for missing or mixed @blitzdev versions', async () => {
+    it('fails the packages row for missing or mixed @kite3d versions', async () => {
         const fixture = await readyProject()
-        await writeFile(resolve(fixture.root, 'node_modules/@blitzdev/editor/package.json'), JSON.stringify({version: '9.9.9'}))
+        await writeFile(resolve(fixture.root, 'node_modules/@kite3d/editor/package.json'), JSON.stringify({version: '9.9.9'}))
 
         expect(row(await runDoctor(fixture.root, fixture.backendUrl), 'packages'))
             .toMatchObject({status: 'fail', detail: expect.stringContaining('do not match')})
@@ -261,13 +261,13 @@ async function readyProject(options: {registeredRuntime?: boolean, git?: boolean
     }
     await initProject(root, {git: options.parentGit ? false : options.git !== false})
     const runtime = Buffer.from('doctor fixture runtime')
-    for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine']) {
+    for (const name of ['kite3d', '@kite3d/editor', '@kite3d/engine']) {
         const packageRoot = resolve(root, `node_modules/${name}`)
         await mkdir(packageRoot, {recursive: true})
         await writeFile(resolve(packageRoot, 'package.json'), JSON.stringify({version: KITE3D_VERSION}))
     }
-    await mkdir(resolve(root, 'node_modules/@blitzdev/engine/dist'), {recursive: true})
-    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/dist/runtime.js'), runtime)
+    await mkdir(resolve(root, 'node_modules/@kite3d/engine/dist'), {recursive: true})
+    await writeFile(resolve(root, 'node_modules/@kite3d/engine/dist/runtime.js'), runtime)
     const backend = await startMockBackend({
         runtimeHashes: options.registeredRuntime === false
             ? ['f'.repeat(64)]

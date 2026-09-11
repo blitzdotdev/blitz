@@ -592,9 +592,9 @@ async function loadInstalledRuntime(projectRoot: string): Promise<{
     const projectRequire = createRequire(resolve(projectRoot, 'package.json'))
     let manifestPath: string
     try {
-        manifestPath = projectRequire.resolve('@blitzdev/engine/package.json')
+        manifestPath = projectRequire.resolve('@kite3d/engine/package.json')
     } catch {
-        manifestPath = commandRequire.resolve('@blitzdev/engine/package.json')
+        manifestPath = commandRequire.resolve('@kite3d/engine/package.json')
     }
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
         exports?: Record<string, string | {import?: string, default?: string}>
@@ -602,7 +602,7 @@ async function loadInstalledRuntime(projectRoot: string): Promise<{
     const resolveExport = (name: string): string => {
         const entry = manifest.exports?.[`./${name}`]
         const target = typeof entry === 'string' ? entry : entry?.import || entry?.default
-        if (!target) throw new Error(`@blitzdev/engine does not export ./${name}`)
+        if (!target) throw new Error(`@kite3d/engine does not export ./${name}`)
         return resolve(dirname(manifestPath), target)
     }
     const cacheKey = `upgrade=${Date.now()}`

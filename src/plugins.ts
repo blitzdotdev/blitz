@@ -1,5 +1,5 @@
-import type {InstalledPluginImport} from '@blitzdev/engine/importMap'
-import {projectPluginNames} from '@blitzdev/engine/importMap'
+import type {InstalledPluginImport} from '@kite3d/engine/importMap'
+import {projectPluginNames} from '@kite3d/engine/importMap'
 import type {ProjectEntry} from './types.ts'
 
 export const DEVELOPMENT_PLUGIN_URL = '/kite3d/plugins/'
