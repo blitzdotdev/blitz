@@ -19,11 +19,12 @@ Open, Apache-2.0 to match threepipe and uiconfig-blueprint:
 | Package | Contents | Ships |
 |---|---|---|
 | `@blitzdev/engine` | the runtime: `createGame`, project format, loaders, scripting API, game plugins such as physics, HTML UI, and later the `Generator` component. Depends on `threepipe`. | `dist/`, `src/`, source maps |
-| `@blitzdev/editor` | the editor app. React and uiconfig-blueprint. Built to static files that `kite3d dev` serves. | `dist/`, `src/`, source maps |
-| `kite3d` | the `kite3d` command: `init`, `dev`, `publish`, `pull`, `open`. Depends on engine and editor. | `dist/`, `src/` |
-| `@blitzdev/template` | the new-project files: package.json, AGENTS.md, sample scripts. Used by `kite3d init`. | files |
+| `@blitzdev/editor` | the editor app. React and its nested uiconfig-blueprint source. Built to static files that `kite3d dev` serves. | `dist/`, `src/`, source maps |
+| `kite3d` | the `kite3d` command: `init`, `dev`, `publish`, `pull`, `open`. Depends on engine and editor. | `dist/`, `src/`, `template/` |
 
-Upstream, consumed from npm and improved by pull requests: `threepipe` and `uiconfig-blueprint`, both Apache-2.0 by repalash. The monorepo vendors them as subtrees only while local changes exist.
+The new-project files live in `packages/kite3d/template/` and ship inside the `kite3d` tarball.
+
+Upstream, consumed from npm and improved by pull requests: `threepipe` and `uiconfig-blueprint`, both Apache-2.0 by repalash. The monorepo vendors `threepipe` as a shared workspace and resolves `uiconfig-blueprint` from editor-only nested source while local changes exist.
 
 Closed, the cloud, like PlayCanvas's backend: `services/backend` (API and store), `services/game-gateway`, `services/asset-library-proxy`.
 
@@ -53,5 +54,5 @@ The editor code comes from repalash's private `threepipe-blueprint-editor`. Conf
 
 - `packages/editor` becomes `packages/editor` and gets a publishable package.json.
 - `packages/engine` is created from `packages/editor/src/runtime`, `src/plugins`, and the runtime-only utils. Phase A already isolated `src/runtime` from React and UI code.
-- `packages/kite3d` and `packages/template` are new.
+- `packages/kite3d` is new and owns its starter template.
 - There is no hosted editor. The `kite3d-editor` worker on workers.dev is a test artifact from today and goes away after C1.

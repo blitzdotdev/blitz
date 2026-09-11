@@ -11,7 +11,6 @@ const repositoryDirectory = resolve(import.meta.dirname, '..')
 const manifestPaths = [
     'package.json',
     'packages/engine/package.json',
-    'packages/template/package.json',
     'packages/editor/package.json',
     'packages/kite3d/package.json',
 ]
@@ -42,7 +41,9 @@ test('rewrites copied manifests and exact internal pins', async () => {
         assert.equal(manifest.version, '0.12.1')
         for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
             for (const [name, version] of Object.entries(manifest[section] ?? {})) {
-                if (name === 'kite3d' || name.startsWith('@blitzdev/')) assert.equal(version, '0.12.1')
+                if (['kite3d', '@blitzdev/engine', '@blitzdev/editor'].includes(name)) {
+                    assert.equal(version, '0.12.1')
+                }
             }
         }
     }

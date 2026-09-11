@@ -10,8 +10,9 @@ import {registerRuntime} from './register-runtime.mjs'
 import {uploadAgentsMd} from './upload-agents-md.mjs'
 
 const repositoryDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const publishOrder = ['engine', 'template', 'editor', 'kite3d']
-const isLockstepPackage = name => name === 'kite3d' || name.startsWith('@blitzdev/')
+const publishOrder = ['engine', 'editor', 'kite3d']
+const lockstepPackages = new Set(['@blitzdev/engine', '@blitzdev/editor', 'kite3d'])
+const isLockstepPackage = name => lockstepPackages.has(name)
 
 function run(command, args, {environment = process.env, capture = false, allowFailure = false} = {}) {
     try {
@@ -125,7 +126,7 @@ function finishTag(version, branch, dryRun, registered) {
 async function release() {
     const {dryRun, register} = parseArguments(process.argv.slice(2))
     await copyFile(
-        resolve(repositoryDirectory, 'packages/template/template/AGENTS.md'),
+        resolve(repositoryDirectory, 'packages/kite3d/template/AGENTS.md'),
         resolve(repositoryDirectory, 'docs/agents.md'),
     )
     const version = await validateLockstepVersion()

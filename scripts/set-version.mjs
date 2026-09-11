@@ -7,10 +7,10 @@ import {fileURLToPath} from 'node:url'
 
 const publishableManifests = [
     'packages/engine/package.json',
-    'packages/template/package.json',
     'packages/editor/package.json',
     'packages/kite3d/package.json',
 ]
+const lockstepPackages = new Set(['@blitzdev/engine', '@blitzdev/editor', 'kite3d'])
 const dependencySections = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 
@@ -54,7 +54,7 @@ export async function rewriteManifests(repositoryDirectory, newVersion) {
         for (const section of dependencySections) {
             if (!manifest[section]) continue
             for (const dependency of Object.keys(manifest[section])) {
-                if (dependency === 'kite3d' || dependency.startsWith('@blitzdev/')) {
+                if (lockstepPackages.has(dependency)) {
                     manifest[section][dependency] = newVersion
                 }
             }

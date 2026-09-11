@@ -67,8 +67,8 @@ Run `npx kite3d` with no argument for the full list.
 | [`kite3d`](packages/kite3d) | The `kite3d` command: local server, checks, checkpoints, publish |
 | [`@blitzdev/engine`](packages/engine) | UI-free runtime, project format, scripting helpers, game plugins |
 | [`@blitzdev/editor`](packages/editor) | The React editor served by `kite3d dev` |
-| [`@blitzdev/template`](packages/template) | The files `kite3d init` copies |
-| `packages/threepipe`, `packages/uiconfig-blueprint` | Vendored upstream source |
+| [`packages/kite3d/template`](packages/kite3d/template) | Starter files bundled in `kite3d` and copied by `kite3d init` |
+| `packages/threepipe`, [`packages/editor/uiconfig-blueprint`](packages/editor/uiconfig-blueprint) | Vendored upstream source |
 
 Everything is Apache-2.0 and ships its source, so an agent can grep `node_modules` when the guide is not enough. Built on [threepipe](https://threepipe.org).
 

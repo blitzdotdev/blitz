@@ -13,17 +13,17 @@ Outside a project, `npx kite3d` runs Kite3D.js, an unrelated package with the sa
 
 ## Testing unreleased changes from this machine
 
-To test a build of `main` that is not published yet, pack the four packages into local tarballs after each merge:
+To test a build of `main` that is not published yet, pack the three packages into local tarballs after each merge:
 
 ```sh
-npm run build && rm -rf /Users/minjunes/kite3d-packs && mkdir -p /Users/minjunes/kite3d-packs && for p in engine editor kite3d template; do npm pack --silent --pack-destination /Users/minjunes/kite3d-packs ./packages/$p; done
+npm run build && rm -rf /Users/minjunes/kite3d-packs && mkdir -p /Users/minjunes/kite3d-packs && for p in engine editor kite3d; do npm pack --silent --pack-destination /Users/minjunes/kite3d-packs ./packages/$p; done
 ```
 
 For an unreleased test, give the agent these local setup commands in place of the public package command:
 
 ```
 node /Users/minjunes/blitz/packages/kite3d/dist/cli.js init fps-practice && cd fps-practice
-npm install --save-dev --ignore-scripts --install-links --cache /tmp/kite3d-npm-cache /Users/minjunes/kite3d-packs/*.tgz
+npm install --no-save --ignore-scripts --install-links --cache /tmp/kite3d-npm-cache /Users/minjunes/kite3d-packs/*.tgz
 (do not run a plain npm install; the file: pins resolve from the installed package versions)
 ```
 

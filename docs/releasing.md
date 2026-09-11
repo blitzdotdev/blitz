@@ -1,6 +1,6 @@
 # Releasing Kite3D
 
-The four public packages (`@blitzdev/engine`, `@blitzdev/template`, `@blitzdev/editor`, and `kite3d`) always share one version. Every dependency between them is an exact pin to that version. A `kite3d` version therefore identifies exactly one engine, editor, and template version. The vendored `threepipe` and `uiconfig-blueprint` workspaces are not published.
+The three public packages (`@blitzdev/engine`, `@blitzdev/editor`, and `kite3d`) always share one version. Every dependency between them is an exact pin to that version. A `kite3d` version therefore identifies exactly one engine and editor version, plus the starter template bundled in that CLI. The vendored `threepipe` workspace is not published, and the editor-only `uiconfig-blueprint` source is excluded from the editor tarball.
 
 ## Commands
 
@@ -34,4 +34,4 @@ GitHub Actions and laptop releases use `NPM_TOKEN`, `RUNTIME_UPLOAD_TOKEN`, and 
 
 ## Laptop fallback
 
-From a clean `main` or release branch, install with Node 22, run `npm run release:dry`, export `NPM_TOKEN`, and make sure `.env.local` contains `RUNTIME_UPLOAD_TOKEN` and `BLITZ_BACKEND_URL=https://blitz.dev`. Then run `npm run release`. The command publishes engine, template, editor, and CLI in dependency order, registers `packages/engine/dist/runtime.js`, uploads `docs/agents.md`, creates `vX.Y.Z`, and prints the `git push` command without running it. The upload verifies both the API response hash and the public `/agents.md` ETag.
+From a clean `main` or release branch, install with Node 22, run `npm run release:dry`, export `NPM_TOKEN`, and make sure `.env.local` contains `RUNTIME_UPLOAD_TOKEN` and `BLITZ_BACKEND_URL=https://blitz.dev`. Then run `npm run release`. The command publishes engine, editor, and CLI in dependency order, registers `packages/engine/dist/runtime.js`, copies `packages/kite3d/template/AGENTS.md` to `docs/agents.md`, uploads that guide, creates `vX.Y.Z`, and prints the `git push` command without running it. The upload verifies both the API response hash and the public `/agents.md` ETag.
