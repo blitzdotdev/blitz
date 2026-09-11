@@ -1,6 +1,6 @@
 {
   "name": "@blitzdev/editor",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "type": "module",
   "license": "Apache-2.0",
   "files": [
@@ -22,7 +22,7 @@
     "@blueprintjs/colors": "5.1.9",
     "@blueprintjs/core": "^5.19.1",
     "@blueprintjs/select": "^5.3.21",
-    "@blitzdev/engine": "0.13.0",
+    "@blitzdev/engine": "0.13.1",
     "@tanstack/query-db-collection": "^1.0.6",
     "@tanstack/react-db": "^0.1.55",
     "@tanstack/react-query": "^5.90.12",
