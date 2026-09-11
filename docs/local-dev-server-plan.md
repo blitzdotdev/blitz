@@ -59,7 +59,7 @@ The editor runs only from `kite3d dev`. There is no editor on any domain and no 
 
 ## Phases
 
-**C1. `kite3d`, server, editor source, packages.** `kite3d` with `init`, `dev`, `publish`, `pull`, `open`. `packages/engine` extracted, `packages/editor` moved to `packages/editor`, `packages/template`. The editor on `DevServerSource`, the deletions above, play mode through `createGame`. Tests: server unit and integration, and an editor Playwright suite that runs against a real dev server. The editor E2E becomes fully automatable, because no folder picker is involved.
+**C1. `kite3d`, server, editor source, packages.** `kite3d` with `init`, `dev`, `publish`, `pull`, `open`. `packages/engine` extracted, `packages/editor` moved to `packages/editor`, and the starter moved to `packages/kite3d/template`. The editor on `DevServerSource`, the deletions above, play mode through `createGame`. Tests: server unit and integration, and an editor Playwright suite that runs against a real dev server. The editor E2E becomes fully automatable, because no folder picker is involved.
 
 **C2. Dialog and scene model.** The publish and claim dialog in the local editor, calling `/api/publish` on the local server. Then the glTF source of truth, the `Generator` component, and scoped bake from the review, section 7, item 8.
 

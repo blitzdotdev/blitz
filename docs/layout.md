@@ -17,14 +17,14 @@ kite3d/
     layout.md, local-dev-server-plan.md, open-source-split.md, storefront-plan.md, e2e-test-plan.md
   packages/
     engine/                    @blitzdev/engine     runtime, project format, scripting API, game plugins
-    editor/                    @blitzdev/editor     the editor app; from packages/editor
-    kite3d/                     kite3d      bin `kite3d`: init, dev, publish, pull, open; the local server
-    template/                  @blitzdev/template   files written by `kite3d init`
+    editor/                    @blitzdev/editor     the editor app
+      uiconfig-blueprint/      editor-only vendored upstream source; resolved by editor aliases, not published
+    kite3d/                    kite3d               bin `kite3d`: init, dev, publish, pull, open; the local server
+      template/                                     files written by `kite3d init`; shipped inside the CLI
     threepipe/                 vendored upstream subtree; drop once a build against npm threepipe passes
-    uiconfig-blueprint/        vendored upstream subtree; drop once a build against npm passes
 ```
 
-Package dependencies: `kite3d` -> `engine`, `editor`, `template`. `editor` -> `engine`. `engine` -> `threepipe`, `uiconfig.js`, `ts-browser-helpers`, `cannon-es`, the `@threepipe/*` plugins it bundles. Every package ships `src/`, `dist/`, and source maps.
+Package dependencies: `kite3d` -> `engine`, `editor`. `editor` -> `engine`, `uiconfig-blueprint`. `engine` -> `threepipe`, `uiconfig.js`, `ts-browser-helpers`, `cannon-es`, the `@threepipe/*` plugins it bundles. The three published packages ship their source and built output; `kite3d` also ships its starter template. The root build compiles the unchanged nested `uiconfig-blueprint` source, and editor Vite aliases resolve that local output and stylesheet. The editor's `files` allowlist excludes the vendored tree from its tarball.
 
 Tests that live here: engine unit tests, the runtime Playwright test, the `kite3d` server tests, and the editor Playwright suite that runs against a real `kite3d dev`.
 
@@ -80,5 +80,5 @@ Not in the engine, and why:
 - `AssetTracker.ts`, `assetTrackerUtils.ts`: editor-side asset instance tracking and override UI. The runtime port in `nestedAssets.ts` covers loading.
 - `ScriptUtil.ts` hot reload, `modules.ts`: editor and dev-server concerns.
 - `FetchProxy.ts`, `FileTracker.ts`, `fsImporter.ts`, `fsApi.ts`, `BrowserFileStore.ts`, `AssetsProvider.ts`, `public/fs-sw.js`: deleted in C1 with the File System Access approach.
-- `projectTemplates.ts`, `AgentsMdTemplate.md`: become `@blitzdev/template`.
+- `projectTemplates.ts`, `AgentsMdTemplate.md`: become the template bundled in `kite3d`.
 - Everything React, Blueprint, and uiconfig-blueprint: the editor.
