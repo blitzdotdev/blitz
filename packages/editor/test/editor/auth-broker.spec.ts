@@ -12,7 +12,7 @@ test('creates independent 32-byte state and verifier values', async () => {
     for (let index = 0; index < 64; index += 1) {
         const request = await createEditorAuthRequest()
         for (const value of [request.state, request.codeVerifier, request.codeChallenge]) {
-            expect(value).toMatch(/^[A-Za-z0-9_-]{42}[AQgw]$/)
+            expectCanonical32ByteBase64url(value)
         }
         expect(request.state).not.toBe(request.codeVerifier)
         expect(request.codeChallenge).toBe(await s256Challenge(request.codeVerifier))
@@ -108,4 +108,16 @@ function fakePopup(): Window {
         closed: false,
         close() { this.closed = true },
     } as unknown as Window
+}
+
+function expectCanonical32ByteBase64url(value: string): void {
+    expect(value).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '='
+    const decoded = Uint8Array.from(atob(padded), character => character.charCodeAt(0))
+    expect(decoded).toHaveLength(32)
+    const reencoded = btoa(String.fromCharCode(...decoded))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '')
+    expect(reencoded).toBe(value)
 }
