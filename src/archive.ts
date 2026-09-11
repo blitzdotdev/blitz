@@ -6,7 +6,7 @@ import {gitHead} from './git.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {publishExcludes} from './publish.ts'
 
-const KITE3D_PACKAGES = ['kite3d', 'editor', 'engine', 'template'] as const
+const KITE3D_PACKAGES = ['kite3d', 'editor', 'engine'] as const
 
 export interface ArchiveResult {
     path: string

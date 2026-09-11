@@ -185,7 +185,6 @@ describe('upgradeProject', () => {
                 `kite3d ${KITE3D_VERSION}`,
                 `@blitzdev/editor ${KITE3D_VERSION}`,
                 `@blitzdev/engine ${KITE3D_VERSION}`,
-                `@blitzdev/template ${KITE3D_VERSION}`,
             ].join(', '),
         })
     })
@@ -260,7 +259,7 @@ await writeFile(resolve(root, 'install-state.json'), JSON.stringify(existing))
 await rm(resolve(root, 'node_modules'), {recursive: true, force: true})
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const target = manifest.devDependencies?.kite3d || manifest.dependencies?.kite3d
-for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine', '@blitzdev/template']) {
+for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine']) {
     const direct = manifest.devDependencies?.[name] || manifest.dependencies?.[name]
     const version = name !== 'kite3d' && direct?.startsWith('file:') ? '0.12.0' : target
     const packageRoot = name === 'kite3d' || ${layout !== 'nested'}
@@ -313,7 +312,7 @@ async function fourPinLegacyUpgradeFixture(): Promise<string> {
 }
 
 async function installRuntimeFixture(root: string, version: string): Promise<void> {
-    for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine', '@blitzdev/template']) {
+    for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine']) {
         const packageRoot = resolve(root, 'node_modules', name)
         await mkdir(packageRoot, {recursive: true})
         await writeFile(resolve(packageRoot, 'package.json'), JSON.stringify({name, version}))

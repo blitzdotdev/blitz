@@ -18,7 +18,7 @@ describe('initProject', () => {
         const target = resolve(parent, 'My Project')
         await initProject(target)
 
-        const templateRoot = resolve('../template/template')
+        const templateRoot = resolve('template')
         const templateFiles = await filesUnder(templateRoot)
         const targetFiles = (await filesUnder(target)).filter((path) => !path.startsWith('.git/'))
         const expected = templateFiles.map((path) => path === 'gitignore' ? '.gitignore' : path).sort()

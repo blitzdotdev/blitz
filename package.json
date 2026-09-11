@@ -1,6 +1,6 @@
 {
   "name": "kite3d",
-  "version": "0.13.2",
+  "version": "0.14.0",
   "description": "The Kite3D command and secure localhost development server.",
   "type": "module",
   "license": "Apache-2.0",
@@ -18,7 +18,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "template"
   ],
   "engines": {
     "node": ">=20"
@@ -26,14 +27,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src test --ext ts --report-unused-disable-directives --max-warnings 0",
+    "lint": "eslint src test --ext ts --report-unused-disable-directives --max-warnings 0 && eslint template --ext js --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
     "test:publish": "vitest run test/publish.test.ts"
   },
   "dependencies": {
-    "@blitzdev/editor": "0.13.2",
-    "@blitzdev/engine": "0.13.2",
-    "@blitzdev/template": "0.13.2",
+    "@blitzdev/editor": "0.14.0",
+    "@blitzdev/engine": "0.14.0",
     "@hono/node-server": "^1.19.17",
     "es-module-lexer": "^3.0.2",
     "fflate": "^0.8.2",
