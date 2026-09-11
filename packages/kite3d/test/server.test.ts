@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto'
-import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises'
+import {mkdtemp, mkdir, open, readFile, rm, stat, writeFile} from 'node:fs/promises'
 import {createServer as createHttpServer, request} from 'node:http'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
@@ -551,11 +551,78 @@ describe('Kite3D dev server', () => {
         }])
 
         await writeFile(scenePath, JSON.stringify({asset: {version: '2.0'}, nodes: [{name: 'Agent node'}]}))
-        await expect.poll(async () => (await readJournalLines(journalPath)).length, {timeout: 10_000}).toBe(2)
+        await expect.poll(async () => (await readJournalLines(journalPath)).length, {timeout: 3_000}).toBe(2)
         expect(await readJournalLines(journalPath)).toMatchObject([
             {client: 'editor-journal-test'},
             {client: 'external'},
         ])
+    })
+
+    it('settles split external scene writes before journaling', async () => {
+        const {root} = await startServer()
+        const scenePath = resolve(root, 'assets/main.scene.gltf')
+        const journalPath = resolve(root, '.kite3d/journal.jsonl')
+        const scene = JSON.stringify({
+            asset: {version: '2.0'},
+            nodes: [{name: 'Authored triangle', mesh: 0}, {name: 'Agent node'}],
+        })
+        const handle = await open(scenePath, 'w')
+        await new Promise((resolveWait) => setTimeout(resolveWait, 300))
+        await handle.writeFile(scene)
+        await handle.close()
+
+        await expect.poll(async () => (await readJournalLines(journalPath)).some((entry) =>
+            entry.client === 'external' && JSON.stringify(entry).includes('Agent node'),
+        ), {timeout: 3_000}).toBe(true)
+        await new Promise((resolveWait) => setTimeout(resolveWait, 300))
+        const externalEntries = (await readJournalLines(journalPath)).filter(({client}) => client === 'external')
+        expect.soft(externalEntries).toHaveLength(1)
+        expect.soft(externalEntries[0]).toMatchObject({
+            summary: {nodesAdded: [{name: 'Agent node'}]},
+        })
+        expect.soft(externalEntries.some(journalEntryHasErrors)).toBe(false)
+    })
+
+    it('keeps invalid watcher states out of later server scene diffs', async () => {
+        const root = await temporaryProject()
+        const scenePath = resolve(root, 'assets/main.scene.gltf')
+        const journalPath = resolve(root, '.kite3d/journal.jsonl')
+        const externalScene = {asset: {version: '2.0'}, nodes: [{name: 'Agent node'}]}
+        await writeFile(scenePath, JSON.stringify(externalScene))
+        const server = await createDevServer({
+            projectRoot: root,
+            port: 0,
+            pull: async () => {
+                await writeFile(scenePath, JSON.stringify({
+                    ...externalScene,
+                    nodes: [...externalScene.nodes, {name: 'API node'}],
+                }))
+                return {release_hash: 'release', updated: ['assets/main.scene.gltf']}
+            },
+        })
+        cleanup.push(() => server.close())
+        const headers = {'X-Kite3D-Token': server.token}
+        const controller = new AbortController()
+        const eventsResponse = await fetch(`${base(server)}/api/events`, {headers, signal: controller.signal})
+        const eventPromise = readEvent(eventsResponse, controller, 'assets/main.scene.gltf')
+
+        const handle = await open(scenePath, 'w')
+        await new Promise((resolveWait) => setTimeout(resolveWait, 300))
+        await handle.close()
+        await eventPromise
+
+        const pulled = await fetch(`${base(server)}/api/pull`, {method: 'POST', headers})
+        expect(pulled.status).toBe(200)
+        await expect.poll(async () => (await readJournalLines(journalPath)).some(({client}) =>
+            client === KITE3D_SERVER_CLIENT_ID,
+        ), {timeout: 3_000}).toBe(true)
+        await new Promise((resolveWait) => setTimeout(resolveWait, 300))
+        const entries = await readJournalLines(journalPath)
+        expect.soft(entries.filter(({client}) => client === 'external')).toEqual([])
+        expect.soft(entries.filter(({client}) => client === KITE3D_SERVER_CLIENT_ID)).toMatchObject([{
+            summary: {nodesAdded: [{name: 'API node'}]},
+        }])
+        expect.soft(entries.some(journalEntryHasErrors)).toBe(false)
     })
 })
 
@@ -593,6 +660,10 @@ async function readJournalLines(path: string): Promise<Array<Record<string, unkn
     } catch {
         return []
     }
+}
+
+function journalEntryHasErrors(entry: Record<string, unknown>): boolean {
+    return typeof entry.summary === 'object' && entry.summary !== null && 'errors' in entry.summary
 }
 
 function parseSse(value: string): Array<{event: string, data: Record<string, unknown>}> {
