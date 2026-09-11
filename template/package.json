@@ -1,0 +1,18 @@
+{
+  "name": "__KITE3D_PROJECT_NAME__",
+  "private": true,
+  "type": "module",
+  "mainScene": "assets/main.scene.gltf",
+  "main": "./main.js",
+  "scripts": {
+    "dev": "kite3d dev",
+    "publish": "kite3d publish",
+    "pull": "kite3d pull"
+  },
+  "devDependencies": {
+    "kite3d": "__KITE3D_VERSION__"
+  },
+  "kite3d": {
+    "version": "__KITE3D_VERSION__"
+  }
+}
