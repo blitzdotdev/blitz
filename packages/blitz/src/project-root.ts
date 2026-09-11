@@ -1,4 +1,4 @@
-import {access, readFile} from 'node:fs/promises'
+import {access, readFile, readdir} from 'node:fs/promises'
 import {resolve} from 'node:path'
 
 const BLITZ_PACKAGE = '@blitzdev/blitz'
@@ -6,17 +6,42 @@ const MAIN_SCENE = 'assets/main.scene.gltf'
 
 export async function assertBlitzProjectRoot(root = process.cwd()): Promise<void> {
     const missing: string[] = []
-    if (!await hasBlitzDependency(root)) {
+    const hasDependency = await hasBlitzDependency(root)
+    const hasMainScene = await exists(resolve(root, MAIN_SCENE))
+    if (!hasDependency) {
         missing.push(`package.json with an ${BLITZ_PACKAGE} dependency`)
     }
-    if (!await exists(resolve(root, MAIN_SCENE))) missing.push(MAIN_SCENE)
+    if (!hasMainScene) missing.push(MAIN_SCENE)
     if (!missing.length) return
 
+    const childProjects = await findChildBlitzProjects(root)
+    const suggestions = childProjects.length
+        ? `\nBlitz projects in child directories:\n${childProjects.map((name) => `  cd ${name} && npx blitz dev`).join('\n')}`
+        : ''
     throw new Error(
-        `Not a Blitz project root: missing ${joinMissing(missing)}. `
+        `This folder is not a Blitz project: missing ${joinMissing(missing)}. `
         + 'cd into a Blitz project or run blitz init. '
-        + 'Start with: npx @blitzdev/blitz init my-game',
+        + 'Start with: npx @blitzdev/blitz init my-game'
+        + suggestions,
     )
+}
+
+export async function isBlitzProjectRoot(root: string): Promise<boolean> {
+    return await hasBlitzDependency(root) && await exists(resolve(root, MAIN_SCENE))
+}
+
+async function findChildBlitzProjects(root: string): Promise<string[]> {
+    const projects: string[] = []
+    const entries = await readdir(root, {withFileTypes: true}).catch((error: unknown) => {
+        if (isMissing(error)) return []
+        throw error
+    })
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+        if (!entry.isDirectory() || !await isBlitzProjectRoot(resolve(root, entry.name))) continue
+        projects.push(entry.name)
+        if (projects.length === 5) break
+    }
+    return projects
 }
 
 async function hasBlitzDependency(root: string): Promise<boolean> {

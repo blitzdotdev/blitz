@@ -12,7 +12,7 @@ import {BLITZ_VERSION} from './versions.ts'
 export type DoctorStatus = 'pass' | 'warn' | 'fail'
 
 export interface DoctorRow {
-    check: 'node' | 'version-pin' | 'packages' | 'dev-port' | 'backend' | 'runtime' | 'playwright' | 'git'
+    check: 'node' | 'version-pin' | 'install-source' | 'packages' | 'dev-port' | 'backend' | 'runtime' | 'playwright' | 'git'
     status: DoctorStatus
     detail: string
 }
@@ -60,6 +60,20 @@ export async function doctorProject(
         } else {
             rows.push(row('version-pin', 'pass', `Project and running CLI use ${BLITZ_VERSION}`))
         }
+    }
+
+    const dependencySpecifier = await blitzDependencySpecifier(root)
+    if (!dependencySpecifier) {
+        rows.push(row('install-source', 'fail', 'package.json does not depend on @blitzdev/blitz'))
+    } else if (dependencySpecifier.startsWith('file:') || dependencySpecifier.startsWith('link:')) {
+        rows.push(row(
+            'install-source',
+            'warn',
+            `development install from ${dependencySpecifier}; `
+                + 'run npm install @blitzdev/blitz@latest to use the published package',
+        ))
+    } else {
+        rows.push(row('install-source', 'pass', `Published package dependency ${dependencySpecifier}`))
     }
 
     const packages = await installedPackageVersions(root)
@@ -272,4 +286,14 @@ function formatAge(milliseconds: number): string {
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error)
+}
+
+async function blitzDependencySpecifier(root: string): Promise<string | undefined> {
+    const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as {
+        dependencies?: Record<string, unknown>
+        devDependencies?: Record<string, unknown>
+    }
+    const specifier = manifest.devDependencies?.['@blitzdev/blitz']
+        ?? manifest.dependencies?.['@blitzdev/blitz']
+    return typeof specifier === 'string' && specifier ? specifier : undefined
 }

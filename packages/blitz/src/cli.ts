@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {resolve} from 'node:path'
 import {
     bakeFromEditor,
     claimFromDisk,
@@ -20,9 +21,9 @@ import {sanitizeDiagnostic} from './api.ts'
 import {archiveProject} from './archive.ts'
 import {doctorProject, formatDoctorTable} from './doctor.ts'
 import {checkpointProject, gitRepositoryRoot, restoreProject} from './git.ts'
-import {assertBlitzProjectRoot} from './project-root.ts'
+import {assertBlitzProjectRoot, isBlitzProjectRoot} from './project-root.ts'
 
-const ROOT_USAGE = `Blitz builds browser 3D games with an agent and a local editor.
+const ROOT_USAGE = `Blitz ${BLITZ_VERSION} builds browser 3D games with an agent and a local editor.
 Workflow:
   npx @blitzdev/blitz init my-game && cd my-game && npm install
   Read AGENTS.md in the project. It is the guide: engine API, scene file, rules.
@@ -103,21 +104,25 @@ try {
     } else if (command === 'init') {
         const parsed = parseArgs(args, {'--no-git': 'boolean'}, 1)
         const directory = parsed.positionals[0] || '.'
-        const target = await initProject(directory, {git: parsed.values['--no-git'] !== true})
-        console.log(`Created Blitz project at ${target}`)
-        if (parsed.values['--no-git'] === true) {
-            console.log('Git repository: skipped (--no-git)')
+        if (await isBlitzProjectRoot(resolve(directory))) {
+            console.log(`${directory} is already a Blitz project. Next: cd ${directory} && npx blitz dev`)
         } else {
-            const repository = await gitRepositoryRoot(target)
-            console.log(repository === target
-                ? `Git repository: project repository at ${repository}`
-                : `Git repository: tracked parent repository at ${repository}`)
+            const target = await initProject(directory, {git: parsed.values['--no-git'] !== true})
+            console.log(`Created Blitz project at ${target}`)
+            if (parsed.values['--no-git'] === true) {
+                console.log('Git repository: skipped (--no-git)')
+            } else {
+                const repository = await gitRepositoryRoot(target)
+                console.log(repository === target
+                    ? `Git repository: project repository at ${repository}`
+                    : `Git repository: tracked parent repository at ${repository}`)
+            }
+            console.log(`Next: cd ${directory} && npm install && npx blitz dev`)
+            console.log(
+                'Then read AGENTS.md in the project before you write code. '
+                + 'Build, run npx blitz check, then npx blitz publish.',
+            )
         }
-        console.log(`Next: cd ${directory} && npm install && npx blitz dev`)
-        console.log(
-            'Then read AGENTS.md in the project before you write code. '
-            + 'Build, run npx blitz check, then npx blitz publish.',
-        )
     } else if (command === 'doctor') {
         const parsed = parseArgs(args, {'--port': 'value'})
         const result = await doctorProject(process.cwd(), {port: portOption(parsed.values['--port'])})
@@ -148,7 +153,7 @@ try {
             noOpen: parsed.values['--no-open'] === true,
             force: parsed.values['--force'] === true,
         })
-        console.log(`Blitz editor: ${server.url}`)
+        console.log(`Blitz editor: ${server.url} (Blitz ${BLITZ_VERSION})`)
         console.log(`Project: ${server.projectRoot}`)
         console.log('Guide: AGENTS.md in this folder. Verify with npx blitz check. Publish with npx blitz publish.')
         const shutdown = async () => {

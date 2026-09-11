@@ -25,6 +25,7 @@ describe('blitz doctor', () => {
         expect(Object.fromEntries(result.rows.map(({check, status}) => [check, status]))).toEqual({
             node: 'pass',
             'version-pin': 'pass',
+            'install-source': 'pass',
             packages: 'pass',
             'dev-port': 'pass',
             backend: 'pass',
@@ -49,6 +50,38 @@ describe('blitz doctor', () => {
 
         expect(row(await runDoctor(fixture.root, fixture.backendUrl), 'version-pin'))
             .toMatchObject({status: 'fail', detail: expect.stringContaining('running CLI')})
+    })
+
+    it.each(['file:../../blitz-packs/blitzdev-blitz.tgz', 'link:../../packages/blitz'])(
+        'warns when the project uses the development install specifier %s',
+        async (specifier) => {
+            const fixture = await readyProject()
+            const path = resolve(fixture.root, 'package.json')
+            const manifest = JSON.parse(await readFile(path, 'utf8'))
+            manifest.devDependencies['@blitzdev/blitz'] = specifier
+            await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`)
+
+            const result = await runDoctor(fixture.root, fixture.backendUrl)
+
+            expect(row(result, 'install-source')).toEqual({
+                check: 'install-source',
+                status: 'warn',
+                detail: `development install from ${specifier}; `
+                    + 'run npm install @blitzdev/blitz@latest to use the published package',
+            })
+            expect(result.ok).toBe(true)
+        },
+    )
+
+    it('passes the install-source row for a published version range', async () => {
+        const fixture = await readyProject()
+        const path = resolve(fixture.root, 'package.json')
+        const manifest = JSON.parse(await readFile(path, 'utf8'))
+        manifest.devDependencies['@blitzdev/blitz'] = `^${BLITZ_VERSION}`
+        await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`)
+
+        expect(row(await runDoctor(fixture.root, fixture.backendUrl), 'install-source'))
+            .toMatchObject({status: 'pass', detail: expect.stringContaining(`^${BLITZ_VERSION}`)})
     })
 
     it('fails the packages row for missing or mixed @blitzdev versions', async () => {

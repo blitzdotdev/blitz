@@ -1,5 +1,5 @@
 import {execFile, spawn} from 'node:child_process'
-import {chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises'
+import {chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {promisify} from 'node:util'
@@ -11,7 +11,7 @@ import {initializeGitRepository} from '../src/git.ts'
 const execute = promisify(execFile)
 const cli = resolve('dist/cli.js')
 const cleanup: Array<() => Promise<void>> = []
-const workflow = `Blitz builds browser 3D games with an agent and a local editor.
+const workflow = `Blitz ${BLITZ_VERSION} builds browser 3D games with an agent and a local editor.
 Workflow:
   npx @blitzdev/blitz init my-game && cd my-game && npm install
   Read AGENTS.md in the project. It is the guide: engine API, scene file, rules.
@@ -100,6 +100,28 @@ describe('blitz CLI', () => {
         },
     )
 
+    it('suggests up to five child Blitz projects when the current folder is not a project', async () => {
+        const parent = await mkdtemp(resolve(tmpdir(), 'blitz-cli-project-parent-'))
+        cleanup.push(() => rm(parent, {recursive: true, force: true}))
+        await writeFile(resolve(parent, 'package.json'), JSON.stringify({
+            devDependencies: {'@blitzdev/blitz': BLITZ_VERSION},
+        }))
+        for (const name of ['game-a', 'game-b', 'game-c', 'game-d', 'game-e', 'game-f']) {
+            await writeProjectRoot(resolve(parent, name))
+        }
+
+        const result = await execute(process.execPath, [cli, 'dev', '--no-open'], {cwd: parent})
+            .catch((error: unknown) => error) as {code: number, stderr: string}
+
+        expect(result.code).toBe(1)
+        expect(result.stderr).toContain('This folder is not a Blitz project: missing assets/main.scene.gltf')
+        for (const name of ['game-a', 'game-b', 'game-c', 'game-d', 'game-e']) {
+            expect(result.stderr).toContain(`cd ${name} && npx blitz dev`)
+        }
+        expect(result.stderr).not.toContain('cd game-f && npx blitz dev')
+        expect(result.stderr.match(/cd game-[a-z] && npx blitz dev/g)).toHaveLength(5)
+    })
+
     it('prints command-specific help without performing the command', async () => {
         const commands = [
             'init', 'dev', 'doctor', 'checkpoint', 'restore', 'archive', 'publish', 'pull', 'status', 'claim',
@@ -134,6 +156,45 @@ describe('blitz CLI', () => {
         )
     })
 
+    it('recognizes an existing Blitz project without touching its files', async () => {
+        const parent = await mkdtemp(resolve(tmpdir(), 'blitz-cli-existing-project-'))
+        cleanup.push(() => rm(parent, {recursive: true, force: true}))
+        const root = resolve(parent, 'my-review')
+        await execute(process.execPath, [cli, 'init', 'my-review', '--no-git'], {cwd: parent})
+        const instructionsPath = resolve(root, 'AGENTS.md')
+        const packagePath = resolve(root, 'package.json')
+        await writeFile(instructionsPath, 'keep this existing guide\n')
+        const before = {
+            instructions: await stat(instructionsPath),
+            package: await stat(packagePath),
+            packageText: await readFile(packagePath, 'utf8'),
+        }
+
+        const result = await execute(process.execPath, [cli, 'init', 'my-review'], {cwd: parent})
+
+        expect(result.stdout.trim()).toBe(
+            'my-review is already a Blitz project. Next: cd my-review && npx blitz dev',
+        )
+        expect(result.stderr).toBe('')
+        expect(await readFile(instructionsPath, 'utf8')).toBe('keep this existing guide\n')
+        expect(await readFile(packagePath, 'utf8')).toBe(before.packageText)
+        expect((await stat(instructionsPath)).mtimeMs).toBe(before.instructions.mtimeMs)
+        expect((await stat(packagePath)).mtimeMs).toBe(before.package.mtimeMs)
+    })
+
+    it('still refuses to overwrite an unrelated populated directory', async () => {
+        const parent = await mkdtemp(resolve(tmpdir(), 'blitz-cli-unrelated-directory-'))
+        cleanup.push(() => rm(parent, {recursive: true, force: true}))
+        await mkdir(resolve(parent, 'my-review'))
+        await writeFile(resolve(parent, 'my-review/AGENTS.md'), 'unrelated file\n')
+
+        await expect(execute(process.execPath, [cli, 'init', 'my-review', '--no-git'], {cwd: parent}))
+            .rejects.toMatchObject({
+                code: 1,
+                stderr: expect.stringContaining('Refusing to overwrite existing file: my-review/AGENTS.md'),
+            })
+    })
+
     it('prints the guide, verification, and publish loop when dev starts', async () => {
         const root = await mkdtemp(resolve(tmpdir(), 'blitz-cli-dev-guide-'))
         cleanup.push(() => rm(root, {recursive: true, force: true}))
@@ -144,6 +205,7 @@ describe('blitz CLI', () => {
         const lines = result.stdout.trim().split('\n')
 
         expect(result.stderr).toBe('')
+        expect(lines[0]).toMatch(new RegExp(` \\(Blitz ${BLITZ_VERSION.replaceAll('.', '\\.')}\\)$`))
         expect(lines.at(-3)).toMatch(/^Blitz editor: http:\/\/127\.0\.0\.1:\d+\/\?t=/)
         expect(lines.at(-2)).toBe(`Project: ${canonicalRoot}`)
         expect(lines.at(-1)).toBe(
@@ -483,6 +545,14 @@ async function pinnedProject(version: string): Promise<string> {
         blitz: {version},
     }))
     return root
+}
+
+async function writeProjectRoot(root: string): Promise<void> {
+    await mkdir(resolve(root, 'assets'), {recursive: true})
+    await writeFile(resolve(root, 'assets/main.scene.gltf'), '{}')
+    await writeFile(resolve(root, 'package.json'), JSON.stringify({
+        devDependencies: {'@blitzdev/blitz': BLITZ_VERSION},
+    }))
 }
 
 async function installPackageVersion(root: string, version: string): Promise<void> {
