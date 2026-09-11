@@ -174,7 +174,7 @@ export async function startMockBackend(options: {
             if (failure) return sendFailure(response, failure, options.failureMessage)
             if (uploadTimeouts > 0) {
                 uploadTimeouts -= 1
-                await new Promise((resolveDelay) => setTimeout(resolveDelay, 100))
+                await new Promise((resolveDelay) => setTimeout(resolveDelay, 1_000))
                 if (response.destroyed) return
             }
             if (connectionLosses > 0 && options.uploadConnectionLoss === 'before') {
