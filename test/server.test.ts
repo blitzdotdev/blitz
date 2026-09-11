@@ -558,6 +558,61 @@ describe('Kite3D dev server', () => {
         ])
     })
 
+    // This passes on macOS with either watcher; Linux CI proves the watcher survives atomic file replacements.
+    it('continues watching a scene after repeated atomic API replacements', async () => {
+        const {server, root, headers} = await startServer()
+        const relativeScenePath = 'assets/main.scene.gltf'
+        for (let save = 1; save <= 4; save += 1) {
+            const response = await fetch(`${base(server)}/files/${relativeScenePath}`, {
+                method: 'PUT',
+                headers: {...headers, 'If-Match': '*', 'X-Kite3D-Client': 'editor-atomic-scene'},
+                body: JSON.stringify({asset: {version: '2.0'}, nodes: [{name: `Editor save ${save}`}]}),
+            })
+            expect(response.status).toBe(200)
+        }
+        await new Promise((resolveWait) => setTimeout(resolveWait, 300))
+
+        const controller = new AbortController()
+        const eventsResponse = await fetch(`${base(server)}/api/events`, {headers, signal: controller.signal})
+        const eventPromise = readEvent(eventsResponse, controller, relativeScenePath)
+        await writeFile(resolve(root, relativeScenePath), JSON.stringify({
+            asset: {version: '2.0'},
+            nodes: [{name: 'External save'}],
+        }))
+
+        const event = await eventPromise
+        expect(event).toMatchObject({type: 'change', data: {path: relativeScenePath}})
+        expect(event.data.client).toBeUndefined()
+        const journal = await readJournalLines(resolve(root, '.kite3d/journal.jsonl'))
+        expect(journal.filter(({client}) => client === 'editor-atomic-scene')).toHaveLength(4)
+        expect(journal.some((entry) => entry.client === 'external' &&
+            JSON.stringify(entry).includes('External save'))).toBe(true)
+    })
+
+    // This passes on macOS with either watcher; Linux CI proves the watcher survives atomic file replacements.
+    it('continues watching a script after repeated atomic API replacements', async () => {
+        const {server, root, headers} = await startServer()
+        const relativeScriptPath = 'main.js'
+        for (let save = 1; save <= 2; save += 1) {
+            const response = await fetch(`${base(server)}/files/${relativeScriptPath}`, {
+                method: 'PUT',
+                headers: {...headers, 'If-Match': '*', 'X-Kite3D-Client': 'editor-atomic-script'},
+                body: `export const editorSave = ${save}\n`,
+            })
+            expect(response.status).toBe(200)
+        }
+        await new Promise((resolveWait) => setTimeout(resolveWait, 300))
+
+        const controller = new AbortController()
+        const eventsResponse = await fetch(`${base(server)}/api/events`, {headers, signal: controller.signal})
+        const eventPromise = readEvent(eventsResponse, controller, relativeScriptPath)
+        await writeFile(resolve(root, relativeScriptPath), 'export const externalSave = true\n')
+
+        const event = await eventPromise
+        expect(event).toMatchObject({type: 'change', data: {path: relativeScriptPath}})
+        expect(event.data.client).toBeUndefined()
+    })
+
     it('settles split external scene writes before journaling', async () => {
         const {root} = await startServer()
         const scenePath = resolve(root, 'assets/main.scene.gltf')
