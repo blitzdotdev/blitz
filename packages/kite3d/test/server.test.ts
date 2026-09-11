@@ -10,8 +10,8 @@ import {readDeploys, writeDeploys} from '../src/deploys.ts'
 import {NodeProjectDirectory} from '../src/node-filesystem.ts'
 import {readProjectFile, walkProject, writeProjectFile} from '../src/filesystem.ts'
 import {startMockBackend} from './mockBackend.ts'
-import {KITE3D_SERVER_CLIENT_ID} from '@blitzdev/engine/paths'
-import {projectDependencies} from '@blitzdev/engine/importMap'
+import {KITE3D_SERVER_CLIENT_ID} from '@kite3d/engine/paths'
+import {projectDependencies} from '@kite3d/engine/importMap'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from '../src/versions.ts'
 import {generateIndexHtml} from '../src/indexHtml.ts'
 import {initializeGitRepository} from '../src/git.ts'
@@ -336,7 +336,7 @@ describe('Kite3D dev server', () => {
         const packageJson = {
             name: 'import-map-test',
             dependencies: {
-                '@blitzdev/engine': 'file:../../packs/engine.tgz',
+                '@kite3d/engine': 'file:../../packs/engine.tgz',
                 gsap: '^3.12.5',
                 local: 'file:../local',
             },
@@ -703,9 +703,9 @@ async function temporaryProject(): Promise<string> {
         bufferViews: [{buffer: 0, byteOffset: 0, byteLength: 36, target: 34962}],
         buffers: [{byteLength: 36, uri: 'data:application/octet-stream;base64,AAAAAAAAgD8AAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAA='}],
     })}\n`)
-    await mkdir(resolve(root, 'node_modules/@blitzdev/engine/dist'), {recursive: true})
-    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/package.json'), JSON.stringify({version: KITE3D_VERSION}))
-    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/dist/runtime.js'), 'installed runtime')
+    await mkdir(resolve(root, 'node_modules/@kite3d/engine/dist'), {recursive: true})
+    await writeFile(resolve(root, 'node_modules/@kite3d/engine/package.json'), JSON.stringify({version: KITE3D_VERSION}))
+    await writeFile(resolve(root, 'node_modules/@kite3d/engine/dist/runtime.js'), 'installed runtime')
     return root
 }
 

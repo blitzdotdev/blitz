@@ -5,7 +5,7 @@ import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {promisify} from 'node:util'
 
-export const FIXTURE_PLUGIN_NAME = '@blitzdev/test-plugin-fixture'
+export const FIXTURE_PLUGIN_NAME = '@kite3d/test-plugin-fixture'
 
 const execute = promisify(execFile)
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
