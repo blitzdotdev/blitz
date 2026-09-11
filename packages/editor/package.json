@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "test": "playwright test",
+    "test": "playwright test"
   },
   "dependencies": {
     "@blueprintjs/colors": "5.1.9",
