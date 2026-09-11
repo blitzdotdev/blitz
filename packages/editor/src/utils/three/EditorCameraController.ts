@@ -125,7 +125,7 @@ export function editorCameraController(plugin: {
             }
         }
         // camera.lookAt(plugin.target)
-        ;(camera).setDirty && (camera).setDirty({change: 'transform'})
+        camera.setDirty && camera.setDirty({change: 'transform'})
 
         // Prevent browser scrolling and other default behaviors
         // ev.preventDefault()

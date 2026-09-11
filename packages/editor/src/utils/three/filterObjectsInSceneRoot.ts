@@ -3,7 +3,7 @@ import {IGeometry, IMaterial, IObject3D} from "threepipe";
 export function filterObjectsInSceneRoot<T extends (IGeometry|IMaterial) = (IGeometry|IMaterial)>(geoms: T[]): Set<T> {
     const inRoot = new Set<T>()
     const notInRoot = new Set<T>()
-    let objMap = new Map<IObject3D, boolean>
+    const objMap = new Map<IObject3D, boolean>
     geoms.map(g => {
         let mInRoot = false
         for (const m of g.appliedMeshes) {

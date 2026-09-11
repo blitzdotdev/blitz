@@ -2,6 +2,8 @@ import {
     BasicDepthPacking,
     Box3B,
     Color,
+    ITexture,
+    Light,
     MeshDepthMaterialOverride,
     MeshNormalMaterialOverride,
     NoBlending,
@@ -31,8 +33,8 @@ export class LightMaterialOverrider {
     private _sceneOverrideMaterialType: OverrideMaterialType | null = null
 
     private _sceneOverrideLightingType: OverrideLightingType | null = null
-    private _originalLights: any[] = []
-    private _originalEnvironment: any = null
+    private _originalLights: {light: Light, visible: boolean}[] = []
+    private _originalEnvironment: ITexture | null = null
 
     // Saved override states when plugin is disabled
     private _savedOverrideMaterialType: OverrideMaterialType | null = null
@@ -120,20 +122,22 @@ export class LightMaterialOverrider {
             while (this.overrideLightsContainer.children.length > 0) {
                 const child = this.overrideLightsContainer.children[0]
                 this.overrideLightsContainer.remove(child)
-                if ((child as any).dispose) (child as any).dispose()
+                const disposable = child as typeof child & {dispose?: () => void}
+                if (disposable.dispose) disposable.dispose()
             }
 
             // Save original state if not already saved
             if (this._sceneOverrideLightingType === null) {
                 // Save original lights
                 this._originalLights = []
-                this._viewer.scene.traverse((obj: any) => {
-                    if (obj.isLight) {
+                this._viewer.scene.traverse(obj => {
+                    const light = obj as Light
+                    if (light.isLight) {
                         this._originalLights.push({
-                            light: obj,
-                            visible: obj.visible
+                            light,
+                            visible: light.visible
                         })
-                        obj.visible = false
+                        light.visible = false
                     }
                 })
 
@@ -150,7 +154,7 @@ export class LightMaterialOverrider {
 
                 // Set environment if provided
                 if ('environment' in result) {
-                    this._viewer.scene.overrideRenderEnvironment = result.environment
+                    this._viewer.scene.overrideRenderEnvironment = result.environment as ITexture
                 } else {
                     // Clear any override environment if no environment in result
                     this._viewer.scene.overrideRenderEnvironment = null
@@ -171,7 +175,8 @@ export class LightMaterialOverrider {
             while (this.overrideLightsContainer.children.length > 0) {
                 const child = this.overrideLightsContainer.children[0]
                 this.overrideLightsContainer.remove(child)
-                if ((child as any).dispose) (child as any).dispose()
+                const disposable = child as typeof child & {dispose?: () => void}
+                if (disposable.dispose) disposable.dispose()
             }
 
             // Hide the container

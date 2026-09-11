@@ -1,4 +1,4 @@
-import {AmbientLight, DirectionalLight2, HemisphereLight, ThreeViewer} from "threepipe";
+import {AmbientLight, DirectionalLight2, HemisphereLight, ITexture, ThreeViewer} from "threepipe";
 
 // todo use this to remove repeated code
 // private _envPaths: Record<string, string> = {
@@ -83,7 +83,7 @@ export const overrideLightingPresets = {
         create: async (viewer: ThreeViewer) => {
             const envPath = 'https://threejs.org/examples/textures/equirectangular/quarry_01_1k.hdr'
             try {
-                const env: any = await viewer.load(envPath)
+                const env = await viewer.load<ITexture>(envPath) as ITexture
                 return {
                     environment: env,
                 }
@@ -99,7 +99,7 @@ export const overrideLightingPresets = {
         create: async (viewer: ThreeViewer) => {
             const envPath = 'https://threejs.org/examples/textures/equirectangular/moonless_golf_1k.hdr'
             try {
-                const env: any = await viewer.load(envPath)
+                const env = await viewer.load<ITexture>(envPath) as ITexture
                 return {
                     environment: env,
                 }
@@ -115,7 +115,7 @@ export const overrideLightingPresets = {
         create: async (viewer: ThreeViewer) => {
             const envPath = 'https://threejs.org/examples/textures/equirectangular/royal_esplanade_1k.hdr'
             try {
-                const env: any = await viewer.load(envPath)
+                const env = await viewer.load<ITexture>(envPath) as ITexture
                 return {
                     environment: env,
                 }
@@ -131,7 +131,7 @@ export const overrideLightingPresets = {
         create: async (viewer: ThreeViewer) => {
             const envPath = 'https://samples.threepipe.org/minimal/empty_warehouse_01_1k.hdr'
             try {
-                const env: any = await viewer.load(envPath)
+                const env = await viewer.load<ITexture>(envPath) as ITexture
                 return {
                     environment: env,
                 }
@@ -147,7 +147,7 @@ export const overrideLightingPresets = {
         create: async (viewer: ThreeViewer) => {
             const envPath = 'https://samples.threepipe.org/minimal/venice_sunset_1k.hdr'
             try {
-                const env: any = await viewer.load(envPath)
+                const env = await viewer.load<ITexture>(envPath) as ITexture
                 return {
                     environment: env,
                 }

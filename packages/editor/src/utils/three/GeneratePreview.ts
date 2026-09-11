@@ -14,7 +14,7 @@ import {refreshTexturePreview, staticData} from "./refreshTexturePreview.ts";
 export async function generatePreview(res: ImportResult, viewer: ThreeViewer) {
     let prev
     if (res.isTexture) {
-        prev = await new Promise<string>(async (resolve) => {
+        prev = await new Promise<string>((resolve) => {
             const preview = refreshTexturePreview(res as ITexture, viewer, (p) => {
                 if (preview === staticData.loadingImage) resolve(p)
             })
@@ -51,8 +51,12 @@ export async function generatePreview(res: ImportResult, viewer: ThreeViewer) {
 
         if (root && root !== viewer.scene) {
             root.remove(res as IObject3D)
-            root.children.forEach((c: any) => c.dispose && c.dispose())
-            ;(root as any).dispose && (root as any).dispose()
+            root.children.forEach(c => {
+                const disposable = c as typeof c & {dispose?: () => void}
+                disposable.dispose && disposable.dispose()
+            })
+            const disposableRoot = root as typeof root & {dispose?: () => void}
+            disposableRoot.dispose && disposableRoot.dispose()
         }
 
     }

@@ -19,9 +19,9 @@ export const staticData = {
     dataTexImage: makeTextSvg('Data Texture'),
     lutCubeTexImage: makeTextSvg('CUBE Texture'),
     compressedTexImage: makeTextSvg('Compressed Texture'),
-    textureMap: {} as any,
-    imageMap: {} as any,
-    tempMap: {} as any,
+    textureMap: {} as Record<string, TextureType>,
+    imageMap: {} as Record<string, string>,
+    tempMap: {} as Record<string, string>,
 }
 
 export function refreshTexturePreview(cc: TextureType | null | undefined, viewer: ThreeViewer, refresh?: (preview: string) => void) {
@@ -56,7 +56,8 @@ export function refreshTexturePreview(cc: TextureType | null | undefined, viewer
                     // config._lastRtRefresh = Date.now()
                 }
             } else if (cc.image instanceof ImageBitmap || cc.image instanceof HTMLImageElement /* || cc.image instanceof HTMLVideoElement*/) { // todo: try video with bitmap after ts-browser-helpers update
-                (cc.image as any).tp_src = imageBitmapToBase64(cc.image, 160)
+                const image = cc.image as typeof cc.image & {tp_src?: string}
+                image.tp_src = imageBitmapToBase64(cc.image, 160)
                 if (cc.image instanceof HTMLVideoElement) {
                     setTimeout(() => cc.image.tp_src && delete cc.image.tp_src, 1000) // clear after 1 second so it refreshes on next render
                 }
@@ -74,8 +75,8 @@ export function refreshTexturePreview(cc: TextureType | null | undefined, viewer
         }
         if (cc.image) {
             const uid = cc.image.tp_src_uuid as string
-            ret = uid ? staticData.imageMap[uid] : undefined
-            if (!ret) ret = cc.image.tp_src || cc.image.src
+            const cachedPreview = uid ? staticData.imageMap[uid] : undefined
+            ret = cachedPreview || cc.image.tp_src || cc.image.src
         }
         if (cc.tp_src) ret = cc.tp_src
     } else if (typeof cc === 'string') {
@@ -89,8 +90,8 @@ export function refreshTexturePreview(cc: TextureType | null | undefined, viewer
                 image.tp_src = staticData.lutCubeTexImage
             }
             const uid = image.tp_src_uuid as string
-            ret = uid ? staticData.imageMap[uid] : undefined
-            if (!ret) ret = image.tp_src || image.src
+            const cachedPreview = uid ? staticData.imageMap[uid] : undefined
+            ret = cachedPreview || image.tp_src || image.src
         }
     } else if (cc) {
         console.error('unknown value', cc)

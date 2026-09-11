@@ -5,6 +5,8 @@ import {
     IMaterial,
     Mesh,
     MeshBasicMaterial,
+    MeshBasicMaterialParameters,
+    Object3D,
     PhysicalMaterial,
     Scene,
     WebGLRenderer
@@ -12,20 +14,21 @@ import {
 
 export class MeshBasicMaterialOverride extends MeshBasicMaterial {
 
-    constructor(parameters?: any) {
+    constructor(parameters?: MeshBasicMaterialParameters) {
         super(parameters)
         this.reset()
     }
 
-    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: Object3D, group: Group) {
         super.onBeforeRender(renderer, scene, camera, geometry, object, group)
 
-        if (!object.material || !(object as Mesh).isMesh) {
+        const mesh = object as Mesh
+        if (!mesh.material || !mesh.isMesh) {
             this.visible = false
             return
         }
         this.visible = true
-        const material = object.material as IMaterial & Partial<PhysicalMaterial>
+        const material = mesh.material as IMaterial & Partial<PhysicalMaterial>
 
         // Copy color properties
         if (material.color !== undefined) this.color.copy(material.color)
@@ -53,11 +56,11 @@ export class MeshBasicMaterialOverride extends MeshBasicMaterial {
 
         // this.needsUpdate = true
         // this.id+=1 // to force update uniforms etc
-        // @ts-ignore todo add to type
+        // @ts-expect-error resetCurrentMaterial is provided by the modified three.js renderer.
         renderer.resetCurrentMaterial && renderer.resetCurrentMaterial()
     }
 
-    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: Object3D, group: Group) {
         super.onAfterRender(renderer, scene, camera, geometry, object, group)
         this.reset()
     }

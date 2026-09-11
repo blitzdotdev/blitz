@@ -5,16 +5,19 @@ import {
     IMaterial,
     Mesh,
     MeshBasicMaterial,
+    MeshBasicMaterialParameters,
+    Object3D,
     PhysicalMaterial,
     Scene,
     shaderReplaceString,
+    WebGLProgramParametersWithUniforms,
     WebGLRenderer
 } from "threepipe";
 
 export class MeshUVOverride extends MeshBasicMaterial {
     uvChannel: 0 | 1 | 2 | 3 = 0
 
-    constructor(parameters?: any) {
+    constructor(parameters?: MeshBasicMaterialParameters) {
         super(parameters)
         this.reset()
     }
@@ -24,7 +27,7 @@ export class MeshUVOverride extends MeshBasicMaterial {
         return `uv-channel-${this.uvChannel}`
     }
 
-    onBeforeCompile(shader: any) {
+    onBeforeCompile(shader: WebGLProgramParametersWithUniforms) {
         if (!shader.defines) shader.defines = {}
         shader.defines.USE_UV = ''
         shader.vertexUv1s = true
@@ -90,15 +93,16 @@ export class MeshUVOverride extends MeshBasicMaterial {
         )
     }
 
-    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+    onBeforeRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: Object3D, group: Group) {
         super.onBeforeRender(renderer, scene, camera, geometry, object, group)
 
-        if (!object.material || !(object as Mesh).isMesh) {
+        const mesh = object as Mesh
+        if (!mesh.material || !mesh.isMesh) {
             this.visible = false
             return
         }
         this.visible = true
-        const material = object.material as IMaterial & Partial<PhysicalMaterial>
+        const material = mesh.material as IMaterial & Partial<PhysicalMaterial>
 
         // Copy opacity and transparency
         if (material.opacity !== undefined) this.opacity = material.opacity
@@ -114,11 +118,11 @@ export class MeshUVOverride extends MeshBasicMaterial {
         if (material.wireframe !== undefined) this.wireframe = material.wireframe
         if (material.wireframeLinewidth !== undefined) this.wireframeLinewidth = material.wireframeLinewidth
 
-        // @ts-ignore todo add to type
+        // @ts-expect-error resetCurrentMaterial is provided by the modified three.js renderer.
         renderer.resetCurrentMaterial && renderer.resetCurrentMaterial()
     }
 
-    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: any, group: Group) {
+    onAfterRender(renderer: WebGLRenderer, scene: Scene, camera: Camera, geometry: BufferGeometry, object: Object3D, group: Group) {
         super.onAfterRender(renderer, scene, camera, geometry, object, group)
         this.reset()
     }

@@ -1,4 +1,8 @@
-import {EntityComponentPlugin, IObject3D, ThreeViewer} from "threepipe";
+import {ComponentJSON, EntityComponentPlugin, IObject3D, ThreeViewer} from "threepipe";
+
+type SerializableComponent = {
+    toJSON?: () => Partial<ComponentJSON>
+}
 
 export type SceneStructureFormat = 'markdown' | 'markdown-v2' | 'json' | 'xml' | 'compact'
 
@@ -98,9 +102,9 @@ export function getSceneStructureMd(viewer: ThreeViewer, format: SceneStructureF
 
 // JSON format - best for parsing and queries
 function getSceneStructureJson(scene: IObject3D): string {
-    const buildNode = (obj: IObject3D): any => {
+    const buildNode = (obj: IObject3D): Record<string, unknown> => {
         const components = EntityComponentPlugin.GetComponents(obj)
-        const node: any = {
+        const node: Record<string, unknown> = {
             name: obj.name || 'Unnamed',
             type: obj.type || 'Object3D',
             uuid: obj.uuid,
@@ -132,10 +136,11 @@ function getSceneStructureJson(scene: IObject3D): string {
 
         if (components.length > 0) {
             node.components = components.map(c => {
-                const comp: any = { type: c.constructor?.name || 'Component' }
-                if (typeof (c as any).toJSON === 'function') {
+                const comp: {type: string, state?: ComponentJSON['state']} = { type: c.constructor?.name || 'Component' }
+                const serializable = c as typeof c & SerializableComponent
+                if (typeof serializable.toJSON === 'function') {
                     try {
-                        const json = (c as any).toJSON()
+                        const json = serializable.toJSON()
                         if (json.state) comp.state = json.state
                     } catch (e) { /* skip */ }
                 }
@@ -287,9 +292,10 @@ function getSceneStructureMarkdownV2(scene: IObject3D): string {
             md += `${indent}**Components:**\n`
             components.forEach(comp => {
                 md += `${indent}- \`${comp.constructor?.name || 'Component'}\``
-                if (typeof (comp as any).toJSON === 'function') {
+                const serializable = comp as typeof comp & SerializableComponent
+                if (typeof serializable.toJSON === 'function') {
                     try {
-                        const json = (comp as any).toJSON()
+                        const json = serializable.toJSON()
                         if (json.state && Object.keys(json.state).length > 0) {
                             md += ` → ${JSON.stringify(json.state)}`
                         }
@@ -394,9 +400,10 @@ function getSceneStructureMarkdown(scene: IObject3D): string {
                 const compType = comp.constructor?.name || 'Component'
                 md += `${indent}    - ${compType}\n`
                 // Add component properties if they have toJSON or are serializable
-                if (typeof (comp as any).toJSON === 'function') {
+                const serializable = comp as typeof comp & SerializableComponent
+                if (typeof serializable.toJSON === 'function') {
                     try {
-                        const json = (comp as any).toJSON()
+                        const json = serializable.toJSON()
                         if (json.state && Object.keys(json.state).length > 0) {
                             md += `${indent}      - State: \`${JSON.stringify(json.state)}\`\n`
                         }
