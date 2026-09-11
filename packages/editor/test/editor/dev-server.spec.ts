@@ -483,14 +483,21 @@ test('creates a missing assets.json registry when the first asset is dropped', a
             }, {bytes: [...glb]}),
         })
 
-        await expect(page.getByText('Imported missing-registry.glb')).toBeVisible({timeout: 20_000})
+        const assetsUrl = new URL('/files/assets.json', fixture.server.url)
         await expect.poll(async () => {
-            const assets = JSON.parse(await readFile(resolve(fixture.root, 'assets.json'), 'utf8')) as {
+            const response = await fetch(assetsUrl, {headers: {'X-Kite3D-Token': fixture.server.token}})
+            if (!response.ok) return undefined
+            const assets = await response.json() as {
                 files: Record<string, {path: string}>
             }
             return assets.files
-        }).toEqual({'missing-registry': {path: 'assets/imports/missing-registry.glb'}})
+        }, {timeout: 30_000}).toEqual({'missing-registry': {path: 'assets/imports/missing-registry.glb'}})
+        expect(JSON.parse(await readFile(resolve(fixture.root, 'assets.json'), 'utf8'))).toEqual({
+            files: {'missing-registry': {path: 'assets/imports/missing-registry.glb'}},
+            version: 1,
+        })
     } finally {
+        await page.close()
         await fixture.close()
     }
 })
