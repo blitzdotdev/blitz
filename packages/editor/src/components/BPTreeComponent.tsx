@@ -11,7 +11,7 @@ export type BPTreeComponentState<T = {}> = BPComponentState & {
 
 type NodePath = (string|number)[];
 
-export abstract class BPTreeComponent<T = {}, TConfigVal extends any /*|PrimitiveVal|void*/ = void, TProps = {}> extends BPComponent<TConfigVal, BPTreeComponentState<T>, BPComponentProps<TConfigVal> & {className: string} & TProps> {
+export abstract class BPTreeComponent<T = {}, TConfigVal /*|PrimitiveVal|void*/ = void, TProps = {}> extends BPComponent<TConfigVal, BPTreeComponentState<T>, BPComponentProps<TConfigVal> & {className: string} & TProps> {
     constructor(props: BPComponentProps<TConfigVal> & {className: string} & TProps, context: UiConfigRendererContextType) {
         super(props, context, {nodes: []});
     }

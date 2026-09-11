@@ -16,7 +16,6 @@
 
 import type {IconName, Intent, MaybeElement} from "@blueprintjs/core";
 
-// eslint-disable-next-line @typescript-eslint/ban-types
 export interface TreeNodeInfo<T = {}> {
     /**
      * A space-delimited list of class names for this tree node element.
@@ -94,7 +93,6 @@ export interface TreeNodeInfo<T = {}> {
     intent?: Intent,
 }
 
-// eslint-disable-next-line @typescript-eslint/ban-types
 export type TreeEventHandler<T = {}> = (
     node: TreeNodeInfo<T>,
     nodePath: number[],

@@ -25,7 +25,6 @@ import {CaretRight} from "@blueprintjs/icons";
 import {Classes, Collapse, DISPLAYNAME_PREFIX, Icon} from "@blueprintjs/core";
 import {TreeEventHandler, TreeNodeInfo} from "./treeTypes";
 
-// eslint-disable-next-line @typescript-eslint/ban-types
 export interface TreeNodeProps<T = {}> extends TreeNodeInfo<T> {
     children?: React.ReactNode;
     contentRef?: (node: TreeNodeInfo<T>, element: HTMLDivElement | null) => void;
@@ -53,7 +52,6 @@ export interface TreeNodeProps<T = {}> extends TreeNodeInfo<T> {
  *
  * @see https://blueprintjs.com/docs/#core/components/tree.tree-node
  */
-// eslint-disable-next-line @typescript-eslint/ban-types
 export class TreeNode2<T = {}> extends React.Component<TreeNodeProps<T>> {
     public static displayName = `${DISPLAYNAME_PREFIX}.TreeNode`;
 

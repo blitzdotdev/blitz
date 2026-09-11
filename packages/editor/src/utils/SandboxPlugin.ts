@@ -129,5 +129,5 @@
 
 export interface SupPluginModule{
     __tpPluginPath?: string
-    __tpModuleError?: any
+    __tpModuleError?: unknown
 }

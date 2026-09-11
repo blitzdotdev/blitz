@@ -1,5 +1,5 @@
 import {useSafeContext} from "./useSafeContext.ts";
-import {createContext, createElement, useState} from "react";
+import {createContext, createElement, type ReactNode, useState} from "react";
 import {SavedSceneFile} from "./project.ts";
 
 
@@ -43,7 +43,7 @@ function useSetupProject() {
         // projectFile: file, setPFile: setFile,
         path, setPath,
         // scene, setScene,
-        welcomeOpen, setWelcomeOpen: (v: any)=>{
+        welcomeOpen, setWelcomeOpen: (v: boolean)=>{
             // console.warn('welcome open', v)
             setWelcomeOpen(v)
         },
@@ -52,7 +52,7 @@ function useSetupProject() {
 
 export const ProjectContext = createContext<ReturnType<typeof useSetupProject>|undefined>(undefined)
 
-export function ProjectProvider({children}: { children: any }) {
+export function ProjectProvider({children}: { children: ReactNode }) {
     const value = useSetupProject()
     return createElement(ProjectContext.Provider, {value}, children)
 }

@@ -2,7 +2,7 @@ import {EventDispatcher} from "threepipe";
 import {ViewerInstanceManager} from "./ViewerInstanceManager.ts";
 
 export class EditPreviewHelper extends EventDispatcher<{
-    editPreviewChange: {},
+    editPreviewChange: Record<string, never>,
 }> {
 
     enabled = false

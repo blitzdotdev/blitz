@@ -137,28 +137,8 @@ export function getSObjects(node: IObject3D, onlyS = false) {
     return objects
 }
 
-type AssetRoot = (IObject3D | IMaterial) & {
-    userData: {
-        rootPath: string
-        // tpAssetId: string
-        [key: string]: any
-    }
-    _tpRootPath: string
-}
-type AssetChild<T> = (IObject3D|IMaterial|ITexture|IGeometry) & {
-    _tpRootPath: string
-}
-type AssetComponent = (IObject3D | IMaterial) & {
-    userData: {
-        rootPath: string
-        // tpAssetId: string
-        [key: string]: any
-    }
-    _tpRootPath: string
-    _sChildren: any[]
-}
-type AssetComponentChild<T> = AssetChild<T> & {
-    _tpRootUid: string
+type ObjectWithMaterialsExtRef = IObject3D & {
+    _materialsExtRef?: ValOrArr<string | null>
 }
 
 export function populateRootPath(node: IObject3D, objects: IObject3D[]) {
@@ -328,22 +308,25 @@ export const trackerExportHooks: AssetExportHooks = {
             console.error('Material from different asset must have uuid in userData', material, obj)
         }
 
-        if (Array.isArray((obj as any)._materialsExtRef) && i !== undefined) {
-            ((obj as any)._materialsExtRef as any[])[i] = material._tpRootPath + ':' + material.uuid
+        const objectWithReferences = obj as ObjectWithMaterialsExtRef
+        if (Array.isArray(objectWithReferences._materialsExtRef) && i !== undefined) {
+            objectWithReferences._materialsExtRef[i] = material._tpRootPath + ':' + material.uuid
         } else {
-            (obj as any)._materialsExtRef = material._tpRootPath + ':' + material.uuid
+            objectWithReferences._materialsExtRef = material._tpRootPath + ':' + material.uuid
         }
-        return () => AssetImporter.DummyMaterial as any
+        return () => AssetImporter.DummyMaterial
     },
     objectMaterials: (obj: IObject3D, materials: IMaterial|IMaterial[]|undefined)=>{
         if (materials === undefined) return
-        if ((obj as any)._materialsExtRef === undefined) {
-            (obj as any)._materialsExtRef = (Array.isArray(materials) ? (materials as IMaterial[]).map(() => null) : null) as ValOrArr<string | null>
+        const objectWithReferences = obj as ObjectWithMaterialsExtRef
+        if (objectWithReferences._materialsExtRef === undefined) {
+            objectWithReferences._materialsExtRef = Array.isArray(materials) ? materials.map(() => null) : null
         }
     },
     objectMaterialsReplace: (obj: IObject3D, _mats: IMaterial | IMaterial[])=>{
-        const materialsExtRef = (obj as any)._materialsExtRef as ValOrArr<string|null>|undefined
-        delete (obj as any)._materialsExtRef
+        const objectWithReferences = obj as ObjectWithMaterialsExtRef
+        const materialsExtRef = objectWithReferences._materialsExtRef
+        delete objectWithReferences._materialsExtRef
         if (materialsExtRef !== undefined && !Array.isArray(materialsExtRef) ? materialsExtRef !== null : materialsExtRef?.some(m => m !== null)) {
             if (!obj.userData.tpAssetRefIds) obj.userData.tpAssetRefIds = {}
 

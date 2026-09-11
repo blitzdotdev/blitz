@@ -2,17 +2,19 @@ import {MenuItemProps} from "@blueprintjs/core";
 import React from "react";
 import {getOrCall, UiConfigRendererBase, UiObjectConfig} from "threepipe";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- UI config actions use heterogeneous payloads and results.
 export type MenuItemAction = ((data?: any, obj?: any, e?: React.MouseEvent<HTMLElement, MouseEvent>, m?: MenuItem2) => any)
 export interface MenuItem2{
     props: MenuItemProps
     action?: string | MenuItemAction
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- UI config supplies heterogeneous action data.
     data?: any
     key: string
     tags?: string[],
     children?: MenuItem2[],
     hidden?: boolean,
 }
-export interface HandleContextMenuCallback<T = any>{
+export interface HandleContextMenuCallback<T = unknown>{
     handleContextMenu?: (e: React.MouseEvent<HTMLElement, MouseEvent>, menu: MenuItem2[], obj: T) => void
 }
 

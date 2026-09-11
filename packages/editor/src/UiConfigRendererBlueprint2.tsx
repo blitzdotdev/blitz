@@ -63,7 +63,6 @@ export class UiConfigRendererBlueprint2 extends UiConfigRenderer {
         return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/naming-convention
     THREE: THREE|undefined = (window as any).THREE
 
     unmount() {
@@ -212,4 +211,3 @@ export class BlueprintJsUiPlugin2 extends UiConfigRendererBlueprint2 implements 
     // prompt = async(message?: string, _default?: string, cancel = true): Promise<string | null> =>this._viewer ? this._viewer.dialog.prompt(message, _default, cancel) : window?.prompt(message, _default)
 
 }
-
