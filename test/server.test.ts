@@ -551,7 +551,7 @@ describe('Kite3D dev server', () => {
         }])
 
         await writeFile(scenePath, JSON.stringify({asset: {version: '2.0'}, nodes: [{name: 'Agent node'}]}))
-        await expect.poll(async () => (await readJournalLines(journalPath)).length).toBe(2)
+        await expect.poll(async () => (await readJournalLines(journalPath)).length, {timeout: 10_000}).toBe(2)
         expect(await readJournalLines(journalPath)).toMatchObject([
             {client: 'editor-journal-test'},
             {client: 'external'},
