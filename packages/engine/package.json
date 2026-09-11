@@ -1,6 +1,6 @@
 {
   "name": "@blitzdev/engine",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "The open Kite3D game runtime, project format, scripting helpers, and game plugins.",
   "type": "module",
   "license": "Apache-2.0",
