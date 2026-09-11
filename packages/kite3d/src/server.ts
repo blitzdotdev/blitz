@@ -86,6 +86,7 @@ interface PendingCommand {
 
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
 const protectedProjectPaths = new Set(['.kite3d/deploys.json', '.kite3d/dev.json'])
+const watchedFileSettleMs = 50
 const serverRequire = createRequire(import.meta.url)
 
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
@@ -95,6 +96,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const clients = new Map<SSEStreamingApi, string | undefined>()
     const pendingCommands = new Map<string, PendingCommand>()
     const pendingEvents = new Map<string, PendingEvent>()
+    const pendingWatchedFiles = new Map<string, ReturnType<typeof setTimeout>>()
     const knownHashes = new Map<string, string>()
     const moduleRewriter = new ProjectModuleRewriter()
     let {path: mainScenePath, text: lastSceneText} = await readMainSceneSnapshot(projectRoot)
@@ -522,7 +524,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             const path = normalizeRelativePath(filename.toString())
             if (!path || !isIncludedPath(path)) return
             if (serverMutationActive) return
-            void scheduleWatchedFile(path)
+            scheduleWatchedFile(path)
         })
         watcher.on('error', (error) => console.warn(`[kite3d] watcher: ${error.message}`))
     } catch (error) {
@@ -545,6 +547,8 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             watcher?.close()
             clearInterval(keepAlive)
             for (const pending of pendingEvents.values()) clearTimeout(pending.timer)
+            for (const timer of pendingWatchedFiles.values()) clearTimeout(timer)
+            pendingWatchedFiles.clear()
             await Promise.all([...clients.keys()].map((client) => client.close()))
             for (const command of pendingCommands.values()) {
                 clearTimeout(command.timer)
@@ -556,14 +560,34 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         },
     }
 
-    async function scheduleWatchedFile(path: string): Promise<void> {
+    function scheduleWatchedFile(path: string): void {
+        const previous = pendingWatchedFiles.get(path)
+        if (previous) clearTimeout(previous)
+        const timer = setTimeout(() => {
+            pendingWatchedFiles.delete(path)
+            if (!closing) void processWatchedFile(path)
+        }, watchedFileSettleMs)
+        pendingWatchedFiles.set(path, timer)
+    }
+
+    async function processWatchedFile(path: string): Promise<void> {
         try {
             const target = await safeProjectPath(projectRoot, path)
-            const metadata = await lstat(target)
+            let metadata = await lstat(target)
             if (!metadata.isFile()) return
+            let current = path === mainScenePath ? await readFile(target, 'utf8') : undefined
+            if (metadata.size === 0 || (current !== undefined && !isJsonText(current))) {
+                await new Promise((resolveWait) => setTimeout(resolveWait, watchedFileSettleMs))
+                metadata = await lstat(target)
+                if (!metadata.isFile()) return
+                if (path === mainScenePath) current = await readFile(target, 'utf8')
+            }
             if (await hashFile(target) === knownHashes.get(path)) return
             if (path === mainScenePath) {
-                const current = await readFile(target, 'utf8')
+                if (current === undefined || !isJsonText(current)) {
+                    if (!closing) scheduleEvent(path)
+                    return
+                }
                 await recordSceneWrite(lastSceneText, current, 'external', true)
             } else if (path === 'package.json') {
                 const snapshot = await readMainSceneSnapshot(projectRoot)
@@ -575,7 +599,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             // the manifest. Recursive watchers also report removed directories.
             if (!isMissing(error) || !knownHashes.has(path)) return
         }
-        scheduleEvent(path)
+        if (!closing) scheduleEvent(path)
     }
 
     function recordSceneWrite(
@@ -607,6 +631,8 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                         const previous = before.get(path)
                         const current = after.get(path)
                         if (previous === current) continue
+                        if (current) knownHashes.set(path, current)
+                        else knownHashes.delete(path)
                         if (path === mainScenePath && current) {
                             const after = await readFile(resolve(projectRoot, path), 'utf8')
                             await recordSceneWrite(lastSceneText, after, KITE3D_SERVER_CLIENT_ID, true)
@@ -636,6 +662,15 @@ function waitForListening(server: Server): Promise<void> {
 
 function isAddressInUse(error: unknown): boolean {
     return error instanceof Error && 'code' in error && error.code === 'EADDRINUSE'
+}
+
+function isJsonText(value: string): boolean {
+    try {
+        JSON.parse(value)
+        return true
+    } catch {
+        return false
+    }
 }
 
 async function readMainSceneSnapshot(root: string): Promise<{path: string, text?: string}> {
