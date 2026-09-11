@@ -1,5 +1,5 @@
 import {execFile, spawn} from 'node:child_process'
-import {chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile} from 'node:fs/promises'
+import {access, chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {delimiter, resolve} from 'node:path'
 import {promisify} from 'node:util'
@@ -40,7 +40,7 @@ Commands:
   journal [options]           Read the edit journal
   open                        Open the running local editor
   sources                     Locate installed source
-  upgrade [--to <x.y.z>]      Upgrade the project Kite3D version
+  upgrade                     Upgrade the project to this Kite3D version
 
 Run kite3d <command> --help for command usage.`
 
@@ -152,6 +152,46 @@ await symlink(${JSON.stringify(resolve(import.meta.dirname, '../../engine'))}, r
             'Removed node_modules/.',
             `Upgraded Kite3D from 0.12.2 to ${KITE3D_VERSION}`,
         ])
+    })
+
+    it('upgrades a pinned 0.14 project with the legacy plugin without delegating', async () => {
+        const root = await mkdtemp(resolve(tmpdir(), 'kite3d-cli-plugin-upgrade-'))
+        cleanup.push(() => rm(root, {recursive: true, force: true}))
+        await cp(resolve(import.meta.dirname, 'fixtures/legacy-plugin-project'), root, {recursive: true})
+        const delegatedMarker = resolve(root, 'delegated.txt')
+        const pinnedBinDirectory = resolve(root, 'node_modules/.bin')
+        await mkdir(pinnedBinDirectory, {recursive: true})
+        const pinnedBin = resolve(pinnedBinDirectory, 'kite3d')
+        await writeFile(pinnedBin, `#!/usr/bin/env node
+import {writeFile} from 'node:fs/promises'
+await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
+`)
+        await chmod(pinnedBin, 0o755)
+        const npmBin = await fakeUpgradeNpm(root)
+
+        const result = await execute(process.execPath, [cli, 'upgrade'], {
+            cwd: root,
+            env: {...process.env, PATH: `${npmBin}${delimiter}${process.env.PATH || ''}`},
+        })
+
+        expect(result.stderr).toBe('')
+        expect(result.stdout).not.toContain('delegating')
+        await expect(access(delegatedMarker)).rejects.toMatchObject({code: 'ENOENT'})
+        expect(JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))).toMatchObject({
+            dependencies: {'@kite3d/plugin-mujoco': '^0.1.1'},
+            devDependencies: {kite3d: KITE3D_VERSION},
+            kite3d: {version: KITE3D_VERSION, plugins: ['@kite3d/plugin-mujoco']},
+        })
+    })
+
+    it('rejects the removed upgrade --to option without changing the project', async () => {
+        const root = await pinnedProject('0.14.1')
+        const packagePath = resolve(root, 'package.json')
+        const before = await readFile(packagePath, 'utf8')
+
+        await expect(execute(process.execPath, [cli, 'upgrade', '--to', KITE3D_VERSION], {cwd: root}))
+            .rejects.toMatchObject({code: 1, stderr: expect.stringContaining('Unknown flag: --to')})
+        expect(await readFile(packagePath, 'utf8')).toBe(before)
     })
 
     it('suggests up to five child Kite3D projects when the current folder is not a project', async () => {
@@ -613,6 +653,23 @@ async function installPackageVersion(root: string, version: string): Promise<voi
     const packageDirectory = resolve(root, 'node_modules/kite3d')
     await mkdir(packageDirectory, {recursive: true})
     await writeFile(resolve(packageDirectory, 'package.json'), JSON.stringify({version}))
+}
+
+async function fakeUpgradeNpm(root: string): Promise<string> {
+    const binDirectory = resolve(root, 'bin')
+    await mkdir(binDirectory, {recursive: true})
+    const npm = resolve(binDirectory, 'npm')
+    await writeFile(npm, `#!/usr/bin/env node
+import {mkdir, rm, symlink} from 'node:fs/promises'
+import {resolve} from 'node:path'
+const scope = resolve('node_modules/@kite3d')
+const engine = resolve(scope, 'engine')
+await mkdir(scope, {recursive: true})
+await rm(engine, {recursive: true, force: true})
+await symlink(${JSON.stringify(resolve(import.meta.dirname, '../../engine'))}, engine, 'dir')
+`)
+    await chmod(npm, 0o755)
+    return binDirectory
 }
 
 async function installEngine(root: string, version: string): Promise<void> {

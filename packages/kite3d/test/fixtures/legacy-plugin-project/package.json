@@ -6,10 +6,10 @@
     "@blitzdev/plugin-mujoco": "^0.1.1"
   },
   "devDependencies": {
-    "kite3d": "0.14.0"
+    "kite3d": "0.14.1"
   },
   "kite3d": {
-    "version": "0.14.0",
+    "version": "0.14.1",
     "plugins": [
       "@blitzdev/plugin-mujoco"
     ]

@@ -51,7 +51,6 @@ export async function enforceVersionPin(
         return spawnAndWait(localBin, args, {
             ...process.env,
             KITE3D_VERSION_DELEGATED: '1',
-            ...(command === 'upgrade' && !args.includes('--to') ? {KITE3D_UPGRADE_TO: commandVersion} : {}),
         })
     }
 
