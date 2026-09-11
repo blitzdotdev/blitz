@@ -8,8 +8,7 @@
 <h1 align="center">Kite3D</h1>
 
 <p align="center">
-  Build browser 3D games with an AI agent and a local editor.<br>
-  One command to start. One command to publish.
+  Build 3D games with an AI agent and a web editor.<br>
 </p>
 
 <p align="center">
