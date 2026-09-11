@@ -118,7 +118,7 @@ describe('kite3d CLI', () => {
         expect(result.stderr.trim()).toBe('kite3d: Legacy Blitz project detected. Run npx kite3d upgrade.')
     })
 
-    it('suggests npm install after upgrading while the legacy package remains installed', async () => {
+    it('prints legacy install artifact removals after upgrading', async () => {
         const root = await mkdtemp(resolve(tmpdir(), 'kite3d-cli-legacy-upgrade-'))
         cleanup.push(() => rm(root, {recursive: true, force: true}))
         await cp(resolve(import.meta.dirname, 'fixtures/legacy-project'), root, {recursive: true})
@@ -126,9 +126,15 @@ describe('kite3d CLI', () => {
         await writeFile(resolve(root, '.blitz/deploys.json'), '{"games":{}}\n')
         await mkdir(resolve(root, 'node_modules/@blitzdev/blitz'), {recursive: true})
         await writeFile(resolve(root, 'node_modules/@blitzdev/blitz/package.json'), JSON.stringify({version: '0.12.2'}))
+        await writeFile(resolve(root, 'package-lock.json'), '{"lockfileVersion":3}\n')
         const bin = resolve(root, 'bin')
         await mkdir(bin)
-        await writeFile(resolve(bin, 'npm'), '#!/bin/sh\nexit 0\n')
+        await writeFile(resolve(bin, 'npm'), `#!/usr/bin/env node
+import {mkdir, symlink} from 'node:fs/promises'
+import {resolve} from 'node:path'
+await mkdir(resolve('node_modules/@blitzdev'), {recursive: true})
+await symlink(${JSON.stringify(resolve(import.meta.dirname, '../../engine'))}, resolve('node_modules/@blitzdev/engine'), 'dir')
+`)
         await chmod(resolve(bin, 'npm'), 0o755)
 
         const result = await execute(process.execPath, [cli, 'upgrade'], {
@@ -142,8 +148,9 @@ describe('kite3d CLI', () => {
             'Moved package.json key "blitz" to "kite3d".',
             `Replaced @blitzdev/blitz with kite3d ${KITE3D_VERSION} in devDependencies.`,
             'Rewrote 1 legacy rootPath value in assets/main.scene.gltf.',
+            'Removed package-lock.json.',
+            'Removed node_modules/.',
             `Upgraded Kite3D from 0.12.2 to ${KITE3D_VERSION}`,
-            'Next: npm install',
         ])
     })
 
