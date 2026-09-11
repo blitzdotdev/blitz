@@ -7,6 +7,7 @@ import {initProject, publishFromDisk, runDev} from '../../../kite3d/src/commands
 import {checkProject} from '../../../kite3d/src/check.ts'
 import {createDevServer, type DevServer} from '../../../kite3d/src/server.ts'
 import {startMockBackend, type MockBackend} from '../../../kite3d/test/mockBackend.ts'
+import {FIXTURE_PLUGIN_NAME, installPackedFixturePlugin} from '../../../kite3d/test/pluginFixture.ts'
 
 let root: string
 let server: DevServer
@@ -288,6 +289,31 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
 
     const cliResult = await checkProject(root)
     expect(cliResult).toMatchObject({ok: true, mode: 'editor'})
+})
+
+test('loads a packed dependency plugin with its worker and sidecar', async ({page}) => {
+    const pluginProject = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-plugin-'))
+    let pluginServer: DevServer | undefined
+    try {
+        await initProject(pluginProject, {git: false})
+        await installPackedFixturePlugin(pluginProject)
+        const packagePath = resolve(pluginProject, 'package.json')
+        const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
+            kite3d: {plugins?: string[]}
+        }
+        packageJson.kite3d.plugins = [FIXTURE_PLUGIN_NAME]
+        await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
+        pluginServer = await createDevServer({projectRoot: pluginProject, port: 0})
+
+        await page.goto(pluginServer.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await expect.poll(() => page.evaluate(() => (window as unknown as {viewer: {
+            getPlugin(type: string): {sidecarByte?: number} | undefined
+        }}).viewer.getPlugin('PackedFixturePlugin')?.sidecarByte)).toBe(42)
+    } finally {
+        await pluginServer?.close()
+        await rm(pluginProject, {recursive: true, force: true})
+    }
 })
 
 test('writes byte-identical unchanged saves across editor sessions', async ({page}) => {
