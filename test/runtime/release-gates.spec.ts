@@ -6,8 +6,8 @@ import {extname, normalize, relative, resolve} from 'node:path'
 import {tmpdir} from 'node:os'
 import {fileURLToPath} from 'node:url'
 import {expect, test} from '@playwright/test'
-import {generateIndexHtml} from '../../../blitz/dist/indexHtml.js'
-import {buildManifest} from '../../../blitz/dist/manifest.js'
+import {generateIndexHtml} from '../../../kite3d/dist/indexHtml.js'
+import {buildManifest} from '../../../kite3d/dist/manifest.js'
 import enginePackage from '../../package.json' with {type: 'json'}
 
 const sampleDirectory = fileURLToPath(new URL('../../../editor/test/fixtures/sample-project/', import.meta.url))
@@ -20,7 +20,7 @@ let releaseServer: Server
 let manifest: Awaited<ReturnType<typeof buildManifest>>
 
 test.beforeAll(async () => {
-    releaseDirectory = await mkdtemp(resolve(tmpdir(), 'blitz-independent-release-'))
+    releaseDirectory = await mkdtemp(resolve(tmpdir(), 'kite3d-independent-release-'))
     await cp(sampleDirectory, releaseDirectory, {recursive: true})
     await mkdir(resolve(releaseDirectory, '_blitz'), {recursive: true})
     const runtime = await readFile(resolve(engineDirectory, 'dist/runtime.js'))
@@ -58,14 +58,14 @@ test('boots a published release from one clean static origin with no development
     })
 
     await page.goto(`${releaseOrigin}/`)
-    await expect.poll(() => page.evaluate(() => (window as any).__blitzUpdates || 0)).toBeGreaterThan(0)
-    expect(await page.evaluate(() => Boolean((window as any).__blitzMainRan))).toBe(true)
+    await expect.poll(() => page.evaluate(() => (window as any).__kite3dUpdates || 0)).toBeGreaterThan(0)
+    expect(await page.evaluate(() => Boolean((window as any).__kite3dMainRan))).toBe(true)
     expect(await page.locator('body').innerText()).not.toContain('Failed to start:')
 
     expect(requests.length).toBeGreaterThan(0)
     const foreignRequests = requests.filter((url) => new URL(url).origin !== releaseOrigin)
     expect(foreignRequests).toEqual([])
-    expect(requests.some((url) => /esm\.sh|blitz\.dev|localhost/.test(url))).toBe(false)
+    expect(requests.some((url) => /esm\.sh|kite3d\.dev|localhost/.test(url))).toBe(false)
     expect(errors).toEqual([])
 
     const html = await readFile(resolve(releaseDirectory, 'index.html'), 'utf8')

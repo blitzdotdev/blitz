@@ -1,6 +1,6 @@
-export type BlitzFileType = 'plugin' | 'script' | 'material' | 'image'
+export type Kite3dFileType = 'plugin' | 'script' | 'material' | 'image'
 
-export const typesExts: Partial<Record<BlitzFileType, string[]>> = {
+export const typesExts: Partial<Record<Kite3dFileType, string[]>> = {
     'plugin': ['.plugin.js', '.plugin.ts'],
     'script': ['.script.js', '.script.ts'],
     'material': ['.mat', '.mat.json'],

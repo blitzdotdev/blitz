@@ -48,7 +48,7 @@ describe('scene serialization', () => {
             asset: {version: '2.0'},
             scene: 0,
             scenes: [{nodes: [0]}],
-            nodes: [{name: 'Reference', extras: {rootPath: '/blitz/@prop/f.gltf'}}],
+            nodes: [{name: 'Reference', extras: {rootPath: '/kite3d/@prop/f.gltf'}}],
         })
 
         expect(serialized.files).toEqual([])

@@ -88,7 +88,7 @@ export class GeneratorComponent extends Object3DComponent {
     async bake(): Promise<number> {
         await this.run()
         const node = this.object
-        const generated = node.children.filter((child) => child.userData.blitzGenerated === true)
+        const generated = node.children.filter((child) => child.userData.kite3dGenerated === true)
         const bakedFrom = {
             module: this.module,
             params: JSON.parse(JSON.stringify(this.params)) as GeneratorParams,
@@ -104,9 +104,9 @@ export class GeneratorComponent extends Object3DComponent {
                 ...(metadata.allowCameraInside !== undefined ? {allowCameraInside: metadata.allowCameraInside} : {}),
             })
         }
-        node.userData.blitzBakedFrom = bakedFrom
+        node.userData.kite3dBakedFrom = bakedFrom
         node._sChildren = [...node.children]
-        node.setDirty?.({change: 'userData.blitzBakedFrom', source: 'blitz bake'})
+        node.setDirty?.({change: 'userData.kite3dBakedFrom', source: 'kite3d bake'})
         return generated.length
     }
 
@@ -137,7 +137,7 @@ export async function runGenerator({
     if (!module) return []
     const source = ensureGeneratorMetadata(node)
     const moduleUrl = resolveGeneratorModule(module, base)
-    if (revision) moduleUrl.searchParams.set('blitz-generator', String(revision))
+    if (revision) moduleUrl.searchParams.set('kite3d-generator', String(revision))
     const loaded = await importGeneratorModule(moduleUrl.href)
     if (typeof loaded.default !== 'function') {
         throw new Error(`Generator module must have a default generate function: ${module}`)
@@ -168,7 +168,7 @@ export async function runGenerator({
 
 export function removeGeneratedChildren(node: IObject3D): void {
     for (const child of [...node.children] as IObject3D[]) {
-        if (child.userData.blitzGenerated !== true) continue
+        if (child.userData.kite3dGenerated !== true) continue
         removeGeneratedObject(child)
     }
 }
@@ -176,10 +176,10 @@ export function removeGeneratedChildren(node: IObject3D): void {
 export function markGenerated(object: IObject3D, sourceId?: string, outputIndex = 0): void {
     let descendantIndex = 0
     object.traverse((child: IObject3D) => {
-        child.userData.blitzGenerated = true
+        child.userData.kite3dGenerated = true
         child.userData.excludeFromExport = true
         if (sourceId) {
-            child.userData.blitzAuthoring = {
+            child.userData.kite3dAuthoring = {
                 role: 'generator',
                 id: `${sourceId}:preview:${outputIndex}:${descendantIndex++}`,
                 sourceId,
@@ -190,10 +190,10 @@ export function markGenerated(object: IObject3D, sourceId?: string, outputIndex 
 
 function unmarkGenerated(object: IObject3D): void {
     object.traverse((child: IObject3D) => {
-        delete child.userData.blitzGenerated
+        delete child.userData.kite3dGenerated
         delete child.userData.excludeFromExport
         const metadata = getAuthoringMetadata(child)
-        if (metadata?.role === 'generator' && metadata.sourceId) delete child.userData.blitzAuthoring
+        if (metadata?.role === 'generator' && metadata.sourceId) delete child.userData.kite3dAuthoring
     })
 }
 
@@ -271,5 +271,5 @@ async function importGeneratorModule(url: string): Promise<GeneratorModule> {
 function reportGeneratorError(viewer: ThreeViewer, error: unknown): void {
     const onError = viewerConfigs.get(viewer)?.onError
     if (onError) onError(error)
-    else console.error('[blitz] Generator error', error)
+    else console.error('[kite3d] Generator error', error)
 }

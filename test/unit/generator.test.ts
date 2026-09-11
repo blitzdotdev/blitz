@@ -54,7 +54,7 @@ describe('Generator', () => {
         expect(node.children.map(({name}) => name)).toEqual(['Human', 'Attached', 'Returned'])
         expect(generated).toEqual([attached, returned])
         for (const child of generated) {
-            expect(child.userData).toMatchObject({blitzGenerated: true, excludeFromExport: true})
+            expect(child.userData).toMatchObject({kite3dGenerated: true, excludeFromExport: true})
         }
     })
 

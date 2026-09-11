@@ -331,7 +331,7 @@ function assertSameOrigin(url: URL, base: URL): URL {
 
 function createErrorReporter(onError?: RuntimeErrorHandler) {
     return (error: unknown) => {
-        console.error('[blitz] Runtime error', error)
+        console.error('[kite3d] Runtime error', error)
         onError?.(error)
     }
 }

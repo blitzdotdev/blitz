@@ -35,8 +35,8 @@ export function projectDependencies(packageJson: Record<string, unknown>): Proje
             if (typeof version === 'string') result.push({key, version})
         }
     }
-    const blitz = packageJson.blitz
-    const imports = isRecord(blitz) ? blitz.imports : undefined
+    const kite3d = packageJson.kite3d
+    const imports = isRecord(kite3d) ? kite3d.imports : undefined
     if (isRecord(imports)) {
         for (const [key, value] of Object.entries(imports)) {
             if (typeof value !== 'string') continue

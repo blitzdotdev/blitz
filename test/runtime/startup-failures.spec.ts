@@ -50,7 +50,7 @@ test('reports a missing main scene through onError and the console with its path
     expect(result.callbackErrors[0]).toContain('assets/not-there.scene.gltf')
     expect(result.thrown).toContain('assets/not-there.scene.gltf')
     expect(consoleErrors.some((message) =>
-        message.includes('[blitz] Runtime error') && message.includes('assets/not-there.scene.gltf'))).toBe(true)
+        message.includes('[kite3d] Runtime error') && message.includes('assets/not-there.scene.gltf'))).toBe(true)
 })
 
 test('reports a corrupt glTF through onError with the scene filename', async ({page}) => {
@@ -61,7 +61,7 @@ test('reports a corrupt glTF through onError with the scene filename', async ({p
     expect(result.thrown).toContain('corrupt.scene.gltf')
 })
 
-test('rejects a missing blitz.scripts module with its path', async ({page}) => {
+test('rejects a missing kite3d.scripts module with its path', async ({page}) => {
     const result = await attemptCreateGame(page, 'missing-script')
 
     expect(result.callbackErrors).toHaveLength(1)
