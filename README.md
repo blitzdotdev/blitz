@@ -8,7 +8,7 @@
 <h1 align="center">Kite3D</h1>
 
 <p align="center">
-  Build 3D games with an AI agent and a web editor.<br>
+  Build 3D games with an AI<br>
 </p>
 
 <p align="center">
