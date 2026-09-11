@@ -8,6 +8,11 @@ const LEGACY_PACKAGE = '@blitzdev/blitz'
 const KITE3D_PACKAGE = 'kite3d'
 const LEGACY_SETTINGS_KEY = 'blitz'
 const KITE3D_SETTINGS_KEY = 'kite3d'
+const KITE3D_TRANSITIVE_PACKAGES = [
+    '@blitzdev/engine',
+    '@blitzdev/editor',
+    '@blitzdev/template',
+] as const
 
 export const LEGACY_PROJECT_MESSAGE = 'Legacy Blitz project detected. Run npx kite3d upgrade.'
 
@@ -68,6 +73,25 @@ export async function migrateLegacyProject(projectRoot: string, targetVersion: s
         packageJson[section] = dependencies
         packageChanged = true
         changes.push(`Replaced ${LEGACY_PACKAGE} with ${KITE3D_PACKAGE} ${targetVersion} in ${section}.`)
+    }
+    for (const section of ['dependencies', 'devDependencies'] as const) {
+        const dependencies = record(packageJson[section])
+        let sectionChanged = false
+        for (const packageName of KITE3D_TRANSITIVE_PACKAGES) {
+            const specifier = dependencies[packageName]
+            if (typeof specifier !== 'string' || specifier === targetVersion) continue
+            if (isLocalOrTarballSpecifier(specifier)) {
+                delete dependencies[packageName]
+                changes.push(`Removed ${packageName} from ${section}; kite3d provides ${targetVersion}.`)
+            } else {
+                dependencies[packageName] = targetVersion
+                changes.push(`Pinned ${packageName} to ${targetVersion} in ${section}.`)
+            }
+            sectionChanged = true
+        }
+        if (!sectionChanged) continue
+        packageJson[section] = dependencies
+        packageChanged = true
     }
     if (packageChanged) {
         mutations.push(fileMutation(
@@ -175,6 +199,15 @@ function rewriteLegacyRootPaths(value: unknown): number {
 
 function record(value: unknown): Record<string, unknown> {
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function isLocalOrTarballSpecifier(specifier: string): boolean {
+    if (specifier.startsWith('file:') || specifier.startsWith('link:')) return true
+    try {
+        return ['http:', 'https:'].includes(new URL(specifier).protocol)
+    } catch {
+        return false
+    }
 }
 
 async function exists(path: string): Promise<boolean> {
