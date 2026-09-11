@@ -46,18 +46,6 @@ npx kite3d publish    # live at https://<slug>.app.blitz.dev/
 - **Hot-reloaded components.** Save a script, the editor swaps it in place.
 - **Local browser editor.** Served from your folder. No account.
 
-## Packages
-
-| Package | What it is |
-|---|---|
-| [`kite3d`](packages/kite3d) | The `kite3d` command: local server, checks, checkpoints, publish |
-| [`@blitzdev/engine`](packages/engine) | UI-free runtime, project format, scripting helpers, game plugins |
-| [`@blitzdev/editor`](packages/editor) | The React editor served by `kite3d dev` |
-| [`@blitzdev/template`](packages/template) | The files `kite3d init` copies |
-| `packages/threepipe`, `packages/uiconfig-blueprint` | Vendored upstream source |
-
-Everything is Apache-2.0 and ships its source, so an agent can grep `node_modules` when the guide is not enough. Built on [threepipe](https://threepipe.org).
-
 ## CLI
 
 | Command | Does |
@@ -71,6 +59,18 @@ Everything is Apache-2.0 and ships its source, so an agent can grep `node_module
 | `kite3d upgrade` | Move a project to the current version, including projects made with the old `blitz` command |
 
 Run `npx kite3d` with no argument for the full list.
+
+## Packages
+
+| Package | What it is |
+|---|---|
+| [`kite3d`](packages/kite3d) | The `kite3d` command: local server, checks, checkpoints, publish |
+| [`@blitzdev/engine`](packages/engine) | UI-free runtime, project format, scripting helpers, game plugins |
+| [`@blitzdev/editor`](packages/editor) | The React editor served by `kite3d dev` |
+| [`@blitzdev/template`](packages/template) | The files `kite3d init` copies |
+| `packages/threepipe`, `packages/uiconfig-blueprint` | Vendored upstream source |
+
+Everything is Apache-2.0 and ships its source, so an agent can grep `node_modules` when the guide is not enough. Built on [threepipe](https://threepipe.org).
 
 ## License
 
