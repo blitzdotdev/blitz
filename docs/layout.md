@@ -10,7 +10,6 @@ kite3d/
   LICENSE                      Apache-2.0
   README.md
   PLAN.md                      the owner's plan
-  PLAN-REVIEW.md               review and status board
   docs/
     agents.md                  source of blitz.dev/agents.md; kite3d init copies it into projects
     publish-api.md             the cloud contract; the private repo implements it
