@@ -1,3 +1,4 @@
+import {constants} from 'node:fs'
 import {access, readFile, readdir, rename, writeFile} from 'node:fs/promises'
 import {resolve} from 'node:path'
 
@@ -26,15 +27,28 @@ export async function legacyProjectMigrationNeeded(projectRoot = process.cwd()):
 export async function migrateLegacyProject(projectRoot: string, targetVersion: string): Promise<string[]> {
     const root = resolve(projectRoot)
     const changes: string[] = []
+    const mutations: MigrationMutation[] = []
     const legacyDirectory = resolve(root, LEGACY_DIRECTORY)
     const kite3dDirectory = resolve(root, KITE3D_DIRECTORY)
     if (await exists(legacyDirectory) && !await exists(kite3dDirectory)) {
-        await rename(legacyDirectory, kite3dDirectory)
         changes.push('Renamed .blitz/ to .kite3d/.')
+        mutations.push({
+            step: 'rename .blitz/ to .kite3d/',
+            preflight: () => access(root, constants.W_OK),
+            apply: () => rename(legacyDirectory, kite3dDirectory),
+            rollback: async () => {
+                if (!await exists(legacyDirectory) && await exists(kite3dDirectory)) {
+                    await rename(kite3dDirectory, legacyDirectory)
+                }
+            },
+        })
     }
 
     const packagePath = resolve(root, 'package.json')
-    const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as Record<string, unknown>
+    const packageText = await migrationStep('read package.json', () => readFile(packagePath, 'utf8'))
+    const packageJson = await migrationStep('parse package.json', async () => (
+        JSON.parse(packageText) as Record<string, unknown>
+    ))
     let packageChanged = false
     if (Object.prototype.hasOwnProperty.call(packageJson, LEGACY_SETTINGS_KEY)) {
         packageJson[KITE3D_SETTINGS_KEY] = {
@@ -55,17 +69,80 @@ export async function migrateLegacyProject(projectRoot: string, targetVersion: s
         packageChanged = true
         changes.push(`Replaced ${LEGACY_PACKAGE} with ${KITE3D_PACKAGE} ${targetVersion} in ${section}.`)
     }
-    if (packageChanged) await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8')
+    if (packageChanged) {
+        mutations.push(fileMutation(
+            'update package.json',
+            packagePath,
+            packageText,
+            `${JSON.stringify(packageJson, null, 2)}\n`,
+        ))
+    }
 
-    for (const path of await gltfFiles(resolve(root, 'assets'))) {
-        const text = await readFile(path, 'utf8')
-        const document = JSON.parse(text) as unknown
+    const paths = await migrationStep('scan assets for glTF files', () => gltfFiles(resolve(root, 'assets')))
+    for (const path of paths) {
+        const relativePath = path.slice(root.length + 1)
+        const step = `rewrite legacy root paths in ${relativePath}`
+        const text = await migrationStep(step, () => readFile(path, 'utf8'))
+        const document = await migrationStep(step, async () => JSON.parse(text) as unknown)
         const count = rewriteLegacyRootPaths(document)
         if (!count) continue
-        await writeFile(path, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
-        changes.push(`Rewrote ${count} legacy rootPath value${count === 1 ? '' : 's'} in ${path.slice(root.length + 1)}.`)
+        mutations.push(fileMutation(step, path, text, `${JSON.stringify(document, null, 2)}\n`))
+        changes.push(`Rewrote ${count} legacy rootPath value${count === 1 ? '' : 's'} in ${relativePath}.`)
+    }
+
+    for (const mutation of mutations) await migrationStep(mutation.step, mutation.preflight)
+    const completed: MigrationMutation[] = []
+    for (const mutation of mutations) {
+        try {
+            await mutation.apply()
+            completed.push(mutation)
+        } catch (error) {
+            const rollbackErrors: string[] = []
+            for (const applied of [mutation, ...[...completed].reverse()]) {
+                try {
+                    await applied.rollback()
+                } catch (rollbackError) {
+                    rollbackErrors.push(`${applied.step}: ${errorMessage(rollbackError)}`)
+                }
+            }
+            const rollbackDetail = rollbackErrors.length ? `; rollback failed during ${rollbackErrors.join('; ')}` : ''
+            throw new Error(`Legacy migration failed during ${mutation.step}: ${errorMessage(error)}${rollbackDetail}`)
+        }
     }
     return changes
+}
+
+interface MigrationMutation {
+    step: string
+    preflight(): Promise<unknown>
+    apply(): Promise<unknown>
+    rollback(): Promise<unknown>
+}
+
+function fileMutation(
+    step: string,
+    path: string,
+    original: string,
+    replacement: string,
+): MigrationMutation {
+    return {
+        step,
+        preflight: () => access(path, constants.W_OK),
+        apply: () => writeFile(path, replacement, 'utf8'),
+        rollback: () => writeFile(path, original, 'utf8'),
+    }
+}
+
+async function migrationStep<T>(step: string, action: () => Promise<T>): Promise<T> {
+    try {
+        return await action()
+    } catch (error) {
+        throw new Error(`Legacy migration failed during ${step}: ${errorMessage(error)}`)
+    }
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error)
 }
 
 async function gltfFiles(root: string): Promise<string[]> {
@@ -87,7 +164,7 @@ function rewriteLegacyRootPaths(value: unknown): number {
     let count = 0
     for (const [key, child] of Object.entries(value)) {
         if (key === 'rootPath' && typeof child === 'string' && child.includes('/blitz/@')) {
-            ;(value as Record<string, unknown>)[key] = child.replaceAll('/blitz/@', '/kite3d/@')
+            (value as Record<string, unknown>)[key] = child.replaceAll('/blitz/@', '/kite3d/@')
             count += 1
         } else {
             count += rewriteLegacyRootPaths(child)

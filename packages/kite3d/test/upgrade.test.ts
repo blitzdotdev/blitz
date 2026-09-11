@@ -4,6 +4,8 @@ import {tmpdir} from 'node:os'
 import {afterEach, describe, expect, it} from 'vitest'
 import {selectProjectMigrations, upgradeProject} from '../src/commands.ts'
 import {checkProject} from '../src/check.ts'
+import {migrateLegacyProject} from '../src/legacy.ts'
+import {KITE3D_VERSION} from '../src/versions.ts'
 
 const roots: string[] = []
 
@@ -47,35 +49,72 @@ describe('upgradeProject', () => {
         expect(journal).toMatchObject([{client: 'kite3d-upgrade', summary: {upgrade: {from: '1.0.0', to: '2.0.0'}}}])
     })
 
-    it('migrates the legacy fixture and then passes kite3d check', async () => {
-        const root = await mkdtemp(resolve(tmpdir(), 'kite3d-legacy-upgrade-'))
-        roots.push(root)
-        await cp(resolve(import.meta.dirname, 'fixtures/legacy-project'), root, {recursive: true})
-        await mkdir(resolve(root, '.blitz'))
-        await writeFile(resolve(root, '.blitz/deploys.json'), '{"games":{}}\n')
-        const restorePath = await useFakeNpm(root)
+    it.each([
+        ['an exact version', '0.12.2', 'devDependencies'],
+        ['a range', '^0.12.0', 'dependencies'],
+        ['a file tarball', 'file:../../blitz-packs/blitzdev-blitz-0.12.0.tgz', 'devDependencies'],
+        ['a link', 'link:../../blitz', 'dependencies'],
+        ['a tarball URL', 'https://example.com/blitzdev-blitz-0.12.0.tgz', 'devDependencies'],
+    ] as const)(
+        'migrates a legacy dependency with %s from %s',
+        async (_label, specifier, section) => {
+            const root = await legacyUpgradeFixture(specifier, section)
+            const restorePath = await useFakeNpm(root)
 
-        let result: Awaited<ReturnType<typeof upgradeProject>>
-        try {
-            result = await upgradeProject(root)
-        } finally {
-            restorePath()
+            let result: Awaited<ReturnType<typeof upgradeProject>>
+            try {
+                result = await upgradeProject(root)
+            } finally {
+                restorePath()
+            }
+
+            expect(result).toMatchObject({from: '0.12.2', to: KITE3D_VERSION})
+            expect(result.changes).toEqual([
+                'Renamed .blitz/ to .kite3d/.',
+                'Moved package.json key "blitz" to "kite3d".',
+                `Replaced @blitzdev/blitz with kite3d ${KITE3D_VERSION} in ${section}.`,
+                'Rewrote 1 legacy rootPath value in assets/main.scene.gltf.',
+            ])
+            await expect(access(resolve(root, '.blitz'))).rejects.toMatchObject({code: 'ENOENT'})
+            expect(JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))).toMatchObject({
+                [section]: {kite3d: KITE3D_VERSION},
+                kite3d: {version: KITE3D_VERSION},
+            })
+            expect(await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')).toContain('/kite3d/@legacy/')
+            expect((await checkProject(root)).ok).toBe(true)
+        },
+    )
+
+    it('leaves the legacy project unchanged when an asset rewrite is not writable', async () => {
+        const root = await legacyUpgradeFixture('0.12.2', 'devDependencies')
+        const packagePath = resolve(root, 'package.json')
+        const assetPath = resolve(root, 'assets/main.scene.gltf')
+        const before = {
+            package: await readFile(packagePath, 'utf8'),
+            asset: await readFile(assetPath, 'utf8'),
+            deploys: await readFile(resolve(root, '.blitz/deploys.json'), 'utf8'),
         }
+        await chmod(assetPath, 0o444)
 
-        expect(result).toMatchObject({from: '0.12.2', to: '0.13.0'})
-        expect(result.changes).toEqual([
-            'Renamed .blitz/ to .kite3d/.',
-            'Moved package.json key "blitz" to "kite3d".',
-            'Replaced @blitzdev/blitz with kite3d 0.13.0 in devDependencies.',
-            'Rewrote 1 legacy rootPath value in assets/main.scene.gltf.',
-        ])
-        await expect(access(resolve(root, '.blitz'))).rejects.toMatchObject({code: 'ENOENT'})
-        expect(JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))).toMatchObject({
-            devDependencies: {kite3d: '0.13.0'},
-            kite3d: {version: '0.13.0'},
-        })
-        expect(await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')).toContain('/kite3d/@legacy/')
-        expect((await checkProject(root)).ok).toBe(true)
+        await expect(migrateLegacyProject(root, KITE3D_VERSION)).rejects.toThrow(
+            'rewrite legacy root paths in assets/main.scene.gltf',
+        )
+
+        expect(await readFile(packagePath, 'utf8')).toBe(before.package)
+        expect(await readFile(assetPath, 'utf8')).toBe(before.asset)
+        expect(await readFile(resolve(root, '.blitz/deploys.json'), 'utf8')).toBe(before.deploys)
+        await expect(access(resolve(root, '.kite3d'))).rejects.toMatchObject({code: 'ENOENT'})
+    })
+
+    it('keeps the exact-version rule for --to on a normal upgrade', async () => {
+        const root = await upgradeFixture()
+        const packagePath = resolve(root, 'package.json')
+        const before = await readFile(packagePath, 'utf8')
+
+        await expect(upgradeProject(root, {to: '^2.0.0'})).rejects.toThrow(
+            'Kite3D version must be an exact x.y.z version: ^2.0.0',
+        )
+        expect(await readFile(packagePath, 'utf8')).toBe(before)
     })
 })
 
@@ -131,5 +170,25 @@ export const PROJECT_MIGRATIONS = [
     {version: '2.1.0', migrate() { throw new Error('future migration ran') }},
 ]
 `)
+    return root
+}
+
+async function legacyUpgradeFixture(
+    specifier: string,
+    section: 'dependencies' | 'devDependencies',
+): Promise<string> {
+    const root = await mkdtemp(resolve(tmpdir(), 'kite3d-legacy-upgrade-'))
+    roots.push(root)
+    await cp(resolve(import.meta.dirname, 'fixtures/legacy-project'), root, {recursive: true})
+    await mkdir(resolve(root, '.blitz'))
+    await writeFile(resolve(root, '.blitz/deploys.json'), '{"games":{}}\n')
+    const packagePath = resolve(root, 'package.json')
+    const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
+        dependencies?: Record<string, string>
+        devDependencies?: Record<string, string>
+    }
+    delete packageJson.devDependencies?.['@blitzdev/blitz']
+    packageJson[section] = {...packageJson[section], '@blitzdev/blitz': specifier}
+    await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
     return root
 }

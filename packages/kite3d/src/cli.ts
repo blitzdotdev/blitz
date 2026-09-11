@@ -239,6 +239,7 @@ try {
         const result = await upgradeProject(process.cwd(), {to: valueOption(parsed.values['--to'])})
         for (const change of result.changes) console.log(change)
         console.log(`Upgraded Kite3D from ${result.from} to ${result.to}`)
+        if (result.next) console.log(`Next: ${result.next}`)
     }
 } catch (error) {
     console.error(`kite3d: ${sanitizeDiagnostic(error instanceof Error ? error.message : error)}`)

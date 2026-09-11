@@ -102,22 +102,23 @@ export async function initProject(directory = '.', options: {git?: boolean} = {}
 export async function upgradeProject(
     projectRoot = process.cwd(),
     options: UpgradeProjectOptions = {},
-): Promise<{from: string, to: string, changes: string[]}> {
+): Promise<{from: string, to: string, changes: string[], next?: string}> {
     const root = resolve(projectRoot)
     const packagePath = resolve(root, 'package.json')
     const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as Record<string, unknown>
     const devDependencies = record(packageJson.devDependencies)
     const dependencies = record(packageJson.dependencies)
     const legacyConfig = record(packageJson.blitz)
-    const from = [
-        devDependencies.kite3d,
-        dependencies.kite3d,
+    const legacySpecifier = [
         devDependencies['@blitzdev/blitz'],
         dependencies['@blitzdev/blitz'],
-        legacyConfig.version,
     ].find((value): value is string => typeof value === 'string' && Boolean(value))
+    const from = legacySpecifier
+        ? legacyProjectVersion(legacyConfig.version, legacySpecifier)
+        : [devDependencies.kite3d, dependencies.kite3d]
+            .find((value): value is string => typeof value === 'string' && Boolean(value))
     if (!from) throw new Error('package.json must pin kite3d or legacy @blitzdev/blitz in dependencies')
-    const to = options.to || process.env.KITE3D_UPGRADE_TO || KITE3D_VERSION
+    const to = legacySpecifier ? KITE3D_VERSION : options.to || process.env.KITE3D_UPGRADE_TO || KITE3D_VERSION
     compareVersions(from, to)
     if (compareVersions(from, to) > 0) throw new Error(`Cannot upgrade from ${from} to older version ${to}`)
 
@@ -151,7 +152,9 @@ export async function upgradeProject(
     const sceneText = await readFile(resolve(root, mainScene), 'utf8')
     runtime.tools.validateSceneSource(mainScene, sceneText)
     await appendJournalEntry(root, 'kite3d-upgrade', {upgrade: {from, to}})
-    return {from, to, changes}
+    return legacySpecifier && await legacyPackageInstalled(root)
+        ? {from, to, changes, next: 'npm install'}
+        : {from, to, changes}
 }
 
 export async function runDev(options: {
@@ -546,6 +549,21 @@ function compareVersions(left: string, right: string): number {
         if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index]
     }
     return 0
+}
+
+function legacyProjectVersion(configured: unknown, specifier: string): string {
+    return [configured, specifier]
+        .find((value): value is string => typeof value === 'string' && /^\d+\.\d+\.\d+$/.test(value))
+        || '0.0.0'
+}
+
+async function legacyPackageInstalled(root: string): Promise<boolean> {
+    try {
+        return (await stat(resolve(root, 'node_modules/@blitzdev/blitz'))).isDirectory()
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false
+        throw error
+    }
 }
 
 export function selectProjectMigrations(
