@@ -47,7 +47,7 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Versioning
 
-The project's `devDependencies` select `kite3d`. Exact specs are checked directly; other specs resolve through the installed package metadata. Every command except help and version compares itself with that version. A mismatch delegates to the installed local binary or refuses with install and pinned `npx` instructions. `kite3d upgrade [--to x.y.z]` updates the pin and `kite3d.version`, installs without lifecycle scripts, runs engine migrations, validates the scene, and writes an upgrade journal entry. npm is the versioned store for editor, runtime, template, and `agents.md`. See `docs/open-source-split.md` for the packages.
+The project's `devDependencies` select `kite3d`. Exact specs are checked directly; other specs resolve through the installed package metadata. Every command except help, version, `doctor`, and `upgrade` compares itself with that version. A mismatch delegates to the installed local binary or refuses with install and pinned `npx` instructions. `doctor` reports the mismatch, while `kite3d upgrade` stays in the invoked CLI, updates the pin and `kite3d.version` to that CLI's version, installs without lifecycle scripts, runs every migration it knows, validates the scene, and writes an upgrade journal entry. npm is the versioned store for editor, runtime, template, and `agents.md`. See `docs/open-source-split.md` for the packages.
 
 ## No hosted editor
 
