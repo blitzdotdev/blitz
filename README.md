@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/assets/blitz-logo.png" width="140" alt="Blitz logo">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/kite3d-logo-dark.svg">
+    <img src="docs/assets/kite3d-logo.svg" width="140" alt="Blitz logo">
+  </picture>
 </p>
 
 <h1 align="center">Blitz</h1>
