@@ -316,6 +316,17 @@ describe('Kite3D dev server', () => {
         controller.abort()
     })
 
+    it('aborts active event streams while closing', async () => {
+        const {server, headers} = await startServer()
+        const events = await fetch(`${base(server)}/api/events`, {headers})
+        const reader = events.body!.getReader()
+        expect(new TextDecoder().decode((await reader.read()).value)).toContain(': connected')
+
+        await server.close()
+
+        expect(await reader.read()).toMatchObject({done: true})
+    })
+
     it('keeps local deploy and dev credentials out of file APIs', async () => {
         const {server, root, headers} = await startServer()
         await writeFile(resolve(root, '.kite3d/deploys.json'), '{"secret":"deploy"}')
