@@ -1,4 +1,3 @@
-import {createHash} from 'node:crypto'
 import {mkdtemp, readdir, readFile, rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
@@ -67,8 +66,8 @@ describe('initProject', () => {
         expect(instructions).toContain('`origin` is the token-free server origin')
         expect(instructions).toContain('unless `--allow-parent-repo` is supplied')
         expect(instructions).toContain('Then run `npx kite3d check`')
-        expect(createHash('sha256').update(await readFile(resolve('../../docs/agents.md'))).digest('hex'))
-            .toBe('d1709ec7022cf75bea3eb0b2fd62d8faadda5d55beb8d19f3dceea51b8425180')
+        expect(await readFile(resolve('../../docs/agents.md'), 'utf8'))
+            .toBe(await readFile(resolve('template/AGENTS.md'), 'utf8'))
     })
 })
 
