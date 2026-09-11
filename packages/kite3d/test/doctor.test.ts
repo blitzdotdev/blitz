@@ -261,7 +261,7 @@ async function readyProject(options: {registeredRuntime?: boolean, git?: boolean
     }
     await initProject(root, {git: options.parentGit ? false : options.git !== false})
     const runtime = Buffer.from('doctor fixture runtime')
-    for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine', '@blitzdev/template']) {
+    for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine']) {
         const packageRoot = resolve(root, `node_modules/${name}`)
         await mkdir(packageRoot, {recursive: true})
         await writeFile(resolve(packageRoot, 'package.json'), JSON.stringify({version: KITE3D_VERSION}))

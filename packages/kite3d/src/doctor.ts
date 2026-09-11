@@ -33,7 +33,7 @@ export interface DoctorOptions {
 
 const DEFAULT_DEV_PORT = 4321
 const DEFAULT_DEV_PORT_ATTEMPTS = 20
-const KITE3D_PACKAGES = ['kite3d', 'editor', 'engine', 'template'] as const
+const KITE3D_PACKAGES = ['kite3d', 'editor', 'engine'] as const
 const doctorRequire = createRequire(import.meta.url)
 
 export async function doctorProject(

@@ -8,4 +8,8 @@ module.exports = {
     '@typescript-eslint/no-explicit-any': 'off',
     '@typescript-eslint/no-unused-vars': 'off',
   },
+  overrides: [{
+    files: ['template/**/*.js'],
+    env: {browser: true},
+  }],
 }

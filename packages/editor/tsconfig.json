@@ -25,7 +25,10 @@
     "experimentalDecorators": true,
     "types": [],
     "baseUrl": ".",
-    "paths": {"@blitzdev/engine": ["../engine/src/index.ts"]}
+    "paths": {
+      "@blitzdev/engine": ["../engine/src/index.ts"],
+      "uiconfig-blueprint/lib/esm/lib": ["uiconfig-blueprint/lib/esm/lib.js"]
+    }
     //    "allowSyntheticDefaultImports": true,
 //    "forceConsistentCasingInFileNames": true,
 //    "isolatedModules": true,

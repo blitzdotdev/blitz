@@ -4,6 +4,15 @@ import replace from '@rollup/plugin-replace'
 import {resolve} from 'node:path'
 
 export default defineConfig({
+    resolve: {
+        alias: [{
+            find: 'uiconfig-blueprint/lib/esm/lib',
+            replacement: resolve(__dirname, 'uiconfig-blueprint/lib/esm/lib.js'),
+        }, {
+            find: 'uiconfig-blueprint/src/renderer',
+            replacement: resolve(__dirname, 'uiconfig-blueprint/src/renderer.scss'),
+        }],
+    },
     build: {
         sourcemap: true,
         rollupOptions: {

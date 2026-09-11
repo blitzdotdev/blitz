@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto'
 import {createRequire} from 'node:module'
 import {mkdir, open, readFile, readdir, stat, unlink, writeFile} from 'node:fs/promises'
 import {dirname, relative, resolve, sep} from 'node:path'
-import {pathToFileURL} from 'node:url'
+import {fileURLToPath, pathToFileURL} from 'node:url'
 import openBrowser from 'open'
 import {Kite3dApi, sanitizeDiagnostic} from './api.ts'
 import {resolveBackendUrl} from './backend.ts'
@@ -70,8 +70,7 @@ export async function initProject(directory = '.', options: {git?: boolean} = {}
     const repository = await gitRepositoryRoot(target)
     const shouldInitializeGit = options.git !== false
         && (!repository || (repository !== target && !await gitTracksProject(target)))
-    const packageRoot = dirname(commandRequire.resolve('@blitzdev/template/package.json'))
-    const template = resolve(packageRoot, 'template')
+    const template = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'template')
     for (const sourceName of await walkTemplate(template)) {
         const destinationName = TEMPLATE_RENAMES[sourceName] || sourceName
         const destination = resolve(target, destinationName)
