@@ -29,6 +29,24 @@ function run(command, args, {environment = process.env, capture = false, allowFa
     }
 }
 
+export function publishPackage({name, version, workspace, dryRun, environment, commandRunner = run, logger = console.log}) {
+    const packageSpec = `${name}@${version}`
+    const publishedVersion = commandRunner('npm', ['view', packageSpec, 'version'], {
+        environment,
+        capture: true,
+        allowFailure: true,
+    })?.trim()
+    if (publishedVersion) {
+        logger(`${packageSpec} already published, skipping`)
+        return false
+    }
+
+    const arguments_ = ['publish', '--workspace', workspace, '--access', 'public']
+    if (dryRun) arguments_.push('--dry-run')
+    commandRunner('npm', arguments_, {environment})
+    return true
+}
+
 function parseArguments(arguments_) {
     const knownArguments = new Set(['--dry-run', '--publish', '--register'])
     const unknown = arguments_.filter(argument => !knownArguments.has(argument))
@@ -142,9 +160,14 @@ async function release() {
         run('npm', ['run', 'test:runtime'], {environment: npm.environment})
 
         for (const name of publishOrder) {
-            const arguments_ = ['publish', '--workspace', `packages/${name}`, '--access', 'public']
-            if (dryRun) arguments_.push('--dry-run')
-            run('npm', arguments_, {environment: npm.environment})
+            const manifest = await readJson(`packages/${name}/package.json`)
+            publishPackage({
+                name: manifest.name,
+                version: manifest.version,
+                workspace: `packages/${name}`,
+                dryRun,
+                environment: npm.environment,
+            })
         }
 
         const registered = !dryRun || register
@@ -158,9 +181,12 @@ async function release() {
     }
 }
 
-try {
-    await release()
-} catch (error) {
-    console.error(`release: ${error.message}`)
-    process.exitCode = 1
+const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (isMain) {
+    try {
+        await release()
+    } catch (error) {
+        console.error(`release: ${error.message}`)
+        process.exitCode = 1
+    }
 }
