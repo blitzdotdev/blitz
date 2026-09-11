@@ -1,12 +1,12 @@
 {
-  "name": "blitz-runtime-sample",
+  "name": "kite3d-runtime-sample",
   "version": "1.0.0",
   "private": true,
   "mainScene": "assets/main.scene.gltf",
   "dependencies": {
     "threepipe": "0.5.1"
   },
-  "blitz": {
+  "kite3d": {
     "plugins": [],
     "imports": {},
     "scripts": ["Spinner.script.js"],

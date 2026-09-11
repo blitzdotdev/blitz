@@ -19,5 +19,5 @@ interface StateFileSource {
 
 export async function writeEditorState(source: StateFileSource, state: EditorState, ifMatch: string | '*'): Promise<string> {
     const bytes = new TextEncoder().encode(`${JSON.stringify(state, null, 2)}\n`)
-    return (await source.write('.blitz/state.json', bytes, ifMatch)).sha256
+    return (await source.write('.kite3d/state.json', bytes, ifMatch)).sha256
 }

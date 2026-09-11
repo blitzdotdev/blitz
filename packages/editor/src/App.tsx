@@ -28,7 +28,7 @@ export default function App() {
 
     if (!sourceResult.source) {
         return <main className="no-project" role="alert">
-            No Blitz project is being served. Run <code>blitz init</code>, then <code>blitz dev</code>.
+            No Kite3D project is being served. Run <code>kite3d init</code>, then <code>kite3d dev</code>.
             {sourceResult.error && <span className="no-project-detail"> {sourceResult.error}</span>}
         </main>
     }
@@ -62,7 +62,7 @@ function EditorApp({source}: {source: DevServerSource}) {
         <ThreeEditorComponent onOpenGame={() => setPublishDialogOpen(true)}/>
         <PublishDialog
             isOpen={publishDialogOpen}
-            name={manager.project?.name || 'Blitz game'}
+            name={manager.project?.name || 'Kite3D game'}
             source={source}
             beforePublish={() => manager.beforePublish()}
             onClose={() => setPublishDialogOpen(false)}

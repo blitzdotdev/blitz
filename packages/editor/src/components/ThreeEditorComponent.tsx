@@ -46,10 +46,10 @@ import {
 import {isEditableSourceFile} from '../utils/sourceFiles.ts';
 import {DevServerInspectorControls} from '../adapters/DevServerInspectorControls.tsx';
 import {
-    BlitzSaveSceneButton,
-    BlitzThemeSettingsMenu,
-    BlitzToolbarHooks,
-} from '../adapters/BlitzToolbarControls.tsx';
+    Kite3dSaveSceneButton,
+    Kite3dThemeSettingsMenu,
+    Kite3dToolbarHooks,
+} from '../adapters/Kite3dToolbarControls.tsx';
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){
@@ -281,7 +281,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                     </Navbar.Group>
                     {project && (
                     <Navbar.Group align={Alignment.START}>
-                        <BlitzSaveSceneButton/>
+                        <Kite3dSaveSceneButton/>
                     </Navbar.Group>
                     )}
                     <Navbar.Group align={Alignment.END}>
@@ -295,12 +295,12 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                                  minimal
                                  targetTagName={"div"}
                                  content={
-                                     <BlitzThemeSettingsMenu/>
+                                     <Kite3dThemeSettingsMenu/>
                                  } placement="bottom">
                             <Button aria-label="Settings" icon="cog" size={"small"} variant={"minimal"} text=""/>
                         </Popover>
                     </Navbar.Group>
-                    <BlitzToolbarHooks/>
+                    <Kite3dToolbarHooks/>
                 </Navbar>
                 <WindowPanesLayout
                     key={viewer.scene.uuid} // force rerender when viewer change, because we might add events to the viewer in sub components like BPHierarchyComponent
@@ -485,7 +485,7 @@ export function NavProjectFileName(){
     if(!project) return null
     return <>
         {project && <Button role="heading" variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>}
-        {/* AGREED-4: Blitz scenes are text glTF; present the stem in the same reference slot. */}
+        {/* AGREED-4: Kite3D scenes are text glTF; present the stem in the same reference slot. */}
         {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.(?:glb|gltf)$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
     </>
 }

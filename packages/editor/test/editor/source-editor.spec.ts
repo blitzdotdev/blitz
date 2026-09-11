@@ -3,14 +3,14 @@ import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {initProject, publishFromDisk, runDev} from '../../../blitz/src/commands.ts'
+import {initProject, publishFromDisk, runDev} from '../../../kite3d/src/commands.ts'
 
 async function withSourceEditor(page: Page, run: (root: string) => Promise<void>) {
-    const root = await mkdtemp(resolve(tmpdir(), 'blitz-source-editor-'))
+    const root = await mkdtemp(resolve(tmpdir(), 'kite3d-source-editor-'))
     await initProject(root)
     const packagePath = resolve(root, 'package.json')
-    const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {blitz: {scripts?: string[]}}
-    packageJson.blitz.scripts = ['./Hot.script.js']
+    const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {kite3d: {scripts?: string[]}}
+    packageJson.kite3d.scripts = ['./Hot.script.js']
     await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
     await writeFile(resolve(root, 'Hot.script.js'), hotScript('v1'))
     await writeFile(resolve(root, 'notes.txt'), 'first line\nsecond line\n')
@@ -192,11 +192,11 @@ test('preserves a dirty draft on external change and resolves conflicts with Rel
     })
 })
 
-test('marks the editor state dirty so blitz publish refuses an unsaved source draft', async ({page}) => {
+test('marks the editor state dirty so kite3d publish refuses an unsaved source draft', async ({page}) => {
     await withSourceEditor(page, async (root) => {
         const editor = await openSource(page, 'notes.txt')
         await editor.fill('// save before publishing')
-        await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(true)
+        await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).dirty).toBe(true)
 
         await expect(publishFromDisk(root, {slug: 'dirty-source-draft', noCheck: true, noVerify: true}))
             .rejects.toThrow('Save the unsaved editor draft before publishing.')

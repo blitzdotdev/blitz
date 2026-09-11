@@ -194,7 +194,7 @@ export function PublishDialog({isOpen, name, source, beforePublish, onClose}: Pu
     }
 
     const copyPrompt = async () => {
-        const prompt = `Deploy the Blitz game in this folder to a live URL.\nRead https://blitz.dev/agents.md and follow the Deploy section.\nUse the slug "${slug}". If .blitz/deploys.json exists, reuse its deploy_token.\nOtherwise create a new anonymous game. Report the preview URL when done.`
+        const prompt = `Deploy the Kite3D game in this folder to a live URL.\nRead https://blitz.dev/agents.md and follow the Deploy section.\nUse the slug "${slug}". If .kite3d/deploys.json exists, reuse its deploy_token.\nOtherwise create a new anonymous game. Report the preview URL when done.`
         await navigator.clipboard.writeText(prompt)
     }
 

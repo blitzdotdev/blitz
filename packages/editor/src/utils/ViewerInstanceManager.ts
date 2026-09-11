@@ -123,7 +123,7 @@ type ModuleExports = Record<string, unknown>
 export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     readonly source: DevServerSource
     readonly hashes = new Map<string, string>()
-    /** Reference feature controller, backed by Blitz's persistent edit viewer. */
+    /** Reference feature controller, backed by Kite3D's persistent edit viewer. */
     readonly features = new EditorFeatures(this)
     /** AGREED-4: expose DevServerSource blobs through the reference Memory surface. */
     readonly fileTracker = new FileTracker()
@@ -503,7 +503,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             ? EntityComponentPlugin.GetComponent(event.object.parent, GeneratorComponent)
             : undefined
         if (!this.loadingScene && !this.savingScene && event.object
-            && event.object.userData.blitzGenerated !== true && !generatorParent) {
+            && event.object.userData.kite3dGenerated !== true && !generatorParent) {
             this.loadedNeedsSave = true
         }
         this.changed()
@@ -619,7 +619,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         component.setState({module, params})
         const objectComponents = EntityComponentPlugin.GetObjectData(object)
         if (objectComponents?.[component.uuid]) objectComponents[component.uuid].state = component.stateRef
-        object.setDirty?.({change: 'generator state', source: 'Blitz editor'})
+        object.setDirty?.({change: 'generator state', source: 'Kite3D editor'})
         await GeneratorComponent.waitForViewer(this.get())
         this.loadedNeedsSave = true
         await this.saveScene()
@@ -670,7 +670,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.game?.dispose()
             this.game = undefined
             this.setStatus('Starting game…')
-            await this.appendConsoleLine(`# Blitz play log started ${new Date().toISOString()}; levels: console.warn, console.error, uncaught errors`, false)
+            await this.appendConsoleLine(`# Kite3D play log started ${new Date().toISOString()}; levels: console.warn, console.error, uncaught errors`, false)
             const entries = await this.source.list()
             const fileRevisions = Object.fromEntries(entries.map(({path, sha256}) => [path, sha256]))
             this.get().renderEnabled = false
@@ -827,12 +827,12 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             outcomes,
         }
         await this.writeCheckResult(result)
-        await this.appendConsoleLine(`[blitz check] ${outcomes.map(({name, status, codes}) =>
+        await this.appendConsoleLine(`[kite3d check] ${outcomes.map(({name, status, codes}) =>
             `${name}=${status}${codes.length ? `(${codes.join(',')})` : ''}`).join(' ')}`)
         this.checkResult = result
         this.setStatus(result.ok ? 'Check passed' : 'Check failed')
         AppToaster().show({
-            message: result.ok ? 'Playable, Editable, and Persisted checks passed.' : 'Blitz check failed. See the result cards and .blitz/check.json.',
+            message: result.ok ? 'Playable, Editable, and Persisted checks passed.' : 'Kite3D check failed. See the result cards and .kite3d/check.json.',
             intent: result.ok ? 'success' : 'danger',
             icon: result.ok ? 'tick' : 'error',
             timeout: 4000,
@@ -842,7 +842,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     private async writeCheckResult(result: EditorCheckResult): Promise<void> {
-        const path = '.blitz/check.json'
+        const path = '.kite3d/check.json'
         let ifMatch: string | '*' = this.hashes.get(path) || '*'
         try {
             const current = await this.source.read(path)
@@ -854,7 +854,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     private async reportCleanupFailure(report: RuntimeCleanupReport): Promise<void> {
         const codes = issueCodes(report.issues)
-        await this.appendConsoleLine(`[blitz stop] runtime cleanup failed: ${codes.join(', ')}`)
+        await this.appendConsoleLine(`[kite3d stop] runtime cleanup failed: ${codes.join(', ')}`)
         AppToaster().show({
             message: `Runtime cleanup failed: ${codes.join(', ')}`,
             intent: 'danger',
@@ -886,7 +886,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 loaded.userData ||= {}
                 delete loaded.userData.rootSceneModelRoot
                 loaded.userData.rootPath = rootPath
-                loaded.userData.blitzImportedInstance = true
+                loaded.userData.kite3dImportedInstance = true
                 loaded.userData.sProperties = [...assetInstanceProperties]
                 loaded.name = file.name
                 for (const child of loaded.children) child.userData.excludeFromExport = true
@@ -945,7 +945,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     async getAssetFromPath(path: string) {
-        const normalized = path.startsWith('/blitz/') ? path : this.source.fileUrl(path)
+        const normalized = path.startsWith('/kite3d/') ? path : this.source.fileUrl(path)
         const imported = await this.get().assetManager.importer.import(normalized)
         return imported.find(Boolean)
     }
@@ -970,7 +970,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     async snapshot() {
-        await this.get().getPlugin(CanvasSnapshotPlugin)?.downloadSnapshot(`${this.project?.name || 'blitz'}-snapshot.png`, {
+        await this.get().getPlugin(CanvasSnapshotPlugin)?.downloadSnapshot(`${this.project?.name || 'kite3d'}-snapshot.png`, {
             waitForProgressive: false,
         })
     }
@@ -1042,9 +1042,9 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 const sha256 = await writeEditorState(
                     this.source,
                     state,
-                    this.hashes.get('.blitz/state.json') || '*',
+                    this.hashes.get('.kite3d/state.json') || '*',
                 )
-                this.hashes.set('.blitz/state.json', sha256)
+                this.hashes.set('.kite3d/state.json', sha256)
             } catch (caught) {
                 if (!(caught instanceof ProjectConflictError)) throw caught
             }
@@ -1072,17 +1072,17 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     private appendConsoleLine(message: string, timestamp = true): Promise<void> {
         const write = this.consoleWriteQueue.then(async () => {
             let previous = ''
-            let ifMatch: string | '*' = this.hashes.get('.blitz/console.log') || '*'
+            let ifMatch: string | '*' = this.hashes.get('.kite3d/console.log') || '*'
             try {
-                const current = await this.source.read('.blitz/console.log')
+                const current = await this.source.read('.kite3d/console.log')
                 previous = decode(current.bytes)
                 ifMatch = current.sha256
             } catch { /* first log entry */ }
             const line = timestamp ? `${new Date().toISOString()} ${message}` : message
             const next = `${previous}${line}\n`.slice(-200_000)
             try {
-                const result = await this.source.write('.blitz/console.log', encode(next), ifMatch)
-                this.hashes.set('.blitz/console.log', result.sha256)
+                const result = await this.source.write('.kite3d/console.log', encode(next), ifMatch)
+                this.hashes.set('.kite3d/console.log', result.sha256)
             } catch (error) {
                 if (!(error instanceof ProjectConflictError)) throw error
             }
@@ -1268,13 +1268,13 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
 function createURLModifier(base: URL, assets: AssetsJSONManifest) {
     return (url: string): string => {
-        if (url.startsWith('/blitz/@')) {
-            const id = url.slice('/blitz/@'.length).split('/', 1)[0]
+        if (url.startsWith('/kite3d/@')) {
+            const id = url.slice('/kite3d/@'.length).split('/', 1)[0]
             const asset = assets.files[id]
             if (!asset?.path) throw new Error(`Unknown asset id in URL: ${id}`)
             return new URL(asset.path, base).href
         }
-        if (url.startsWith('/blitz/')) return new URL(url.slice('/blitz/'.length), base).href
+        if (url.startsWith('/kite3d/')) return new URL(url.slice('/kite3d/'.length), base).href
         return url
     }
 }

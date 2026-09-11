@@ -25,7 +25,7 @@ export function DevServerInspectorControls() {
     return <>
         {object && <input
             id="inspector-object-name"
-            className="blitz-semantic-hook"
+            className="kite3d-semantic-hook"
             value={object.name}
             onChange={(event) => {
                 object.name = event.target.value

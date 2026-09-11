@@ -1,7 +1,7 @@
 import type {IObject3D} from 'threepipe'
 
-export const BLITZ_AUTHORING_METADATA_KEY = 'blitzAuthoring'
-export const BLITZ_RUNTIME_METADATA_KEY = 'blitzRuntime'
+export const KITE3D_AUTHORING_METADATA_KEY = 'kite3dAuthoring'
+export const KITE3D_RUNTIME_METADATA_KEY = 'kite3dRuntime'
 
 export type AuthoringRole = 'direct' | 'template' | 'generator'
 
@@ -46,14 +46,14 @@ const trackedRuntimeObjects = new Map<IObject3D, TrackedRuntimeObject>()
 /** Store a validated, serializable authored identity on an object. */
 export function setAuthoringMetadata(object: IObject3D, metadata: AuthoringMetadata): AuthoringMetadata {
     const value = normalizeAuthoringMetadata(metadata)
-    object.userData[BLITZ_AUTHORING_METADATA_KEY] = value
-    object.setDirty?.({source: 'Blitz authoring', change: `userData.${BLITZ_AUTHORING_METADATA_KEY}`})
+    object.userData[KITE3D_AUTHORING_METADATA_KEY] = value
+    object.setDirty?.({source: 'Kite3D authoring', change: `userData.${KITE3D_AUTHORING_METADATA_KEY}`})
     return value
 }
 
 /** Read authoring metadata without trusting arbitrary userData. */
 export function getAuthoringMetadata(object: IObject3D): AuthoringMetadata | undefined {
-    const value = object.userData?.[BLITZ_AUTHORING_METADATA_KEY]
+    const value = object.userData?.[KITE3D_AUTHORING_METADATA_KEY]
     if (!isRecord(value) || !authoringRoles.has(value.role as AuthoringRole)
         || typeof value.id !== 'string' || !value.id.trim()
         || (value.sourceId !== undefined && (typeof value.sourceId !== 'string' || !value.sourceId.trim()))
@@ -62,7 +62,7 @@ export function getAuthoringMetadata(object: IObject3D): AuthoringMetadata | und
 }
 
 export function getRuntimeObjectMetadata(object: IObject3D): RuntimeObjectMetadata | undefined {
-    const value = object.userData?.[BLITZ_RUNTIME_METADATA_KEY]
+    const value = object.userData?.[KITE3D_RUNTIME_METADATA_KEY]
     if (!isRecord(value) || typeof value.ownerId !== 'string' || !value.ownerId
         || !['clone', 'effect'].includes(String(value.kind))
         || typeof value.sourceId !== 'string' || !value.sourceId) return undefined
@@ -135,8 +135,8 @@ export class RuntimeObjectOwner {
         const clone = source.clone(true) as T
         clone.traverse((child) => {
             if (child !== clone) {
-                delete child.userData?.[BLITZ_AUTHORING_METADATA_KEY]
-                delete child.userData?.[BLITZ_RUNTIME_METADATA_KEY]
+                delete child.userData?.[KITE3D_AUTHORING_METADATA_KEY]
+                delete child.userData?.[KITE3D_RUNTIME_METADATA_KEY]
             }
             cloneMaterials(child)
         })
@@ -191,12 +191,12 @@ export class RuntimeObjectOwner {
         overrides?: RuntimeMutableProperty[],
     ): void {
         const sourceId = source.id
-        object.userData[BLITZ_AUTHORING_METADATA_KEY] = {
+        object.userData[KITE3D_AUTHORING_METADATA_KEY] = {
             role: source.role,
             id: `${this.ownerId}:${++this.nextObject}`,
             sourceId,
         } satisfies AuthoringMetadata
-        object.userData[BLITZ_RUNTIME_METADATA_KEY] = {
+        object.userData[KITE3D_RUNTIME_METADATA_KEY] = {
             ownerId: this.ownerId,
             kind,
             sourceId,
@@ -207,13 +207,13 @@ export class RuntimeObjectOwner {
 
 function normalizeAuthoringMetadata(metadata: AuthoringMetadata): AuthoringMetadata {
     if (!metadata || !authoringRoles.has(metadata.role) || typeof metadata.id !== 'string' || !metadata.id.trim()) {
-        throw new Error('Blitz authoring metadata requires a supported role and stable id')
+        throw new Error('Kite3D authoring metadata requires a supported role and stable id')
     }
     if (metadata.sourceId !== undefined && (typeof metadata.sourceId !== 'string' || !metadata.sourceId.trim())) {
-        throw new Error('Blitz authoring sourceId must be a non-empty string')
+        throw new Error('Kite3D authoring sourceId must be a non-empty string')
     }
     if (metadata.allowCameraInside !== undefined && typeof metadata.allowCameraInside !== 'boolean') {
-        throw new Error('Blitz allowCameraInside must be a boolean')
+        throw new Error('Kite3D allowCameraInside must be a boolean')
     }
     return {
         role: metadata.role,

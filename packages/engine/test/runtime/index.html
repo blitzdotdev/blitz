@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Blitz runtime fixture</title>
+    <title>Kite3D runtime fixture</title>
     <script type="importmap">
     {"imports":{
         "threepipe":"./runtime.js",
@@ -18,23 +18,23 @@
     </style>
 </head>
 <body>
-    <canvas id="blitz-canvas"></canvas>
+    <canvas id="kite3d-canvas"></canvas>
     <script type="module">
         import {createGame, RUNTIME_VERSION} from './runtime.js'
 
-        window.__blitzUpdates = 0
-        window.__blitzErrors = []
-        window.__blitzRuntimeVersion = RUNTIME_VERSION
+        window.__kite3dUpdates = 0
+        window.__kite3dErrors = []
+        window.__kite3dRuntimeVersion = RUNTIME_VERSION
         try {
-            window.__blitzGame = await createGame({
+            window.__kite3dGame = await createGame({
                 base: new URL('./sample-project/', location.href).href,
-                canvas: document.getElementById('blitz-canvas'),
-                onError: (error) => window.__blitzErrors.push(String(error)),
+                canvas: document.getElementById('kite3d-canvas'),
+                onError: (error) => window.__kite3dErrors.push(String(error)),
             })
         } catch (error) {
-            window.__blitzStartupError = String(error)
+            window.__kite3dStartupError = String(error)
         } finally {
-            window.__blitzReady = true
+            window.__kite3dReady = true
         }
     </script>
 </body>

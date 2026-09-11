@@ -18,7 +18,7 @@ import {useManagerVersion} from '../utils/UseManager.ts'
 import {InteractionIconButton} from '../components/InteractionIconButton.tsx'
 import type {EditorCheckResult, ViewerInstanceManager} from '../utils/ViewerInstanceManager.ts'
 
-export function BlitzSaveSceneButton() {
+export function Kite3dSaveSceneButton() {
     const manager = useManagerVersion()
     const [saving, setSaving] = useState(false)
     const save = async () => {
@@ -85,7 +85,7 @@ function CheckpointMenuItem({manager}: {manager: ViewerInstanceManager}) {
         shouldDismissPopover={false}
         text="Checkpoint..."
     >
-        <li className="blitz-checkpoint-menu-popover" role="none">
+        <li className="kite3d-checkpoint-menu-popover" role="none">
             <form data-testid="checkpoint-popover" onSubmit={(event) => void create(event)}>
                 <InputGroup
                     aria-label="Checkpoint label"
@@ -125,7 +125,7 @@ function RestoreCheckpointMenuItem({manager}: {manager: ViewerInstanceManager}) 
         shouldDismissPopover={false}
         text="Restore last checkpoint"
     >
-        {checkpoint && <li className="blitz-restore-menu-popover" role="none">
+        {checkpoint && <li className="kite3d-restore-menu-popover" role="none">
             <div data-testid="restore-checkpoint-popover">
                 <strong>Restore checkpoint?</strong>
                 <p>
@@ -148,7 +148,7 @@ function RestoreCheckpointMenuItem({manager}: {manager: ViewerInstanceManager}) 
     </MenuItem>
 }
 
-export function BlitzOpenGameButton({onOpenGame}: {onOpenGame(): void}) {
+export function Kite3dOpenGameButton({onOpenGame}: {onOpenGame(): void}) {
     return <Tooltip
         content="Open game in a new tab"
         intent={Intent.PRIMARY}
@@ -166,7 +166,7 @@ export function BlitzOpenGameButton({onOpenGame}: {onOpenGame(): void}) {
 
 const checkTooltip = 'Check the game: Playable, Editable, Persisted'
 
-export function BlitzCheckButton() {
+export function Kite3dCheckButton() {
     const manager = useManagerVersion()
     const result = manager.checkResult
     const button = <InteractionIconButton
@@ -180,7 +180,7 @@ export function BlitzCheckButton() {
     >
         {result && <span
             aria-hidden={true}
-            className={`blitz-check-badge blitz-check-badge-${result.ok ? 'success' : 'danger'}`}/>}
+            className={`kite3d-check-badge kite3d-check-badge-${result.ok ? 'success' : 'danger'}`}/>}
     </InteractionIconButton>
 
     if (!result) {
@@ -195,7 +195,7 @@ export function BlitzCheckButton() {
     }
 
     return <Popover
-        content={<BlitzCheckPopover result={result}/>}
+        content={<Kite3dCheckPopover result={result}/>}
         hoverCloseDelay={150}
         hoverOpenDelay={150}
         interactionKind={PopoverInteractionKind.HOVER_TARGET_ONLY}
@@ -207,26 +207,26 @@ export function BlitzCheckButton() {
     </Popover>
 }
 
-function BlitzCheckPopover({result}: {result: EditorCheckResult}) {
+function Kite3dCheckPopover({result}: {result: EditorCheckResult}) {
     const relativeTime = useRelativeTime(result.checkedAt)
-    return <div className="blitz-check-popover" data-testid="check-results">
-        <div className="blitz-check-header">
+    return <div className="kite3d-check-popover" data-testid="check-results">
+        <div className="kite3d-check-header">
             <h6>Check</h6>
             <span data-testid="check-relative-time">{relativeTime}</span>
         </div>
         {result.outcomes.map((outcome) => <div
-            className="blitz-check-outcome"
+            className="kite3d-check-outcome"
             data-status={outcome.status}
             data-testid={`check-outcome-${outcome.name.toLowerCase()}`}
             key={outcome.name}
         >
             <span
                 aria-label={outcome.status === 'pass' ? 'Passed' : 'Failed'}
-                className={`blitz-check-status blitz-check-status-${outcome.status === 'pass' ? 'success' : 'danger'}`}/>
+                className={`kite3d-check-status kite3d-check-status-${outcome.status === 'pass' ? 'success' : 'danger'}`}/>
             <strong>{outcome.name}</strong>
-            <span className="blitz-check-summary">{outcome.summary}</span>
+            <span className="kite3d-check-summary">{outcome.summary}</span>
             {outcome.status === 'fail' && outcome.codes.length > 0 &&
-                <span className="blitz-check-codes">{outcome.codes.join(', ')}</span>}
+                <span className="kite3d-check-codes">{outcome.codes.join(', ')}</span>}
         </div>)}
     </div>
 }
@@ -244,22 +244,22 @@ function useRelativeTime(checkedAt: string) {
     return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
 }
 
-export function BlitzToolbarHooks() {
+export function Kite3dToolbarHooks() {
     const manager = useManagerVersion()
     return <>
-        <span className="blitz-status-hook" aria-live="polite">{manager.status}</span>
+        <span className="kite3d-status-hook" aria-live="polite">{manager.status}</span>
         {/* Compatibility roles keep the unchanged integration assertions while the
             non-reference Scene and Timeline panels remain absent. */}
-        <span className="blitz-semantic-hook" role="tab" aria-label="Scene"/>
-        <span className="blitz-semantic-hook" role="tab" aria-label="Timeline"/>
-        <button className="blitz-semantic-hook" title="Snapshot" type="button"
+        <span className="kite3d-semantic-hook" role="tab" aria-label="Scene"/>
+        <span className="kite3d-semantic-hook" role="tab" aria-label="Timeline"/>
+        <button className="kite3d-semantic-hook" title="Snapshot" type="button"
                 onClick={() => void manager.snapshot()}/>
-        <button className="blitz-semantic-hook" title="Fullscreen" type="button"
+        <button className="kite3d-semantic-hook" title="Fullscreen" type="button"
                 onClick={() => void manager.get().container.parentElement?.requestFullscreen()}/>
-        {manager.error && <div className="blitz-project-error" role="alert">{manager.error}</div>}
+        {manager.error && <div className="kite3d-project-error" role="alert">{manager.error}</div>}
     </>
 }
 
-export function BlitzThemeSettingsMenu() {
+export function Kite3dThemeSettingsMenu() {
     return <ThemeSettingsMenuComponent/>
 }

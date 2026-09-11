@@ -157,8 +157,8 @@ describe('authoring validation fixture matrix', () => {
         const fixture = createFixture()
         addDirectRoom(fixture.modelRoot)
         const orphan = box('Orphan Runtime Copy', 0xff3344)
-        orphan.userData.blitzAuthoring = {role: 'template', id: 'orphan', sourceId: 'deleted-source'}
-        orphan.userData.blitzRuntime = {ownerId: 'spawner', kind: 'clone', sourceId: 'deleted-source'}
+        orphan.userData.kite3dAuthoring = {role: 'template', id: 'orphan', sourceId: 'deleted-source'}
+        orphan.userData.kite3dRuntime = {ownerId: 'spawner', kind: 'clone', sourceId: 'deleted-source'}
         fixture.scene.add(orphan)
 
         expect(codes(runtimeCleanupReport(fixture.viewer))).toContain('MISSING_AUTHORING_SOURCE')
@@ -176,8 +176,8 @@ describe('authoring validation fixture matrix', () => {
         stale.visible = true
         stale.material = (template.material as MeshStandardMaterial).clone()
         ;(stale.material as MeshStandardMaterial).color.set(0xcc3388)
-        stale.userData.blitzAuthoring = {role: 'template', id: 'stale', sourceId: 'editable-template'}
-        stale.userData.blitzRuntime = {
+        stale.userData.kite3dAuthoring = {role: 'template', id: 'stale', sourceId: 'editable-template'}
+        stale.userData.kite3dRuntime = {
             ownerId: 'spawner', kind: 'clone', sourceId: 'editable-template', overrides: ['position', 'rotation', 'visible'],
         }
         fixture.scene.add(stale)

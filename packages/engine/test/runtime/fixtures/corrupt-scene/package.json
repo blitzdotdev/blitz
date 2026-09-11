@@ -4,5 +4,5 @@
   "private": true,
   "mainScene": "assets/corrupt.scene.gltf",
   "dependencies": {},
-  "blitz": {"plugins": [], "imports": {}, "scripts": [], "viewer": {"msaa": false, "tonemap": false}}
+  "kite3d": {"plugins": [], "imports": {}, "scripts": [], "viewer": {"msaa": false, "tonemap": false}}
 }

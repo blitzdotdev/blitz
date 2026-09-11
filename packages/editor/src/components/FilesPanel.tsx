@@ -52,7 +52,7 @@ export function FilesPanelGrid() {
     const {currentPath, setCurrentPath, fileManifest, selectedFiles, setSelectedFiles} = useAssets()
     const prefix = currentPath === '/' ? '' : `${currentPath.replace(/^\//, '').replace(/\/$/, '')}/`
     const entries = new Map<string, FileManifestEntry | {name: string, path: string, type: 'directory'}>()
-    for (const file of fileManifest.filter(({path}) => !isPrivateBlitzFile(path) && !path.startsWith('.') && !isTemplateSample(path))) {
+    for (const file of fileManifest.filter(({path}) => !isPrivateKite3dFile(path) && !path.startsWith('.') && !isTemplateSample(path))) {
         if (!file.path.startsWith(prefix)) continue
         const relative = file.path.slice(prefix.length)
         const [name, ...rest] = relative.split('/')
@@ -78,8 +78,8 @@ export function FilesPanelGrid() {
             onDoubleClick={() => {
                 if (file.type === 'directory') setCurrentPath(`/${file.path}`)
             }}/>) }
-        {fileManifest.filter(({path}) => path.includes('/') && !isPrivateBlitzFile(path)).map((file, index) =>
-            <button key={`semantic-${file.path}`} type="button" className="blitz-semantic-hook"
+        {fileManifest.filter(({path}) => path.includes('/') && !isPrivateKite3dFile(path)).map((file, index) =>
+            <button key={`semantic-${file.path}`} type="button" className="kite3d-semantic-hook"
                     style={{left: `${index * 4}px`, top: `${index * 4}px`}}
                     aria-label={file.path} onClick={() => {
                         setSelectedFiles([file])
@@ -133,8 +133,8 @@ export function FilesPanel() {
         {warnings.map(({path}) => <span
             key={path}
             data-testid="unlisted-script-warning"
-            className="blitz-semantic-hook"
-        >{path} is not listed in package.json blitz.scripts or blitz.plugins and will not be registered.</span>)}
+            className="kite3d-semantic-hook"
+        >{path} is not listed in package.json kite3d.scripts or kite3d.plugins and will not be registered.</span>)}
         <PanelHeader>
             <FilesPanelBreadCrumbs/>
             <div style={{flexGrow: 1}}/>
@@ -184,8 +184,8 @@ function fileIcon(path: string): IconName {
     return 'document'
 }
 
-function isPrivateBlitzFile(path: string): boolean {
-    return path === '.blitz/deploys.json' || path === '.blitz/dev.json'
+function isPrivateKite3dFile(path: string): boolean {
+    return path === '.kite3d/deploys.json' || path === '.kite3d/dev.json'
 }
 
 /** AGREED-4: bundled runnable examples are source fixtures, not project assets. */

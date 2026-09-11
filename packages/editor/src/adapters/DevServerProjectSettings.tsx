@@ -68,7 +68,7 @@ export function DependenciesSectionComp() {
             <InputGroup placeholder="URL (optional, uses esm.sh by default)"/>
             <Button variant="outlined" disabled text="Add Dependency" icon={<Icon size={12} icon="plus"/>}/>
         </div>
-        <ul className="blitz-semantic-hook" data-testid="component-types">
+        <ul className="kite3d-semantic-hook" data-testid="component-types">
             {manager.componentTypes.map((type) => <li key={type}>{type}</li>)}
         </ul>
     </FolderHeadCard>

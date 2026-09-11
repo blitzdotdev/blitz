@@ -146,13 +146,13 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
 
     const inspectingScene = !selObject && !selFile
 
-    // AGREED-4: the /blitz/@ transport identity is hidden from the reference
+    // AGREED-4: the /kite3d/@ transport identity is hidden from the reference
     // inspector shell for a normal dropped scene instance.
-    const blitzImportedInstance = (selObject as IObject3D)?.userData?.blitzImportedInstance === true
-    const assetRootPath1_ = blitzImportedInstance ? null : (selObject as IObject3D|IMaterial|ITexture|IGeometry)?._tpRootPath || (selObject as any)?.__rootPath || null
+    const kite3dImportedInstance = (selObject as IObject3D)?.userData?.kite3dImportedInstance === true
+    const assetRootPath1_ = kite3dImportedInstance ? null : (selObject as IObject3D|IMaterial|ITexture|IGeometry)?._tpRootPath || (selObject as any)?.__rootPath || null
     let assetRootUid = (selObject as IObject3D)?._tpRootUid || null // if this is set, this object is a clone of a child of an asset
 
-    const instanceRootPath = !assetRootPath1_ && !blitzImportedInstance ? selObject?.userData?.rootPath : null
+    const instanceRootPath = !assetRootPath1_ && !kite3dImportedInstance ? selObject?.userData?.rootPath : null
     const isAssetInstance = instanceRootPath && selObject?.userData?.rootPath?.startsWith(assetUrlPrefix)
 
     const assetRootPathFull  = assetRootPath1_ && !assetRootPath1_.startsWith(assetUrlPrefix) ? null : assetRootPath1_

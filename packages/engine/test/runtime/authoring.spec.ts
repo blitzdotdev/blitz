@@ -2,19 +2,19 @@ import {expect, test} from '@playwright/test'
 
 test('createGame publishes read-only hooks and generator previews survive a reload without multiplying', async ({page}) => {
     await page.goto('/')
-    await expect.poll(() => page.evaluate(() => Boolean(window.__blitzReady))).toBe(true)
+    await expect.poll(() => page.evaluate(() => Boolean(window.__kite3dReady))).toBe(true)
 
     const first = await page.evaluate(async () => {
-        const game = window.__blitzGame!
+        const game = window.__kite3dGame!
         const root = game.viewer.scene.modelRoot.getObjectByName('GeneratorRoot')!
         const validation = await game.runGameValidation()
-        const telemetry = window.blitzGame?.telemetry
+        const telemetry = window.kite3dGame?.telemetry
         const evidence = {
-            generator: root.userData.blitzAuthoring,
+            generator: root.userData.kite3dAuthoring,
             previews: root.children.map((child) => ({
                 name: child.name,
                 z: Object.is(child.position.z, -0) ? 0 : child.position.z,
-                authoring: child.userData.blitzAuthoring,
+                authoring: child.userData.kite3dAuthoring,
             })),
             validation,
             telemetry,
@@ -45,7 +45,7 @@ test('createGame publishes read-only hooks and generator previews survive a relo
         }))
         const cleanup = game.dispose()
         canvas.remove()
-        return {previews, cleanup, hookRemoved: window.blitzGame === undefined}
+        return {previews, cleanup, hookRemoved: window.kite3dGame === undefined}
     })
 
     expect(second.previews).toEqual(first.previews.map(({name, z}) => ({name, z})))
@@ -55,7 +55,7 @@ test('createGame publishes read-only hooks and generator previews survive a relo
 
 declare global {
     interface Window {
-        __blitzGame?: {
+        __kite3dGame?: {
             viewer: {
                 getPlugin(type: string): unknown
                 scene: {
@@ -74,11 +74,11 @@ declare global {
             runGameValidation(): Promise<unknown>
             dispose(): unknown
         }
-        __blitzErrors: string[]
-        __blitzMainRan?: boolean
-        __blitzReady?: boolean
-        __blitzRuntimeVersion?: string
-        __blitzStartupError?: string
-        __blitzUpdates?: number
+        __kite3dErrors: string[]
+        __kite3dMainRan?: boolean
+        __kite3dReady?: boolean
+        __kite3dRuntimeVersion?: string
+        __kite3dStartupError?: string
+        __kite3dUpdates?: number
     }
 }

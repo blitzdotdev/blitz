@@ -108,7 +108,7 @@ export function ExternalFilesPanel({}: {}) {
 
         {/* AGREED-4: expose proxy results to the dev-server contract while the
             reference's intentionally unselected initial library tab stays intact. */}
-        <span className="blitz-semantic-hook">
+        <span className="kite3d-semantic-hook">
             {libAssets.map((asset) => <span data-testid="asset-library-item" key={asset.id}>{asset.name}</span>)}
         </span>
 

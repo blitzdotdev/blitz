@@ -1,6 +1,6 @@
 import {parse, ParseError} from 'jsonc-parser'
 
-export const settingsKey = 'blitz'
+export const settingsKey = 'kite3d'
 export const assetUrlPrefix = `/${settingsKey}/`
 
 export type JSONValue = string | number | boolean | null | JSONValue[] | {[key: string]: JSONValue}

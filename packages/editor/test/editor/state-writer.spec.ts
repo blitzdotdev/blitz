@@ -27,7 +27,7 @@ test('state writer records liveness, client identity, and play state', async () 
         updatedAt: '2026-09-10T12:00:00.000Z',
     }, '*')
 
-    expect(writtenPath).toBe('.blitz/state.json')
+    expect(writtenPath).toBe('.kite3d/state.json')
     expect(sha256).toBe('a'.repeat(64))
     const state = JSON.parse(new TextDecoder().decode(writtenBytes)) as Record<string, unknown>
     expect(state).toMatchObject({
