@@ -120,8 +120,8 @@ describe('kite3d archive', () => {
         await writeFile(resolve(root, 'private/notes.txt'), 'exclude me')
         await mkdir(resolve(root, '.kite3d'), {recursive: true})
         await writeFile(resolve(root, '.kite3d/deploys.json'), 'secret')
-        await mkdir(resolve(root, 'node_modules/@blitzdev/engine'), {recursive: true})
-        await writeFile(resolve(root, 'node_modules/@blitzdev/engine/package.json'), JSON.stringify({version: KITE3D_VERSION}))
+        await mkdir(resolve(root, 'node_modules/@kite3d/engine'), {recursive: true})
+        await writeFile(resolve(root, 'node_modules/@kite3d/engine/package.json'), JSON.stringify({version: KITE3D_VERSION}))
 
         const result = await archiveProject(root, {now: new Date('2026-09-10T12:00:00.000Z')})
         const files = unzipSync(new Uint8Array(await readFile(result.path)))
@@ -138,7 +138,7 @@ describe('kite3d archive', () => {
         expect(provenance).toContain('Project: Archive Game')
         expect(provenance).toContain('Created: 2026-09-10T12:00:00.000Z')
         expect(provenance).toMatch(/Git commit: [a-f\d]{40}/)
-        expect(provenance).toContain(`@blitzdev/engine: ${KITE3D_VERSION}`)
+        expect(provenance).toContain(`@kite3d/engine: ${KITE3D_VERSION}`)
     })
 })
 

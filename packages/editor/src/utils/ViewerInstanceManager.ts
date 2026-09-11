@@ -52,7 +52,7 @@ import {
     type ProjectPackageJSON,
     type RuntimeCleanupReport,
     type SerializedSceneGltf,
-} from '@blitzdev/engine'
+} from '@kite3d/engine'
 import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib'
 import {GeometryGeneratorPlugin} from '@threepipe/plugin-geometry-generator'
 import {DevServerSource} from '../DevServerSource.ts'

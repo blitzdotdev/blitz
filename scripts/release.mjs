@@ -11,7 +11,7 @@ import {uploadAgentsMd} from './upload-agents-md.mjs'
 
 const repositoryDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const publishOrder = ['engine', 'editor', 'kite3d']
-const lockstepPackages = new Set(['@blitzdev/engine', '@blitzdev/editor', 'kite3d'])
+const lockstepPackages = new Set(['@kite3d/engine', '@kite3d/editor', 'kite3d'])
 const isLockstepPackage = name => lockstepPackages.has(name)
 
 function run(command, args, {environment = process.env, capture = false, allowFailure = false} = {}) {

@@ -126,10 +126,10 @@ export async function doctorProject(
     if (!backendReachable) {
         rows.push(row('runtime', 'warn', 'Runtime registration was not checked because the backend is unavailable'))
     } else if (!engineVersion) {
-        rows.push(row('runtime', 'warn', 'Runtime registration was not checked because @blitzdev/engine is missing'))
+        rows.push(row('runtime', 'warn', 'Runtime registration was not checked because @kite3d/engine is missing'))
     } else {
         try {
-            const bytes = await readFile(resolve(root, 'node_modules/@blitzdev/engine/dist/runtime.js'))
+            const bytes = await readFile(resolve(root, 'node_modules/@kite3d/engine/dist/runtime.js'))
             const hash = createHash('sha256').update(bytes).digest('hex')
             const response = await fetchImplementation(`${backendUrl}/api/v1/runtimes/${encodeURIComponent(engineVersion)}`, {
                 signal: AbortSignal.timeout(5_000),

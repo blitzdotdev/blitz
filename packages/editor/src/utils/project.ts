@@ -2,7 +2,7 @@ import type {
     AssetsJSONManifest,
     ProjectConfigSettings,
     ProjectConfigSettingsJSON,
-} from '@blitzdev/engine'
+} from '@kite3d/engine'
 
 export {
     assetUrlPrefix,
@@ -10,14 +10,14 @@ export {
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
     settingsKey,
-} from '@blitzdev/engine'
+} from '@kite3d/engine'
 export type {
     AssetsJSONManifest,
     ExternalPlugin,
     ExternalScript,
     ProjectConfigSettings,
     ProjectConfigSettingsJSON,
-} from '@blitzdev/engine'
+} from '@kite3d/engine'
 
 export const mainScenePath = 'assets/main.scene.gltf'
 
@@ -57,7 +57,7 @@ export async function resolveFile(value: string | File) {
 }
 
 export async function parsePackageJsonSettings(file: File, project: SavedSceneFile) {
-    const {parsePackageJSON, parsePackageJsonSettingsConfig} = await import('@blitzdev/engine')
+    const {parsePackageJSON, parsePackageJsonSettingsConfig} = await import('@kite3d/engine')
     const json = parsePackageJSON(await file.text())
     return {
         ...project,

@@ -204,7 +204,7 @@ export class HidePreview extends Object3DComponent {
     it('records and prints project validation results on Playable pass and fail', async () => {
         const root = await project({}, [{name: 'Triangle', mesh: 0}])
         const writeValidation = (status: 'pass' | 'fail') => writeFile(resolve(root, 'main.js'), `
-import {registerGameValidation} from '@blitzdev/engine'
+import {registerGameValidation} from '@kite3d/engine'
 export function main() {
     registerGameValidation(() => ({status: '${status}', summary: 'Fixture validation ${status}.'}))
 }
@@ -266,7 +266,7 @@ async function project(kite3d: Record<string, unknown>, nodes: unknown[]): Promi
     const root = await mkdtemp(resolve(tmpdir(), 'kite3d-check-'))
     cleanup.push(() => rm(root, {recursive: true, force: true}))
     await mkdir(resolve(root, 'assets'), {recursive: true})
-    await mkdir(resolve(root, 'node_modules/@blitzdev/engine/dist'), {recursive: true})
+    await mkdir(resolve(root, 'node_modules/@kite3d/engine/dist'), {recursive: true})
     await writeFile(resolve(root, 'package.json'), JSON.stringify({
         name: 'check-project',
         type: 'module',
@@ -286,8 +286,8 @@ async function project(kite3d: Record<string, unknown>, nodes: unknown[]): Promi
     }))
     await writeFile(resolve(root, 'assets.json'), '{"files":{},"version":1}')
     await writeFile(resolve(root, 'main.js'), 'export async function main() {}\n')
-    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/package.json'), JSON.stringify({version: KITE3D_VERSION}))
-    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/dist/runtime.js'), 'mock Kite3D runtime')
+    await writeFile(resolve(root, 'node_modules/@kite3d/engine/package.json'), JSON.stringify({version: KITE3D_VERSION}))
+    await writeFile(resolve(root, 'node_modules/@kite3d/engine/dist/runtime.js'), 'mock Kite3D runtime')
     await symlink(resolve(import.meta.dirname, '../../../node_modules/threepipe'), resolve(root, 'node_modules/threepipe'))
     return root
 }

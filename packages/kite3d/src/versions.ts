@@ -15,5 +15,5 @@ function readPackageVersion(packageName: string): string {
 }
 
 export const KITE3D_VERSION = readPackageVersion('kite3d')
-export const EDITOR_VERSION = readPackageVersion('@blitzdev/editor')
-export const ENGINE_VERSION = readPackageVersion('@blitzdev/engine')
+export const EDITOR_VERSION = readPackageVersion('@kite3d/editor')
+export const ENGINE_VERSION = readPackageVersion('@kite3d/engine')

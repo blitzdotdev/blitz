@@ -1,5 +1,5 @@
 import type {ProjectDependency} from './types.ts'
-import {dependencyImportMap, type InstalledPluginImport} from '@blitzdev/engine/importMap'
+import {dependencyImportMap, type InstalledPluginImport} from '@kite3d/engine/importMap'
 
 export interface GenerateIndexHtmlOptions {
     name: string

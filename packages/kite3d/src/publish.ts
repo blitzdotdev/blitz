@@ -1,5 +1,5 @@
 import {findDeploySlug, readDeploys, writeDeploys} from './deploys.ts'
-import {projectDependencies} from '@blitzdev/engine/importMap'
+import {projectDependencies} from '@kite3d/engine/importMap'
 import {readProjectFile, walkProject, writeProjectFile} from './filesystem.ts'
 import {generateIndexHtml} from './indexHtml.ts'
 import {buildManifest, sha256} from './manifest.ts'
@@ -91,7 +91,7 @@ export async function publishProject({
     }
 
     const version = versionResult.version
-    const installedRuntime = await readProjectFile(dirHandle, 'node_modules/@blitzdev/engine/dist/runtime.js')
+    const installedRuntime = await readProjectFile(dirHandle, 'node_modules/@kite3d/engine/dist/runtime.js')
     if (!installedRuntime) {
         throw new Error('The installed Kite3D runtime is missing. Run npm install before publishing.')
     }
@@ -277,13 +277,13 @@ async function usePinnedRuntimeVersion(dirHandle: FileSystemDirectoryHandle, pac
     }
     let version = spec
     if (!/^\d+\.\d+\.\d+$/.test(spec)) {
-        const enginePackageFile = await readProjectFile(dirHandle, 'node_modules/@blitzdev/engine/package.json')
+        const enginePackageFile = await readProjectFile(dirHandle, 'node_modules/@kite3d/engine/package.json')
         if (!enginePackageFile) {
-            throw new Error(`Project uses kite3d ${spec}, but @blitzdev/engine is not installed. Run npm install before publishing.`)
+            throw new Error(`Project uses kite3d ${spec}, but @kite3d/engine is not installed. Run npm install before publishing.`)
         }
         const enginePackage = parsePackageJson(await enginePackageFile.text())
         if (typeof enginePackage.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(enginePackage.version)) {
-            throw new Error('Installed @blitzdev/engine package.json must have an exact x.y.z version.')
+            throw new Error('Installed @kite3d/engine package.json must have an exact x.y.z version.')
         }
         version = enginePackage.version
     }

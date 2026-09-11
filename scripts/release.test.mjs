@@ -4,7 +4,7 @@ import {test} from 'node:test'
 import {publishPackage} from './release.mjs'
 
 const packageDetails = {
-    name: '@blitzdev/engine',
+    name: '@kite3d/engine',
     version: '1.2.3',
     workspace: 'packages/engine',
 }
@@ -29,10 +29,10 @@ test('skips a package version that is already published', () => {
     assert.equal(published, false)
     assert.deepEqual(calls, [{
         command: 'npm',
-        arguments_: ['view', '@blitzdev/engine@1.2.3', 'version'],
+        arguments_: ['view', '@kite3d/engine@1.2.3', 'version'],
         options: {environment, capture: true, allowFailure: true},
     }])
-    assert.deepEqual(messages, ['@blitzdev/engine@1.2.3 already published, skipping'])
+    assert.deepEqual(messages, ['@kite3d/engine@1.2.3 already published, skipping'])
 })
 
 test('publishes an unpublished package in real and dry-run modes', () => {
@@ -54,7 +54,7 @@ test('publishes an unpublished package in real and dry-run modes', () => {
         assert.equal(published, true)
         assert.deepEqual(calls, [{
             command: 'npm',
-            arguments_: ['view', '@blitzdev/engine@1.2.3', 'version'],
+            arguments_: ['view', '@kite3d/engine@1.2.3', 'version'],
             options: {environment, capture: true, allowFailure: true},
         }, {
             command: 'npm',

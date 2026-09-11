@@ -7,7 +7,7 @@ import {
     isDependencyModuleSpecifier,
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
-} from '@blitzdev/engine/projectFormat'
+} from '@kite3d/engine/projectFormat'
 import {createDevServer} from './server.ts'
 
 export interface CheckRow {

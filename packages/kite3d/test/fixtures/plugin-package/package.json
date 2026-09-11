@@ -13,6 +13,6 @@
     "kite3d-plugin"
   ],
   "peerDependencies": {
-    "@blitzdev/engine": ">=0.13.2"
+    "@kite3d/engine": ">=0.13.2"
   }
 }

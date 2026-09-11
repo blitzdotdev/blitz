@@ -10,7 +10,7 @@ const publishableManifests = [
     'packages/editor/package.json',
     'packages/kite3d/package.json',
 ]
-const lockstepPackages = new Set(['@blitzdev/engine', '@blitzdev/editor', 'kite3d'])
+const lockstepPackages = new Set(['@kite3d/engine', '@kite3d/editor', 'kite3d'])
 const dependencySections = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 

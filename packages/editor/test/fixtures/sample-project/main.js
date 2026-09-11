@@ -1,4 +1,4 @@
-import {publishGameTelemetry, registerGameValidation} from '@blitzdev/engine'
+import {publishGameTelemetry, registerGameValidation} from '@kite3d/engine'
 
 export function main({viewer}) {
     window.__kite3dMainRan = true

@@ -1,4 +1,4 @@
-import {KITE3D_SERVER_CLIENT_ID} from '@blitzdev/engine/paths'
+import {KITE3D_SERVER_CLIENT_ID} from '@kite3d/engine/paths'
 
 export interface BakeSafetyResult {
     ok: boolean

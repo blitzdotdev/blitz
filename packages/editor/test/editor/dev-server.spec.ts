@@ -141,9 +141,9 @@ export default function generate({node, engine}) {
     await writeFile(scenePath, `${JSON.stringify(scene, null, 2)}\n`)
 
     const engineRoot = fileURLToPath(new URL('../../../engine/', import.meta.url))
-    await mkdir(resolve(root, 'node_modules/@blitzdev/engine/dist'), {recursive: true})
-    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/package.json'), await readFile(resolve(engineRoot, 'package.json')))
-    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/dist/runtime.js'), await readFile(resolve(engineRoot, 'dist/runtime.js')))
+    await mkdir(resolve(root, 'node_modules/@kite3d/engine/dist'), {recursive: true})
+    await writeFile(resolve(root, 'node_modules/@kite3d/engine/package.json'), await readFile(resolve(engineRoot, 'package.json')))
+    await writeFile(resolve(root, 'node_modules/@kite3d/engine/dist/runtime.js'), await readFile(resolve(engineRoot, 'dist/runtime.js')))
     await symlink(resolve(engineRoot, '../../node_modules/threepipe'), resolve(root, 'node_modules/threepipe'))
     backend = await startMockBackend()
     server = await runDev({projectRoot: root, port: 0, noOpen: true, backendUrl: backend.url})
@@ -508,7 +508,7 @@ test('reports leaked runtime content after Stop in a toast and the console log',
     await page.getByTestId('play').click()
     await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
     await page.evaluate(async () => {
-        const {BoxGeometry, Mesh, MeshStandardMaterial} = await import('@blitzdev/engine')
+        const {BoxGeometry, Mesh, MeshStandardMaterial} = await import('@kite3d/engine')
         const leaked = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial())
         leaked.name = 'Leaked Play object'
         ;(window as unknown as {__kite3dRuntimeViewer: {scene: {add(object: unknown): void}}}).__kite3dRuntimeViewer.scene.add(leaked)
@@ -1154,7 +1154,7 @@ async function startPublishEditor(options: Parameters<typeof startMockBackend>[0
     const projectRoot = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-publish-'))
     await initProject(projectRoot)
     const engineRoot = fileURLToPath(new URL('../../../engine/', import.meta.url))
-    const installedEngine = resolve(projectRoot, 'node_modules/@blitzdev/engine')
+    const installedEngine = resolve(projectRoot, 'node_modules/@kite3d/engine')
     await mkdir(resolve(installedEngine, 'dist'), {recursive: true})
     await writeFile(resolve(installedEngine, 'package.json'), await readFile(resolve(engineRoot, 'package.json')))
     await writeFile(resolve(installedEngine, 'dist/runtime.js'), await readFile(resolve(engineRoot, 'dist/runtime.js')))

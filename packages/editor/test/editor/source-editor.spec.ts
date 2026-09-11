@@ -22,9 +22,9 @@ async function withSourceEditor(page: Page, run: (root: string) => Promise<void>
     await writeFile(resolve(root, 'pixel.png'), new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
 
     const engineRoot = fileURLToPath(new URL('../../../engine/', import.meta.url))
-    await mkdir(resolve(root, 'node_modules/@blitzdev/engine/dist'), {recursive: true})
-    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/package.json'), await readFile(resolve(engineRoot, 'package.json')))
-    await writeFile(resolve(root, 'node_modules/@blitzdev/engine/dist/runtime.js'), await readFile(resolve(engineRoot, 'dist/runtime.js')))
+    await mkdir(resolve(root, 'node_modules/@kite3d/engine/dist'), {recursive: true})
+    await writeFile(resolve(root, 'node_modules/@kite3d/engine/package.json'), await readFile(resolve(engineRoot, 'package.json')))
+    await writeFile(resolve(root, 'node_modules/@kite3d/engine/dist/runtime.js'), await readFile(resolve(engineRoot, 'dist/runtime.js')))
     await symlink(resolve(engineRoot, '../../node_modules/threepipe'), resolve(root, 'node_modules/threepipe'))
 
     const server = await runDev({projectRoot: root, port: 0, noOpen: true})

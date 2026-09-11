@@ -1,4 +1,4 @@
-import {AViewerPluginAsync} from '@blitzdev/engine'
+import {AViewerPluginAsync} from '@kite3d/engine'
 
 export default class FixturePlugin extends AViewerPluginAsync {
     static PluginType = 'PackedFixturePlugin'
