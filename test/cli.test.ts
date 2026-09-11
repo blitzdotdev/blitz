@@ -178,7 +178,7 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
         expect(result.stdout).not.toContain('delegating')
         await expect(access(delegatedMarker)).rejects.toMatchObject({code: 'ENOENT'})
         expect(JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))).toMatchObject({
-            dependencies: {'@kite3d/plugin-mujoco': '^0.1.1'},
+            dependencies: {'@kite3d/plugin-mujoco': '^0.2.0'},
             devDependencies: {kite3d: KITE3D_VERSION},
             kite3d: {version: KITE3D_VERSION, plugins: ['@kite3d/plugin-mujoco']},
         })
