@@ -1,0 +1,23 @@
+{
+  "asset": {"version": "2.0"},
+  "nodes": [
+    {
+      "name": "Old root",
+      "mesh": 0,
+      "translation": [0, 0, 0],
+      "extras": {
+        "gltfUUID": "root-uuid",
+        "EntityComponentPlugin": {
+          "generator": {"type": "Generator", "state": {"module": "forest.js", "params": {"count": 2}}}
+        }
+      }
+    },
+    {"name": "Removed", "extras": {"gltfUUID": "removed-uuid"}}
+  ],
+  "meshes": [{"primitives": [{"material": 0}]}],
+  "materials": [{
+    "name": "Ground",
+    "pbrMetallicRoughness": {"roughnessFactor": 1},
+    "extras": {"gltfUUID": "material-uuid"}
+  }]
+}
