@@ -16,8 +16,8 @@ kite3d/
     publish-api.md             the cloud contract; the private repo implements it
     layout.md, local-dev-server-plan.md, open-source-split.md, storefront-plan.md, e2e-test-plan.md
   packages/
-    engine/                    @blitzdev/engine     runtime, project format, scripting API, game plugins
-    editor/                    @blitzdev/editor     the editor app
+    engine/                    @kite3d/engine     runtime, project format, scripting API, game plugins
+    editor/                    @kite3d/editor     the editor app
       uiconfig-blueprint/      editor-only vendored upstream source; resolved by editor aliases, not published
     kite3d/                    kite3d               bin `kite3d`: init, dev, publish, pull, open; the local server
       template/                                     files written by `kite3d init`; shipped inside the CLI
@@ -40,7 +40,7 @@ blitz-cloud/
   docs/                        runbooks, the backend build report, the cloud half of the E2E gate
 ```
 
-## Exactly what goes into `@blitzdev/engine`
+## Exactly what goes into `@kite3d/engine`
 
 Moved from `packages/editor/src/runtime/` (Phase A, 651 lines, already free of React and UI imports):
 

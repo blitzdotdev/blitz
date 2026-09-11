@@ -65,8 +65,8 @@ Run `npx kite3d` with no argument for the full list.
 | Package | What it is |
 |---|---|
 | [`kite3d`](packages/kite3d) | The `kite3d` command: local server, checks, checkpoints, publish |
-| [`@blitzdev/engine`](packages/engine) | UI-free runtime, project format, scripting helpers, game plugins |
-| [`@blitzdev/editor`](packages/editor) | The React editor served by `kite3d dev` |
+| [`@kite3d/engine`](packages/engine) | UI-free runtime, project format, scripting helpers, game plugins |
+| [`@kite3d/editor`](packages/editor) | The React editor served by `kite3d dev` |
 | [`packages/kite3d/template`](packages/kite3d/template) | Starter files bundled in `kite3d` and copied by `kite3d init` |
 | `packages/threepipe`, [`packages/editor/uiconfig-blueprint`](packages/editor/uiconfig-blueprint) | Vendored upstream source |
 

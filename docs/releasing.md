@@ -1,6 +1,6 @@
 # Releasing Kite3D
 
-The three public packages (`@blitzdev/engine`, `@blitzdev/editor`, and `kite3d`) always share one version. Every dependency between them is an exact pin to that version. A `kite3d` version therefore identifies exactly one engine and editor version, plus the starter template bundled in that CLI. The vendored `threepipe` workspace is not published, and the editor-only `uiconfig-blueprint` source is excluded from the editor tarball.
+The three public packages (`@kite3d/engine`, `@kite3d/editor`, and `kite3d`) always share one version. Every dependency between them is an exact pin to that version. A `kite3d` version therefore identifies exactly one engine and editor version, plus the starter template bundled in that CLI. The vendored `threepipe` workspace is not published, and the editor-only `uiconfig-blueprint` source is excluded from the editor tarball.
 
 ## Commands
 

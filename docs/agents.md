@@ -28,8 +28,8 @@ Upgrade the project with `npx kite3d upgrade`, or select an exact target with `n
 Source code to grep after `npm install`:
 
 ```text
-node_modules/@blitzdev/engine/src     runtime, project format, scripting API
-node_modules/@blitzdev/editor/src     editor
+node_modules/@kite3d/engine/src     runtime, project format, scripting API
+node_modules/@kite3d/editor/src     editor
 node_modules/kite3d/src      command and local server
 node_modules/threepipe/src            engine core, glTF, plugins
 node_modules/uiconfig-blueprint/src   editor UI kit
@@ -37,20 +37,22 @@ node_modules/uiconfig-blueprint/src   editor UI kit
 
 # Plugins
 
-A plugin is an npm package with the `kite3d-plugin` keyword and a README that serves as its guide. Find one with `npm search keywords:kite3d-plugin`, read its README before using its API, then run `npm install <pkg>` and add its package name under `kite3d.plugins`. To publish a plugin, export the plugin as the default export, declare a peer dependency on `@blitzdev/engine`, add the `kite3d-plugin` keyword, and ship a README.
+A plugin is an npm package with the `kite3d-plugin` keyword and a README that serves as its guide. Find one with `npm search keywords:kite3d-plugin`, read its README before using its API, then run `npm install <pkg>` and add its package name under `kite3d.plugins`. To publish a plugin, export the plugin as the default export, declare a peer dependency on `@kite3d/engine`, add the `kite3d-plugin` keyword, and ship a README.
+
+The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name in both npm dependencies and `kite3d.plugins`.
 
 # Engine quick reference
 
-- `createGame` and `createStoppedGame`: boot Play mode or an authoring-only stopped scene; `@blitzdev/engine/src/runtime/createGame.ts`.
-- `setAuthoringMetadata`, `getAuthoringMetadata`, and `AuthoringRole`: tag and read stable `direct`, `template`, or `generator` sources; `@blitzdev/engine/src/authoring.ts`.
-- `RuntimeObjectOwner`: own Play-only roots, clones, effects, and cleanup; `@blitzdev/engine/src/authoring.ts`.
-- `GeneratorComponent`, `runGenerator`, and `markGenerated`: run deterministic procedural previews excluded from saves; `@blitzdev/engine/src/plugins/GeneratorComponent.ts`.
-- `registerGameValidation`: register a gameplay assertion consumed by `kite3d check`; `@blitzdev/engine/src/authoringValidation.ts`.
-- `publishGameTelemetry`: replace `window.kite3dGame.telemetry` with an immutable test snapshot; `@blitzdev/engine/src/authoringValidation.ts`.
-- `authoringQualityReport`, `runtimeCleanupReport`, `semanticSceneSnapshot`, and `persistenceReport`: implement the three check outcomes; `@blitzdev/engine/src/authoringValidation.ts`.
-- `serializeSceneGltf` and `serializeSceneGltfDocument`: write deterministic text glTF and external resources; `@blitzdev/engine/src/sceneSerialization.ts`.
-- `HtmlUiComponent`: attach world, screen, or viewport-positioned HTML to an object; `@blitzdev/engine/src/plugins/HtmlUiComponent.ts`.
-- `CannonPhysicsPlugin`, `Cannon3DBodyComponent`, and `Cannon3DShapeComponent`: physics plugin and body components; `@blitzdev/engine/src/plugins/cannon/`.
+- `createGame` and `createStoppedGame`: boot Play mode or an authoring-only stopped scene; `@kite3d/engine/src/runtime/createGame.ts`.
+- `setAuthoringMetadata`, `getAuthoringMetadata`, and `AuthoringRole`: tag and read stable `direct`, `template`, or `generator` sources; `@kite3d/engine/src/authoring.ts`.
+- `RuntimeObjectOwner`: own Play-only roots, clones, effects, and cleanup; `@kite3d/engine/src/authoring.ts`.
+- `GeneratorComponent`, `runGenerator`, and `markGenerated`: run deterministic procedural previews excluded from saves; `@kite3d/engine/src/plugins/GeneratorComponent.ts`.
+- `registerGameValidation`: register a gameplay assertion consumed by `kite3d check`; `@kite3d/engine/src/authoringValidation.ts`.
+- `publishGameTelemetry`: replace `window.kite3dGame.telemetry` with an immutable test snapshot; `@kite3d/engine/src/authoringValidation.ts`.
+- `authoringQualityReport`, `runtimeCleanupReport`, `semanticSceneSnapshot`, and `persistenceReport`: implement the three check outcomes; `@kite3d/engine/src/authoringValidation.ts`.
+- `serializeSceneGltf` and `serializeSceneGltfDocument`: write deterministic text glTF and external resources; `@kite3d/engine/src/sceneSerialization.ts`.
+- `HtmlUiComponent`: attach world, screen, or viewport-positioned HTML to an object; `@kite3d/engine/src/plugins/HtmlUiComponent.ts`.
+- `CannonPhysicsPlugin`, `Cannon3DBodyComponent`, and `Cannon3DShapeComponent`: physics plugin and body components; `@kite3d/engine/src/plugins/cannon/`.
 - `Mesh2`: supported mesh class; `threepipe/src/core/object/Mesh2.ts`.
 - `PhysicalMaterial`: light-reactive mesh material; `threepipe/src/core/material/PhysicalMaterial.ts`.
 - `UnlitMaterial`: flat mesh material that ignores lighting; `threepipe/src/core/material/UnlitMaterial.ts`.
@@ -60,7 +62,7 @@ A plugin is an npm package with the `kite3d-plugin` keyword and a README that se
 Validation and telemetry belong in `main.js`:
 
 ```js
-import {publishGameTelemetry, registerGameValidation} from '@blitzdev/engine'
+import {publishGameTelemetry, registerGameValidation} from '@kite3d/engine'
 
 export function main({viewer}) {
   publishGameTelemetry({state: 'ready'})
@@ -1032,7 +1034,7 @@ class EnemySystemComponent extends Object3DComponent {
 
 Run `npx kite3d pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx kite3d pull --force` overwrites them. Then run `npx kite3d check`. It imports configured scripts in Node, resolves plugins and Generator modules, verifies scene component types, prints the project validation below Playable on pass or fail, and writes `.kite3d/check.json`; any failure exits 1. `kite3d publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
 
-Create a game with `npx kite3d publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `kite3d.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@blitzdev/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.kite3d/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
+Create a game with `npx kite3d publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `kite3d.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@kite3d/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.kite3d/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
 
 Publishing omits `package-lock.json`, `.env`, `.env.*`, `*.log`, `.eslintrc*`, `AGENTS.md`, `samples/**`, `tools/**`, and root Markdown files other than `README.md` by default. It publishes a sanitized `package.json` without `devDependencies` or `file:` dependency specs. Add other project-specific glob patterns under `kite3d.publish.exclude` in `package.json`.
 

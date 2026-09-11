@@ -18,8 +18,8 @@ Open, Apache-2.0 to match threepipe and uiconfig-blueprint:
 
 | Package | Contents | Ships |
 |---|---|---|
-| `@blitzdev/engine` | the runtime: `createGame`, project format, loaders, scripting API, game plugins such as physics, HTML UI, and later the `Generator` component. Depends on `threepipe`. | `dist/`, `src/`, source maps |
-| `@blitzdev/editor` | the editor app. React and its nested uiconfig-blueprint source. Built to static files that `kite3d dev` serves. | `dist/`, `src/`, source maps |
+| `@kite3d/engine` | the runtime: `createGame`, project format, loaders, scripting API, game plugins such as physics, HTML UI, and later the `Generator` component. Depends on `threepipe`. | `dist/`, `src/`, source maps |
+| `@kite3d/editor` | the editor app. React and its nested uiconfig-blueprint source. Built to static files that `kite3d dev` serves. | `dist/`, `src/`, source maps |
 | `kite3d` | the `kite3d` command: `init`, `dev`, `publish`, `pull`, `open`. Depends on engine and editor. | `dist/`, `src/`, `template/` |
 
 The new-project files live in `packages/kite3d/template/` and ship inside the `kite3d` tarball.
@@ -33,8 +33,8 @@ Closed, the cloud, like PlayCanvas's backend: `services/backend` (API and store)
 A project's `package.json` has `devDependencies: { "kite3d": "<version>" }`. After `npm install`, `node_modules` holds the source of the engine, the editor, the command, and threepipe. `kite3d init` writes an AGENTS.md that maps them:
 
 ```
-node_modules/@blitzdev/engine/src     runtime, project format, scripting API
-node_modules/@blitzdev/editor/src     editor
+node_modules/@kite3d/engine/src     runtime, project format, scripting API
+node_modules/@kite3d/editor/src     editor
 node_modules/kite3d/src      command and local server
 node_modules/threepipe/src            engine core, glTF, plugins
 node_modules/uiconfig-blueprint/src   editor UI kit
