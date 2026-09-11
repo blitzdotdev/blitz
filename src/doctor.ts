@@ -8,7 +8,12 @@ import {resolveBackendUrl} from './backend.ts'
 import {gitRepositoryRoot} from './git.ts'
 import {findPinnedProject, resolvePinnedVersion} from './version-pin.ts'
 import {KITE3D_VERSION} from './versions.ts'
-import {LEGACY_PROJECT_MESSAGE, legacyProjectMigrationNeeded} from './legacy.ts'
+import {
+    LEGACY_PLUGIN_MESSAGE,
+    LEGACY_PROJECT_MESSAGE,
+    legacyPluginMigrationNeeded,
+    legacyProjectMigrationNeeded,
+} from './legacy.ts'
 
 export type DoctorStatus = 'pass' | 'warn' | 'fail'
 
@@ -51,6 +56,9 @@ export async function doctorProject(
 
     if (await legacyProjectMigrationNeeded(root)) {
         rows.push(row('migration', 'warn', LEGACY_PROJECT_MESSAGE))
+    }
+    if (await legacyPluginMigrationNeeded(root)) {
+        rows.push(row('migration', 'warn', LEGACY_PLUGIN_MESSAGE))
     }
 
     const project = await findPinnedProject(root)
@@ -273,7 +281,7 @@ function row(check: DoctorRow['check'], status: DoctorStatus, detail: string): D
 }
 
 function packageName(name: typeof KITE3D_PACKAGES[number]): string {
-    return name === 'kite3d' ? name : `@blitzdev/${name}`
+    return name === 'kite3d' ? name : `@kite3d/${name}`
 }
 
 function formatPackages(packages: Map<typeof KITE3D_PACKAGES[number], string>): string {

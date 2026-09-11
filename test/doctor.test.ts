@@ -55,6 +55,21 @@ describe('kite3d doctor', () => {
         })
     })
 
+    it('warns when the project still names the legacy MuJoCo plugin', async () => {
+        const fixture = await readyProject()
+        const path = resolve(fixture.root, 'package.json')
+        const manifest = JSON.parse(await readFile(path, 'utf8'))
+        manifest.dependencies = {'@blitzdev/plugin-mujoco': '^0.1.1'}
+        manifest.kite3d.plugins = ['@blitzdev/plugin-mujoco']
+        await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`)
+
+        expect(row(await runDoctor(fixture.root, fixture.backendUrl), 'migration')).toEqual({
+            check: 'migration',
+            status: 'warn',
+            detail: 'Legacy plugin @blitzdev/plugin-mujoco detected. Run npx kite3d upgrade to rename it to @kite3d/plugin-mujoco.',
+        })
+    })
+
     it('fails the version-pin row when the project and command differ', async () => {
         const fixture = await readyProject()
         const path = resolve(fixture.root, 'package.json')
