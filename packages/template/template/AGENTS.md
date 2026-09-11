@@ -35,6 +35,10 @@ node_modules/threepipe/src            engine core, glTF, plugins
 node_modules/uiconfig-blueprint/src   editor UI kit
 ```
 
+# Plugins
+
+A plugin is an npm package with the `kite3d-plugin` keyword and a README that serves as its guide. Find one with `npm search kite3d-plugin`, read its README before using its API, then run `npm install <pkg>` and add its package name under `kite3d.plugins`. To publish a plugin, export the plugin as the default export, declare a peer dependency on `@blitzdev/engine`, add the `kite3d-plugin` keyword, and ship a README.
+
 # Engine quick reference
 
 - `createGame` and `createStoppedGame`: boot Play mode or an authoring-only stopped scene; `@blitzdev/engine/src/runtime/createGame.ts`.
