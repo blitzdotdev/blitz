@@ -1,6 +1,6 @@
 {
   "name": "@kite3d/editor",
-  "version": "0.14.1",
+  "version": "0.15.0",
   "type": "module",
   "license": "Apache-2.0",
   "files": [
@@ -22,7 +22,7 @@
     "@blueprintjs/colors": "5.1.9",
     "@blueprintjs/core": "^5.19.1",
     "@blueprintjs/select": "^5.3.21",
-    "@kite3d/engine": "0.14.1",
+    "@kite3d/engine": "0.15.0",
     "@tanstack/query-db-collection": "^1.0.6",
     "@tanstack/react-db": "^0.1.55",
     "@tanstack/react-query": "^5.90.12",
