@@ -1,6 +1,5 @@
 import {access, chmod, cp, mkdtemp, mkdir, readFile, rm, writeFile} from 'node:fs/promises'
 import {delimiter, resolve} from 'node:path'
-import {tmpdir} from 'node:os'
 import {afterEach, describe, expect, it} from 'vitest'
 import {selectProjectMigrations, upgradeProject} from '../src/commands.ts'
 import {checkProject} from '../src/check.ts'
@@ -60,7 +59,7 @@ describe('upgradeProject', () => {
         'migrates a legacy dependency with %s from %s',
         async (_label, specifier, section) => {
             const root = await legacyUpgradeFixture(specifier, section)
-            const restorePath = await useFakeNpm(root)
+            const restorePath = await useFakeNpm(root, 'hoisted')
 
             let result: Awaited<ReturnType<typeof upgradeProject>>
             try {
@@ -120,6 +119,8 @@ describe('upgradeProject', () => {
     it('aligns direct package entries during a normal targeted upgrade', async () => {
         const root = await upgradeFixture()
         const packagePath = resolve(root, 'package.json')
+        const packageLockPath = resolve(root, 'package-lock.json')
+        const treeMarkerPath = resolve(root, 'node_modules/tree-marker.txt')
         const packageJson = JSON.parse(await readFile(packagePath, 'utf8'))
         packageJson.dependencies = {
             '@blitzdev/editor': '^1.0.0',
@@ -127,6 +128,8 @@ describe('upgradeProject', () => {
         }
         packageJson.devDependencies['@blitzdev/engine'] = 'file:../../packs/blitzdev-engine-1.0.0.tgz'
         await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
+        await writeFile(packageLockPath, '{"lockfileVersion":3}\n')
+        await writeFile(treeMarkerPath, 'existing install tree\n')
         const restorePath = await useFakeNpm(root)
 
         let result: Awaited<ReturnType<typeof upgradeProject>>
@@ -150,18 +153,26 @@ describe('upgradeProject', () => {
             .not.toHaveProperty('@blitzdev/template')
         expect(JSON.parse(await readFile(packagePath, 'utf8')).devDependencies)
             .not.toHaveProperty('@blitzdev/engine')
+        expect(await readFile(packageLockPath, 'utf8')).toBe('{"lockfileVersion":3}\n')
+        expect(await readFile(treeMarkerPath, 'utf8')).toBe('existing install tree\n')
     })
 
-    it('leaves matching packages for doctor after upgrading a four-pin tarball project', async () => {
+    it('removes legacy install artifacts before installing a hoisted four-pin project', async () => {
         const root = await fourPinLegacyUpgradeFixture()
-        const restorePath = await useFakeNpm(root, true)
+        const restorePath = await useFakeNpm(root, 'record-clean-and-hoisted')
 
+        let upgrade: Awaited<ReturnType<typeof upgradeProject>>
         try {
-            await upgradeProject(root)
+            upgrade = await upgradeProject(root)
         } finally {
             restorePath()
         }
 
+        expect(JSON.parse(await readFile(resolve(root, 'install-state.json'), 'utf8'))).toEqual([])
+        expect(upgrade.changes).toEqual(expect.arrayContaining([
+            'Removed package-lock.json.',
+            'Removed node_modules/.',
+        ]))
         const result = await doctorProject(root, {
             port: 0,
             fetch: async () => new Response(null, {status: 503}),
@@ -177,6 +188,19 @@ describe('upgradeProject', () => {
                 `@blitzdev/template ${KITE3D_VERSION}`,
             ].join(', '),
         })
+    })
+
+    it('rejects a legacy install that nests the engine under kite3d', async () => {
+        const root = await fourPinLegacyUpgradeFixture()
+        const restorePath = await useFakeNpm(root, 'nested')
+
+        try {
+            await expect(upgradeProject(root)).rejects.toThrow(
+                'node_modules/kite3d/node_modules/@blitzdev/engine',
+            )
+        } finally {
+            restorePath()
+        }
     })
 
     it('leaves the legacy project unchanged when an asset rewrite is not writable', async () => {
@@ -212,24 +236,63 @@ describe('upgradeProject', () => {
     })
 })
 
-async function useFakeNpm(root: string, simulateInstall = false): Promise<() => void> {
+type FakeInstallLayout = 'hoisted' | 'nested' | 'record-clean-and-hoisted'
+
+async function useFakeNpm(root: string, layout?: FakeInstallLayout): Promise<() => void> {
     const bin = resolve(root, 'bin')
     await mkdir(bin)
-    const install = simulateInstall ? `
-import {mkdir, readFile, writeFile} from 'node:fs/promises'
+    const install = layout ? `
+import {access, mkdir, readFile, rm, writeFile} from 'node:fs/promises'
 import {resolve} from 'node:path'
 const root = process.cwd()
+${layout === 'record-clean-and-hoisted' ? `
+const existing = []
+for (const name of ['package-lock.json', 'node_modules']) {
+    try {
+        await access(resolve(root, name))
+        existing.push(name)
+    } catch (error) {
+        if (error.code !== 'ENOENT') throw error
+    }
+}
+await writeFile(resolve(root, 'install-state.json'), JSON.stringify(existing))
+` : ''}
+await rm(resolve(root, 'node_modules'), {recursive: true, force: true})
 const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const target = manifest.devDependencies?.kite3d || manifest.dependencies?.kite3d
 for (const name of ['kite3d', '@blitzdev/editor', '@blitzdev/engine', '@blitzdev/template']) {
     const direct = manifest.devDependencies?.[name] || manifest.dependencies?.[name]
     const version = name !== 'kite3d' && direct?.startsWith('file:') ? '0.12.0' : target
-    const packageRoot = resolve(root, 'node_modules', name)
+    const packageRoot = name === 'kite3d' || ${layout !== 'nested'}
+        ? resolve(root, 'node_modules', name)
+        : resolve(root, 'node_modules/kite3d/node_modules', name)
     await mkdir(packageRoot, {recursive: true})
     const packagePath = resolve(packageRoot, 'package.json')
     const packageJson = JSON.parse(await readFile(packagePath, 'utf8').catch(() => '{}'))
     await writeFile(packagePath, JSON.stringify({...packageJson, name, version}))
 }
+const engineRoot = ${layout === 'nested'}
+    ? resolve(root, 'node_modules/kite3d/node_modules/@blitzdev/engine')
+    : resolve(root, 'node_modules/@blitzdev/engine')
+await writeFile(resolve(engineRoot, 'package.json'), JSON.stringify({
+    name: '@blitzdev/engine',
+    version: target,
+    type: 'module',
+    exports: {
+        './package.json': './package.json',
+        './projectFormat': './projectFormat.js',
+        './migrations': './migrations.js',
+    },
+}))
+await writeFile(resolve(engineRoot, 'projectFormat.js'), \`
+export const parsePackageJSON = JSON.parse
+export const parseAssetsJSONManifest = JSON.parse
+export async function parsePackageJsonSettingsConfig() {}
+export function validateSceneSource(_path, text) {
+    if (!JSON.parse(text).asset) throw new Error('missing glTF asset')
+}
+\`)
+await writeFile(resolve(engineRoot, 'migrations.js'), 'export const PROJECT_MIGRATIONS = []\\n')
 ` : ''
     await writeFile(resolve(bin, 'npm'), `#!/usr/bin/env node\n${install}`)
     await chmod(resolve(bin, 'npm'), 0o755)
@@ -244,6 +307,7 @@ async function fourPinLegacyUpgradeFixture(): Promise<string> {
     const root = await mkdtemp(resolve(import.meta.dirname, 'upgrade-four-pin-'))
     roots.push(root)
     await cp(resolve(import.meta.dirname, 'fixtures/legacy-four-pin-project'), root, {recursive: true})
+    await writeFile(resolve(root, 'package-lock.json'), '{"lockfileVersion":3}\n')
     await installRuntimeFixture(root, '0.12.0')
     return root
 }
@@ -323,7 +387,7 @@ async function legacyUpgradeFixture(
     specifier: string,
     section: 'dependencies' | 'devDependencies',
 ): Promise<string> {
-    const root = await mkdtemp(resolve(tmpdir(), 'kite3d-legacy-upgrade-'))
+    const root = await mkdtemp(resolve(import.meta.dirname, 'upgrade-legacy-'))
     roots.push(root)
     await cp(resolve(import.meta.dirname, 'fixtures/legacy-project'), root, {recursive: true})
     await mkdir(resolve(root, '.blitz'))

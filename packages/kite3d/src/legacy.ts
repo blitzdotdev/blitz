@@ -1,5 +1,6 @@
 import {constants} from 'node:fs'
-import {access, readFile, readdir, rename, writeFile} from 'node:fs/promises'
+import {access, readFile, readdir, rename, rm, writeFile} from 'node:fs/promises'
+import {createRequire} from 'node:module'
 import {resolve} from 'node:path'
 
 const LEGACY_DIRECTORY = '.blitz'
@@ -53,6 +54,9 @@ export async function migrateLegacyProject(projectRoot: string, targetVersion: s
     const packageText = await migrationStep('read package.json', () => readFile(packagePath, 'utf8'))
     const packageJson = await migrationStep('parse package.json', async () => (
         JSON.parse(packageText) as Record<string, unknown>
+    ))
+    const legacyDependency = ['dependencies', 'devDependencies'].some((section) => (
+        Object.prototype.hasOwnProperty.call(record(packageJson[section]), LEGACY_PACKAGE)
     ))
     let packageChanged = false
     if (Object.prototype.hasOwnProperty.call(packageJson, LEGACY_SETTINGS_KEY)) {
@@ -133,7 +137,39 @@ export async function migrateLegacyProject(projectRoot: string, targetVersion: s
             throw new Error(`Legacy migration failed during ${mutation.step}: ${errorMessage(error)}${rollbackDetail}`)
         }
     }
+    if (legacyDependency) {
+        const packageLockPath = resolve(root, 'package-lock.json')
+        if (await exists(packageLockPath)) {
+            await migrationStep('remove package-lock.json', () => rm(packageLockPath))
+            changes.push('Removed package-lock.json.')
+        }
+        const nodeModulesPath = resolve(root, 'node_modules')
+        if (await exists(nodeModulesPath)) {
+            await migrationStep('remove node_modules/', () => rm(nodeModulesPath, {recursive: true}))
+            changes.push('Removed node_modules/.')
+        }
+    }
     return changes
+}
+
+export async function assertLegacyEngineIsHoisted(projectRoot: string): Promise<void> {
+    const root = resolve(projectRoot)
+    const topLevelManifest = resolve(root, 'node_modules/@blitzdev/engine/package.json')
+    const nestedLocation = 'node_modules/kite3d/node_modules/@blitzdev/engine'
+    try {
+        await access(topLevelManifest)
+        createRequire(resolve(root, 'package.json')).resolve('@blitzdev/engine/package.json')
+    } catch {
+        const nestedManifest = resolve(root, nestedLocation, 'package.json')
+        if (await exists(nestedManifest)) {
+            throw new Error(
+                `Legacy migration installed @blitzdev/engine at ${nestedLocation} instead of the project root.`,
+            )
+        }
+        throw new Error(
+            `Legacy migration could not resolve @blitzdev/engine from the project root; expected node_modules/@blitzdev/engine, not ${nestedLocation}.`,
+        )
+    }
 }
 
 interface MigrationMutation {
