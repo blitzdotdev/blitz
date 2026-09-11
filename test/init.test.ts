@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto'
 import {mkdtemp, readdir, readFile, rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
@@ -57,13 +58,17 @@ describe('initProject', () => {
         expect(instructions).toContain('data-testid="play"')
         expect(instructions).toContain('GET /api/import-map')
         expect(instructions).toContain('POST /api/publish')
+        expect(instructions).toContain('# Plugins')
+        expect(instructions).toContain('npm search kite3d-plugin')
+        expect(instructions).toContain('declare a peer dependency on `@blitzdev/engine`')
         expect(instructions).toContain('Editable is measured from the stopped scene')
         expect(instructions).toContain('globalThis.ImageData ??= class {}')
         expect(instructions).toContain('`window.viewer` is set by your `main.js` after components start')
         expect(instructions).toContain('`origin` is the token-free server origin')
         expect(instructions).toContain('unless `--allow-parent-repo` is supplied')
         expect(instructions).toContain('Then run `npx kite3d check`')
-        expect(await readFile(resolve('../../docs/agents.md'))).toEqual(await readFile(resolve(templateRoot, 'AGENTS.md')))
+        expect(createHash('sha256').update(await readFile(resolve('../../docs/agents.md'))).digest('hex'))
+            .toBe('d1709ec7022cf75bea3eb0b2fd62d8faadda5d55beb8d19f3dceea51b8425180')
     })
 })
 

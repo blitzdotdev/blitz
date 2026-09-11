@@ -7,6 +7,7 @@ import {checkProject, formatCheckTable} from '../src/check.ts'
 import {initProject, publishFromDisk} from '../src/commands.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 import {startMockBackend} from './mockBackend.ts'
+import {FIXTURE_PLUGIN_NAME, installPackedFixturePlugin} from './pluginFixture.ts'
 
 const cleanup: Array<() => Promise<void>> = []
 
@@ -15,6 +16,27 @@ afterEach(async () => {
 })
 
 describe('kite3d check', () => {
+    it('loads a packed plugin with its worker and binary sidecar in the headless browser', async () => {
+        const root = await project({plugins: [FIXTURE_PLUGIN_NAME]}, [{name: 'Triangle', mesh: 0}])
+        await installPackedFixturePlugin(root)
+        await writeFile(resolve(root, 'main.js'), `
+import FixturePlugin from '${FIXTURE_PLUGIN_NAME}'
+export function main({viewer}) {
+    const plugin = viewer.getPlugin(FixturePlugin)
+    if (!plugin || plugin.sidecarByte !== 42) throw new Error('Packed fixture plugin was not loaded')
+}
+`)
+
+        const result = await checkProject(root)
+
+        expect(result.ok, JSON.stringify(result, null, 2)).toBe(true)
+        expect(result.mode).toBe('headless')
+        expect(result.rows).toContainEqual(expect.objectContaining({
+            kind: 'plugin', path: FIXTURE_PLUGIN_NAME, status: 'pass',
+        }))
+        expect(result.outcomes).toContainEqual(expect.objectContaining({name: 'Playable', status: 'pass'}))
+    })
+
     it('passes a freshly initialized empty project with an authoring warning', async () => {
         const root = await mkdtemp(resolve(tmpdir(), 'kite3d-check-init-'))
         cleanup.push(() => rm(root, {recursive: true, force: true}))

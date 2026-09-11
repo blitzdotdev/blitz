@@ -10,6 +10,8 @@ export {DEPLOYS_PATH, findDeploySlug, readDeploys, writeDeploys} from './deploys
 export {readProjectFile, walkProject, writeProjectFile} from './filesystem.ts'
 export {generateIndexHtml} from './indexHtml.ts'
 export type {GenerateIndexHtmlOptions} from './indexHtml.ts'
+export {installedPluginEntries, installedPluginPackages, PUBLISHED_PLUGIN_PATH} from './plugins.ts'
+export type {InstalledPluginPackage} from './plugins.ts'
 export {buildManifest, canonicalizeManifest, manifestHash, sha256} from './manifest.ts'
 export {publishProject, pullProject} from './publish.ts'
 export {NodeProjectDirectory} from './node-filesystem.ts'
