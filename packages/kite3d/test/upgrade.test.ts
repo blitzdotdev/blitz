@@ -178,7 +178,7 @@ describe('upgradeProject', () => {
             'Replaced @blitzdev/plugin-mujoco with @kite3d/plugin-mujoco in kite3d.plugins.',
         ])
         expect(JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))).toMatchObject({
-            dependencies: {'@kite3d/plugin-mujoco': '^0.1.1'},
+            dependencies: {'@kite3d/plugin-mujoco': '^0.2.0'},
             devDependencies: {kite3d: KITE3D_VERSION},
             kite3d: {version: KITE3D_VERSION, plugins: ['@kite3d/plugin-mujoco']},
         })

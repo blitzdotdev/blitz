@@ -9,6 +9,8 @@ const LEGACY_PACKAGE = '@blitzdev/blitz'
 const KITE3D_PACKAGE = 'kite3d'
 const LEGACY_PLUGIN_PACKAGE = '@blitzdev/plugin-mujoco'
 const KITE3D_PLUGIN_PACKAGE = '@kite3d/plugin-mujoco'
+const LEGACY_PLUGIN_VERSION = '0.1.1'
+const KITE3D_PLUGIN_VERSION = '0.2.0'
 const LEGACY_SETTINGS_KEY = 'blitz'
 const KITE3D_SETTINGS_KEY = 'kite3d'
 const LEGACY_NPM_SCOPE = '@blitzdev'
@@ -96,7 +98,7 @@ export async function migrateLegacyProject(projectRoot: string, targetVersion: s
             const specifier = dependencies[LEGACY_PLUGIN_PACKAGE]
             delete dependencies[LEGACY_PLUGIN_PACKAGE]
             if (!Object.prototype.hasOwnProperty.call(dependencies, KITE3D_PLUGIN_PACKAGE)) {
-                dependencies[KITE3D_PLUGIN_PACKAGE] = specifier
+                dependencies[KITE3D_PLUGIN_PACKAGE] = rewriteLegacyPluginVersion(specifier)
             }
             changes.push(`Replaced ${LEGACY_PLUGIN_PACKAGE} with ${KITE3D_PLUGIN_PACKAGE} in ${section}.`)
             sectionChanged = true
@@ -271,6 +273,12 @@ function rewriteLegacyPlugin(plugin: unknown): unknown {
     if (!record(plugin).import || typeof record(plugin).import !== 'string') return plugin
     const rewritten = rewriteLegacyPluginSpecifier(record(plugin).import as string)
     return rewritten === record(plugin).import ? plugin : {...record(plugin), import: rewritten}
+}
+
+function rewriteLegacyPluginVersion(specifier: unknown): unknown {
+    if (typeof specifier !== 'string') return specifier
+    const match = new RegExp(`^([~^]?)${LEGACY_PLUGIN_VERSION.replaceAll('.', '\\.')}$`).exec(specifier)
+    return match ? `${match[1]}${KITE3D_PLUGIN_VERSION}` : specifier
 }
 
 function rewriteLegacyPluginSpecifier(specifier: string): string {
