@@ -1,5 +1,5 @@
 import {createHash, randomBytes} from 'node:crypto'
-import {createReadStream, createWriteStream, watch, type FSWatcher} from 'node:fs'
+import {createReadStream, createWriteStream} from 'node:fs'
 import {
     access,
     lstat,
@@ -13,7 +13,7 @@ import {
 } from 'node:fs/promises'
 import type {Server} from 'node:http'
 import {createRequire} from 'node:module'
-import {basename, dirname, resolve, sep} from 'node:path'
+import {basename, dirname, relative, resolve, sep} from 'node:path'
 import {Readable} from 'node:stream'
 import {pipeline} from 'node:stream/promises'
 import {fileURLToPath} from 'node:url'
@@ -25,6 +25,7 @@ import {Hono, type Context, type Next} from 'hono'
 import {getCookie} from 'hono/cookie'
 import {LinearRouter} from 'hono/router/linear-router'
 import {streamSSE, type SSEStreamingApi} from 'hono/streaming'
+import {watch, type FSWatcher} from 'chokidar'
 import {resolveBackendUrl} from './backend.ts'
 import {checkBakeSafety, type BakeJournalEntry} from './bake.ts'
 import {appendSceneJournal} from './journal.ts'
@@ -519,14 +520,26 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     await mkdir(resolve(projectRoot, '.kite3d'), {recursive: true})
     await writeDevFile(projectRoot, {origin, url, port, token, pid: process.pid, started_at: new Date().toISOString()})
     try {
-        watcher = watch(projectRoot, {recursive: true}, (_event, filename) => {
-            if (!filename) return
-            const path = normalizeRelativePath(filename.toString())
+        const handleWatchedFile = (watchedPath: string) => {
+            const path = normalizeRelativePath(relative(projectRoot, watchedPath))
             if (!path || !isIncludedPath(path)) return
             if (serverMutationActive) return
             scheduleWatchedFile(path)
+        }
+        watcher = watch(projectRoot, {
+            ignoreInitial: true,
+            ignored: (watchedPath) => {
+                const path = normalizeRelativePath(relative(projectRoot, watchedPath))
+                return Boolean(path && !isIncludedPath(path))
+            },
         })
-        watcher.on('error', (error) => console.warn(`[kite3d] watcher: ${error.message}`))
+        watcher.on('add', handleWatchedFile)
+        watcher.on('change', handleWatchedFile)
+        watcher.on('unlink', handleWatchedFile)
+        watcher.on('error', (error) => {
+            console.warn(`[kite3d] watcher: ${error instanceof Error ? error.message : error}`)
+        })
+        await new Promise<void>((resolveReady) => watcher!.once('ready', resolveReady))
     } catch (error) {
         console.warn(`[kite3d] file watching is unavailable: ${error instanceof Error ? error.message : error}`)
     }
@@ -544,7 +557,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         async close() {
             if (closing) return
             closing = true
-            watcher?.close()
+            await watcher?.close()
             clearInterval(keepAlive)
             for (const pending of pendingEvents.values()) clearTimeout(pending.timer)
             for (const timer of pendingWatchedFiles.values()) clearTimeout(timer)
