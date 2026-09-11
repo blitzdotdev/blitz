@@ -161,15 +161,18 @@ try {
             noOpen: parsed.values['--no-open'] === true,
             force: parsed.values['--force'] === true,
         })
-        console.log(`Kite3D editor: ${server.url} (Kite3D ${KITE3D_VERSION})`)
-        console.log(`Project: ${server.projectRoot}`)
-        console.log('Guide: AGENTS.md in this folder. Verify with npx kite3d check. Publish with npx kite3d publish.')
+        // Install the handlers before the ready lines: on Linux a stdout pipe is
+        // written synchronously, so a reader can react to "Project:" before the
+        // next statement runs, and a signal then kills the process outright.
         const shutdown = async () => {
             await server.close()
             process.exit(0)
         }
         process.once('SIGINT', shutdown)
         process.once('SIGTERM', shutdown)
+        console.log(`Kite3D editor: ${server.url} (Kite3D ${KITE3D_VERSION})`)
+        console.log(`Project: ${server.projectRoot}`)
+        console.log('Guide: AGENTS.md in this folder. Verify with npx kite3d check. Publish with npx kite3d publish.')
     } else if (command === 'publish') {
         const parsed = parseArgs(args, {
             '--slug': 'value',
