@@ -58,7 +58,7 @@ describe('initProject', () => {
         expect(instructions).toContain('GET /api/import-map')
         expect(instructions).toContain('POST /api/publish')
         expect(instructions).toContain('# Plugins')
-        expect(instructions).toContain('npm search kite3d-plugin')
+        expect(instructions).toContain('npm search keywords:kite3d-plugin')
         expect(instructions).toContain('declare a peer dependency on `@blitzdev/engine`')
         expect(instructions).toContain('Editable is measured from the stopped scene')
         expect(instructions).toContain('globalThis.ImageData ??= class {}')
