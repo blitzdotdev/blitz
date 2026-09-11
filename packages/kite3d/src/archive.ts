@@ -58,7 +58,7 @@ async function provenance(root: string, projectName: string, now: Date): Promise
 }
 
 function packageName(name: typeof KITE3D_PACKAGES[number]): string {
-    return name === 'kite3d' ? name : `@blitzdev/${name}`
+    return name === 'kite3d' ? name : `@kite3d/${name}`
 }
 
 function safeArchiveName(name: string): string {

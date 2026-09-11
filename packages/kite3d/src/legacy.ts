@@ -7,15 +7,16 @@ const LEGACY_DIRECTORY = '.blitz'
 const KITE3D_DIRECTORY = '.kite3d'
 const LEGACY_PACKAGE = '@blitzdev/blitz'
 const KITE3D_PACKAGE = 'kite3d'
+const LEGACY_PLUGIN_PACKAGE = '@blitzdev/plugin-mujoco'
+const KITE3D_PLUGIN_PACKAGE = '@kite3d/plugin-mujoco'
 const LEGACY_SETTINGS_KEY = 'blitz'
 const KITE3D_SETTINGS_KEY = 'kite3d'
-const KITE3D_TRANSITIVE_PACKAGES = [
-    '@blitzdev/engine',
-    '@blitzdev/editor',
-    '@blitzdev/template',
-] as const
+const LEGACY_NPM_SCOPE = '@blitzdev'
+const LEGACY_TRANSITIVE_PACKAGES = ['engine', 'editor', 'template']
+    .map((name) => `${LEGACY_NPM_SCOPE}/${name}`)
 
 export const LEGACY_PROJECT_MESSAGE = 'Legacy Blitz project detected. Run npx kite3d upgrade.'
+export const LEGACY_PLUGIN_MESSAGE = `Legacy plugin ${LEGACY_PLUGIN_PACKAGE} detected. Run npx kite3d upgrade to rename it to ${KITE3D_PLUGIN_PACKAGE}.`
 
 export async function legacyProjectMigrationNeeded(projectRoot = process.cwd()): Promise<boolean> {
     const root = resolve(projectRoot)
@@ -24,6 +25,16 @@ export async function legacyProjectMigrationNeeded(projectRoot = process.cwd()):
     try {
         const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown>
         return Object.prototype.hasOwnProperty.call(manifest, LEGACY_SETTINGS_KEY)
+    } catch (error) {
+        if (error instanceof SyntaxError || isMissing(error)) return false
+        throw error
+    }
+}
+
+export async function legacyPluginMigrationNeeded(projectRoot = process.cwd()): Promise<boolean> {
+    try {
+        const manifest = JSON.parse(await readFile(resolve(projectRoot, 'package.json'), 'utf8')) as Record<string, unknown>
+        return hasLegacyPlugin(manifest)
     } catch (error) {
         if (error instanceof SyntaxError || isMissing(error)) return false
         throw error
@@ -81,21 +92,39 @@ export async function migrateLegacyProject(projectRoot: string, targetVersion: s
     for (const section of ['dependencies', 'devDependencies'] as const) {
         const dependencies = record(packageJson[section])
         let sectionChanged = false
-        for (const packageName of KITE3D_TRANSITIVE_PACKAGES) {
-            const specifier = dependencies[packageName]
-            if (typeof specifier !== 'string' || specifier === targetVersion) continue
-            if (isLocalOrTarballSpecifier(specifier)) {
-                delete dependencies[packageName]
-                changes.push(`Removed ${packageName} from ${section}; kite3d provides ${targetVersion}.`)
-            } else {
-                dependencies[packageName] = targetVersion
-                changes.push(`Pinned ${packageName} to ${targetVersion} in ${section}.`)
+        if (Object.prototype.hasOwnProperty.call(dependencies, LEGACY_PLUGIN_PACKAGE)) {
+            const specifier = dependencies[LEGACY_PLUGIN_PACKAGE]
+            delete dependencies[LEGACY_PLUGIN_PACKAGE]
+            if (!Object.prototype.hasOwnProperty.call(dependencies, KITE3D_PLUGIN_PACKAGE)) {
+                dependencies[KITE3D_PLUGIN_PACKAGE] = specifier
             }
+            changes.push(`Replaced ${LEGACY_PLUGIN_PACKAGE} with ${KITE3D_PLUGIN_PACKAGE} in ${section}.`)
+            sectionChanged = true
+        }
+        for (const packageName of LEGACY_TRANSITIVE_PACKAGES) {
+            const specifier = dependencies[packageName]
+            if (typeof specifier !== 'string') continue
+            delete dependencies[packageName]
+            changes.push(`Removed ${packageName} from ${section}; kite3d provides ${targetVersion}.`)
             sectionChanged = true
         }
         if (!sectionChanged) continue
         packageJson[section] = dependencies
         packageChanged = true
+    }
+    const kite3dSettings = record(packageJson[KITE3D_SETTINGS_KEY])
+    if (Array.isArray(kite3dSettings.plugins)) {
+        let pluginChanged = false
+        const plugins = kite3dSettings.plugins.map((plugin) => {
+            const rewritten = rewriteLegacyPlugin(plugin)
+            pluginChanged ||= rewritten !== plugin
+            return rewritten
+        })
+        if (pluginChanged) {
+            packageJson[KITE3D_SETTINGS_KEY] = {...kite3dSettings, plugins}
+            packageChanged = true
+            changes.push(`Replaced ${LEGACY_PLUGIN_PACKAGE} with ${KITE3D_PLUGIN_PACKAGE} in kite3d.plugins.`)
+        }
     }
     if (packageChanged) {
         mutations.push(fileMutation(
@@ -154,20 +183,20 @@ export async function migrateLegacyProject(projectRoot: string, targetVersion: s
 
 export async function assertLegacyEngineIsHoisted(projectRoot: string): Promise<void> {
     const root = resolve(projectRoot)
-    const topLevelManifest = resolve(root, 'node_modules/@blitzdev/engine/package.json')
-    const nestedLocation = 'node_modules/kite3d/node_modules/@blitzdev/engine'
+    const topLevelManifest = resolve(root, 'node_modules/@kite3d/engine/package.json')
+    const nestedLocation = 'node_modules/kite3d/node_modules/@kite3d/engine'
     try {
         await access(topLevelManifest)
-        createRequire(resolve(root, 'package.json')).resolve('@blitzdev/engine/package.json')
+        createRequire(resolve(root, 'package.json')).resolve('@kite3d/engine/package.json')
     } catch {
         const nestedManifest = resolve(root, nestedLocation, 'package.json')
         if (await exists(nestedManifest)) {
             throw new Error(
-                `Legacy migration installed @blitzdev/engine at ${nestedLocation} instead of the project root.`,
+                `Legacy migration installed @kite3d/engine at ${nestedLocation} instead of the project root.`,
             )
         }
         throw new Error(
-            `Legacy migration could not resolve @blitzdev/engine from the project root; expected node_modules/@blitzdev/engine, not ${nestedLocation}.`,
+            `Legacy migration could not resolve @kite3d/engine from the project root; expected node_modules/@kite3d/engine, not ${nestedLocation}.`,
         )
     }
 }
@@ -237,13 +266,28 @@ function record(value: unknown): Record<string, unknown> {
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
-function isLocalOrTarballSpecifier(specifier: string): boolean {
-    if (specifier.startsWith('file:') || specifier.startsWith('link:')) return true
-    try {
-        return ['http:', 'https:'].includes(new URL(specifier).protocol)
-    } catch {
-        return false
+function rewriteLegacyPlugin(plugin: unknown): unknown {
+    if (typeof plugin === 'string') return rewriteLegacyPluginSpecifier(plugin)
+    if (!record(plugin).import || typeof record(plugin).import !== 'string') return plugin
+    const rewritten = rewriteLegacyPluginSpecifier(record(plugin).import as string)
+    return rewritten === record(plugin).import ? plugin : {...record(plugin), import: rewritten}
+}
+
+function rewriteLegacyPluginSpecifier(specifier: string): string {
+    if (specifier === LEGACY_PLUGIN_PACKAGE
+        || specifier.startsWith(`${LEGACY_PLUGIN_PACKAGE}:`)
+        || specifier.startsWith(`${LEGACY_PLUGIN_PACKAGE}(`)) {
+        return `${KITE3D_PLUGIN_PACKAGE}${specifier.slice(LEGACY_PLUGIN_PACKAGE.length)}`
     }
+    return specifier
+}
+
+function hasLegacyPlugin(packageJson: Record<string, unknown>): boolean {
+    if (['dependencies', 'devDependencies'].some((section) => (
+        Object.prototype.hasOwnProperty.call(record(packageJson[section]), LEGACY_PLUGIN_PACKAGE)
+    ))) return true
+    const plugins = record(packageJson[KITE3D_SETTINGS_KEY]).plugins
+    return Array.isArray(plugins) && plugins.some((plugin) => rewriteLegacyPlugin(plugin) !== plugin)
 }
 
 async function exists(path: string): Promise<boolean> {
