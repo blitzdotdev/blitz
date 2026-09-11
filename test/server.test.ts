@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto'
 import {mkdtemp, mkdir, open, readFile, rm, stat, writeFile} from 'node:fs/promises'
 import {createServer as createHttpServer, request} from 'node:http'
+import {createConnection} from 'node:net'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, describe, expect, it, vi} from 'vitest'
@@ -10,6 +11,7 @@ import {readDeploys, writeDeploys} from '../src/deploys.ts'
 import {NodeProjectDirectory} from '../src/node-filesystem.ts'
 import {readProjectFile, walkProject, writeProjectFile} from '../src/filesystem.ts'
 import {startMockBackend} from './mockBackend.ts'
+import {closeTestServer} from './httpServer.ts'
 import {KITE3D_SERVER_CLIENT_ID} from '@kite3d/engine/paths'
 import {projectDependencies} from '@kite3d/engine/importMap'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from '../src/versions.ts'
@@ -327,6 +329,39 @@ describe('Kite3D dev server', () => {
         expect(await reader.read()).toMatchObject({done: true})
     })
 
+    it('closes within two seconds with an unread event stream and a stalled keep-alive request', async () => {
+        const {server, headers} = await startServer()
+        const controller = new AbortController()
+        const events = await fetch(`${base(server)}/api/events`, {headers, signal: controller.signal})
+        expect(events.status).toBe(200)
+
+        const socket = createConnection({host: '127.0.0.1', port: server.port})
+        await new Promise<void>((resolveConnect, reject) => {
+            socket.once('connect', resolveConnect)
+            socket.once('error', reject)
+        })
+        const requestReceived = new Promise<void>((resolveRequest) => server.server.once('request', () => resolveRequest()))
+        socket.write([
+            'PUT /files/stalled.txt HTTP/1.1',
+            `Host: 127.0.0.1:${server.port}`,
+            `X-Kite3D-Token: ${server.token}`,
+            'If-Match: *',
+            'Content-Type: application/json',
+            'Content-Length: 100',
+            'Connection: keep-alive',
+            '',
+            '{',
+        ].join('\r\n'))
+        await requestReceived
+
+        try {
+            await resolveWithin(server.close(), 2_000)
+        } finally {
+            controller.abort()
+            socket.destroy()
+        }
+    })
+
     it('keeps local deploy and dev credentials out of file APIs', async () => {
         const {server, root, headers} = await startServer()
         await writeFile(resolve(root, '.kite3d/deploys.json'), '{"secret":"deploy"}')
@@ -486,8 +521,7 @@ describe('Kite3D dev server', () => {
             blocker.once('error', reject)
             blocker.listen(0, '127.0.0.1', resolveListen)
         })
-        cleanup.push(() => new Promise<void>((resolveClose, reject) =>
-            blocker.close((error) => error ? reject(error) : resolveClose())))
+        cleanup.push(() => closeTestServer(blocker))
         const address = blocker.address()
         if (!address || typeof address === 'string') throw new Error('Test blocker did not bind')
         const root = await temporaryProject()
@@ -755,6 +789,20 @@ async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull' | 
 
 function base(server: DevServer): string {
     return `http://127.0.0.1:${server.port}`
+}
+
+async function resolveWithin(promise: Promise<void>, milliseconds: number): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+        await Promise.race([
+            promise,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`Close did not resolve within ${milliseconds}ms`)), milliseconds)
+            }),
+        ])
+    } finally {
+        clearTimeout(timer)
+    }
 }
 
 async function statusWithHost(port: number, path: string, host: string, token: string): Promise<number> {

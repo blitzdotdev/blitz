@@ -7,6 +7,7 @@ import {checkProject, formatCheckTable} from '../src/check.ts'
 import {initProject, publishFromDisk} from '../src/commands.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 import {startMockBackend} from './mockBackend.ts'
+import {closeTestServer} from './httpServer.ts'
 import {FIXTURE_PLUGIN_NAME, installPackedFixturePlugin} from './pluginFixture.ts'
 
 const cleanup: Array<() => Promise<void>> = []
@@ -68,8 +69,7 @@ export function main({viewer}) {
                 resolveListen()
             })
         })
-        cleanup.push(() => new Promise<void>((resolveClose, reject) =>
-            olderServer.close((error) => error ? reject(error) : resolveClose())))
+        cleanup.push(() => closeTestServer(olderServer))
         const address = olderServer.address()
         if (!address || typeof address === 'string') throw new Error('Older test server did not bind')
         const oldDev = {
