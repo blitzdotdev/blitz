@@ -18,9 +18,9 @@ import {Readable} from 'node:stream'
 import {pipeline} from 'node:stream/promises'
 import {fileURLToPath} from 'node:url'
 import {serve, type HttpBindings} from '@hono/node-server'
-import {mimeTypeForPath} from '@blitzdev/engine/fileTypes'
-import {dependencyImportMap, projectDependencies} from '@blitzdev/engine/importMap'
-import {KITE3D_SERVER_CLIENT_ID, JOURNAL_PATH} from '@blitzdev/engine/paths'
+import {mimeTypeForPath} from '@kite3d/engine/fileTypes'
+import {dependencyImportMap, projectDependencies} from '@kite3d/engine/importMap'
+import {KITE3D_SERVER_CLIENT_ID, JOURNAL_PATH} from '@kite3d/engine/paths'
 import {Hono, type Context, type Next} from 'hono'
 import {getCookie} from 'hono/cookie'
 import {LinearRouter} from 'hono/router/linear-router'
@@ -93,7 +93,7 @@ const serverRequire = createRequire(import.meta.url)
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
     const projectRoot = await realpath(resolve(options.projectRoot || process.cwd()))
     const token = randomBytes(24).toString('base64url')
-    const editorDirectory = await resolvePackageDirectory('@blitzdev/editor') + '/dist'
+    const editorDirectory = await resolvePackageDirectory('@kite3d/editor') + '/dist'
     const clients = new Map<SSEStreamingApi, string | undefined>()
     const pendingCommands = new Map<string, PendingCommand>()
     const pendingEvents = new Map<string, PendingEvent>()
@@ -791,7 +791,7 @@ import {
     persistenceReport,
     semanticSceneSnapshot,
     serializeSceneGltf,
-} from '@blitzdev/engine'
+} from '@kite3d/engine'
 
 const started = performance.now()
 const errors = []

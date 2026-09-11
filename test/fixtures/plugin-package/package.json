@@ -1,5 +1,5 @@
 {
-  "name": "@blitzdev/test-plugin-fixture",
+  "name": "@kite3d/test-plugin-fixture",
   "version": "1.2.3",
   "type": "module",
   "main": "./Fixture.plugin.js",
