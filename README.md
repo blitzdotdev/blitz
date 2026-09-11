@@ -1,53 +1,90 @@
-# Blitz
+<p align="center">
+  <img src="docs/assets/blitz-logo.png" width="140" alt="Blitz logo">
+</p>
 
-Blitz is an open, local-first game editor and runtime built on threepipe. The editor is served only by the `blitz` command and works against the project directory on the same `127.0.0.1` origin.
+<h1 align="center">Blitz</h1>
 
-## Start a game
+<p align="center">
+  Build browser 3D games with an AI agent and a local editor.<br>
+  One command to start. One command to publish.
+</p>
 
-Node.js 20 or newer is required.
+<p align="center">
+  <a href="https://www.npmjs.com/package/@blitzdev/blitz"><img src="https://img.shields.io/npm/v/@blitzdev/blitz?label=%40blitzdev%2Fblitz&color=2d72d2" alt="npm version"></a>
+  <a href="https://github.com/blitzdotdev/blitz/actions/workflows/release.yml"><img src="https://github.com/blitzdotdev/blitz/actions/workflows/release.yml/badge.svg" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0"></a>
+  <a href="https://blitz.dev"><img src="https://img.shields.io/badge/play-blitz.dev-f0a020" alt="blitz.dev"></a>
+</p>
+
+---
+
+## Tell your agent
+
+```
+use npx @blitzdev/blitz and build me an FPS shooting practice game
+```
+
+That is the whole prompt. The CLI teaches the loop, and every project ships an `AGENTS.md` with the engine API and the rules.
+
+## Or do it by hand
+
+Node.js 20 or newer.
 
 ```sh
 npx @blitzdev/blitz init my-game
-cd my-game
-npm install
-npx blitz dev
+cd my-game && npm install
+npx blitz dev        # local editor, keeps running while you edit
+npx blitz check      # proves the game is Playable, Editable, Persisted
+npx blitz publish    # live at https://<slug>.app.blitz.dev/
 ```
 
-The last command prints a tokenized editor URL. Edit project files directly; the editor watches and reloads them. Before a release, run `npx blitz pull`, then `npx blitz publish --message "what changed"`. `npx blitz open` reopens the active development URL.
+## How it works
 
-## Packages
+- **Your folder is the game.** The scene is a text glTF file next to your scripts. Agents edit it with tools, humans edit it in the editor. Both see the same file.
+- **The editor is local.** `blitz dev` serves it from `127.0.0.1` against your project folder. Save a script and the game reloads.
+- **Check before you ship.** `blitz check` boots the game headlessly and fails on runtime errors, invisible authored content, and save-reload drift.
+- **Publish is one upload.** Files are content-addressed and verified by hash. Every release keeps its own URL on `blitz.dev`.
 
-- `packages/engine`: `@blitzdev/engine`, the UI-free runtime, project format, scripting helpers, and game plugins.
-- `packages/editor`: `@blitzdev/editor`, the static React editor served by `blitz dev`.
-- `packages/blitz`: `@blitzdev/blitz`, the command, localhost server, disk adapter, and publishing client.
-- `packages/template`: `@blitzdev/template`, real files copied by `blitz init`.
-- `packages/threepipe` and `packages/uiconfig-blueprint`: vendored Apache-2.0 upstream source.
+## What is in the box
 
-All public packages use Apache-2.0 and ship source for agent inspection. Cloud services are a separate concern and are not part of the root workspace build.
+| Package | What it is |
+|---|---|
+| [`@blitzdev/blitz`](packages/blitz) | The `blitz` command: local server, checks, checkpoints, publish |
+| [`@blitzdev/engine`](packages/engine) | UI-free runtime, project format, scripting helpers, game plugins |
+| [`@blitzdev/editor`](packages/editor) | The React editor served by `blitz dev` |
+| [`@blitzdev/template`](packages/template) | The files `blitz init` copies |
+| `packages/threepipe`, `packages/uiconfig-blueprint` | Vendored upstream source |
 
-## Editor asset library
+Everything is Apache-2.0 and ships its source, so an agent can grep `node_modules` when the guide is not enough. Built on [threepipe](https://threepipe.org).
 
-The editor's Library panel reads Polyhaven entries through the deployed read-only proxy at `https://blitz-asset-library-proxy.blitzapp.workers.dev`. The proxy URL is a public editor constant; it is not a per-project or local-server option.
+## Commands
 
-## Editor Google sign-in
+| Command | Does |
+|---|---|
+| `blitz init <dir>` | Create a project and its Git repository |
+| `blitz dev` | Start the local editor |
+| `blitz check` | Run the Playable, Editable, Persisted checks |
+| `blitz checkpoint [label]` | Commit a checkpoint; `blitz restore` brings one back |
+| `blitz publish` | Publish a release; `blitz pull` fetches the active one |
+| `blitz doctor` | Verify the local setup |
 
-Google sign-in requires the exact editor origin printed by `blitz dev` in the OAuth client's authorized JavaScript origins. Listing `http://localhost` does not cover every port: each scheme, host, and port combination must be listed separately, and `localhost` does not cover `127.0.0.1`. See Google's [origin mismatch documentation](https://developers.google.com/identity/protocols/oauth2/javascript-implicit-flow#origin_mismatch).
+Run `npx blitz` with no argument for the full list.
 
-## Repository checks
+## Develop this repo
 
 ```sh
 npm install --ignore-scripts --cache /tmp/blitz-npm-cache
 npm run build
 npm run typecheck
-npm run lint
 npm run test:runtime
-npm run test:publish
 npm run test:blitz
 npm test -w packages/editor
 ```
 
-The root workspace is `packages/*`. See `docs/layout.md`, `docs/local-dev-server-plan.md`, `docs/open-source-split.md`, `docs/publish-api.md`, and `docs/agents.md` for the contracts.
+The editor's Library panel reads Polyhaven assets through a public read-only proxy; the URL is an editor constant.
 
-## Cloud
+Contracts and guides: [`docs/agents.md`](docs/agents.md), [`docs/publish-api.md`](docs/publish-api.md), [`docs/layout.md`](docs/layout.md), [`docs/releasing.md`](docs/releasing.md).
 
-The production API, storefront, and agent guides are served from `https://blitz.dev`. Published games use `https://<slug>.app.blitz.dev/`; the CLI prints the exact preview URL returned by the backend. The cloud services live in the private repo `blitzdotdev/blitz-cloud`, checked out at `/Users/minjunes/blitz-cloud`. `docs/publish-api.md` in this repo is the contract they implement.
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).
