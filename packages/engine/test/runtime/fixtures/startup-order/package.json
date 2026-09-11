@@ -7,7 +7,7 @@
     "threepipe": "0.5.1",
     "fixture-script": "1.0.0"
   },
-  "blitz": {
+  "kite3d": {
     "plugins": ["Order.plugin.js:OrderPlugin"],
     "imports": {},
     "scripts": ["LateComponent.script.js", "fixture-script"],

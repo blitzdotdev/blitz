@@ -3,10 +3,10 @@ import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {initProject, publishFromDisk, runDev} from '../../../blitz/src/commands.ts'
-import {checkProject} from '../../../blitz/src/check.ts'
-import {createDevServer, type DevServer} from '../../../blitz/src/server.ts'
-import {startMockBackend, type MockBackend} from '../../../blitz/test/mockBackend.ts'
+import {initProject, publishFromDisk, runDev} from '../../../kite3d/src/commands.ts'
+import {checkProject} from '../../../kite3d/src/check.ts'
+import {createDevServer, type DevServer} from '../../../kite3d/src/server.ts'
+import {startMockBackend, type MockBackend} from '../../../kite3d/test/mockBackend.ts'
 
 let root: string
 let server: DevServer
@@ -14,31 +14,31 @@ let backend: MockBackend
 const googleScriptUrl = 'https://accounts.google.com/gsi/client'
 
 test.beforeAll(async () => {
-    root = await mkdtemp(resolve(tmpdir(), 'blitz-editor-e2e-'))
+    root = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-e2e-'))
     await initProject(root)
 
     const packagePath = resolve(root, 'package.json')
     const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
-        blitz: {plugins?: string[], scripts?: string[], viewer?: Record<string, unknown>}
+        kite3d: {plugins?: string[], scripts?: string[], viewer?: Record<string, unknown>}
     }
-    packageJson.blitz.plugins = ['Hot.plugin.js:HotPlugin']
-    packageJson.blitz.scripts = [
+    packageJson.kite3d.plugins = ['Hot.plugin.js:HotPlugin']
+    packageJson.kite3d.scripts = [
         'Hot.script.js',
         'reload/Reexport.script.js',
         'reload/Cycle.script.js',
         'reload/Dynamic.script.js',
     ]
-    packageJson.blitz.viewer = {
+    packageJson.kite3d.viewer = {
         backgroundColor: '#224466',
         camera: {position: [0, 5, 17], target: [0, 0, 0]},
     }
     await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
     await writeFile(resolve(root, 'main.js'), `
 export async function main({viewer}) {
-    window.__blitzMainRuns = (window.__blitzMainRuns || 0) + 1
-    window.__blitzLoopTicks = 0
-    window.__blitzRuntimeViewer = viewer
-    viewer.addEventListener('preFrame', () => { window.__blitzLoopTicks += 1 })
+    window.__kite3dMainRuns = (window.__kite3dMainRuns || 0) + 1
+    window.__kite3dLoopTicks = 0
+    window.__kite3dRuntimeViewer = viewer
+    viewer.addEventListener('preFrame', () => { window.__kite3dLoopTicks += 1 })
 }
 `)
     await writeFile(resolve(root, 'Hot.script.js'), hotScript('v1'))
@@ -203,7 +203,7 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
         expect(actual).toBeCloseTo(expected)
     }
     expect(loadWarnings).toEqual([])
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).dirty).toBe(false)
     await expect(page.getByTestId('save-scene')).toBeDisabled()
     const sceneBeforeCheck = await readFile(resolve(root, 'assets/main.scene.gltf'))
 
@@ -223,7 +223,7 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
     expect(checkPlacement).toEqual({buttonCount: 5, sameGroup: true, immediatelyAfterOpen: true})
     await expect(check).toHaveText('')
     await expect(check.locator('.bp5-icon-tick')).toBeVisible()
-    await expect(check.locator('.blitz-check-badge')).toHaveCount(0)
+    await expect(check.locator('.kite3d-check-badge')).toHaveCount(0)
     await check.hover()
     await expect(page.getByText('Check the game: Playable, Editable, Persisted', {exact: true})).toBeVisible()
     await expect(page.getByTestId('check-results')).toHaveCount(0)
@@ -233,7 +233,7 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
     await expect(check).toBeDisabled()
     await expect(check).toHaveClass(/bp5-loading/)
     await expect(check).toHaveAttribute('data-check-status', 'pass', {timeout: 45_000})
-    await expect(check.locator('.blitz-check-badge')).toHaveClass(/blitz-check-badge-success/)
+    await expect(check.locator('.kite3d-check-badge')).toHaveClass(/kite3d-check-badge-success/)
     await page.mouse.move(0, 200)
     await check.hover()
     const results = page.getByTestId('check-results')
@@ -243,14 +243,14 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
     for (const outcomeName of ['Playable', 'Editable', 'Persisted']) {
         const outcome = results.getByTestId(`check-outcome-${outcomeName.toLowerCase()}`)
         await expect(outcome).toContainText(outcomeName)
-        await expect(outcome.locator('.blitz-check-status-success')).toBeVisible()
-        await expect(outcome.locator('.blitz-check-summary')).not.toHaveText('')
+        await expect(outcome.locator('.kite3d-check-status-success')).toBeVisible()
+        await expect(outcome.locator('.kite3d-check-summary')).not.toHaveText('')
     }
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).dirty).toBe(false)
     await expect(page.getByTestId('save-scene')).toBeDisabled()
     expect(await readFile(resolve(root, 'assets/main.scene.gltf'))).toEqual(sceneBeforeCheck)
 
-    const written = JSON.parse(await readFile(resolve(root, '.blitz/check.json'), 'utf8')) as {
+    const written = JSON.parse(await readFile(resolve(root, '.kite3d/check.json'), 'utf8')) as {
         ok: boolean
         mode: string
         outcomes: Array<{name: string, status: string, report?: unknown}>
@@ -265,25 +265,25 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
         expect.objectContaining({name: 'Editable', status: 'pass'}),
         expect.objectContaining({name: 'Persisted', status: 'pass'}),
     ])
-    expect(await readFile(resolve(root, '.blitz/console.log'), 'utf8')).toContain('[blitz check] Playable=pass Editable=pass Persisted=pass')
+    expect(await readFile(resolve(root, '.kite3d/console.log'), 'utf8')).toContain('[kite3d check] Playable=pass Editable=pass Persisted=pass')
 
     await page.mouse.move(0, 200)
     await page.evaluate(() => {
         const viewer = (window as unknown as {viewer: {scene: {modelRoot: {
             children: Array<{userData: Record<string, unknown>}>
         }}}}).viewer
-        viewer.scene.modelRoot.children[0].userData.blitzAuthoring = {
+        viewer.scene.modelRoot.children[0].userData.kite3dAuthoring = {
             role: 'generator', id: 'orphan-preview', sourceId: 'missing-generator',
         }
     })
     await check.click()
     await expect(check).toHaveAttribute('data-check-status', 'fail', {timeout: 45_000})
-    await expect(check.locator('.blitz-check-badge')).toHaveClass(/blitz-check-badge-danger/)
+    await expect(check.locator('.kite3d-check-badge')).toHaveClass(/kite3d-check-badge-danger/)
     await page.mouse.move(0, 200)
     await check.hover()
     const failingOutcome = results.locator('[data-status="fail"]').first()
     await expect(failingOutcome).toBeVisible()
-    await expect(failingOutcome.locator('.blitz-check-codes'))
+    await expect(failingOutcome.locator('.kite3d-check-codes'))
         .toContainText(/MISSING_AUTHORING_SOURCE|PERSISTENCE_DRIFT/)
 
     const cliResult = await checkProject(root)
@@ -355,7 +355,7 @@ test('registers a dropped GLB as an asset and loads it from the published projec
         expect(await readFile(resolve(fixture.root, 'assets/imports/gate-model.glb'))).toEqual(glb)
         expect(await page.evaluate(() => (
             window as unknown as {__assetLoadPaths: string[]}
-        ).__assetLoadPaths)).toContain('/blitz/@gate-model/f.glb')
+        ).__assetLoadPaths)).toContain('/kite3d/@gate-model/f.glb')
         await expect(page.getByTestId('scene-hierarchy')).toContainText('gate-model.glb')
 
         await page.getByTestId('save-scene').click()
@@ -365,7 +365,7 @@ test('registers a dropped GLB as an asset and loads it from the published projec
                 nodes: Array<{children?: number[], extras?: {rootPath?: string}, mesh?: number}>
                 meshes?: unknown[]
             }
-            const wrapper = scene.nodes.find((node) => node.extras?.rootPath === '/blitz/@gate-model/f.glb')
+            const wrapper = scene.nodes.find((node) => node.extras?.rootPath === '/kite3d/@gate-model/f.glb')
             expect(wrapper).toBeDefined()
             expect(wrapper?.children || []).toEqual([])
             expect(scene.nodes.filter((node) => node.mesh !== undefined)).toEqual([])
@@ -478,12 +478,12 @@ test('reports leaked runtime content after Stop in a toast and the console log',
         const {BoxGeometry, Mesh, MeshStandardMaterial} = await import('@blitzdev/engine')
         const leaked = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial())
         leaked.name = 'Leaked Play object'
-        ;(window as unknown as {__blitzRuntimeViewer: {scene: {add(object: unknown): void}}}).__blitzRuntimeViewer.scene.add(leaked)
+        ;(window as unknown as {__kite3dRuntimeViewer: {scene: {add(object: unknown): void}}}).__kite3dRuntimeViewer.scene.add(leaked)
     })
     await page.getByTestId('play').click()
 
     await expect(page.getByText(/Runtime cleanup failed: RUNTIME_OBJECT_AFTER_STOP/)).toBeVisible()
-    await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8')))
+    await expect.poll(async () => (await readFile(resolve(root, '.kite3d/console.log'), 'utf8')))
         .toContain('runtime cleanup failed: RUNTIME_OBJECT_AFTER_STOP')
 })
 
@@ -505,13 +505,13 @@ test('loads the restored panels, watches generators, and saves text glTF without
         const files = await response.json() as Array<Record<string, unknown>>
         await route.fulfill({response, json: [
             ...files,
-            {path: '.blitz/deploys.json', size: 1, sha256: 'a'.repeat(64), mtime: 0},
-            {path: '.blitz/dev.json', size: 1, sha256: 'b'.repeat(64), mtime: 0},
+            {path: '.kite3d/deploys.json', size: 1, sha256: 'a'.repeat(64), mtime: 0},
+            {path: '.kite3d/dev.json', size: 1, sha256: 'b'.repeat(64), mtime: 0},
         ]})
     })
     await page.goto(server.url)
 
-    await expect(page.getByRole('heading', {name: 'blitz-editor-e2e-'})).toBeVisible()
+    await expect(page.getByRole('heading', {name: 'kite3d-editor-e2e-'})).toBeVisible()
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
     for (const panel of ['Objects', 'Materials', 'Textures', 'Geometries', 'Scene', 'Inspector', 'Settings', 'Project', 'Files', 'Library', 'Timeline']) {
         await expect(page.getByRole('tab', {name: panel})).toBeVisible()
@@ -527,8 +527,8 @@ test('loads the restored panels, watches generators, and saves text glTF without
     await expect(hierarchy).toContainText(/Tree 1\s*generated/)
     await expect(page.getByTestId('unlisted-script-warning').filter({hasText: 'Unlisted.script.js'})).toBeVisible()
     await expect(page.getByTestId('unlisted-script-warning').filter({hasText: 'samples/Spin.script.js'})).toHaveCount(0)
-    await expect(page.getByTestId('project-files')).not.toContainText('.blitz/deploys.json')
-    await expect(page.getByTestId('project-files')).not.toContainText('.blitz/dev.json')
+    await expect(page.getByTestId('project-files')).not.toContainText('.kite3d/deploys.json')
+    await expect(page.getByTestId('project-files')).not.toContainText('.kite3d/dev.json')
 
     await page.getByRole('tab', {name: 'Project'}).click()
     await expect(page.getByTestId('component-types')).toContainText('HotScript')
@@ -539,10 +539,10 @@ test('loads the restored panels, watches generators, and saves text glTF without
     await page.getByRole('button', {name: 'Hot_reload_target'}).click()
     const before = await manifestHash('assets/main.scene.gltf')
     await page.locator('#inspector-object-name').fill('Saved target')
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(true)
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).dirty).toBe(true)
     await page.getByTestId('save-scene').click()
     await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).dirty).toBe(false)
     await expect.poll(() => manifestHash('assets/main.scene.gltf')).not.toBe(before)
     await page.waitForTimeout(300)
     await expect(page.getByText('Scene reloaded from disk')).toHaveCount(0)
@@ -566,9 +566,9 @@ test('loads the restored panels, watches generators, and saves text glTF without
     expect(savedScene).toContain('Saved target')
     expect(savedScene).not.toContain('data:')
     expect(savedScene).not.toContain('Tree 0')
-    expect(savedScene).not.toContain('blitzGenerated')
+    expect(savedScene).not.toContain('kite3dGenerated')
 
-    const journal = (await readFile(resolve(root, '.blitz/journal.jsonl'), 'utf8'))
+    const journal = (await readFile(resolve(root, '.kite3d/journal.jsonl'), 'utf8'))
         .split('\n').filter(Boolean).map((line) => JSON.parse(line) as {client: string})
     expect(journal.some(({client}) => client !== 'external')).toBe(true)
 
@@ -587,8 +587,8 @@ test('loads the restored panels, watches generators, and saves text glTF without
     }
     const bakedRoot = bakedScene.nodes.find(({name}) => name === 'RoundTripObject')
     expect(bakedRoot?.children).toHaveLength(4)
-    expect(bakedRoot?.extras).toHaveProperty('blitzBakedFrom')
-    expect(bakedSceneText).not.toContain('blitzGenerated')
+    expect(bakedRoot?.extras).toHaveProperty('kite3dBakedFrom')
+    expect(bakedSceneText).not.toContain('kite3dGenerated')
     expect(bakedSceneText).not.toContain('excludeFromExport')
     expect(Object.values(bakedRoot?.extras?.EntityComponentPlugin || {}).map(({type}) => type))
         .not.toContain('Generator')
@@ -613,7 +613,7 @@ test('places Open game beside Play and checkpoints and restores from the Save Sc
     await expect(openGame.locator('.bp5-icon-open-application')).toBeVisible()
     await openGame.hover()
     await expect(page.getByText('Open game in a new tab', {exact: true})).toBeVisible()
-    await expect(page.locator('.bp5-navbar > .blitz-toolbar-controls')).toHaveCount(0)
+    await expect(page.locator('.bp5-navbar > .kite3d-toolbar-controls')).toHaveCount(0)
 
     const saveGroup = page.getByTestId('save-scene').locator('..')
     const saveMenuButton = saveGroup.getByRole('button').filter({has: page.locator('.bp5-icon-caret-down')})
@@ -674,28 +674,28 @@ test('queues Play during project load and keeps one overlay update loop through 
     await expect(page.getByTestId('game-canvas')).toBeVisible()
     await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
     expect(await page.evaluate(() => (window as unknown as {
-        __blitzRuntimeViewer?: {getPlugin(type: string): {hasComponentType(type: string): boolean} | undefined}
-    }).__blitzRuntimeViewer?.getPlugin('EntityComponentPlugin')?.hasComponentType('UnlistedComponent'))).toBe(false)
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).playState).toBe('playing')
-    const agentState = JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')) as Record<string, unknown>
+        __kite3dRuntimeViewer?: {getPlugin(type: string): {hasComponentType(type: string): boolean} | undefined}
+    }).__kite3dRuntimeViewer?.getPlugin('EntityComponentPlugin')?.hasComponentType('UnlistedComponent'))).toBe(false)
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).playState).toBe('playing')
+    const agentState = JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')) as Record<string, unknown>
     expect(agentState).toMatchObject({projectLoaded: true, playState: 'playing'})
     expect(agentState.clientId).toEqual(expect.any(String))
     expect(agentState.updatedAt).toEqual(expect.any(String))
     const firstUpdatedAt = agentState.updatedAt
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).updatedAt, {
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).updatedAt, {
         timeout: 10_000,
     }).not.toBe(firstUpdatedAt)
-    await expect.poll(() => page.evaluate(() => (window as unknown as {__blitzLoopTicks?: number}).__blitzLoopTicks || 0)).toBeGreaterThan(10)
+    await expect.poll(() => page.evaluate(() => (window as unknown as {__kite3dLoopTicks?: number}).__kite3dLoopTicks || 0)).toBeGreaterThan(10)
 
     const editViewerUuid = await page.evaluate(() => (window as unknown as {viewer: {scene: {uuid: string}}}).viewer.scene.uuid)
-    const firstRuns = await page.evaluate(() => (window as unknown as {__blitzMainRuns?: number}).__blitzMainRuns || 0)
+    const firstRuns = await page.evaluate(() => (window as unknown as {__kite3dMainRuns?: number}).__kite3dMainRuns || 0)
     await expect.poll(() => page.evaluate(() => (window as unknown as {__hotScriptVersion?: string}).__hotScriptVersion)).toBe('v1')
     await expect.poll(() => page.evaluate(() => (window as unknown as {__hotPluginVersion?: string}).__hotPluginVersion)).toBe('v1')
 
     await writeFile(resolve(root, 'Hot.script.js'), hotScript('v2'))
     await expect(page.getByText('Hot.script.js reloaded')).toBeVisible({timeout: 20_000})
     await expect.poll(() => page.evaluate(() => (window as unknown as {__hotScriptVersion?: string}).__hotScriptVersion)).toBe('v2')
-    await expect.poll(() => page.evaluate(() => (window as unknown as {__blitzMainRuns?: number}).__blitzMainRuns || 0)).toBeGreaterThan(firstRuns)
+    await expect.poll(() => page.evaluate(() => (window as unknown as {__kite3dMainRuns?: number}).__kite3dMainRuns || 0)).toBeGreaterThan(firstRuns)
     await expect(page.getByTestId('game-canvas')).toBeVisible()
     expect(await page.evaluate(() => (window as unknown as {viewer: {scene: {uuid: string}}}).viewer.scene.uuid)).toBe(editViewerUuid)
 
@@ -707,19 +707,19 @@ test('queues Play during project load and keeps one overlay update loop through 
         console.warn('[warn-forwarding-check] visible')
         for (let index = 0; index < 30; index += 1) console.error(`[rate-limit-check] ${index}`)
     })
-    await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8').catch(() => '')).includes('[HotScript] v2')).toBe(true)
-    await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8').catch(() => '')).includes('[rate-limit-check] 0')).toBe(true)
-    const consoleLog = await readFile(resolve(root, '.blitz/console.log'), 'utf8')
-    expect(consoleLog.split('\n')[0]).toMatch(/^# Blitz play log started .*; levels: console\.warn, console\.error, uncaught errors$/)
+    await expect.poll(async () => (await readFile(resolve(root, '.kite3d/console.log'), 'utf8').catch(() => '')).includes('[HotScript] v2')).toBe(true)
+    await expect.poll(async () => (await readFile(resolve(root, '.kite3d/console.log'), 'utf8').catch(() => '')).includes('[rate-limit-check] 0')).toBe(true)
+    const consoleLog = await readFile(resolve(root, '.kite3d/console.log'), 'utf8')
+    expect(consoleLog.split('\n')[0]).toMatch(/^# Kite3D play log started .*; levels: console\.warn, console\.error, uncaught errors$/)
     expect(consoleLog).toContain('[console.warn] [warn-forwarding-check] visible')
     expect(consoleLog.match(/\[rate-limit-check\]/g)?.length || 0).toBeLessThanOrEqual(20)
 
     await page.getByTestId('play').click()
     await expect(page.getByText('Stopped')).toBeVisible()
     await expect(page.getByTestId('game-canvas')).toHaveCount(0)
-    const stoppedAt = await page.evaluate(() => (window as unknown as {__blitzLoopTicks: number}).__blitzLoopTicks)
+    const stoppedAt = await page.evaluate(() => (window as unknown as {__kite3dLoopTicks: number}).__kite3dLoopTicks)
     await page.waitForTimeout(200)
-    expect(await page.evaluate(() => (window as unknown as {__blitzLoopTicks: number}).__blitzLoopTicks)).toBe(stoppedAt)
+    expect(await page.evaluate(() => (window as unknown as {__kite3dLoopTicks: number}).__kite3dLoopTicks)).toBe(stoppedAt)
     expect(await page.evaluate(() => (window as unknown as {viewer: {scene: {uuid: string}}}).viewer.scene.uuid)).toBe(editViewerUuid)
 })
 
@@ -797,15 +797,15 @@ test('writes stopped state on pagehide while playing', async ({page}) => {
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
     await page.getByTestId('play').click()
     await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).playState).toBe('playing')
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).playState).toBe('playing')
 
     await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide')))
 
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).playState).toBe('stopped')
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).playState).toBe('stopped')
 })
 
 test('keeps the upstream viewport chrome and Default Camera on an empty project', async ({page}) => {
-    const emptyRoot = await mkdtemp(resolve(tmpdir(), 'blitz-editor-empty-'))
+    const emptyRoot = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-empty-'))
     await initProject(emptyRoot)
     const emptyServer = await runDev({projectRoot: emptyRoot, port: 0, noOpen: true})
     try {
@@ -833,7 +833,7 @@ test('reports a corrupt scene in the editor and console log', async ({page}) => 
     await writeFile(resolve(root, scenePath), '{not gltf')
 
     await expect(page.getByRole('alert')).toContainText('JSON', {timeout: 10_000})
-    await expect.poll(async () => (await readFile(resolve(root, '.blitz/console.log'), 'utf8').catch(() => '')).includes('JSON')).toBe(true)
+    await expect.poll(async () => (await readFile(resolve(root, '.kite3d/console.log'), 'utf8').catch(() => '')).includes('JSON')).toBe(true)
 
     await writeFile(resolve(root, scenePath), valid)
 })
@@ -858,7 +858,7 @@ test('opens the game dialog, publishes, updates, and claims a live game', async 
     await expect(page.getByTestId('live-url')).toHaveAttribute('href', `${backend.url}/preview/${slug}/`, {timeout: 20_000})
     await expect.poll(() => backend.releaseCount(slug)).toBe(1)
     await expect(popup).toHaveURL(`${backend.url}/preview/${slug}/`)
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.blitz/state.json'), 'utf8')).dirty).toBe(false)
+    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).dirty).toBe(false)
     const updateResponse = page.waitForResponse((response) =>
         response.url().endsWith('/api/publish') && response.request().method() === 'POST')
     await page.getByTestId('publish-update').click()
@@ -1118,7 +1118,7 @@ test('keeps the publish dialog open for retry after a connection loss during the
 })
 
 async function startPublishEditor(options: Parameters<typeof startMockBackend>[0] = {}) {
-    const projectRoot = await mkdtemp(resolve(tmpdir(), 'blitz-editor-publish-'))
+    const projectRoot = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-publish-'))
     await initProject(projectRoot)
     const engineRoot = fileURLToPath(new URL('../../../engine/', import.meta.url))
     const installedEngine = resolve(projectRoot, 'node_modules/@blitzdev/engine')
@@ -1149,7 +1149,7 @@ async function startPublishEditor(options: Parameters<typeof startMockBackend>[0
 }
 
 async function manifestHash(path: string): Promise<string | undefined> {
-    const response = await fetch(`http://127.0.0.1:${server.port}/api/files`, {headers: {'X-Blitz-Token': server.token}})
+    const response = await fetch(`http://127.0.0.1:${server.port}/api/files`, {headers: {'X-Kite3D-Token': server.token}})
     const manifest = await response.json() as Array<{path: string, sha256: string}>
     return manifest.find((entry) => entry.path === path)?.sha256
 }

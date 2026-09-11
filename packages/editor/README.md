@@ -1,6 +1,6 @@
-# Threepipe Editor
+# Kite3D Editor
 
-Threepipe 3D Web Editor. 
+The editor application served by `kite3d dev`. It uses Threepipe for the 3D viewport.
 
 ## Notes
 

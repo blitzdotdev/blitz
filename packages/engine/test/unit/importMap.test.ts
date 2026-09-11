@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest'
 import {dependencyImportMap, projectDependencies, RUNTIME_SPECIFIERS} from '../../src/importMap.ts'
 
 describe('dependencyImportMap', () => {
-    it('maps runtime modules, maps semver dependencies, and skips local and Blitz package specs', () => {
+    it('maps runtime modules, maps semver dependencies, and skips local and Kite3D package specs', () => {
         const dependencies = projectDependencies({
             dependencies: {
                 '@blitzdev/engine': 'file:../../packs/engine.tgz',

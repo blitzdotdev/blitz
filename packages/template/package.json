@@ -1,7 +1,7 @@
 {
   "name": "@blitzdev/template",
-  "version": "0.12.2",
-  "description": "The files written by blitz init.",
+  "version": "0.13.0",
+  "description": "The files written by kite3d init.",
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {

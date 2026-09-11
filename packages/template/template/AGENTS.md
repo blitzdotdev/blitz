@@ -1,36 +1,36 @@
-# Blitz game development guide
+# Kite3D game development guide
 
 Prerequisite: Node.js 20 or newer.
 
 Create and run a project with:
 
 ```sh
-npx @blitzdev/blitz init my-game
+npx kite3d init my-game
 cd my-game
 npm install
-npx blitz dev
+npx kite3d dev
 ```
 
-`blitz dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx blitz pull`; then run `npx blitz publish` and report the exact live URL it prints, normally `https://<slug>.app.blitz.dev/`. Run `npx blitz <command> --help` for command-specific usage.
+`kite3d dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx kite3d pull`; then run `npx kite3d publish` and report the exact live URL it prints, normally `https://<slug>.app.blitz.dev/`. Run `npx kite3d <command> --help` for command-specific usage.
 
-`blitz init` stamps the running command's exact version into both `devDependencies["@blitzdev/blitz"]` and `blitz.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, and `doctor` checks the resolved version. `doctor` reports a mismatch as a FAIL row; other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
+`kite3d init` stamps the running command's exact version into both `devDependencies["kite3d"]` and `kite3d.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, and `doctor` checks the resolved version. `doctor` reports a mismatch as a FAIL row; other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
 
-`blitz init` also initializes a Git repository and commits the generated template. Inside a parent repository it creates a project repository unless that parent already tracks a file below the project directory. Use `blitz init --no-git` only when Git is deliberately managed elsewhere. The command always prints which Git decision it made.
+`kite3d init` also initializes a Git repository and commits the generated template. Inside a parent repository it creates a project repository unless that parent already tracks a file below the project directory. Use `kite3d init --no-git` only when Git is deliberately managed elsewhere. The command always prints which Git decision it made.
 
-Run `npx blitz doctor` to check Node, the project version pin, installed Blitz package versions, the development port or live project server, backend and runtime registration, Playwright Chromium, and Git. It warns when the detected repository root is not the project root. Fix every FAIL row before relying on the affected workflow.
+Run `npx kite3d doctor` to check Node, the project version pin, installed Kite3D package versions, the development port or live project server, backend and runtime registration, Playwright Chromium, and Git. It warns when the detected repository root is not the project root. Fix every FAIL row before relying on the affected workflow.
 
-Create a recoverable point before agent work with `npx blitz checkpoint "before agent work"`. It commits all project files, including the saved scene, and prints the short Git hash. Restore files without rewriting history with `npx blitz restore <hash>`, or omit the hash to restore the latest Blitz checkpoint. Both commands refuse a parent repository unless `--allow-parent-repo` is supplied. Restore is refused while publish holds its lock. The editor exposes the same actions as Checkpoint beside Check and Restore last checkpoint under Settings.
+Create a recoverable point before agent work with `npx kite3d checkpoint "before agent work"`. It commits all project files, including the saved scene, and prints the short Git hash. Restore files without rewriting history with `npx kite3d restore <hash>`, or omit the hash to restore the latest Kite3D checkpoint. Both commands refuse a parent repository unless `--allow-parent-repo` is supplied. Restore is refused while publish holds its lock. The editor exposes the same actions as Checkpoint beside Check and Restore last checkpoint under Settings.
 
-Run `npx blitz archive` to write `<project-name>-source.zip`. The archive uses the publish exclusion rules, omits `node_modules`, `.blitz`, and `.git`, and includes `BLITZ-PROJECT.txt` with the creation date, Git commit, and installed Blitz package versions.
+Run `npx kite3d archive` to write `<project-name>-source.zip`. The archive uses the publish exclusion rules, omits `node_modules`, `.kite3d`, and `.git`, and includes `KITE3D-PROJECT.txt` with the creation date, Git commit, and installed Kite3D package versions.
 
-Upgrade the project with `npx blitz upgrade`, or select an exact target with `npx blitz upgrade --to x.y.z`. Upgrade rewrites both version fields, runs `npm install --ignore-scripts`, applies engine migrations, validates the scene, and records a `blitz-upgrade` journal entry.
+Upgrade the project with `npx kite3d upgrade`, or select an exact target with `npx kite3d upgrade --to x.y.z`. Upgrade rewrites both version fields, runs `npm install --ignore-scripts`, applies engine migrations, validates the scene, and records a `kite3d-upgrade` journal entry.
 
 Source code to grep after `npm install`:
 
 ```text
 node_modules/@blitzdev/engine/src     runtime, project format, scripting API
 node_modules/@blitzdev/editor/src     editor
-node_modules/@blitzdev/blitz/src      command and local server
+node_modules/kite3d/src      command and local server
 node_modules/threepipe/src            engine core, glTF, plugins
 node_modules/uiconfig-blueprint/src   editor UI kit
 ```
@@ -41,8 +41,8 @@ node_modules/uiconfig-blueprint/src   editor UI kit
 - `setAuthoringMetadata`, `getAuthoringMetadata`, and `AuthoringRole`: tag and read stable `direct`, `template`, or `generator` sources; `@blitzdev/engine/src/authoring.ts`.
 - `RuntimeObjectOwner`: own Play-only roots, clones, effects, and cleanup; `@blitzdev/engine/src/authoring.ts`.
 - `GeneratorComponent`, `runGenerator`, and `markGenerated`: run deterministic procedural previews excluded from saves; `@blitzdev/engine/src/plugins/GeneratorComponent.ts`.
-- `registerGameValidation`: register a gameplay assertion consumed by `blitz check`; `@blitzdev/engine/src/authoringValidation.ts`.
-- `publishGameTelemetry`: replace `window.blitzGame.telemetry` with an immutable test snapshot; `@blitzdev/engine/src/authoringValidation.ts`.
+- `registerGameValidation`: register a gameplay assertion consumed by `kite3d check`; `@blitzdev/engine/src/authoringValidation.ts`.
+- `publishGameTelemetry`: replace `window.kite3dGame.telemetry` with an immutable test snapshot; `@blitzdev/engine/src/authoringValidation.ts`.
 - `authoringQualityReport`, `runtimeCleanupReport`, `semanticSceneSnapshot`, and `persistenceReport`: implement the three check outcomes; `@blitzdev/engine/src/authoringValidation.ts`.
 - `serializeSceneGltf` and `serializeSceneGltfDocument`: write deterministic text glTF and external resources; `@blitzdev/engine/src/sceneSerialization.ts`.
 - `HtmlUiComponent`: attach world, screen, or viewport-positioned HTML to an object; `@blitzdev/engine/src/plugins/HtmlUiComponent.ts`.
@@ -75,15 +75,15 @@ The token-protected local API is `GET /api/state`, `GET /api/files`, `GET /api/e
 
 Editable is measured from the stopped scene using authored visibility and selectability, generator previews and source relationships, plus the saved camera; camera containment uses a small epsilon so a point on a mesh face is outside. Persisted serializes that stopped scene, reloads the serialized files, and compares supported semantics with node names in drift paths when available.
 
-The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Keep secrets from `.blitz/deploys.json` and `.blitz/dev.json` private.
+The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Keep secrets from `.kite3d/deploys.json` and `.kite3d/dev.json` private.
 
 # Local feedback and health
 
-Read `.blitz/state.json` and `.blitz/console.log` for the editor and runtime feedback loop. While Play is active, the editor refreshes `state.json.updatedAt` every 5 seconds and writes its `clientId`. Treat a timestamp more than 15 seconds old as stale. A `pagehide` writes `playState: "stopped"`.
+Read `.kite3d/state.json` and `.kite3d/console.log` for the editor and runtime feedback loop. While Play is active, the editor refreshes `state.json.updatedAt` every 5 seconds and writes its `clientId`. Treat a timestamp more than 15 seconds old as stale. A `pagehide` writes `playState: "stopped"`.
 
-The editor creates `.blitz/console.log` with a header when Play starts. It records `console.warn`, `console.error`, uncaught window errors, and unhandled promise rejections during Play. It deliberately does not record `console.log`; use the browser console for that level. Log forwarding is rate-limited.
+The editor creates `.kite3d/console.log` with a header when Play starts. It records `console.warn`, `console.error`, uncaught window errors, and unhandled promise rejections during Play. It deliberately does not record `console.log`; use the browser console for that level. Log forwarding is rate-limited.
 
-Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Blitz-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `blitz dev`. In `.blitz/dev.json`, `origin` is the token-free server origin and `url` includes the session query. Keep that token out of logs and reports.
+Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Kite3D-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `kite3d dev`. In `.kite3d/dev.json`, `origin` is the token-free server origin and `url` includes the session query. Keep that token out of logs and reports.
 
 # Authored versus runtime game content
 
@@ -112,7 +112,7 @@ export default function generate({node, params, engine}) {
 }
 ```
 
-Keep Play state out of the saved scene. The saved camera must frame authored content and stay outside solid geometry on every load, including reloads of an existing scene. Before calling a change done, Stop, run `npx blitz check`, and read `.blitz/check.json`; Playable, Editable, and Persisted are separate outcomes.
+Keep Play state out of the saved scene. The saved camera must frame authored content and stay outside solid geometry on every load, including reloads of an existing scene. Before calling a change done, Stop, run `npx kite3d check`, and read `.kite3d/check.json`; Playable, Editable, and Persisted are separate outcomes.
 
 # The scene file
 
@@ -175,9 +175,9 @@ Components live in node extras. The shape is:
 }
 ```
 
-Preserve every extras field you do not own. Preserve unknown glTF extensions too. You may wire a component without the editor UI by writing its `{type, state}` entry under `extras.EntityComponentPlugin`, but its module must also be listed under `blitz.scripts`. Open the editor after a scripted edit. Read `.blitz/console.log` for parse and load errors.
+Preserve every extras field you do not own. Preserve unknown glTF extensions too. You may wire a component without the editor UI by writing its `{type, state}` entry under `extras.EntityComponentPlugin`, but its module must also be listed under `kite3d.scripts`. Open the editor after a scripted edit. Read `.kite3d/console.log` for parse and load errors.
 
-For example, list a project component as `{"blitz":{"scripts":["./scripts/X.script.js"]}}`. In `blitz.scripts` and `blitz.plugins`, an entry is a bare module only when it exactly matches a key in `package.json`'s `dependencies`; every other entry is a project file, whether or not it starts with `./`.
+For example, list a project component as `{"kite3d":{"scripts":["./scripts/X.script.js"]}}`. In `kite3d.scripts` and `kite3d.plugins`, an entry is a bare module only when it exactly matches a key in `package.json`'s `dependencies`; every other entry is a project file, whether or not it starts with `./`.
 
 # Procedural content
 
@@ -204,16 +204,16 @@ Generated objects have a `generated` badge. Their transforms are read-only. Gene
 Bake only when generated results should become authored scene objects. Select a Generator node and use Bake. Agents can run:
 
 ```sh
-npx blitz bake "Forest"
+npx kite3d bake "Forest"
 ```
 
-The editor must be open and connected to `blitz dev`. Bake removes the Generator component. It keeps the old module and params in `extras.blitzBakedFrom`. It saves the generated children as real children under the same node.
+The editor must be open and connected to `kite3d dev`. Bake removes the Generator component. It keeps the old module and params in `extras.kite3dBakedFrom`. It saves the generated children as real children under the same node.
 
 Bake refuses when the node already has non-generated children. It also refuses after human edits under a previously baked node. Use `--force` only after checking those edits. The editor asks for confirmation before a forced bake.
 
 # Human edits
 
-The local server appends every scene write to `.blitz/journal.jsonl`. Read it before changing a scene that a human edited. Use `npx blitz journal -n 10` or `npx blitz journal --since 2026-09-09T10:00:00Z`.
+The local server appends every scene write to `.kite3d/journal.jsonl`. Read it before changing a scene that a human edited. Use `npx kite3d journal -n 10` or `npx kite3d journal --since 2026-09-09T10:00:00Z`.
 
 Each line has `{ts, client, summary}`. `summary` contains node additions, removals, and renames. It also contains transform, component, and material changes.
 
@@ -221,9 +221,9 @@ Each line has `{ts, client, summary}`. `summary` contains node additions, remova
 {"ts":"2026-09-09T18:42:10.000Z","client":"52fa...","summary":{"nodesAdded":[{"name":"Player","uuid":"a1"}],"nodesRemoved":[],"nodesRenamed":[],"transforms":[{"node":{"name":"Player","uuid":"a1"},"property":"position","old":[0,0,0],"new":[1,0,0]}],"components":[],"materials":[]}}
 ```
 
-Editor writes use the editor client id. API writes use `X-Blitz-Client`. Watcher-detected writes use `external`. Server mutations use the engine export `BLITZ_SERVER_CLIENT_ID`, whose value is `blitz-server`.
+Editor writes use the editor client id. API writes use `X-Kite3D-Client`. Watcher-detected writes use `external`. Server mutations use the engine export `KITE3D_SERVER_CLIENT_ID`, whose value is `kite3d-server`.
 
-- The game is using Blitz game engine built on top of threepipe and three.js.
+- The game is using Kite3D game engine built on top of threepipe and three.js.
 - The scene path is declared by `mainScene` in `package.json`. Keep the main scene as text glTF.
 - The game dependencies, packages, scripts etc are defined in the package.json file in the game project. Any script or dependency required in the scene or the editor must be added to package.json.
 - The game consists of objects in the scene like player, trees, enemies, weapons, etc. Each object is a three.js `Object3D` with `Object3DComponents` that extend the functionality of the objects
@@ -236,7 +236,7 @@ Editor writes use the editor client id. API writes use `X-Blitz-Client`. Watcher
 - The game uses ES6 modules, so use `import` and `export` statements for modularity.
 - When editing files with the editor open, the changes are hot-reloaded automatically on file save. It is necessary to ensure that all resources and event listeners are properly cleaned up in the `destroy()`(or `stop()`) method of components to prevent memory leaks during hot-reloading.
 - Some sample components and plugins can be found at the end of this file and in the `samples/` folder with names ending with `.script.js`.
-- Blitz supports two types of code files:
+- Kite3D supports two types of code files:
 
 ## .script.js Files (Components)
 - Define `Object3DComponent` classes that attach to scene objects
@@ -391,7 +391,7 @@ The editor canvas occupies only the viewport pane, not the full page. For a DOM 
 - Preload assets before game starts using the AssetManagerPlugin
 - Use relative paths from the game folder for assets
 - Destroy loaded assets in `stop()` or `destroy()`.
-- Models in the projects `assets` folder can be loaded with the base path `/blitz/assets/`. E.g. `/blitz/assets/enemy.glb`
+- Models in the projects `assets` folder can be loaded with the base path `/kite3d/assets/`. E.g. `/kite3d/assets/enemy.glb`
 
 ## Timers & Delays
 - Use `setTimeout`/`setInterval` but clear them in `stop()` to prevent memory leaks
@@ -414,7 +414,7 @@ The editor canvas occupies only the viewport pane, not the full page. For a DOM 
 - Use `setDirty()` on objects only when transforms actually change
 
 ## Debugging
-- Use `console.log` for verbose debugging in browser dev tools. Use `console.warn` or `console.error` when the message must also reach `.blitz/console.log` during Play.
+- Use `console.log` for verbose debugging in browser dev tools. Use `console.warn` or `console.error` when the message must also reach `.kite3d/console.log` during Play.
 - Access any object by name: `viewer.scene.getObjectByName('PlayerMesh')`
 - Pause the game to inspect state: use the editor's pause button
 - In some cases, it might be better to show logs as HTML text over `this.ctx.viewer.canvas` instead of printing several logs in the console every frame, for the human developer to better see what's happening.
@@ -460,7 +460,7 @@ The `ThreeViewer` is the main class in threepipe to manage a scene, render, and 
 
 ## Project viewer settings and materials
 
-`package.json` passes `blitz.viewer` into `ThreeViewer`. Supported JSON settings are `msaa`, `rgbm`, `zPrepass`, `renderScale`, `maxRenderScale`, `backgroundColor`, `modelRootScale`, `stencil`, `debug`, `tonemap`, `camera`, `maxHDRIntensity`, and `powerPreference`. For example: `{"blitz":{"viewer":{"msaa":true,"tonemap":false}}}`. The editor applies these defaults too; a viewer configuration saved inside the scene wins when present.
+`package.json` passes `kite3d.viewer` into `ThreeViewer`. Supported JSON settings are `msaa`, `rgbm`, `zPrepass`, `renderScale`, `maxRenderScale`, `backgroundColor`, `modelRootScale`, `stencil`, `debug`, `tonemap`, `camera`, `maxHDRIntensity`, and `powerPreference`. For example: `{"kite3d":{"viewer":{"msaa":true,"tonemap":false}}}`. The editor applies these defaults too; a viewer configuration saved inside the scene wins when present.
 
 ### Lighting quickstart
 
@@ -484,7 +484,7 @@ Use `Mesh2` with `PhysicalMaterial` when lights should shape the object. Use `Un
 
 ```js
 export async function main({viewer}) {
-  await viewer.setEnvironmentMap('/blitz/assets/studio.hdr')
+  await viewer.setEnvironmentMap('/kite3d/assets/studio.hdr')
 }
 ```
 
@@ -1026,13 +1026,13 @@ class EnemySystemComponent extends Object3DComponent {
 
 # Publishing
 
-Run `npx blitz pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx blitz pull --force` overwrites them. Then run `npx blitz check`. It imports configured scripts in Node, resolves plugins and Generator modules, verifies scene component types, prints the project validation below Playable on pass or fail, and writes `.blitz/check.json`; any failure exits 1. `blitz publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
+Run `npx kite3d pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx kite3d pull --force` overwrites them. Then run `npx kite3d check`. It imports configured scripts in Node, resolves plugins and Generator modules, verifies scene component types, prints the project validation below Playable on pass or fail, and writes `.kite3d/check.json`; any failure exits 1. `kite3d publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
 
-Create a game with `npx blitz publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `blitz.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@blitzdev/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.blitz/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
+Create a game with `npx kite3d publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `kite3d.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@blitzdev/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.kite3d/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
 
-Publishing omits `package-lock.json`, `.env`, `.env.*`, `*.log`, `.eslintrc*`, `AGENTS.md`, `samples/**`, `tools/**`, and root Markdown files other than `README.md` by default. It publishes a sanitized `package.json` without `devDependencies` or `file:` dependency specs. Add other project-specific glob patterns under `blitz.publish.exclude` in `package.json`.
+Publishing omits `package-lock.json`, `.env`, `.env.*`, `*.log`, `.eslintrc*`, `AGENTS.md`, `samples/**`, `tools/**`, and root Markdown files other than `README.md` by default. It publishes a sanitized `package.json` without `devDependencies` or `file:` dependency specs. Add other project-specific glob patterns under `kite3d.publish.exclude` in `package.json`.
 
-Run `npx blitz status` to print the live local dev server and deploy metadata without tokens or secrets. Run `npx blitz claim --email player@example.com --password "at-least-8-characters"` to register and claim every unclaimed local deploy. Add `--login` to use an existing account. Unknown flags fail with a nonzero exit code.
+Run `npx kite3d status` to print the live local dev server and deploy metadata without tokens or secrets. Run `npx kite3d claim --email player@example.com --password "at-least-8-characters"` to register and claim every unclaimed local deploy. Add `--login` to use an existing account. Unknown flags fail with a nonzero exit code.
 
 # Limits
 
@@ -1040,7 +1040,7 @@ Run `npx blitz status` to print the live local dev server and deploy metadata wi
 - Generator modules must use project-relative, same-origin paths.
 - The main glTF must not contain data URLs. Keep its sibling `.bin` and texture files.
 - Generated children are transient until an explicit bake.
-- `blitz bake` needs a connected local editor.
+- `kite3d bake` needs a connected local editor.
 - Scene tools must preserve node extras and unknown extensions.
-- Keep generated output, dependencies, secrets, logs, and transient editor data under excluded paths (`dist/`, `node_modules/`, and `.blitz/`).
-- The editor is served only by `blitz dev` on localhost. Keep its random token private.
+- Keep generated output, dependencies, secrets, logs, and transient editor data under excluded paths (`dist/`, `node_modules/`, and `.kite3d/`).
+- The editor is served only by `kite3d dev` on localhost. Keep its random token private.

@@ -9,7 +9,7 @@ Date: 2026-09-09, evening. Status: plan, approved direction. blitz.dev is the di
 | `blitz.dev` | the store: all published games, plus `/api/*` and `/agents.md` | `blitz-backend` |
 | `<slug>.app.blitz.dev` | one game | `blitz-game-gateway` |
 
-The editor runs only from `blitz dev` on localhost. There is no hosted editor.
+The editor runs only from `kite3d dev` on localhost. There is no hosted editor.
 
 ## The store page
 
@@ -28,7 +28,7 @@ The editor runs only from `blitz dev` on localhost. There is no hosted editor.
 ## Data
 
 - New columns: `games.listed INTEGER NOT NULL DEFAULT 1`, `games.description TEXT`. Description comes from `package.json` at publish.
-- Thumbnail: a release file named `thumbnail.png`, served by the gateway. `blitz publish` copies the editor's main scene thumbnail from `.blitz/thumbs/` into the release when present, else `icon.svg` from the template. The card falls back to a placeholder.
+- Thumbnail: a release file named `thumbnail.png`, served by the gateway. `kite3d publish` copies the editor's main scene thumbnail from `.kite3d/thumbs/` into the release when present, else `icon.svg` from the template. The card falls back to a placeholder.
 - Author: the owner's username.
 - Ordering: by the active release's `created_at`.
 
@@ -38,4 +38,4 @@ Categories, likes, play counts, comments, featured rows, moderation queue, repor
 
 ## Phase
 
-**D. Storefront.** Backend only: columns and migration, the two routes, the list query with the listed rule, the `PATCH` unlist, thumbnail in the release convention, `agents.md` served from the backend, edge cache. Tests: listed rule, unlist, pagination, cache headers. Deploy to workers.dev, then the same worker takes `blitz.dev` at cutover. Runs in parallel with C1, since C1 touches the editor and the new `blitz` package, not the backend.
+**D. Storefront.** Backend only: columns and migration, the two routes, the list query with the listed rule, the `PATCH` unlist, thumbnail in the release convention, `agents.md` served from the backend, edge cache. Tests: listed rule, unlist, pagination, cache headers. Deploy to workers.dev, then the same worker takes `blitz.dev` at cutover. Runs in parallel with C1, since C1 touches the editor and the new `kite3d` package, not the backend.

@@ -17,7 +17,7 @@ after(async () => {
 })
 
 async function fixture(handler) {
-    const rootDirectory = await mkdtemp(join(tmpdir(), 'blitz-upload-agents-md-test-'))
+    const rootDirectory = await mkdtemp(join(tmpdir(), 'kite3d-upload-agents-md-test-'))
     temporaryDirectories.push(rootDirectory)
     await mkdir(join(rootDirectory, 'docs'))
     const contents = Buffer.from('# Tiny agents guide\n')

@@ -4,5 +4,5 @@
   "private": true,
   "mainScene": "assets/main.scene.gltf",
   "dependencies": {},
-  "blitz": {"plugins": [], "imports": {}, "scripts": ["scripts/not-there.script.js"], "viewer": {"msaa": false, "tonemap": false}}
+  "kite3d": {"plugins": [], "imports": {}, "scripts": ["scripts/not-there.script.js"], "viewer": {"msaa": false, "tonemap": false}}
 }

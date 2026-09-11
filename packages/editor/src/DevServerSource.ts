@@ -30,7 +30,7 @@ export class DevServerSource implements ProjectSource {
     constructor(locationUrl = location.href) {
         const url = new URL(locationUrl)
         const token = url.searchParams.get('t')
-        if (!token) throw new Error('Open the tokenized URL printed by blitz dev.')
+        if (!token) throw new Error('Open the tokenized URL printed by kite3d dev.')
         this.token = token
         this.base = new URL('/', url)
     }
@@ -145,7 +145,7 @@ export class DevServerSource implements ProjectSource {
             headers: this.headers({
                 'Content-Type': 'application/octet-stream',
                 'If-Match': ifMatch === '*' ? '*' : `"${ifMatch}"`,
-                'X-Blitz-Client': this.clientId,
+                'X-Kite3D-Client': this.clientId,
             }),
             body: bytes as BodyInit,
         })
@@ -160,7 +160,7 @@ export class DevServerSource implements ProjectSource {
     async delete(path: string): Promise<void> {
         const response = await fetch(this.url(`/files/${encodePath(path)}`), {
             method: 'DELETE',
-            headers: this.headers({'X-Blitz-Client': this.clientId}),
+            headers: this.headers({'X-Kite3D-Client': this.clientId}),
         })
         if (!response.ok && response.status !== 404) throw new Error(`Cannot delete ${path}: ${response.status}`)
     }
@@ -235,7 +235,7 @@ export class DevServerSource implements ProjectSource {
     }
 
     private headers(extra: Record<string, string> = {}): Headers {
-        return new Headers({'X-Blitz-Token': this.token, ...extra})
+        return new Headers({'X-Kite3D-Token': this.token, ...extra})
     }
 
     private url(path: string): string {

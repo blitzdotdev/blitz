@@ -10,7 +10,8 @@ import {registerRuntime} from './register-runtime.mjs'
 import {uploadAgentsMd} from './upload-agents-md.mjs'
 
 const repositoryDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const publishOrder = ['engine', 'template', 'editor', 'blitz']
+const publishOrder = ['engine', 'template', 'editor', 'kite3d']
+const isLockstepPackage = name => name === 'kite3d' || name.startsWith('@blitzdev/')
 
 function run(command, args, {environment = process.env, capture = false, allowFailure = false} = {}) {
     try {
@@ -54,7 +55,7 @@ async function validateLockstepVersion() {
         }
         for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
             for (const [name, version] of Object.entries(manifest[section] ?? {})) {
-                if (name.startsWith('@blitzdev/') && version !== rootManifest.version) {
+                if (isLockstepPackage(name) && version !== rootManifest.version) {
                     throw new Error(`${manifest.name} pins ${name} to ${version}; expected exact pin ${rootManifest.version}.`)
                 }
             }
@@ -67,7 +68,7 @@ async function validateLockstepVersion() {
             throw new Error(`package-lock.json entry ${path || '<root>'} is not at ${rootManifest.version}.`)
         }
         for (const [name, version] of Object.entries(lockedManifest.dependencies ?? {})) {
-            if (name.startsWith('@blitzdev/') && version !== rootManifest.version) {
+            if (isLockstepPackage(name) && version !== rootManifest.version) {
                 throw new Error(`package-lock.json entry ${path} pins ${name} to ${version}; expected ${rootManifest.version}.`)
             }
         }
@@ -75,11 +76,12 @@ async function validateLockstepVersion() {
     return rootManifest.version
 }
 
-function verifyGitState(version) {
+function verifyGitState(version, dryRun) {
     const status = run('git', ['status', '--porcelain'], {capture: true}).trim()
     if (status) throw new Error('Release requires a clean git tree.')
 
     const branch = run('git', ['branch', '--show-current'], {capture: true}).trim()
+    if (dryRun) return branch
     if (branch === 'main' || branch === 'release' || branch.startsWith('release/')) return branch
 
     if (!branch) {
@@ -95,7 +97,7 @@ function verifyGitState(version) {
 async function createNpmEnvironment() {
     if (!process.env.NPM_TOKEN) return {environment: process.env, cleanup: async () => {}}
 
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'blitz-release-npm-'))
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'kite3d-release-npm-'))
     const userConfig = join(temporaryDirectory, '.npmrc')
     await writeFile(userConfig, '//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n', {mode: 0o600})
     return {
@@ -127,14 +129,14 @@ async function release() {
         resolve(repositoryDirectory, 'docs/agents.md'),
     )
     const version = await validateLockstepVersion()
-    const branch = verifyGitState(version)
+    const branch = verifyGitState(version, dryRun)
     const npm = await createNpmEnvironment()
 
-    console.log(`${dryRun ? 'Dry-running' : 'Publishing'} Blitz ${version}`)
+    console.log(`${dryRun ? 'Dry-running' : 'Publishing'} Kite3D ${version}`)
     try {
         run('npm', ['run', 'build'], {environment: npm.environment})
         run('npm', ['run', 'typecheck'], {environment: npm.environment})
-        run('npm', ['run', 'test:blitz'], {environment: npm.environment})
+        run('npm', ['run', 'test:kite3d'], {environment: npm.environment})
         run('npm', ['run', 'test:runtime'], {environment: npm.environment})
 
         for (const name of publishOrder) {

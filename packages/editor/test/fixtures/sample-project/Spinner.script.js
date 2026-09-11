@@ -5,7 +5,7 @@ export class Spinner extends Object3DComponent {
 
     update() {
         this.object.rotation.y += 0.01
-        window.__blitzUpdates = (window.__blitzUpdates || 0) + 1
+        window.__kite3dUpdates = (window.__kite3dUpdates || 0) + 1
         this.object.setDirty?.({source: 'Spinner', change: 'rotation'})
         return true
     }

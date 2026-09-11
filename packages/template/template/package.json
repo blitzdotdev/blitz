@@ -1,18 +1,18 @@
 {
-  "name": "__BLITZ_PROJECT_NAME__",
+  "name": "__KITE3D_PROJECT_NAME__",
   "private": true,
   "type": "module",
   "mainScene": "assets/main.scene.gltf",
   "main": "./main.js",
   "scripts": {
-    "dev": "blitz dev",
-    "publish": "blitz publish",
-    "pull": "blitz pull"
+    "dev": "kite3d dev",
+    "publish": "kite3d publish",
+    "pull": "kite3d pull"
   },
   "devDependencies": {
-    "@blitzdev/blitz": "__BLITZ_VERSION__"
+    "kite3d": "__KITE3D_VERSION__"
   },
-  "blitz": {
-    "version": "__BLITZ_VERSION__"
+  "kite3d": {
+    "version": "__KITE3D_VERSION__"
   }
 }

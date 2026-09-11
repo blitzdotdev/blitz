@@ -8,7 +8,7 @@ import {
     type ThreeViewer,
 } from 'threepipe'
 import {
-    BLITZ_AUTHORING_METADATA_KEY,
+    KITE3D_AUTHORING_METADATA_KEY,
     getAuthoringMetadata,
     getRuntimeObjectMetadata,
     getTrackedRuntimeObjects,
@@ -317,7 +317,7 @@ export function registerGameValidation(fn: GameValidationFunction): () => void {
     return activeGameHooks.registerGameValidation(fn)
 }
 
-/** Publish an immutable telemetry snapshot on window.blitzGame.telemetry. */
+/** Publish an immutable telemetry snapshot on window.kite3dGame.telemetry. */
 export function publishGameTelemetry(value: object): () => void {
     if (!activeGameHooks) throw new Error('publishGameTelemetry must be called while createGame is active')
     return activeGameHooks.publishGameTelemetry(value)
@@ -379,12 +379,12 @@ export function installGameHooks(): GameHookHost {
             validations.clear()
             telemetry = undefined
             if (activeGameHooks === host) activeGameHooks = undefined
-            if (typeof window !== 'undefined' && window.blitzGame === api) delete window.blitzGame
+            if (typeof window !== 'undefined' && window.kite3dGame === api) delete window.kite3dGame
         },
     }
     activeGameHooks?.dispose()
     activeGameHooks = host
-    if (typeof window !== 'undefined') window.blitzGame = api
+    if (typeof window !== 'undefined') window.kite3dGame = api
     return host
 }
 
@@ -606,7 +606,7 @@ function gltfSemanticSnapshot(document: Record<string, unknown>): SemanticSceneS
     const visit = (index: unknown): unknown => {
         const node = typeof index === 'number' && isRecord(nodes[index]) ? nodes[index] : {}
         const extras = isRecord(node.extras) ? node.extras : {}
-        const authoring = isRecord(extras[BLITZ_AUTHORING_METADATA_KEY]) ? extras[BLITZ_AUTHORING_METADATA_KEY] : undefined
+        const authoring = isRecord(extras[KITE3D_AUTHORING_METADATA_KEY]) ? extras[KITE3D_AUTHORING_METADATA_KEY] : undefined
         const savedComponents = isRecord(extras.EntityComponentPlugin) ? extras.EntityComponentPlugin : {}
         const components = Object.entries(savedComponents).map(([id, value]) => {
             const component = isRecord(value) ? value : {}
@@ -807,7 +807,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 declare global {
     interface Window {
-        blitzGame?: Readonly<{
+        kite3dGame?: Readonly<{
             readonly telemetry: object | undefined
             validate(): Promise<GameValidationReport>
         }>

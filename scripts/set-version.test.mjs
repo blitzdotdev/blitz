@@ -13,7 +13,7 @@ const manifestPaths = [
     'packages/engine/package.json',
     'packages/template/package.json',
     'packages/editor/package.json',
-    'packages/blitz/package.json',
+    'packages/kite3d/package.json',
 ]
 const temporaryDirectories = []
 
@@ -28,7 +28,7 @@ test('computes stable semantic version bumps', () => {
 })
 
 test('rewrites copied manifests and exact internal pins', async () => {
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'blitz-set-version-test-'))
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'kite3d-set-version-test-'))
     temporaryDirectories.push(temporaryDirectory)
 
     for (const path of manifestPaths) {
@@ -42,7 +42,7 @@ test('rewrites copied manifests and exact internal pins', async () => {
         assert.equal(manifest.version, '0.12.1')
         for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
             for (const [name, version] of Object.entries(manifest[section] ?? {})) {
-                if (name.startsWith('@blitzdev/')) assert.equal(version, '0.12.1')
+                if (name === 'kite3d' || name.startsWith('@blitzdev/')) assert.equal(version, '0.12.1')
             }
         }
     }

@@ -19,7 +19,7 @@ export function ExtraMenuItems(props: {
     if(!obj?.isObject3D) return null
     // AGREED-4: the registered transport identity does not change the local
     // import's reference object-menu presentation.
-    const isComponent = !obj.userData.blitzImportedInstance && obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
+    const isComponent = !obj.userData.kite3dImportedInstance && obj.userData.rootPath && (obj.userData.sProperties || obj._sChildren)
     const isExternal = isExternalObject(obj)
     const isGroup = !obj.isMesh && !obj.material && !obj.isLine && !obj.isPoints && !obj.isCamera // groups, lights, cameras, helpers, etc
     const canCreate = !isExternal && !isComponent && isGroup
@@ -91,7 +91,7 @@ function GeneratedObjectNames({viewer}: {viewer: ReturnType<ReturnType<typeof us
     const readNames = () => {
         const names: string[] = []
         viewer.scene.modelRoot.traverse((object) => {
-            if (object.userData.blitzGenerated === true) names.push(`${object.name} generated`)
+            if (object.userData.kite3dGenerated === true) names.push(`${object.name} generated`)
         })
         return names.join('\n')
     }
@@ -105,5 +105,5 @@ function GeneratedObjectNames({viewer}: {viewer: ReturnType<ReturnType<typeof us
         }, 100)
         return () => window.clearInterval(timer)
     }, [viewer])
-    return <span className="blitz-semantic-hook">{names}</span>
+    return <span className="kite3d-semantic-hook">{names}</span>
 }

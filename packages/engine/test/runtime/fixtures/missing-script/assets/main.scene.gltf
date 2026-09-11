@@ -1,5 +1,5 @@
 {
-  "asset": {"version": "2.0", "generator": "Blitz missing-script gate"},
+  "asset": {"version": "2.0", "generator": "Kite3D missing-script gate"},
   "scene": 0,
   "scenes": [{"name": "MainScene", "nodes": [], "extras": {"rootSceneModelRoot": true}}],
   "nodes": []

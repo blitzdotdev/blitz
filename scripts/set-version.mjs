@@ -9,7 +9,7 @@ const publishableManifests = [
     'packages/engine/package.json',
     'packages/template/package.json',
     'packages/editor/package.json',
-    'packages/blitz/package.json',
+    'packages/kite3d/package.json',
 ]
 const dependencySections = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
@@ -54,7 +54,9 @@ export async function rewriteManifests(repositoryDirectory, newVersion) {
         for (const section of dependencySections) {
             if (!manifest[section]) continue
             for (const dependency of Object.keys(manifest[section])) {
-                if (dependency.startsWith('@blitzdev/')) manifest[section][dependency] = newVersion
+                if (dependency === 'kite3d' || dependency.startsWith('@blitzdev/')) {
+                    manifest[section][dependency] = newVersion
+                }
             }
         }
     }
@@ -92,7 +94,7 @@ export async function setVersion({
             '--package-lock-only',
             '--ignore-scripts',
             '--cache',
-            '/tmp/blitz-npm-cache',
+            '/tmp/kite3d-npm-cache',
         ], {cwd: repositoryDirectory, stdio: 'inherit'})
     } catch (error) {
         await Promise.all([...originals].map(([path, contents]) => writeFile(resolve(repositoryDirectory, path), contents)))

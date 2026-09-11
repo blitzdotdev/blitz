@@ -2,31 +2,31 @@
 
 Date: 2026-09-09, evening. Status: agreed. Two repositories. Everything open is Apache-2.0.
 
-## Public: `blitzdotdev/blitz`
+## Public: `blitzdotdev/kite3d`
 
 ```
-blitz/
+kite3d/
   package.json                 npm workspaces: packages/*
   LICENSE                      Apache-2.0
   README.md
   PLAN.md                      the owner's plan
   PLAN-REVIEW.md               review and status board
   docs/
-    agents.md                  source of blitz.dev/agents.md; blitz init copies it into projects
+    agents.md                  source of blitz.dev/agents.md; kite3d init copies it into projects
     publish-api.md             the cloud contract; the private repo implements it
     layout.md, local-dev-server-plan.md, open-source-split.md, storefront-plan.md, e2e-test-plan.md
   packages/
     engine/                    @blitzdev/engine     runtime, project format, scripting API, game plugins
     editor/                    @blitzdev/editor     the editor app; from packages/editor
-    blitz/                     @blitzdev/blitz      bin `blitz`: init, dev, publish, pull, open; the local server
-    template/                  @blitzdev/template   files written by `blitz init`
+    kite3d/                     kite3d      bin `kite3d`: init, dev, publish, pull, open; the local server
+    template/                  @blitzdev/template   files written by `kite3d init`
     threepipe/                 vendored upstream subtree; drop once a build against npm threepipe passes
     uiconfig-blueprint/        vendored upstream subtree; drop once a build against npm passes
 ```
 
-Package dependencies: `blitz` -> `engine`, `editor`, `template`. `editor` -> `engine`. `engine` -> `threepipe`, `uiconfig.js`, `ts-browser-helpers`, `cannon-es`, the `@threepipe/*` plugins it bundles. Every package ships `src/`, `dist/`, and source maps.
+Package dependencies: `kite3d` -> `engine`, `editor`, `template`. `editor` -> `engine`. `engine` -> `threepipe`, `uiconfig.js`, `ts-browser-helpers`, `cannon-es`, the `@threepipe/*` plugins it bundles. Every package ships `src/`, `dist/`, and source maps.
 
-Tests that live here: engine unit tests, the runtime Playwright test, the `blitz` server tests, and the editor Playwright suite that runs against a real `blitz dev`.
+Tests that live here: engine unit tests, the runtime Playwright test, the `kite3d` server tests, and the editor Playwright suite that runs against a real `kite3d dev`.
 
 ## Private: `blitzdotdev/blitz-cloud`
 
@@ -46,7 +46,7 @@ Moved from `packages/editor/src/runtime/` (Phase A, 651 lines, already free of R
 
 | File | Lines | Contents |
 |---|---|---|
-| `createGame.ts` | 276 | `createGame({base, canvas, onError})` -> `{viewer, project, dispose}`; the runtime plugin set; URL modifier for `/blitz/@id/` and `/blitz/<path>`; load order: plugins and component types before the scene, then timeline, components, physics, `main.js` |
+| `createGame.ts` | 276 | `createGame({base, canvas, onError})` -> `{viewer, project, dispose}`; the runtime plugin set; URL modifier for `/kite3d/@id/` and `/kite3d/<path>`; load order: plugins and component types before the scene, then timeline, components, physics, `main.js` |
 | `nestedAssets.ts` | 220 | `RuntimeNestedAssetLoader`: `userData.rootPath` references, caching, override preservation |
 | `projectFormat.ts` | 145 | `settingsKey`, `assetUrlPrefix`, `parsePackageJSON`, `parseAssetsJSONManifest`, `parsePackageJsonSettingsConfig`, the project types |
 | `index.ts` | 10 | `RUNTIME_VERSION`; re-exports of `threepipe`, `uiconfig.js`, `ts-browser-helpers` |
@@ -63,10 +63,10 @@ Extracted from editor utils, runtime parts only:
 | New file | From | Contents |
 |---|---|---|
 | `scripts.ts` | `ScriptUtil.ts` 470-574 and the copy inside `createGame.ts` | `registerScripts(viewer, modules)`: the export walk that registers component types and plugins. The editor and the runtime call the same function. Hot reload stays in the editor. |
-| `importMap.ts` | `utils/importMaps.ts` 52 | `dependencyImportMap(deps)` for project-declared extra dependencies; used by the `index.html` generator in `blitz` and by `blitz dev` |
+| `importMap.ts` | `utils/importMaps.ts` 52 | `dependencyImportMap(deps)` for project-declared extra dependencies; used by the `index.html` generator in `kite3d` and by `kite3d dev` |
 | `defaults.ts` | `data/EmptyProjectSettings.ts` 277 | default project and viewer settings applied when a project omits them |
 | `fileTypes.ts` | `data/fileTypes.ts` 22 | asset extension and MIME map |
-| `paths.ts` | scattered constants | `.blitz/` layout: `deploys.json`, `journal.jsonl`, `state.json`, `console.log`, `thumbs/`, `backups/`, `running/` |
+| `paths.ts` | scattered constants | `.kite3d/` layout: `deploys.json`, `journal.jsonl`, `state.json`, `console.log`, `thumbs/`, `backups/`, `running/` |
 
 Added later, in the engine because both the editor and the runtime need them:
 

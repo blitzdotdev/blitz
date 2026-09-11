@@ -28,16 +28,16 @@ export function isPackageProject(project?: SavedSceneFile | {file?: unknown} | n
     return Boolean(project && (project.file === 'package.json' || (project.file as File | undefined)?.name === 'package.json'))
 }
 
-export const assetUrlPrefix = '/blitz/'
+export const assetUrlPrefix = '/kite3d/'
 
 export const canMakeAsset = (object: IObject3D | IMaterial) =>
     Boolean((object as IObject3D).isObject3D || (object as IMaterial).isMaterial)
     // AGREED-4: a dropped DevServerSource asset is already registered, but its
     // scene instance occupies the same presentation state as a local import.
-    && (!object.userData?.rootPath || object.userData?.blitzImportedInstance === true)
+    && (!object.userData?.rootPath || object.userData?.kite3dImportedInstance === true)
 
 export const canSaveAsset = (object: IObject3D | IMaterial) =>
-    typeof object.userData?.rootPath === 'string' && object.userData.rootPath.startsWith('/blitz/@')
+    typeof object.userData?.rootPath === 'string' && object.userData.rootPath.startsWith('/kite3d/@')
 
 export function isExternalObject(object: IObject3D) {
     let current = object
@@ -66,9 +66,9 @@ export function isExternalTexture(texture: ITexture) {
 }
 
 export function thumbPath(path: string) {
-    return `.blitz/thumbs/${path}.png`
+    return `.kite3d/thumbs/${path}.png`
 }
 
 export function backupPath(path: string, time: string) {
-    return `.blitz/backups/${path}/${time}/${path.split('/').pop()}`
+    return `.kite3d/backups/${path}/${time}/${path.split('/').pop()}`
 }

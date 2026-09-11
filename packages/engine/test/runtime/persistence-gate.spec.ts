@@ -137,7 +137,7 @@ test('serializes, reloads, persists edits deterministically, then cleans up afte
 
     const playing = await page.evaluate(async () => {
         const {createGame} = await import('/runtime.js')
-        ;(window as any).__blitzUpdates = 0
+        ;(window as any).__kite3dUpdates = 0
         const canvas = document.createElement('canvas')
         document.body.append(canvas)
         ;(window as any).__persistenceGateGame = await createGame({
@@ -147,7 +147,7 @@ test('serializes, reloads, persists edits deterministically, then cleans up afte
         return true
     })
     expect(playing).toBe(true)
-    await expect.poll(() => page.evaluate(() => (window as any).__blitzUpdates || 0)).toBeGreaterThan(0)
+    await expect.poll(() => page.evaluate(() => (window as any).__kite3dUpdates || 0)).toBeGreaterThan(0)
 
     const final = await page.evaluate(async (before) => {
         const {EntityComponentPlugin, GeneratorComponent, persistenceReport, semanticSceneSnapshot} = await import('/runtime.js')

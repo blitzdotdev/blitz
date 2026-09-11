@@ -18,14 +18,14 @@ test('the published runtime boots scripts, main, and nested assets', async ({pag
     })
 
     await page.goto('/')
-    await expect.poll(() => page.evaluate(() => Boolean(window.__blitzReady))).toBe(true)
-    expect(await page.evaluate(() => window.__blitzStartupError)).toBeUndefined()
-    expect(await page.evaluate(() => window.__blitzRuntimeVersion)).toBe(enginePackage.version)
-    expect(await page.evaluate(() => window.__blitzMainRan)).toBe(true)
-    expect(await page.evaluate(() => window.__blitzGame?.viewer.getPlugin('TonemapPlugin'))).toBeUndefined()
+    await expect.poll(() => page.evaluate(() => Boolean(window.__kite3dReady))).toBe(true)
+    expect(await page.evaluate(() => window.__kite3dStartupError)).toBeUndefined()
+    expect(await page.evaluate(() => window.__kite3dRuntimeVersion)).toBe(enginePackage.version)
+    expect(await page.evaluate(() => window.__kite3dMainRan)).toBe(true)
+    expect(await page.evaluate(() => window.__kite3dGame?.viewer.getPlugin('TonemapPlugin'))).toBeUndefined()
 
     const nestedAssetMeshCount = await page.evaluate(() => {
-        const wrapper = window.__blitzGame?.viewer.scene.modelRoot.getObjectByName('PropRef')
+        const wrapper = window.__kite3dGame?.viewer.scene.modelRoot.getObjectByName('PropRef')
         let count = 0
         wrapper?.traverse((object) => {
             if (object.isMesh) count += 1
@@ -35,22 +35,22 @@ test('the published runtime boots scripts, main, and nested assets', async ({pag
     expect(nestedAssetMeshCount).toBe(1)
 
     const generated = await page.evaluate(() => {
-        const root = window.__blitzGame?.viewer.scene.modelRoot.getObjectByName('GeneratorRoot')
+        const root = window.__kite3dGame?.viewer.scene.modelRoot.getObjectByName('GeneratorRoot')
         return root?.children.map((child) => ({
-            generated: child.userData.blitzGenerated,
+            generated: child.userData.kite3dGenerated,
             excluded: child.userData.excludeFromExport,
         }))
     })
     expect(generated).toHaveLength(3)
     expect(generated).toEqual(Array(3).fill({generated: true, excluded: true}))
 
-    await expect.poll(() => page.evaluate(() => window.__blitzUpdates || 0)).toBeGreaterThan(0)
-    const updatesBefore = await page.evaluate(() => window.__blitzUpdates || 0)
-    await expect.poll(() => page.evaluate(() => window.__blitzUpdates || 0)).toBeGreaterThan(updatesBefore)
+    await expect.poll(() => page.evaluate(() => window.__kite3dUpdates || 0)).toBeGreaterThan(0)
+    const updatesBefore = await page.evaluate(() => window.__kite3dUpdates || 0)
+    await expect.poll(() => page.evaluate(() => window.__kite3dUpdates || 0)).toBeGreaterThan(updatesBefore)
     expect(componentMessages).toEqual([])
     expect(debugLogs).not.toContain('true')
 
-    await page.evaluate(() => window.__blitzGame?.dispose())
+    await page.evaluate(() => window.__kite3dGame?.dispose())
 })
 
 test('the published runtime replaces a legacy nested asset child instead of duplicating it', async ({page}) => {
@@ -66,10 +66,10 @@ test('the published runtime replaces a legacy nested asset child instead of dupl
     })
 
     await page.goto('/')
-    await expect.poll(() => page.evaluate(() => Boolean(window.__blitzReady))).toBe(true)
-    expect(await page.evaluate(() => window.__blitzStartupError)).toBeUndefined()
+    await expect.poll(() => page.evaluate(() => Boolean(window.__kite3dReady))).toBe(true)
+    expect(await page.evaluate(() => window.__kite3dStartupError)).toBeUndefined()
     const meshCount = await page.evaluate(() => {
-        const nestedWrapper = window.__blitzGame?.viewer.scene.modelRoot.getObjectByName('PropRef')
+        const nestedWrapper = window.__kite3dGame?.viewer.scene.modelRoot.getObjectByName('PropRef')
         let count = 0
         nestedWrapper?.traverse((object) => {
             if (object.isMesh) count += 1
@@ -78,5 +78,5 @@ test('the published runtime replaces a legacy nested asset child instead of dupl
     })
     expect(meshCount).toBe(1)
 
-    await page.evaluate(() => window.__blitzGame?.dispose())
+    await page.evaluate(() => window.__kite3dGame?.dispose())
 })

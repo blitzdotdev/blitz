@@ -740,9 +740,9 @@ body{
   }
 }
 
-// AGREED-3/4 adapters. These selectors are scoped to Blitz-only controls and
+// AGREED-3/4 adapters. These selectors are scoped to Kite3D-only controls and
 // dev-server surfaces; the reference rules above remain byte-for-byte.
-.blitz-semantic-hook {
+.kite3d-semantic-hook {
   border: 0;
   height: 1px;
   left: 0;
@@ -755,8 +755,8 @@ body{
   width: 1px;
 }
 
-.blitz-checkpoint-menu-popover form,
-.blitz-restore-menu-popover > div {
+.kite3d-checkpoint-menu-popover form,
+.kite3d-restore-menu-popover > div {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -764,27 +764,27 @@ body{
   width: 260px;
 }
 
-.blitz-checkpoint-menu-popover .bp5-button,
-.blitz-restore-menu-popover .bp5-button {
+.kite3d-checkpoint-menu-popover .bp5-button,
+.kite3d-restore-menu-popover .bp5-button {
   align-self: flex-end;
 }
 
-.blitz-restore-menu-popover p {
+.kite3d-restore-menu-popover p {
   margin: 0;
 }
 
-.blitz-restore-menu-popover code {
+.kite3d-restore-menu-popover code {
   color: inherit;
 }
 
-.blitz-reference-add-row {
+.kite3d-reference-add-row {
   align-items: center;
   display: flex;
   justify-content: space-between;
   padding: 2px 8px;
 }
 
-.blitz-status-hook {
+.kite3d-status-hook {
   height: 1px;
   opacity: 0;
   overflow: hidden;
@@ -792,7 +792,7 @@ body{
   width: 1px;
 }
 
-.blitz-project-error {
+.kite3d-project-error {
   background: var(--pt-intent-danger);
   color: white;
   left: 50%;
@@ -805,13 +805,13 @@ body{
   z-index: 30;
 }
 
-.blitz-reference-add-row > span {
+.kite3d-reference-add-row > span {
   align-items: center;
   display: flex;
   gap: 8px;
 }
 
-.blitz-reference-dependency-fields {
+.kite3d-reference-dependency-fields {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -832,7 +832,7 @@ body{
   z-index: 20;
 }
 
-.blitz-check-badge {
+.kite3d-check-badge {
   border-radius: 50%;
   box-shadow: 0 0 0 2px var(--pt-app-background-color);
   height: 7px;
@@ -842,40 +842,40 @@ body{
   width: 7px;
 }
 
-.blitz-check-badge-success,
-.blitz-check-status-success {
+.kite3d-check-badge-success,
+.kite3d-check-status-success {
   background: var(--pt-intent-success);
 }
 
-.blitz-check-badge-danger,
-.blitz-check-status-danger {
+.kite3d-check-badge-danger,
+.kite3d-check-status-danger {
   background: var(--pt-intent-danger);
 }
 
-.blitz-check-popover {
+.kite3d-check-popover {
   padding: 10px 12px;
   width: 320px;
 }
 
-.blitz-check-header {
+.kite3d-check-header {
   align-items: center;
   display: flex;
   justify-content: space-between;
   margin-bottom: 6px;
 }
 
-.blitz-check-header h6 {
+.kite3d-check-header h6 {
   margin: 0;
 }
 
-.blitz-check-header > span,
-.blitz-check-summary,
-.blitz-check-codes {
+.kite3d-check-header > span,
+.kite3d-check-summary,
+.kite3d-check-codes {
   color: var(--pt-text-color-muted);
   font-size: 12px;
 }
 
-.blitz-check-outcome {
+.kite3d-check-outcome {
   align-items: start;
   display: grid;
   gap: 2px 8px;
@@ -883,18 +883,18 @@ body{
   padding: 4px 0;
 }
 
-.blitz-check-status {
+.kite3d-check-status {
   border-radius: 50%;
   height: 8px;
   margin-top: 5px;
   width: 8px;
 }
 
-.blitz-check-outcome strong {
+.kite3d-check-outcome strong {
   font-weight: 500;
 }
 
-.blitz-check-codes {
+.kite3d-check-codes {
   grid-column: 3;
 }
 
