@@ -5,7 +5,7 @@ export const RUNTIME_SPECIFIERS = [
     'three',
     'uiconfig.js',
     'ts-browser-helpers',
-    '@blitzdev/engine',
+    '@kite3d/engine',
 ] as const
 
 export interface InstalledPluginImport {
@@ -92,7 +92,7 @@ function uniqueDependencies(dependencies: ProjectDependency[]): ProjectDependenc
 
 function isMappableDependency(dependency: ProjectDependency): boolean {
     if (RUNTIME_SPECIFIERS.includes(dependency.key as typeof RUNTIME_SPECIFIERS[number])) return false
-    if (dependency.key.startsWith('@blitzdev/')) return false
+    if (dependency.key.startsWith('@kite3d/')) return false
     return Boolean(dependency.url) || isSemverSpec(dependency.version)
 }
 
