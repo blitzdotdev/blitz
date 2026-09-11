@@ -27,6 +27,7 @@ import {FakeDirectory} from './fakeDirectory.ts'
 import manifestGoldenFixtures from './fixtures/manifest-golden.json'
 import {KITE3D_VERSION} from '../src/versions.ts'
 import {startMockBackend, type MockBackend} from './mockBackend.ts'
+import {closeTestServer} from './httpServer.ts'
 import {FIXTURE_PLUGIN_NAME, installPackedFixturePlugin} from './pluginFixture.ts'
 
 const backends: MockBackend[] = []
@@ -645,9 +646,9 @@ describe('publish reliability', () => {
             expect(deploys.last_publish).toMatchObject({slug: 'interrupted-game', status: 'publishing'})
             expect(Date.parse(deploys.last_publish!.updated_at)).not.toBeNaN()
         } finally {
-            server.closeAllConnections()
+            const serverClosed = closeTestServer(server)
             publishError = await outcome
-            await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()))
+            await serverClosed
         }
         expect(publishError).toBeInstanceOf(Error)
     })

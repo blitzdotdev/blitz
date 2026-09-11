@@ -221,7 +221,10 @@ function listen(server: Server): Promise<string> {
 
 function close(server: Server | undefined): Promise<void> {
     if (!server) return Promise.resolve()
-    return new Promise((resolveClose, reject) => {
+    const closed = new Promise<void>((resolveClose, reject) => {
         server.close((error) => error ? reject(error) : resolveClose())
     })
+    server.closeIdleConnections()
+    server.closeAllConnections()
+    return closed
 }

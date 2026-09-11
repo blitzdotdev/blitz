@@ -573,7 +573,12 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 command.resolve({ok: false, error: 'The development server closed before the command finished.'})
             }
             pendingCommands.clear()
-            await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()))
+            const serverClosed = new Promise<void>((resolveClose, reject) => {
+                server.close((error) => error ? reject(error) : resolveClose())
+            })
+            server.closeIdleConnections()
+            server.closeAllConnections()
+            await serverClosed
             await unlink(resolve(projectRoot, '.kite3d/dev.json')).catch(() => undefined)
         },
     }

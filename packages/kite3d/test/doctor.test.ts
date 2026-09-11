@@ -9,6 +9,7 @@ import {doctorProject, type DoctorResult} from '../src/doctor.ts'
 import {initializeGitRepository} from '../src/git.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 import {startMockBackend} from './mockBackend.ts'
+import {closeTestServer} from './httpServer.ts'
 
 const cleanup: Array<() => Promise<void>> = []
 
@@ -128,8 +129,7 @@ describe('kite3d doctor', () => {
             blocker.once('error', reject)
             blocker.listen(0, '127.0.0.1', resolveListen)
         })
-        cleanup.push(() => new Promise<void>((resolveClose, reject) =>
-            blocker.close((error) => error ? reject(error) : resolveClose())))
+        cleanup.push(() => closeTestServer(blocker))
         const address = blocker.address()
         if (!address || typeof address === 'string') throw new Error('Blocker did not bind')
 
@@ -152,8 +152,7 @@ describe('kite3d doctor', () => {
             blocker.listen(4321, '127.0.0.1', () => resolveListen(true))
         })
         if (ownsDefaultPort) {
-            cleanup.push(() => new Promise<void>((resolveClose, reject) =>
-                blocker.close((error) => error ? reject(error) : resolveClose())))
+            cleanup.push(() => closeTestServer(blocker))
         }
 
         const result = await doctorProject(fixture.root, {
@@ -177,8 +176,7 @@ describe('kite3d doctor', () => {
             live.once('error', reject)
             live.listen(0, '127.0.0.1', resolveListen)
         })
-        cleanup.push(() => new Promise<void>((resolveClose, reject) =>
-            live.close((error) => error ? reject(error) : resolveClose())))
+        cleanup.push(() => closeTestServer(live))
         const address = live.address()
         if (!address || typeof address === 'string') throw new Error('Live fixture did not bind')
         await mkdir(resolve(fixture.root, '.kite3d'), {recursive: true})

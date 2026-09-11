@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {initProject, publishFromDisk, runDev} from '../../../kite3d/src/commands.ts'
+import {closeFixtureSteps} from './fixtureClose.ts'
 
 async function withSourceEditor(page: Page, run: (root: string) => Promise<void>) {
     const root = await mkdtemp(resolve(tmpdir(), 'kite3d-source-editor-'))
@@ -36,8 +37,11 @@ async function withSourceEditor(page: Page, run: (root: string) => Promise<void>
         expect((await eventStream).status()).toBe(200)
         await run(root)
     } finally {
-        await server.close()
-        await rm(root, {recursive: true, force: true})
+        try {
+            await closeFixtureSteps([{name: 'source editor dev server', close: () => server.close()}])
+        } finally {
+            await rm(root, {recursive: true, force: true})
+        }
     }
 }
 

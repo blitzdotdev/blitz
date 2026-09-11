@@ -2,6 +2,7 @@ import {createHash, randomUUID} from 'node:crypto'
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http'
 import {KITE3D_VERSION} from '../src/versions.ts'
 import type {ReleaseRecord} from '../src/types.ts'
+import {closeTestServer} from './httpServer.ts'
 
 interface MockGame {
     id: string
@@ -286,7 +287,7 @@ export async function startMockBackend(options: {
         requests,
         get maxActiveUploads() { return maxActiveUploads },
         releaseCount(slug: string) { return games.get(slug)?.releases.length || 0 },
-        close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+        close: () => closeTestServer(server),
     }
 }
 

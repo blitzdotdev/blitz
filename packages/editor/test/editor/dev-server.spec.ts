@@ -8,6 +8,7 @@ import {checkProject} from '../../../kite3d/src/check.ts'
 import {createDevServer, type DevServer} from '../../../kite3d/src/server.ts'
 import {startMockBackend, type MockBackend} from '../../../kite3d/test/mockBackend.ts'
 import {FIXTURE_PLUGIN_NAME, installPackedFixturePlugin} from '../../../kite3d/test/pluginFixture.ts'
+import {closeFixtureSteps} from './fixtureClose.ts'
 
 let root: string
 let server: DevServer
@@ -150,9 +151,14 @@ export default function generate({node, engine}) {
 })
 
 test.afterAll(async () => {
-    await server.close()
-    await backend.close()
-    await rm(root, {recursive: true, force: true})
+    try {
+        await closeFixtureSteps([
+            {name: 'shared editor dev server', close: () => server.close()},
+            {name: 'shared editor mock backend', close: () => backend.close()},
+        ])
+    } finally {
+        await rm(root, {recursive: true, force: true})
+    }
 })
 
 test.beforeEach(async ({page}) => {
@@ -1174,9 +1180,14 @@ async function startPublishEditor(options: Parameters<typeof startMockBackend>[0
         server: devServer,
         backend: mockBackend,
         async close() {
-            await devServer.close()
-            await mockBackend.close()
-            await rm(projectRoot, {recursive: true, force: true})
+            try {
+                await closeFixtureSteps([
+                    {name: 'publish editor dev server', close: () => devServer.close()},
+                    {name: 'publish editor mock backend', close: () => mockBackend.close()},
+                ])
+            } finally {
+                await rm(projectRoot, {recursive: true, force: true})
+            }
         },
     }
 }
