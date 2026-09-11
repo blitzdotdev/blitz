@@ -1,6 +1,6 @@
 {
   "name": "@blitzdev/engine",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "The open Blitz game runtime, project format, scripting helpers, and game plugins.",
   "type": "module",
   "license": "Apache-2.0",

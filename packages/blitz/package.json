@@ -1,6 +1,6 @@
 {
   "name": "@blitzdev/blitz",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "The Blitz command and secure localhost development server.",
   "type": "module",
   "license": "Apache-2.0",
@@ -31,9 +31,9 @@
     "test:publish": "vitest run test/publish.test.ts"
   },
   "dependencies": {
-    "@blitzdev/editor": "0.12.1",
-    "@blitzdev/engine": "0.12.1",
-    "@blitzdev/template": "0.12.1",
+    "@blitzdev/editor": "0.12.2",
+    "@blitzdev/engine": "0.12.2",
+    "@blitzdev/template": "0.12.2",
     "@hono/node-server": "^1.19.17",
     "es-module-lexer": "^3.0.2",
     "fflate": "^0.8.2",
