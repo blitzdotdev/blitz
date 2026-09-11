@@ -37,20 +37,23 @@ describe('upgradeProject', () => {
         process.env.PATH = `${bin}${delimiter}${originalPath || ''}`
 
         try {
-            const result = await upgradeProject(root, {to: '2.0.0'})
-            expect(result).toEqual({from: '1.0.0', to: '2.0.0', changes: []})
+            const result = await upgradeProject(root)
+            expect(result).toEqual({from: '0.10.0', to: KITE3D_VERSION, changes: []})
         } finally {
             process.env.PATH = originalPath
         }
 
-        expect(await readFile(resolve(root, 'migration.txt'), 'utf8')).toBe('1.5.0')
+        expect(await readFile(resolve(root, 'migration.txt'), 'utf8')).toBe('0.12.0')
         const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as {
             devDependencies: Record<string, string>, kite3d: {version: string}
         }
-        expect(packageJson.devDependencies['kite3d']).toBe('2.0.0')
-        expect(packageJson.kite3d.version).toBe('2.0.0')
+        expect(packageJson.devDependencies['kite3d']).toBe(KITE3D_VERSION)
+        expect(packageJson.kite3d.version).toBe(KITE3D_VERSION)
         const journal = (await readFile(resolve(root, '.kite3d/journal.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse)
-        expect(journal).toMatchObject([{client: 'kite3d-upgrade', summary: {upgrade: {from: '1.0.0', to: '2.0.0'}}}])
+        expect(journal).toMatchObject([{
+            client: 'kite3d-upgrade',
+            summary: {upgrade: {from: '0.10.0', to: KITE3D_VERSION}},
+        }])
     })
 
     it.each([
@@ -135,20 +138,20 @@ describe('upgradeProject', () => {
 
         let result: Awaited<ReturnType<typeof upgradeProject>>
         try {
-            result = await upgradeProject(root, {to: '2.0.0'})
+            result = await upgradeProject(root)
         } finally {
             restorePath()
         }
 
         expect(result.changes).toEqual([
-            `Removed ${LEGACY_EDITOR} from dependencies; kite3d provides 2.0.0.`,
-            `Removed ${LEGACY_TEMPLATE} from dependencies; kite3d provides 2.0.0.`,
-            `Removed ${LEGACY_ENGINE} from devDependencies; kite3d provides 2.0.0.`,
+            `Removed ${LEGACY_EDITOR} from dependencies; kite3d provides ${KITE3D_VERSION}.`,
+            `Removed ${LEGACY_TEMPLATE} from dependencies; kite3d provides ${KITE3D_VERSION}.`,
+            `Removed ${LEGACY_ENGINE} from devDependencies; kite3d provides ${KITE3D_VERSION}.`,
         ])
         expect(JSON.parse(await readFile(packagePath, 'utf8'))).toMatchObject({
             dependencies: {},
-            devDependencies: {kite3d: '2.0.0'},
-            kite3d: {version: '2.0.0'},
+            devDependencies: {kite3d: KITE3D_VERSION},
+            kite3d: {version: KITE3D_VERSION},
         })
         expect(JSON.parse(await readFile(packagePath, 'utf8')).dependencies)
             .not.toHaveProperty(LEGACY_TEMPLATE)
@@ -169,7 +172,7 @@ describe('upgradeProject', () => {
             restorePath()
         }
 
-        expect(result).toMatchObject({from: '0.14.0', to: KITE3D_VERSION})
+        expect(result).toMatchObject({from: '0.14.1', to: KITE3D_VERSION})
         expect(result.changes).toEqual([
             'Replaced @blitzdev/plugin-mujoco with @kite3d/plugin-mujoco in dependencies.',
             'Replaced @blitzdev/plugin-mujoco with @kite3d/plugin-mujoco in kite3d.plugins.',
@@ -194,7 +197,7 @@ describe('upgradeProject', () => {
             restorePath()
         }
 
-        expect(result).toEqual({from: '0.14.0', to: KITE3D_VERSION, changes: []})
+        expect(result).toEqual({from: '0.14.1', to: KITE3D_VERSION, changes: []})
         const after = JSON.parse(await readFile(packagePath, 'utf8'))
         expect({...after, devDependencies: before.devDependencies, kite3d: before.kite3d}).toEqual(before)
         expect(after.devDependencies.kite3d).toBe(KITE3D_VERSION)
@@ -267,16 +270,6 @@ describe('upgradeProject', () => {
         await expect(access(resolve(root, '.kite3d'))).rejects.toMatchObject({code: 'ENOENT'})
     })
 
-    it('keeps the exact-version rule for --to on a normal upgrade', async () => {
-        const root = await upgradeFixture()
-        const packagePath = resolve(root, 'package.json')
-        const before = await readFile(packagePath, 'utf8')
-
-        await expect(upgradeProject(root, {to: '^2.0.0'})).rejects.toThrow(
-            'Kite3D version must be an exact x.y.z version: ^2.0.0',
-        )
-        expect(await readFile(packagePath, 'utf8')).toBe(before)
-    })
 })
 
 type FakeInstallLayout = 'hoisted' | 'nested' | 'record-clean-and-hoisted'
@@ -416,8 +409,8 @@ async function upgradeFixture(): Promise<string> {
     await writeFile(resolve(root, 'package.json'), JSON.stringify({
         name: 'upgrade-test',
         mainScene: 'assets/main.scene.gltf',
-        devDependencies: {'kite3d': '1.0.0'},
-        kite3d: {version: '1.0.0'},
+        devDependencies: {'kite3d': '0.10.0'},
+        kite3d: {version: '0.10.0'},
     }))
     await writeFile(resolve(root, 'assets.json'), '{"files":{},"version":1}')
     await writeFile(resolve(root, 'assets/main.scene.gltf'), '{"asset":{"version":"2.0"}}')
@@ -444,8 +437,8 @@ import {writeFile} from 'node:fs/promises'
 import {resolve} from 'node:path'
 export const PROJECT_MIGRATIONS = [
     {version: '0.9.0', migrate() { throw new Error('old migration ran') }},
-    {version: '1.5.0', migrate(root) { return writeFile(resolve(root, 'migration.txt'), '1.5.0') }},
-    {version: '2.1.0', migrate() { throw new Error('future migration ran') }},
+    {version: '0.12.0', migrate(root) { return writeFile(resolve(root, 'migration.txt'), '0.12.0') }},
+    {version: '0.16.0', migrate() { throw new Error('future migration ran') }},
 ]
 `)
     return root

@@ -57,10 +57,6 @@ interface RuntimeMigration {
     migrate(projectRoot: string): void | Promise<void>
 }
 
-export interface UpgradeProjectOptions {
-    to?: string
-}
-
 const TEMPLATE_RENAMES: Readonly<Record<string, string>> = {gitignore: '.gitignore'}
 
 export async function initProject(directory = '.', options: {git?: boolean} = {}): Promise<string> {
@@ -100,7 +96,6 @@ export async function initProject(directory = '.', options: {git?: boolean} = {}
 
 export async function upgradeProject(
     projectRoot = process.cwd(),
-    options: UpgradeProjectOptions = {},
 ): Promise<{from: string, to: string, changes: string[], next?: string}> {
     const root = resolve(projectRoot)
     const packagePath = resolve(root, 'package.json')
@@ -117,7 +112,7 @@ export async function upgradeProject(
         : [devDependencies.kite3d, dependencies.kite3d]
             .find((value): value is string => typeof value === 'string' && Boolean(value))
     if (!from) throw new Error('package.json must pin kite3d or legacy @blitzdev/blitz in dependencies')
-    const to = legacySpecifier ? KITE3D_VERSION : options.to || process.env.KITE3D_UPGRADE_TO || KITE3D_VERSION
+    const to = KITE3D_VERSION
     compareVersions(from, to)
     if (compareVersions(from, to) > 0) throw new Error(`Cannot upgrade from ${from} to older version ${to}`)
 

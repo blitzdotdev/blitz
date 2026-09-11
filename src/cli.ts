@@ -51,7 +51,7 @@ Commands:
   journal [options]           Read the edit journal
   open                        Open the running local editor
   sources                     Locate installed source
-  upgrade [--to <x.y.z>]      Upgrade the project Kite3D version
+  upgrade                     Upgrade the project to this Kite3D version
 
 Run kite3d <command> --help for command usage.`
 
@@ -71,7 +71,7 @@ const COMMAND_USAGE: Record<string, string> = {
     journal: 'Usage: kite3d journal [--since <iso>] [-n <count>]',
     open: 'Usage: kite3d open',
     sources: 'Usage: kite3d sources',
-    upgrade: 'Usage: kite3d upgrade [--to <x.y.z>]',
+    upgrade: 'Usage: kite3d upgrade',
 }
 
 const PROJECT_ROOT_COMMANDS = new Set([
@@ -90,7 +90,8 @@ try {
     if (PROJECT_ROOT_COMMANDS.has(command) && !args.includes('--help') && !args.includes('-h')) {
         if (!(command === 'doctor' && legacyProject)) await assertKite3dProjectRoot(process.cwd())
     }
-    const skipsVersionRule = command === 'help' || command === '--help' || command === '-h' || command === 'doctor'
+    const skipsVersionRule = command === 'help' || command === '--help' || command === '-h'
+        || command === 'doctor' || command === 'upgrade'
         || command === '--version' || command === '-v'
         || args.includes('--help') || args.includes('-h')
     const delegatedExitCode = skipsVersionRule ? undefined : await enforceVersionPin(command, process.argv.slice(2))
@@ -235,8 +236,8 @@ try {
         })
         for (const entry of entries) console.log(JSON.stringify(entry))
     } else if (command === 'upgrade') {
-        const parsed = parseArgs(args, {'--to': 'value'})
-        const result = await upgradeProject(process.cwd(), {to: valueOption(parsed.values['--to'])})
+        parseArgs(args, {})
+        const result = await upgradeProject(process.cwd())
         for (const change of result.changes) console.log(change)
         console.log(`Upgraded Kite3D from ${result.from} to ${result.to}`)
         if (result.next) console.log(`Next: ${result.next}`)
