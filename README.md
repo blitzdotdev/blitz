@@ -56,7 +56,7 @@ npx kite3d publish    # live at https://<slug>.app.blitz.dev/
 | `kite3d checkpoint [label]` | Commit a checkpoint; `kite3d restore` brings one back |
 | `kite3d publish` | Publish a release; `kite3d pull` fetches the active one |
 | `kite3d doctor` | Verify the local setup |
-| `kite3d upgrade` | Move a project to the current version, including projects made with the old `blitz` command |
+| `kite3d upgrade` | Move a project to the invoked CLI version and apply all migrations it knows, including old `blitz` projects |
 
 Run `npx kite3d` with no argument for the full list.
 
