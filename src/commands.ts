@@ -16,7 +16,7 @@ import {appendJournalEntry, readJournal, type JournalEntry, type ReadJournalOpti
 import {KITE3D_VERSION} from './versions.ts'
 import {checkProject} from './check.ts'
 import {gitRepositoryRoot, gitTracksProject, initializeGitRepository} from './git.ts'
-import {migrateLegacyProject} from './legacy.ts'
+import {assertLegacyEngineIsHoisted, migrateLegacyProject} from './legacy.ts'
 
 const commandRequire = createRequire(import.meta.url)
 
@@ -140,6 +140,7 @@ export async function upgradeProject(
     }, null, 2)}\n`, 'utf8')
 
     await installProjectDependencies(root)
+    if (legacySpecifier) await assertLegacyEngineIsHoisted(root)
     const runtime = await loadInstalledRuntime(root)
     for (const migration of selectProjectMigrations(runtime.migrations, from, to)) await migration.migrate(root)
 
