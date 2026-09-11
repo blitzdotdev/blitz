@@ -1,7 +1,7 @@
 import {execFile, spawn} from 'node:child_process'
-import {chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile} from 'node:fs/promises'
+import {chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
-import {resolve} from 'node:path'
+import {delimiter, resolve} from 'node:path'
 import {promisify} from 'node:util'
 import {afterEach, describe, expect, it} from 'vitest'
 import {startMockBackend} from './mockBackend.ts'
@@ -116,6 +116,35 @@ describe('kite3d CLI', () => {
         expect(result.code).toBe(1)
         expect(result.stdout).toBe('')
         expect(result.stderr.trim()).toBe('kite3d: Legacy Blitz project detected. Run npx kite3d upgrade.')
+    })
+
+    it('suggests npm install after upgrading while the legacy package remains installed', async () => {
+        const root = await mkdtemp(resolve(tmpdir(), 'kite3d-cli-legacy-upgrade-'))
+        cleanup.push(() => rm(root, {recursive: true, force: true}))
+        await cp(resolve(import.meta.dirname, 'fixtures/legacy-project'), root, {recursive: true})
+        await mkdir(resolve(root, '.blitz'))
+        await writeFile(resolve(root, '.blitz/deploys.json'), '{"games":{}}\n')
+        await mkdir(resolve(root, 'node_modules/@blitzdev/blitz'), {recursive: true})
+        await writeFile(resolve(root, 'node_modules/@blitzdev/blitz/package.json'), JSON.stringify({version: '0.12.2'}))
+        const bin = resolve(root, 'bin')
+        await mkdir(bin)
+        await writeFile(resolve(bin, 'npm'), '#!/bin/sh\nexit 0\n')
+        await chmod(resolve(bin, 'npm'), 0o755)
+
+        const result = await execute(process.execPath, [cli, 'upgrade'], {
+            cwd: root,
+            env: {...process.env, PATH: `${bin}${delimiter}${process.env.PATH || ''}`},
+        })
+
+        expect(result.stderr).toBe('')
+        expect(result.stdout.trim().split('\n')).toEqual([
+            'Renamed .blitz/ to .kite3d/.',
+            'Moved package.json key "blitz" to "kite3d".',
+            `Replaced @blitzdev/blitz with kite3d ${KITE3D_VERSION} in devDependencies.`,
+            'Rewrote 1 legacy rootPath value in assets/main.scene.gltf.',
+            `Upgraded Kite3D from 0.12.2 to ${KITE3D_VERSION}`,
+            'Next: npm install',
+        ])
     })
 
     it('suggests up to five child Kite3D projects when the current folder is not a project', async () => {
