@@ -181,7 +181,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     private originalConsoleError?: typeof console.error
     private originalConsoleWarn?: typeof console.warn
     private editorVersion = RUNTIME_VERSION
-    private readonly onWindowError = (event: ErrorEvent) => void this.reportError(event.error || event.message)
+    private readonly onWindowError = (event: ErrorEvent) => {
+        if (isBenignResizeObserverError(event.message)) return
+        void this.reportError(event.error || event.message)
+    }
     private readonly onUnhandledRejection = (event: PromiseRejectionEvent) => void this.reportError(event.reason)
     private readonly onPageHide = () => {
         this.isPlaying = false
@@ -1357,6 +1360,11 @@ function formatConsoleValue(value: unknown): string {
 
 function errorMessage(error: unknown) {
     return error instanceof Error ? error.message : String(error)
+}
+
+function isBenignResizeObserverError(message: string): boolean {
+    return message === 'ResizeObserver loop completed with undelivered notifications.'
+        || message === 'ResizeObserver loop limit exceeded'
 }
 
 function downloadBlob(blob: Blob, filename: string) {
