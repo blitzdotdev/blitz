@@ -1,5 +1,5 @@
 {
-  "name": "@blitzdev/engine",
+  "name": "@kite3d/engine",
   "version": "0.14.1",
   "description": "The open Kite3D game runtime, project format, scripting helpers, and game plugins.",
   "type": "module",
