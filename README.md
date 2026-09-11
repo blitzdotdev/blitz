@@ -21,17 +21,15 @@
 
 ---
 
-## Tell your agent
+## Quickstart
+
+Paste this prompt into your agent: 
 
 ```
 use npx kite3d and build me an FPS shooting practice game
 ```
 
-That is the whole prompt. The CLI teaches the loop, and every project ships an `AGENTS.md` with the engine API and the rules.
-
-## Or do it by hand
-
-Node.js 20 or newer.
+Or manually install: 
 
 ```sh
 npx kite3d init my-game
@@ -41,14 +39,15 @@ npx kite3d check      # proves the game is Playable, Editable, Persisted
 npx kite3d publish    # live at https://<slug>.app.blitz.dev/
 ```
 
-## How it works
+## Features
 
-- **Your folder is the game.** The scene is a text glTF file next to your scripts. Agents edit it with tools, humans edit it in the editor. Both see the same file.
-- **The editor is local.** `kite3d dev` serves it from `127.0.0.1` against your project folder. Save a script and the game reloads.
-- **Check before you ship.** `kite3d check` boots the game headlessly and fails on runtime errors, invisible authored content, and save-reload drift.
-- **Publish is one upload.** Files are content-addressed and verified by hash. Every release keeps its own URL on [blitz.dev](https://blitz.dev), the store where games are played.
+- **Agent-native.** One prompt builds a game. The CLI teaches the loop and ships its source to grep.
+- **ECS.** Behavior lives in components attached to scene nodes, one script each.
+- **Text glTF scene.** Agents and humans edit the same file. Git diffs it.
+- **Hot-reloaded components.** Save a script, the editor swaps it in place.
+- **Local browser editor.** Served from your folder. No account.
 
-## What is in the box
+## Packages
 
 | Package | What it is |
 |---|---|
@@ -60,7 +59,7 @@ npx kite3d publish    # live at https://<slug>.app.blitz.dev/
 
 Everything is Apache-2.0 and ships its source, so an agent can grep `node_modules` when the guide is not enough. Built on [threepipe](https://threepipe.org).
 
-## Commands
+## CLI
 
 | Command | Does |
 |---|---|
@@ -73,21 +72,6 @@ Everything is Apache-2.0 and ships its source, so an agent can grep `node_module
 | `kite3d upgrade` | Move a project to the current version, including projects made with the old `blitz` command |
 
 Run `npx kite3d` with no argument for the full list.
-
-## Develop this repo
-
-```sh
-npm install --ignore-scripts --cache /tmp/blitz-npm-cache
-npm run build
-npm run typecheck
-npm run test:runtime
-npm test -w packages/kite3d
-npm test -w packages/editor
-```
-
-The editor's Library panel reads Polyhaven assets through a public read-only proxy; the URL is an editor constant.
-
-Contracts and guides: [`docs/agents.md`](docs/agents.md), [`docs/publish-api.md`](docs/publish-api.md), [`docs/layout.md`](docs/layout.md), [`docs/releasing.md`](docs/releasing.md).
 
 ## License
 
