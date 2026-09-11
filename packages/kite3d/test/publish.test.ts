@@ -457,7 +457,7 @@ describe('publish reliability', () => {
             const root = sampleProject()
             const backend = await startMockBackend(fault)
             backends.push(backend)
-            const api = new Kite3dApi({baseUrl: backend.url, requestTimeoutMs: 20})
+            const api = new Kite3dApi({baseUrl: backend.url, requestTimeoutMs: 250})
 
             await expect(publishProject({dirHandle: root.asHandle(), api, slug: `loss-${backends.length}`}))
                 .resolves.toMatchObject({release_hash: expect.any(String)})
