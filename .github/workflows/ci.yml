@@ -26,3 +26,12 @@ jobs:
       - run: npm run test:kite3d
       - run: npm run test:runtime
       - run: npm run test:editor
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-test-results
+          path: |
+            packages/editor/test-results
+            packages/editor/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7

@@ -9,6 +9,7 @@ export default defineConfig({
         name: 'chromium',
         use: {
             ...devices['Desktop Chrome'],
+            trace: process.env.CI ? 'retain-on-failure' : 'off',
             launchOptions: {args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']},
         },
     }],
