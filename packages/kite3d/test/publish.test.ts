@@ -27,6 +27,7 @@ import {FakeDirectory} from './fakeDirectory.ts'
 import manifestGoldenFixtures from './fixtures/manifest-golden.json'
 import {KITE3D_VERSION} from '../src/versions.ts'
 import {startMockBackend, type MockBackend} from './mockBackend.ts'
+import {FIXTURE_PLUGIN_NAME, installPackedFixturePlugin} from './pluginFixture.ts'
 
 const backends: MockBackend[] = []
 const projectRoots: string[] = []
@@ -181,6 +182,49 @@ describe('.kite3d/deploys.json', () => {
 })
 
 describe('publishProject', () => {
+    it('publishes only the installed packed plugin files and maps its entry and subpaths', async () => {
+        const root = await diskProject()
+        await installPackedFixturePlugin(root)
+        const packagePath = resolve(root, 'package.json')
+        const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
+            kite3d: {plugins?: string[]}
+        }
+        packageJson.kite3d.plugins = [FIXTURE_PLUGIN_NAME]
+        await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
+        await installDiskEngine(root)
+        const {api, backend} = await testApi()
+
+        await publishProject({
+            dirHandle: new NodeProjectDirectory(root).asHandle(),
+            api,
+            slug: 'plugin-package',
+        })
+
+        const release = releaseRequest(backend).body as ReleaseManifest
+        const pluginRoot = `_blitz/plugins/${FIXTURE_PLUGIN_NAME}`
+        expect(Object.keys(release.files).filter((path) => path.startsWith(pluginRoot))).toEqual([
+            `${pluginRoot}/Fixture.plugin.js`,
+            `${pluginRoot}/README.md`,
+            `${pluginRoot}/fixture.worker.js`,
+            `${pluginRoot}/package.json`,
+            `${pluginRoot}/sidecar.bin`,
+        ])
+        expect(Object.keys(release.files)).not.toContain(`${pluginRoot}/ignored.js`)
+        const html = await readFile(resolve(root, '.kite3d/publish/index.html'), 'utf8')
+        const importMap = readImportMap(html)
+        expect(importMap.imports[FIXTURE_PLUGIN_NAME])
+            .toBe(`./${pluginRoot}/Fixture.plugin.js`)
+        expect(importMap.imports[`${FIXTURE_PLUGIN_NAME}/`]).toBe(`./${pluginRoot}/`)
+        const packageHash = release.files['package.json'].sha256
+        const uploadedPackage = backend.requests.find(({method, path}) =>
+            method === 'PUT' && path.endsWith(`/blobs/${packageHash}`))
+        expect(JSON.parse((uploadedPackage?.body as Buffer).toString()).dependencies[FIXTURE_PLUGIN_NAME])
+            .toBe('1.2.3')
+        expect(backend.requests
+            .filter(({method, path}) => method === 'GET' && path.includes('/_blitz/plugins/'))
+            .map(({path}) => decodeURIComponent(path))).toHaveLength(5)
+    })
+
     it('creates, prepares, uploads four at a time, releases, and reuses the base release', async () => {
         const root = sampleProject()
         const {api, backend} = await testApi()
@@ -739,11 +783,15 @@ async function diskProject(): Promise<string> {
     await writeFile(resolve(root, 'main.js'), 'export async function main() {}\n')
     await mkdir(resolve(root, 'assets'), {recursive: true})
     await writeFile(resolve(root, 'assets/main.scene.gltf'), '{"asset":{"version":"2.0"}}\n')
+    await installDiskEngine(root)
+    return root
+}
+
+async function installDiskEngine(root: string): Promise<void> {
     const engine = resolve(root, 'node_modules/@blitzdev/engine')
     await mkdir(resolve(engine, 'dist'), {recursive: true})
     await writeFile(resolve(engine, 'package.json'), JSON.stringify({version: KITE3D_VERSION}))
     await writeFile(resolve(engine, 'dist/runtime.js'), 'mock Kite3D runtime')
-    return root
 }
 
 function readImportMap(html: string): {imports: Record<string, string>} {

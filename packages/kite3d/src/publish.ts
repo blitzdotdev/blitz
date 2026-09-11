@@ -3,6 +3,7 @@ import {projectDependencies} from '@blitzdev/engine/importMap'
 import {readProjectFile, walkProject, writeProjectFile} from './filesystem.ts'
 import {generateIndexHtml} from './indexHtml.ts'
 import {buildManifest, sha256} from './manifest.ts'
+import {installedPluginEntries, installedPluginPackages, PUBLISHED_PLUGIN_PATH} from './plugins.ts'
 import {Kite3dApi, sanitizeDiagnostic} from './api.ts'
 import type {
     CreatedAnonymousGame,
@@ -45,9 +46,15 @@ export async function publishProject({
     const versionResult = await usePinnedRuntimeVersion(dirHandle, packageJson)
     packageJson = versionResult.packageJson
     let releaseName = name || packageDisplayName(packageJson, slug)
+    const pluginPackages = await installedPluginPackages(
+        dirHandle,
+        packageJson,
+        `./${PUBLISHED_PLUGIN_PATH}/`,
+    )
 
     onProgress?.({phase: 'walking', done: 0, total: 1})
     let projectEntries = await walkProject(dirHandle, {exclude: publishExcludes(packageJson)})
+    projectEntries.push(...await installedPluginEntries(pluginPackages))
     onProgress?.({phase: 'walking', done: 1, total: 1})
 
     if (versionResult.changed) {
@@ -60,7 +67,9 @@ export async function publishProject({
     }
     projectEntries = replaceEntry(projectEntries, {
         path: 'package.json',
-        file: publishedPackageFile(packageJson),
+        file: publishedPackageFile(packageJson, Object.fromEntries(
+            pluginPackages.map(({specifier, version}) => [specifier, version]),
+        )),
     })
 
     if (!entry) {
@@ -109,6 +118,7 @@ export async function publishProject({
         version,
         runtimeHash,
         dependencies: projectDependencies(packageJson),
+        plugins: pluginPackages,
     })
     const indexFile = await writeProjectFile(dirHandle, '.kite3d/publish/index.html', indexHtml)
     projectEntries = replaceEntry(projectEntries, {path: 'index.html', file: indexFile})
@@ -200,7 +210,14 @@ function parsePackageJson(text: string): Record<string, unknown> {
     return value as Record<string, unknown>
 }
 
-function publishedPackageFile(packageJson: Record<string, unknown>): File {
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function publishedPackageFile(
+    packageJson: Record<string, unknown>,
+    pluginVersions: Record<string, string>,
+): File {
     const published = {...packageJson}
     delete published.devDependencies
     for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
@@ -210,6 +227,12 @@ function publishedPackageFile(packageJson: Record<string, unknown>): File {
             .filter(([, spec]) => typeof spec !== 'string' || !spec.startsWith('file:')))
         if (Object.keys(filtered).length) published[section] = filtered
         else delete published[section]
+    }
+    if (Object.keys(pluginVersions).length) {
+        published.dependencies = {
+            ...(isRecord(published.dependencies) ? published.dependencies : {}),
+            ...pluginVersions,
+        }
     }
     return new File([`${JSON.stringify(published, null, 2)}\n`], 'package.json', {type: 'application/json'})
 }

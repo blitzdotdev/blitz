@@ -1,15 +1,16 @@
 import type {ProjectDependency} from './types.ts'
-import {dependencyImportMap} from '@blitzdev/engine/importMap'
+import {dependencyImportMap, type InstalledPluginImport} from '@blitzdev/engine/importMap'
 
 export interface GenerateIndexHtmlOptions {
     name: string
     version: string
     runtimeHash: string
     dependencies?: ProjectDependency[]
+    plugins?: InstalledPluginImport[]
 }
 
-export function generateIndexHtml({name, version, runtimeHash, dependencies = []}: GenerateIndexHtmlOptions): string {
-    const importMap = JSON.stringify(dependencyImportMap(dependencies, './_blitz/runtime.js')).replace(/</g, '\\u003c')
+export function generateIndexHtml({name, version, runtimeHash, dependencies = [], plugins = []}: GenerateIndexHtmlOptions): string {
+    const importMap = JSON.stringify(dependencyImportMap(dependencies, './_blitz/runtime.js', plugins)).replace(/</g, '\\u003c')
     return `<!doctype html>
 <html lang="en">
 <head>

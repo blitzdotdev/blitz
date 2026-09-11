@@ -35,6 +35,7 @@ import {ProjectModuleRewriter} from './module-rewriter.ts'
 import type {PublishProgress} from './types.ts'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 import {checkpointProject, latestCheckpointProject, restoreProject} from './git.ts'
+import {DEVELOPMENT_PLUGIN_URL, installedPluginPackages} from './plugins.ts'
 
 export interface ManifestEntry {
     path: string
@@ -119,6 +120,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     })
     app.use('/api/*', checkToken)
     app.use('/files/*', checkToken)
+    app.use('/kite3d/plugins/*', checkToken)
 
     async function checkToken(c: Context<AppEnv>, next: Next): Promise<void | Response> {
         const queryToken = c.req.method === 'GET' ? c.req.query('t') : undefined
@@ -362,6 +364,17 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     app.post('/api/pull', async () => {
         if (!options.pull) return jsonResponse({error: {code: 'pull_unavailable', message: 'Pull is not configured.'}}, 501)
         return jsonResponse(await runServerMutation(options.pull))
+    })
+    app.get('/kite3d/plugins/*', async (c) => {
+        const packageJson = await readProjectPackageJson(projectRoot)
+        const plugins = await installedPluginPackages(projectDirectory, packageJson, DEVELOPMENT_PLUGIN_URL)
+        const requestPath = decodeURIComponent(new URL(c.req.url).pathname)
+        const plugin = plugins.find(({rootUrl}) => requestPath.startsWith(rootUrl))
+        if (!plugin) return missingFileResponse()
+        const relativePath = requestPath.slice(plugin.rootUrl.length)
+        if (!safePluginFilePath(relativePath)) return textResponse('Forbidden', 403)
+        const packageRoot = resolve(projectRoot, 'node_modules', ...plugin.specifier.split('/'))
+        return serveStaticFile(resolve(packageRoot, ...relativePath.split('/')), packageRoot)
     })
     app.get('/files/*', async (c) => {
         const relativePath = decodeFilePath(new URL(c.req.url).pathname)
@@ -702,8 +715,19 @@ async function projectState(root: string) {
 }
 
 async function readProjectImportMap(root: string): Promise<{imports: Record<string, string>}> {
-    const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown>
-    return dependencyImportMap(projectDependencies(packageJson), '/editor-runtime.js')
+    const packageJson = await readProjectPackageJson(root)
+    const directory = new NodeProjectDirectory(root).asHandle()
+    const plugins = await installedPluginPackages(directory, packageJson, DEVELOPMENT_PLUGIN_URL)
+    return dependencyImportMap(projectDependencies(packageJson), '/editor-runtime.js', plugins)
+}
+
+async function readProjectPackageJson(root: string): Promise<Record<string, unknown>> {
+    return JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown>
+}
+
+function safePluginFilePath(path: string): boolean {
+    return Boolean(path) && !path.startsWith('/') && !path.includes('\\')
+        && path.split('/').every((part) => Boolean(part) && part !== '.' && part !== '..')
 }
 
 function headlessCheckHtml(): string {
