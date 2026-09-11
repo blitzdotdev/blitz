@@ -1,0 +1,16 @@
+{
+  "name": "legacy-four-pin-project",
+  "private": true,
+  "type": "module",
+  "mainScene": "assets/main.scene.gltf",
+  "main": "./main.js",
+  "devDependencies": {
+    "@blitzdev/blitz": "file:../../../../blitz-packs/blitzdev-blitz-0.12.0.tgz",
+    "@blitzdev/editor": "file:../../../../blitz-packs/blitzdev-editor-0.12.0.tgz",
+    "@blitzdev/engine": "file:../../../../blitz-packs/blitzdev-engine-0.12.0.tgz",
+    "@blitzdev/template": "file:../../../../blitz-packs/blitzdev-template-0.12.0.tgz"
+  },
+  "blitz": {
+    "version": "0.12.0"
+  }
+}
