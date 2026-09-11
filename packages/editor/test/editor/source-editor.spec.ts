@@ -29,8 +29,11 @@ async function withSourceEditor(page: Page, run: (root: string) => Promise<void>
 
     const server = await runDev({projectRoot: root, port: 0, noOpen: true})
     try {
+        const eventStream = page.waitForResponse((response) =>
+            response.url().startsWith(`${new URL(server.url).origin}/api/events?`))
         await page.goto(server.url)
         await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        expect((await eventStream).status()).toBe(200)
         await run(root)
     } finally {
         await server.close()
@@ -156,6 +159,7 @@ test('snapshots a save so typing during the request remains unsaved', async ({pa
 test('reloads an external change silently while the draft is clean', async ({page}) => {
     await withSourceEditor(page, async (root) => {
         const editor = await openSource(page, 'notes.txt')
+        await expect(page.getByTestId('source-editor-status')).toHaveText('Saved')
         await writeFile(resolve(root, 'notes.txt'), '// external clean update')
 
         await expect(editor).toHaveValue('// external clean update', {timeout: 10_000})
@@ -168,6 +172,7 @@ test('preserves a dirty draft on external change and resolves conflicts with Rel
     await withSourceEditor(page, async (root) => {
         const editor = await openSource(page, 'notes.txt')
         await editor.fill('// local draft')
+        await expect(page.getByTestId('source-editor-status')).toHaveText('Unsaved changes')
         await writeFile(resolve(root, 'notes.txt'), '// external dirty update')
 
         await expect(page.getByText(/Your unsaved draft has been preserved/)).toBeVisible({timeout: 10_000})
@@ -175,12 +180,14 @@ test('preserves a dirty draft on external change and resolves conflicts with Rel
         await expect(page.getByTestId('source-editor').getByRole('button', {name: 'Save', exact: true})).toBeDisabled()
         await page.getByRole('button', {name: 'Reload', exact: true}).click()
         await expect(editor).toHaveValue('// external dirty update')
+        await expect(page.getByTestId('source-editor-status')).toHaveText('Saved')
 
         await page.route('**/files/notes.txt*', async (route) => {
             if (route.request().method() === 'PUT') await writeFile(resolve(root, 'notes.txt'), '// raced disk update')
             await route.continue()
         }, {times: 1})
         await editor.fill('// explicit overwrite')
+        await expect(page.getByTestId('source-editor-status')).toHaveText('Unsaved changes')
         await page.getByTestId('source-editor').getByRole('button', {name: 'Save', exact: true}).click()
         await expect(page.getByText(/Reload it or overwrite the current disk version/)).toBeVisible()
         await expect(editor).toHaveValue('// explicit overwrite')

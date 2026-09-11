@@ -562,7 +562,12 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             for (const pending of pendingEvents.values()) clearTimeout(pending.timer)
             for (const timer of pendingWatchedFiles.values()) clearTimeout(timer)
             pendingWatchedFiles.clear()
-            await Promise.all([...clients.keys()].map((client) => client.close()))
+            const eventClients = [...clients.keys()]
+            // Abort first to release a writer blocked behind a disconnected client,
+            // then close so clients that are still connected receive the stream end.
+            for (const client of eventClients) client.abort()
+            await Promise.all(eventClients.map((client) => client.close()))
+            clients.clear()
             for (const command of pendingCommands.values()) {
                 clearTimeout(command.timer)
                 command.resolve({ok: false, error: 'The development server closed before the command finished.'})

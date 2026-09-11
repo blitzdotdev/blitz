@@ -1,5 +1,5 @@
 import {Button, ButtonGroup, Callout, Intent, Spinner} from '@blueprintjs/core'
-import {useCallback, useEffect, useMemo, useRef, useState, type UIEvent} from 'react'
+import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent} from 'react'
 import {ProjectConflictError, type ProjectFileEntry} from '../ProjectSource.ts'
 import {useManager} from '../utils/UseManager.ts'
 import {editableSourceExtensions, isEditableSourceFile, maxSourceBytes} from '../utils/sourceFiles.ts'
@@ -187,7 +187,8 @@ export function SourceEditorPanel({selectedFile}: {selectedFile?: ProjectFileEnt
         }
     }, [checkExternalChange, conflictHash, load, manager])
 
-    useEffect(() => {
+    // Subscribe before the committed editor can be observed or edited.
+    useLayoutEffect(() => {
         const onProjectFileChange = (event: {path: string}) => {
             if (event.path !== activeEntryRef.current?.path) return
             if (savingRef.current) {
