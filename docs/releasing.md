@@ -1,6 +1,6 @@
-# Releasing Blitz
+# Releasing Kite3D
 
-The four public packages (`@blitzdev/engine`, `@blitzdev/template`, `@blitzdev/editor`, and `@blitzdev/blitz`) always share one version. Every dependency between them is an exact pin to that version. A `@blitzdev/blitz` version therefore identifies exactly one engine, editor, and template version. The vendored `threepipe` and `uiconfig-blueprint` workspaces are not published.
+The four public packages (`@blitzdev/engine`, `@blitzdev/template`, `@blitzdev/editor`, and `kite3d`) always share one version. Every dependency between them is an exact pin to that version. A `kite3d` version therefore identifies exactly one engine, editor, and template version. The vendored `threepipe` and `uiconfig-blueprint` workspaces are not published.
 
 ## Commands
 
