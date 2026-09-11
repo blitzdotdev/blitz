@@ -67,6 +67,7 @@ import {writeEditorState, type EditorState} from './editorState.ts'
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 const encode = (text: string) => new TextEncoder().encode(text)
 const assetInstanceProperties = ['visible', 'name', 'position', 'quaternion', 'scale']
+const stoppedEditorFrameIntervalMs = 1000 / 15
 
 export interface EditorProject {
     name: string
@@ -167,6 +168,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     })
     private unsubscribe?: () => void
     private heartbeat?: ReturnType<typeof setInterval>
+    private idleFrameViewer?: ThreeViewer
+    private editViewerUpdatedThisFrame = false
     private playCanvas?: HTMLCanvasElement
     private assetUrlModifier?: (url: string) => string
     private nestedAssets?: RuntimeNestedAssetLoader
@@ -191,6 +194,32 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.isStartingPlay = false
         this.stopHeartbeat()
         void this.writeState()
+    }
+    private readonly onEditViewerPreFrame = () => {
+        this.editViewerUpdatedThisFrame = false
+    }
+    private readonly onEditViewerUpdate = () => {
+        this.editViewerUpdatedThisFrame = true
+        if (this.idleFrameViewer) {
+            this.idleFrameViewer.renderManager.frameWaitTime = document.hidden
+                ? Number.POSITIVE_INFINITY
+                : 0
+        }
+    }
+    private readonly onEditViewerPostFrame = () => {
+        if (!this.idleFrameViewer) return
+        this.idleFrameViewer.renderManager.frameWaitTime = document.hidden
+            ? Number.POSITIVE_INFINITY
+            : this.editViewerUpdatedThisFrame ? 0 : stoppedEditorFrameIntervalMs
+    }
+    private readonly onVisibilityChange = () => {
+        if (!this.idleFrameViewer) return
+        if (document.hidden) {
+            this.idleFrameViewer.renderManager.frameWaitTime = Number.POSITIVE_INFINITY
+            return
+        }
+        this.idleFrameViewer.renderManager.frameWaitTime = 0
+        this.idleFrameViewer.setDirty()
     }
 
     constructor(source: DevServerSource) {
@@ -385,9 +414,29 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         viewer.getPlugin(GLTFAnimationPlugin)!.autoIncrementTime = false
         viewer.timeline.endTime = 0
         viewer.scene.addEventListener('sceneUpdate', this.onEditSceneUpdate)
+        this.attachIdleFrameCap(viewer)
         this.nestedAssets = new RuntimeNestedAssetLoader(viewer, (error) => void this.reportError(error))
         ;(window as Window & {viewer?: ThreeViewer}).viewer = viewer
         return viewer
+    }
+
+    private attachIdleFrameCap(viewer: ThreeViewer) {
+        this.detachIdleFrameCap()
+        this.idleFrameViewer = viewer
+        viewer.addEventListener('preFrame', this.onEditViewerPreFrame)
+        viewer.addEventListener('update', this.onEditViewerUpdate)
+        viewer.addEventListener('postFrame', this.onEditViewerPostFrame)
+        document.addEventListener('visibilitychange', this.onVisibilityChange)
+    }
+
+    private detachIdleFrameCap() {
+        if (!this.idleFrameViewer) return
+        this.idleFrameViewer.removeEventListener('preFrame', this.onEditViewerPreFrame)
+        this.idleFrameViewer.removeEventListener('update', this.onEditViewerUpdate)
+        this.idleFrameViewer.removeEventListener('postFrame', this.onEditViewerPostFrame)
+        this.idleFrameViewer.renderManager.frameWaitTime = 0
+        document.removeEventListener('visibilitychange', this.onVisibilityChange)
+        this.idleFrameViewer = undefined
     }
 
     private async prepareEditViewer(config: ProjectConfigSettings, assetsManifest: AssetsJSONManifest) {
@@ -1211,6 +1260,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         const canvas = this.playCanvas
         if (wasPlaying) await this.stopPlay()
         if (this.viewer) {
+            this.detachIdleFrameCap()
             this.viewer.scene.removeEventListener('sceneUpdate', this.onEditSceneUpdate)
             this.nestedAssets?.dispose()
             this.nestedAssets = undefined
@@ -1257,6 +1307,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         window.removeEventListener('pagehide', this.onPageHide)
         this.game?.dispose()
         if (this.viewer) {
+            this.detachIdleFrameCap()
             this.viewer.scene.removeEventListener('sceneUpdate', this.onEditSceneUpdate)
             this.nestedAssets?.dispose()
             this.nestedAssets = undefined

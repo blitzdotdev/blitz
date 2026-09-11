@@ -178,6 +178,54 @@ test.beforeEach(async ({page}) => {
     })
 })
 
+test('caps the stopped editor frame loop and renders immediately on demand', async ({page}) => {
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+
+    const idle = await page.evaluate(async () => {
+        const viewer = (window as unknown as {viewer: {
+            addEventListener(type: string, listener: () => void): void
+            removeEventListener(type: string, listener: () => void): void
+        }}).viewer
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        let frames = 0
+        let renders = 0
+        const onFrame = () => { frames += 1 }
+        const onRender = () => { renders += 1 }
+        viewer.addEventListener('postFrame', onFrame)
+        viewer.addEventListener('postRender', onRender)
+        const started = performance.now()
+        await new Promise((resolve) => setTimeout(resolve, 1_200))
+        const durationMs = performance.now() - started
+        viewer.removeEventListener('postFrame', onFrame)
+        viewer.removeEventListener('postRender', onRender)
+        return {durationMs, frames, renders}
+    })
+    expect(idle.frames * 1000 / idle.durationMs).toBeGreaterThan(5)
+    expect(idle.frames * 1000 / idle.durationMs).toBeLessThan(20)
+    expect(idle.renders).toBe(0)
+
+    const renderDelay = await page.evaluate(async () => {
+        const viewer = (window as unknown as {viewer: {
+            addEventListener(type: string, listener: () => void): void
+            removeEventListener(type: string, listener: () => void): void
+            setDirty(): void
+        }}).viewer
+        const started = performance.now()
+        return new Promise<number>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Timed out waiting for an on-demand render.')), 500)
+            const onRender = () => {
+                clearTimeout(timeout)
+                viewer.removeEventListener('postRender', onRender)
+                resolve(performance.now() - started)
+            }
+            viewer.addEventListener('postRender', onRender)
+            viewer.setDirty()
+        })
+    })
+    expect(renderDelay).toBeLessThan(100)
+})
+
 test('runs Playable, Editable, and Persisted checks through the connected editor', async ({page}) => {
     test.setTimeout(90_000)
     const loadWarnings: string[] = []
