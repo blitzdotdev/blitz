@@ -24,7 +24,7 @@ export function InsSectionItem(props: {
             <Icon icon={props.icon} style={{marginRight: "0"}} size={12}/> : props.icon)}
         <div style={{
             maxWidth: "100%",
-            overflow: "scroll",
+            overflow: "auto",
             flexGrow: "1",
             scrollbarWidth: "none",
         }}>

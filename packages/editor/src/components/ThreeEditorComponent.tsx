@@ -1,16 +1,12 @@
-import React, {useContext, useEffect, useMemo, useReducer, useRef, useState} from 'react';
+import React, {useContext, useEffect, useMemo, useRef, useState} from 'react';
 import {isPackageProject} from '../utils/projectUtils.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {
     BPComponentProps,
     ConfigObjectGenerators,
-    InspectorStackComponent,
-    ThemeSettingsMenuComponent,
     UiConfigRendererContext,
-    useConfigToStackItem,
 } from 'uiconfig-blueprint/lib/esm/lib'
-import {getOrCall, ISceneEventMap, ObjectPickerEventMap, PickingPlugin, ThreeViewer, TypedClass, TypeSystem, UiObjectConfig} from 'threepipe';
-import {EditorModes, EditorModesButtonGroup, editorModesInspectorConfig} from './EditorModes.tsx'
+import {getOrCall, ISceneEventMap, ObjectPickerEventMap, PickingPlugin, ThreeViewer, TypedClass, TypeSystem} from 'threepipe';
 import {Alignment, Button, Card, Divider, IconName, Navbar, Panel, PanelStack2, Popover, TabId} from '@blueprintjs/core'
 import {BPHierarchyComponent} from './BPHierarchyComponent.tsx'
 import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
@@ -47,9 +43,10 @@ import {isEditableSourceFile} from '../utils/sourceFiles.ts';
 import {DevServerInspectorControls} from '../adapters/DevServerInspectorControls.tsx';
 import {
     Kite3dSaveSceneButton,
-    Kite3dThemeSettingsMenu,
     Kite3dToolbarHooks,
 } from '../adapters/Kite3dToolbarControls.tsx';
+import {EditorSettingsPopover} from './EditorSettingsPopover.tsx';
+import {DevServerSceneSummary} from '../adapters/DevServerSceneSummary.tsx';
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){
@@ -113,7 +110,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
     // const uiConfigRenderer = viewer.getPlugin(BlueprintJsUiPlugin2)!
     const [uiConfigRenderer, setUiConfigRenderer] = useState<BlueprintJsUiPlugin2 | null>(null)
     const manager = useManager()
-    const {selectedFiles, setSelectedFiles} = useAssets()
+    const {selectedFiles, selectedInspectorItems, setSelectedFiles} = useAssets()
     const { project } = useProject()
     const [rightTabId, setRightTabId] = useState<TabId>('inspector')
     const [bottomTabId, setBottomTabId] = useState<TabId>('files')
@@ -149,22 +146,11 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
     }, [setSelectedFiles, viewer])
 
     // const [splitSizes, setSplitSizes] = useState([0, 100, 0])
-
-    const [insConfig, setInsConfig] = useState<UiObjectConfig<any, 'panel'>>(editorModesInspectorConfig['import'](viewer))
     // const [hierarchyConfig, setHierarchyConfig] = useState<UiObjectConfig<any, 'hierarchy'>>({type: 'hierarchy'})
     // const [materialsLib, setMaterialsLib] = useState<UiObjectConfig<any, 'materials'>>({type: 'materials'})
     // const [texturesLib, setTexturesLib] = useState<UiObjectConfig<any, 'textures'>>({type: 'textures'})
     // const [geometriesLib, setGeometriesLib] = useState<UiObjectConfig<any, 'geometries'>>({type: 'geometries'})
     // const [modelRoot, setModelRoot] = useState<IObject3D|null>(null)
-
-    // todo rename to settings mode
-    const [editorMode, setEditorMode] = useReducer((currentMode: EditorModes, mode: EditorModes): EditorModes=>{
-        const conf = editorModesInspectorConfig[mode](viewer)
-        setInsConfig(conf)
-        if(mode === currentMode) return mode
-        // manager.features.refresh(mode)
-        return mode
-    }, 'import')
 
     useEffect(() => {
         // const v = manager.reset(props)
@@ -189,7 +175,6 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
 
         const p = v.getPlugin(BlueprintJsUiPlugin2)!
         setUiConfigRenderer(p)
-        setInsConfig(editorModesInspectorConfig[editorMode](v))
         // setHierarchyConfig({type: 'hierarchy',
         //     uuid: Math.random().toString(36).substring(2, 15),
         //     value: v.scene.modelRoot
@@ -295,8 +280,8 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                                  minimal
                                  targetTagName={"div"}
                                  content={
-                                     <Kite3dThemeSettingsMenu/>
-                                 } placement="bottom">
+                                     <EditorSettingsPopover viewer={viewer}/>
+                                 } placement="bottom-end">
                             <Button aria-label="Settings" icon="cog" size={"small"} variant={"minimal"} text=""/>
                         </Popover>
                     </Navbar.Group>
@@ -342,40 +327,31 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                                 title: 'Inspector',
                                 key: 'inspector',
                                 keepMounted: true,
+                                className: 'kite3d-right-panel-body',
                                 style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "row",
+                                    position: "relative" as const,
+                                    display: "flex" as const,
+                                    flexDirection: "column" as const,
                                 },
                                 content: <>
                                     <SourceEditorPanel selectedFile={selectedSourceFile}/>
-                                    {selectedFile && !selectedSourceFile && <FileMetadataPanel entry={selectedFile}/>} 
-                                    {!selectedFile && <EditInspectorComponent
+                                    {selectedFile && !selectedSourceFile && <FileMetadataPanel entry={selectedFile}/>}
+                                    {!selectedFile && selectedInspectorItems.length === 0 && <DevServerSceneSummary/>}
+                                    {!selectedFile && selectedInspectorItems.length > 0 && <DevServerInspectorControls placement="header"/>}
+                                    {!selectedFile && selectedInspectorItems.length > 0 && <EditInspectorComponent
                                         className={'inspector-stack'}
                                     />}
-                                    {!selectedFile && <DevServerInspectorControls/>}
-                                </>
-                            },
-                            {
-                                title: 'Settings',
-                                key: 'settings',
-                                style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                },
-                                content: <>
-                                    <EditorModesButtonGroup key="modes" {...{editorMode, setEditorMode}} />
-                                    <ModesInspector config={insConfig} className={'inspector-stack'}/>
+                                    {!selectedFile && selectedInspectorItems.length > 0 && <DevServerInspectorControls placement="controls"/>}
                                 </>
                             },
                             {
                                 title: 'Project',
                                 key: 'project',
+                                className: 'kite3d-right-panel-body',
                                 style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
+                                    position: "relative" as const,
+                                    display: "flex" as const,
+                                    flexDirection: "column" as const,
                                 },
                                 content:
                                 <>
@@ -388,16 +364,19 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                                 {/*</Card>*/}
                                 </>
                             },
-                            {
+                            // Memory is available for diagnostics with ?memory=1 or
+                            // localStorage.setItem('kite3d.memoryTab', '1').
+                            ...(memoryTabEnabled() ? [{
                                 title: 'Memory',
                                 key: 'memory',
+                                className: 'kite3d-right-panel-body',
                                 style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
+                                    position: "relative" as const,
+                                    display: "flex" as const,
+                                    flexDirection: "column" as const,
                                 },
                                 content: <MemoryTab/>
-                            },
+                            }] : []),
                         ],
                     }}
                 />
@@ -447,8 +426,8 @@ export function EditInspectorComponent({className}: {
             <PanelStack2
                 className="inspectorPanelStack"
                 key="inspectorPanelStack"
-                         showPanelHeader={true}
-                         renderActivePanelOnly={false}
+                         showPanelHeader={currentPanelStack.length > 1}
+                         renderActivePanelOnly={true}
                          onOpen={(p) => setCurrentPanelStack([...currentPanelStack, p] as any)}
                          onClose={() => setCurrentPanelStack(currentPanelStack.slice(0, -1))}
                          stack={currentPanelStack}/>
@@ -457,22 +436,11 @@ export function EditInspectorComponent({className}: {
     )
 }
 
-export function ModesInspector({config, className}:{
-    config: UiObjectConfig<any, 'panel'>
-    className?: string
-}){
-    const insStackPanel = useConfigToStackItem(config)
-    return <InspectorStackComponent
-        className={className}
-        stackItem={insStackPanel}/>
-    // const config2 = useMemo(()=>{
-    //     return {
-    //         ...config,
-    //         type: 'folder',
-    //     }
-    // }, [config])
-    // return <ConfigObject config={config2} className={className} openPanel={()=>{}} closePanel={()=>{}}/>
+function memoryTabEnabled() {
+    return new URLSearchParams(window.location.search).get('memory') === '1'
+        || window.localStorage.getItem('kite3d.memoryTab') === '1'
 }
+
 export function NavProjectFileName(){
     const { project} = useProject()
     const manager = useManager()

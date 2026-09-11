@@ -82,6 +82,7 @@ export default function generate({node, engine}) {
     }
     scene.nodes.push({
         name: 'Hot reload target',
+        mesh: 0,
         extras: {EntityComponentPlugin: {'hot-component': {type: 'HotScript', state: {}}}},
     })
     scene.nodes.push({
@@ -181,6 +182,8 @@ test.beforeEach(async ({page}) => {
 test('caps the stopped editor frame loop and renders immediately on demand', async ({page}) => {
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await page.bringToFront()
+    await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe('visible')
 
     const idle = await page.evaluate(async () => {
         const viewer = (window as unknown as {viewer: {
@@ -600,7 +603,7 @@ test('loads the restored panels, watches generators, and saves text glTF without
 
     await expect(page.getByRole('heading', {name: 'kite3d-editor-e2e-'})).toBeVisible()
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
-    for (const panel of ['Objects', 'Materials', 'Textures', 'Geometries', 'Scene', 'Inspector', 'Settings', 'Project', 'Files', 'Library', 'Timeline']) {
+    for (const panel of ['Objects', 'Materials', 'Textures', 'Geometries', 'Scene', 'Inspector', 'Project', 'Files', 'Library', 'Timeline']) {
         await expect(page.getByRole('tab', {name: panel})).toBeVisible()
     }
     await expect(page.getByTestId('project-files').getByRole('button', {name: 'assets/main.scene.gltf'})).toBeVisible()
@@ -635,7 +638,16 @@ test('loads the restored panels, watches generators, and saves text glTF without
     await expect(page.getByText('Scene reloaded from disk')).toHaveCount(0)
 
     await page.getByRole('button', {name: 'RoundTripObject'}).click()
-    await expect(page.getByTestId('generator-inspector')).toContainText('Generator · RoundTripObject')
+    const rightPanel = page.locator('#right-panel')
+    await expect(rightPanel.getByText('Selection', {exact: true})).toHaveCount(0)
+    await expect(rightPanel.getByRole('button', {name: 'Round Trip Object', exact: true})).toHaveCount(1)
+    const components = rightPanel.getByTestId('components-section')
+    await expect(components.getByRole('heading', {name: /Components/})).toBeVisible()
+    await expect(components.getByText('Add Comp', {exact: true})).toBeVisible()
+    await expect(components.locator('.folder-trigger-text').filter({hasText: /^Generator$/})).toHaveCount(0)
+    const generatorInspector = rightPanel.getByTestId('generator-inspector')
+    await expect(generatorInspector).toContainText('Generator · RoundTripObject')
+    await expect(generatorInspector.getByRole('heading', {name: 'Generator', exact: true})).toHaveCount(1)
     const beforeGeneratorEdit = await manifestHash('assets/main.scene.gltf')
     await page.getByTestId('generator-params-1').fill('{"count": 3}')
     await page.getByTestId('generator-params-1').blur()
@@ -680,6 +692,72 @@ test('loads the restored panels, watches generators, and saves text glTF without
     expect(Object.values(bakedRoot?.extras?.EntityComponentPlugin || {}).map(({type}) => type))
         .not.toContain('Generator')
     expect(errors).toEqual([])
+})
+
+test('uses two right-panel tabs, flagged Memory, editor settings, Scripts, and one scroll owner', async ({page}) => {
+    await page.setViewportSize({width: 1280, height: 600})
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+
+    const rightPanel = page.locator('#right-panel')
+    const tabs = rightPanel.getByRole('tab')
+    await expect(tabs).toHaveCount(2)
+    await expect(tabs).toHaveText(['Inspector', 'Project'])
+    await expect(rightPanel.getByRole('tab', {name: 'Settings'})).toHaveCount(0)
+    await expect(rightPanel.getByRole('tab', {name: 'Memory'})).toHaveCount(0)
+
+    await page.getByRole('button', {name: 'Settings', exact: true}).click()
+    const settings = page.getByTestId('editor-settings-popover')
+    await expect(settings.getByRole('heading', {name: 'Editor settings'})).toBeVisible()
+    await expect(settings.getByText('Rendering', {exact: true})).toBeVisible()
+    await expect(settings.getByText('Timeline', {exact: true})).toBeVisible()
+    await expect(settings.getByRole('heading', {name: 'Modes'})).toBeVisible()
+    await expect(settings.getByRole('heading', {name: 'Import'})).toBeVisible()
+    await expect(settings.getByRole('heading', {name: 'Preview'})).toBeVisible()
+    await expect(settings.getByText('Edit', {exact: true})).toHaveCount(0)
+    const settingsScroll = settings.getByTestId('editor-settings-scroll')
+    const scrollMetrics = await settingsScroll.evaluate((element) => ({
+        clientHeight: element.clientHeight,
+        overflowY: getComputedStyle(element).overflowY,
+        scrollHeight: element.scrollHeight,
+        scrollTop: element.scrollTop,
+    }))
+    expect(scrollMetrics.overflowY).toBe('auto')
+    expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight)
+    await settingsScroll.evaluate((element) => { element.scrollTop = element.scrollHeight })
+    await expect.poll(() => settingsScroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+    await expect(settings.getByRole('heading', {name: 'Preview'})).toBeInViewport()
+    await page.mouse.click(10, 300)
+    await expect(settings).toBeHidden()
+
+    await rightPanel.getByRole('tab', {name: 'Project'}).click()
+    await expect(rightPanel.getByRole('heading', {name: /Scripts/})).toBeVisible()
+    await expect(rightPanel.getByText('Loaded', {exact: true}).first()).toBeVisible()
+    await expect(rightPanel.getByText('Resolved', {exact: true})).toBeVisible()
+    const dependencies = rightPanel.locator('.kite3d-project-section').filter({hasText: 'Dependencies'})
+    const kite3dDependency = dependencies.locator('.kite3d-project-row').filter({hasText: /^kite3ddev/})
+    await expect(kite3dDependency).toContainText('dev')
+    const scrollOwners = await rightPanel.evaluate((panel) => {
+        const activeBody = [...panel.querySelectorAll<HTMLElement>('.bp5-tab-panel')]
+            .find((element) => element.getBoundingClientRect().height > 0)
+        if (!activeBody) return []
+        activeBody.style.height = '120px'
+        activeBody.style.maxHeight = '120px'
+        activeBody.style.flex = '0 0 120px'
+        return [...panel.querySelectorAll<HTMLElement>('*')].filter((element) => {
+            const style = getComputedStyle(element)
+            const visible = element.getBoundingClientRect().height > 0
+            return visible && /^(auto|scroll)$/.test(style.overflowY)
+                && element.scrollHeight > element.clientHeight
+        }).map((element) => element.className)
+    })
+    expect(scrollOwners).toHaveLength(1)
+
+    const flaggedUrl = new URL(server.url)
+    flaggedUrl.searchParams.set('memory', '1')
+    await page.goto(flaggedUrl.href)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await expect(page.locator('#right-panel').getByRole('tab', {name: 'Memory'})).toBeVisible()
 })
 
 test('places Open game beside Play and checkpoints and restores from the Save Scene menu', async ({page}) => {
@@ -906,9 +984,36 @@ test('keeps the upstream viewport chrome and Default Camera on an empty project'
         await page.getByTitle('Select camera').click()
         await expect(page.getByRole('menuitem', {name: 'Default Camera'})).toBeVisible()
         await expect(page.getByTestId('scene-hierarchy')).toContainText('Default Camera')
+        await expect(page.getByTestId('scene-summary').getByText('Camera', {exact: true})).toHaveCount(0)
     } finally {
         await emptyServer.close()
         await rm(emptyRoot, {recursive: true, force: true})
+    }
+})
+
+test('shows the camera stored in the scene instead of the edit camera', async ({page}) => {
+    const cameraRoot = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-camera-'))
+    await initProject(cameraRoot)
+    const scenePath = resolve(cameraRoot, 'assets/main.scene.gltf')
+    const scene = JSON.parse(await readFile(scenePath, 'utf8')) as {
+        scenes: Array<{nodes: number[]}>
+        nodes: Array<Record<string, unknown>>
+        cameras?: Array<Record<string, unknown>>
+    }
+    scene.cameras = [{type: 'perspective', perspective: {yfov: 0.7, znear: 0.1}}]
+    scene.nodes.push({name: 'Scene File Camera', camera: 0})
+    scene.scenes[0].nodes.push(scene.nodes.length - 1)
+    await writeFile(scenePath, `${JSON.stringify(scene, null, 2)}\n`)
+    const cameraServer = await runDev({projectRoot: cameraRoot, port: 0, noOpen: true})
+    try {
+        await page.goto(cameraServer.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        const summary = page.getByTestId('scene-summary')
+        await expect(summary).toContainText('Scene File Camera')
+        await expect(summary).not.toContainText('EditMode Perspective Camera')
+    } finally {
+        await cameraServer.close()
+        await rm(cameraRoot, {recursive: true, force: true})
     }
 })
 

@@ -183,7 +183,7 @@ export function WindowPanesLayout({ panels, selectedTabIds, onTabChange }: Windo
         <PanelResizeHandle className={"window-panes-separator"} />
         <Panel
             ref={panelRefs.right}
-            defaultSize={20}
+            defaultSize={27}
             collapsible={true}
             minSize={10}
             maxSize={50}

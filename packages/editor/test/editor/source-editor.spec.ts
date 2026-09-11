@@ -54,7 +54,7 @@ async function openSource(page: Page, path: string) {
 
 test('opens UTF-8 project files in the Inspector and shows binary metadata only', async ({page}) => {
     await withSourceEditor(page, async () => {
-        await page.getByRole('tab', {name: 'Settings'}).click()
+        await page.getByRole('tab', {name: 'Project'}).click()
         for (const path of [
             'Hot.script.js', 'module.mjs', 'package.json', 'assets/main.scene.gltf',
             'source.md', 'styles.css', 'source.html', 'notes.txt',

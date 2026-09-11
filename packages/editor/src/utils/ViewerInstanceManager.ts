@@ -118,6 +118,11 @@ export interface EditorCheckpoint {
     label?: string
 }
 
+export interface ProjectLoadStatus {
+    kind: 'loaded' | 'resolved' | 'error' | 'disabled'
+    text: string
+}
+
 type ModuleExports = Record<string, unknown>
 
 /** Owns the persistent edit viewer and the disposable published-game viewer. */
@@ -138,6 +143,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     scenePath = 'assets/main.scene.gltf'
     generatorStates: ProjectGeneratorState[] = []
     componentTypes: string[] = [GeneratorComponent.ComponentType]
+    scriptLoadStatuses = new Map<string, ProjectLoadStatus>()
+    pluginLoadStatuses = new Map<string, ProjectLoadStatus>()
     status = 'Loading project…'
     error?: string
     projectLoaded = false
@@ -466,27 +473,69 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     private async registerProjectPlugins(config: ProjectConfigSettings) {
         const viewer = this.get()
-        for (const definition of config.plugins) {
-            if (definition.active === false) continue
-            const module = await this.importProjectModule(definition.import)
-            const plugin = findPluginExport(module, definition)
-            if (!viewer.getPlugin(plugin)) await viewer.addPlugin(plugin, ...(definition.params || []))
+        const statuses = new Map<string, ProjectLoadStatus>()
+        this.pluginLoadStatuses = statuses
+        for (const [index, definition] of config.plugins.entries()) {
+            const key = pluginStatusKey(definition, index)
+            if (definition.active === false) {
+                statuses.set(key, {kind: 'disabled', text: 'Disabled'})
+                continue
+            }
+            try {
+                const module = await this.importProjectModule(definition.import)
+                const plugin = findPluginExport(module, definition)
+                if (!viewer.getPlugin(plugin)) await viewer.addPlugin(plugin, ...(definition.params || []))
+                statuses.set(key, {kind: 'resolved', text: 'Resolved'})
+            } catch (error) {
+                statuses.set(key, await this.moduleErrorStatus(error, definition.import))
+                await this.reportError(error)
+            }
         }
+        this.changed()
     }
 
     private async registerProjectScripts(config: ProjectConfigSettings, moduleRevision = this.moduleRevision) {
         const modules: ModuleExports[] = []
+        const statuses = new Map<string, ProjectLoadStatus>()
+        this.scriptLoadStatuses = statuses
         for (const definition of config.scripts) {
-            if (definition.active === false) continue
-            modules.push(await this.importProjectModule(definition.import, moduleRevision))
+            if (definition.active === false) {
+                statuses.set(definition.import, {kind: 'disabled', text: 'Disabled'})
+                continue
+            }
+            try {
+                modules.push(await this.importProjectModule(definition.import, moduleRevision))
+                statuses.set(definition.import, {kind: 'loaded', text: 'Loaded'})
+            } catch (error) {
+                statuses.set(definition.import, await this.moduleErrorStatus(error, definition.import))
+                await this.reportError(error)
+            }
         }
-        const registered = await registerScripts(this.get(), modules)
-        this.componentTypes = [
-            GeneratorComponent.ComponentType,
-            ...registered.components.map(({value}) => value.ComponentType),
-            ...registered.plugins.map(({value}) => (value as unknown as {PluginType: string}).PluginType),
-        ].filter((value, index, values) => values.indexOf(value) === index).sort()
+        try {
+            const registered = await registerScripts(this.get(), modules)
+            this.componentTypes = [
+                GeneratorComponent.ComponentType,
+                ...registered.components.map(({value}) => value.ComponentType),
+                ...registered.plugins.map(({value}) => (value as unknown as {PluginType: string}).PluginType),
+            ].filter((value, index, values) => values.indexOf(value) === index).sort()
+        } catch (error) {
+            const status = projectModuleErrorStatus(error)
+            for (const [path, current] of statuses) {
+                if (current.kind === 'loaded') statuses.set(path, status)
+            }
+            await this.reportError(error)
+        }
         this.changed()
+    }
+
+    private async moduleErrorStatus(error: unknown, path: string): Promise<ProjectLoadStatus> {
+        if (this.project && !isDependencyModuleSpecifier(path, this.project.packageJson)) {
+            try {
+                const source = decode((await this.source.read(normalizeProjectPath(path))).bytes)
+                return projectModuleErrorStatus(error, path, source)
+            } catch { /* use the import error without source context */ }
+        }
+        return projectModuleErrorStatus(error, path)
     }
 
     private importProjectModule(path: string, moduleRevision = this.moduleRevision): Promise<ModuleExports> {
@@ -1411,6 +1460,29 @@ function formatConsoleValue(value: unknown): string {
 
 function errorMessage(error: unknown) {
     return error instanceof Error ? error.message : String(error)
+}
+
+function pluginStatusKey(plugin: ExternalPlugin, index: number) {
+    return `${plugin.import}:${plugin.className || ''}:${index}`
+}
+
+function projectModuleErrorStatus(error: unknown, path?: string, source?: string): ProjectLoadStatus {
+    const message = errorMessage(error).replace(/^Error:\s*/i, '').split('\n')[0]
+    const stack = error instanceof Error ? error.stack || '' : ''
+    const escapedPath = path?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const diagnostic = `${errorMessage(error)}\n${stack}`
+    const reportedLine = escapedPath
+        ? diagnostic.match(new RegExp(`${escapedPath}[^\\n]*?:(\\d+):\\d+`))?.[1]
+        : diagnostic.match(/:(\d+):\d+(?:\)?$)/m)?.[1]
+    const eofLine = source && /unexpected end of (?:input|file)/i.test(message)
+        ? String(source.trimEnd().split('\n').length)
+        : undefined
+    const line = reportedLine || eofLine
+    const type = error instanceof Error && error.name && error.name !== 'Error' ? `${error.name}: ` : ''
+    return {
+        kind: 'error',
+        text: `${type}${message}${line ? `, line ${line}` : ''}`,
+    }
 }
 
 function isBenignResizeObserverError(message: string): boolean {

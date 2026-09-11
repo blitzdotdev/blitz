@@ -1,75 +1,139 @@
-import {useState} from 'react'
-import {Button, Icon, InputGroup} from '@blueprintjs/core'
-import {FolderHeadCard} from 'uiconfig-blueprint/lib/esm/lib'
-import {InsSectionItem} from '../components/InsSectionItem.tsx'
-import {RefSelectionObjectComponent} from '../components/RefSelectionObjectComponent.tsx'
-import type {SelectFileRef} from '../utils/projectUtils.ts'
+import {Button} from '@blueprintjs/core'
+import {useAssets} from '../utils/AssetsProvider.ts'
 import {useManagerVersion} from '../utils/UseManager.ts'
-
-function AddSourceControl({label, type}: {label: 'Add Script' | 'Add Plugin', type: 'script' | 'plugin'}) {
-    const [selected, setSelected] = useState<SelectFileRef | null>(null)
-    return <RefSelectionObjectComponent
-        label={label}
-        objectType={type}
-        object={selected}
-        disabled={false}
-        allowNone={true}
-        onChange={(value) => setSelected(value as SelectFileRef | null)}
-    >
-        <Button variant="minimal" title={label} icon={<Icon size={12} icon="plus"/>} disabled={!selected}/>
-    </RefSelectionObjectComponent>
-}
+import type {ProjectLoadStatus} from '../utils/ViewerInstanceManager.ts'
 
 export function ScriptsSectionComp() {
     const manager = useManagerVersion()
-    const configured = manager.project?.config.scripts.map(({import: path}) => path) || []
-    // AGREED-4: the vendored editor runtime replaces the reference package import,
-    // but it occupies the same project-settings row.
-    const scripts = ['threepipe', ...configured.filter((path) => path !== 'threepipe')]
-    return <FolderHeadCard open label="Scripts" minimal level={0} onClick={() => undefined} icon="stacked-chart">
-        {scripts.map((path) => <InsSectionItem
+    const scripts = manager.project?.config.scripts || []
+    return <ProjectSection label="Scripts" count={scripts.length} action={<OpenPackageJsonButton/>}>
+        {scripts.length === 0 && <EmptyRow text="No scripts configured"/>}
+        {scripts.map(({import: path, active}) => <ProjectRow
+            detail={path}
             key={path}
-            icon="package"
-            text={path}
-            buttons={[{key: 'remove', text: 'Remove Script', icon: 'trash', intent: 'warning'}]}/>) }
-        <AddSourceControl label="Add Script" type="script"/>
-    </FolderHeadCard>
+            name={scriptName(path)}
+            status={manager.scriptLoadStatuses.get(path) || (active === false
+                ? {kind: 'disabled', text: 'Disabled'}
+                : {kind: 'loaded', text: 'Loading'})}/>) }
+    </ProjectSection>
 }
 
 export function PluginsSectionComp() {
     const manager = useManagerVersion()
-    return <FolderHeadCard open label="Plugins" minimal level={0} onClick={() => undefined} icon="stacked-chart">
-        {(manager.project?.config.plugins || []).map((plugin, index) => <InsSectionItem
-            key={`${plugin.import}:${plugin.className || ''}:${index}`}
-            text={plugin.className || plugin.import}
-            info={plugin.className ? {text: plugin.import, icon: 'package'} : undefined}
-            buttons={[{key: 'remove', text: 'Remove Plugin', icon: 'trash', intent: 'warning'}]}/>) }
-        <AddSourceControl label="Add Plugin" type="plugin"/>
-    </FolderHeadCard>
+    const plugins = manager.project?.config.plugins || []
+    const dependencies = manager.project?.config.dependencies || []
+    return <ProjectSection label="Plugins" count={plugins.length}>
+        {plugins.length === 0 && <EmptyRow text="No plugins configured"/>}
+        {plugins.map((plugin, index) => {
+            const dependency = dependencies.find(({key}) => key === plugin.import)
+            const detail = plugin.className
+                ? plugin.import
+                : dependency?.version || plugin.import
+            const key = `${plugin.import}:${plugin.className || ''}:${index}`
+            return <ProjectRow
+                detail={detail}
+                key={key}
+                name={plugin.className || plugin.import}
+                status={manager.pluginLoadStatuses.get(key) || (plugin.active === false
+                    ? {kind: 'disabled', text: 'Disabled'}
+                    : {kind: 'resolved', text: 'Loading'})}/>
+        })}
+    </ProjectSection>
 }
 
 export function DependenciesSectionComp() {
     const manager = useManagerVersion()
-    const configured = manager.project?.config.dependencies || []
-    const dependencies = [
-        {key: 'threepipe', version: '0.5.1'},
-        ...configured.filter(({key}) => key !== 'threepipe' && key !== '@kite3d/mcp-bridge'),
-    ]
-    return <FolderHeadCard open label="Dependencies" minimal level={0} onClick={() => undefined} icon="cube">
-        {dependencies.map((dependency) => <InsSectionItem
+    const dependencies = manager.project?.config.dependencies || []
+    const rawDevDependencies = manager.project?.packageJson.devDependencies
+    const devDependencies = rawDevDependencies && typeof rawDevDependencies === 'object' && !Array.isArray(rawDevDependencies)
+        ? Object.entries(rawDevDependencies).flatMap(([key, version]) => (
+            typeof version === 'string' ? [{key, version}] : []
+        ))
+        : []
+    const count = dependencies.length + devDependencies.length
+    return <ProjectSection label="Dependencies" count={count}>
+        {count === 0 && <EmptyRow text="No dependencies configured"/>}
+        {dependencies.map((dependency) => <ProjectRow
+            detail={dependency.url || dependency.version}
             key={dependency.key}
-            icon="package"
-            text={`${dependency.key}@${dependency.version}`}
-            info={dependency.url ? {text: dependency.url, icon: 'link'} : undefined}
-            buttons={[{key: 'remove', text: 'Remove Dependency', icon: 'trash', intent: 'warning'}]}/>) }
-        <div style={{padding: '4px 8px', display: 'flex', flexDirection: 'column', gap: '4px'}}>
-            <InputGroup placeholder="Package (e.g., three)"/>
-            <InputGroup placeholder="Version (optional, e.g., 0.150.0)"/>
-            <InputGroup placeholder="URL (optional, uses esm.sh by default)"/>
-            <Button variant="outlined" disabled text="Add Dependency" icon={<Icon size={12} icon="plus"/>}/>
-        </div>
+            name={dependency.key}
+            status={{
+                kind: exactVersion(dependency.version) ? 'loaded' : 'disabled',
+                text: exactVersion(dependency.version) ? 'Pinned' : 'Range',
+            }}/>) }
+        {devDependencies.map((dependency) => <ProjectRow
+            detail={dependency.version}
+            key={`dev:${dependency.key}`}
+            name={dependency.key}
+            note="dev"
+            status={{
+                kind: exactVersion(dependency.version) ? 'loaded' : 'disabled',
+                text: exactVersion(dependency.version) ? 'Pinned' : 'Range',
+            }}/>) }
         <ul className="kite3d-semantic-hook" data-testid="component-types">
             {manager.componentTypes.map((type) => <li key={type}>{type}</li>)}
         </ul>
-    </FolderHeadCard>
+    </ProjectSection>
+}
+
+function ProjectSection({action, children, count, label}: {
+    action?: React.ReactNode
+    children: React.ReactNode
+    count: number
+    label: string
+}) {
+    return <section className="kite3d-panel-section kite3d-project-section">
+        <header className="kite3d-section-header">
+            <h3>{label} <span>{count}</span></h3>
+            {action}
+        </header>
+        <div className="kite3d-project-list">{children}</div>
+    </section>
+}
+
+function ProjectRow({detail, name, note, status}: {
+    detail: string
+    name: string
+    note?: string
+    status: ProjectLoadStatus
+}) {
+    const tone = status.kind === 'error'
+        ? 'is-danger'
+        : status.kind === 'loaded' || status.kind === 'resolved'
+            ? 'is-success'
+            : 'is-muted'
+    return <div className="kite3d-project-row">
+        <div>
+            <span className="kite3d-project-name">
+                <strong>{name}</strong>
+                {note && <small>{note}</small>}
+            </span>
+            <code>{detail}</code>
+        </div>
+        <span className={`kite3d-status-chip ${tone}`} title={status.text}>{status.text}</span>
+    </div>
+}
+
+function EmptyRow({text}: {text: string}) {
+    return <div className="kite3d-project-empty">{text}</div>
+}
+
+function OpenPackageJsonButton() {
+    const manager = useManagerVersion()
+    const {fileManifest, setSelectedFiles} = useAssets()
+    const packageFile = fileManifest.find(({path}) => path === 'package.json')
+    if (!packageFile) return null
+    return <Button minimal={true} onClick={() => {
+        setSelectedFiles([packageFile])
+        manager.selectFile(packageFile.path)
+    }} text="Open package.json"/>
+}
+
+function scriptName(path: string) {
+    const filename = path.split('/').pop() || path
+    return filename.replace(/\.script\.[cm]?[jt]sx?$/i, '').replace(/\.[cm]?[jt]sx?$/i, '')
+}
+
+function exactVersion(version: string) {
+    return /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version.trim())
 }

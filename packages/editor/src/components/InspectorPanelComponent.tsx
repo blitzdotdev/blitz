@@ -340,7 +340,7 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     return !selectedInspectorItems ? null : <div style={{
         listStyleType: "none",
         paddingLeft: "0", margin: "0",
-        paddingBottom: "500px",
+        paddingBottom: "0",
         overflowAnchor: "none",
     }}>
         {/*{v && (<ConfigObject {...props}/>)}*/}
@@ -350,7 +350,7 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
         {/*        return <div key={item.path}>{item.name}</div>*/}
         {/*    })}</div>*/}
         {/*</>}*/}
-        <InsSectionHeader
+        {(title || buttons.length > 0) && <InsSectionHeader
             style={{
                 position: "absolute",
                 top: 0,
@@ -358,7 +358,7 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
             }}
             title={title} icon={icon}>
             {...buttons}
-        </InsSectionHeader>
+        </InsSectionHeader>}
         {/*{!!selObject?.uiConfig && (isLoadedAssetMain) && !object && <>*/}
         {/*    /!*<div>Selected</div>*!/*/}
         {/*    /!*<div>Name - {selObject.name}</div>*!/*/}

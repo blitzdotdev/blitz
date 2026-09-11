@@ -15,7 +15,7 @@ import React, {FC, useEffect, useMemo, useState} from "react";
 import {isExternalObject, isPackageProject, SelectFileRef} from "../utils/projectUtils.ts";
 import {ContextMenuItemsProps, useContextMenu} from "./ContextMenuProvider.tsx";
 import {Button, Divider, Icon, MenuDivider, MenuItem} from "@blueprintjs/core";
-import {AppToaster, ConfigObject, FolderHeadCard, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
+import {AppToaster, ConfigObject, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
 import {iconForSelectionObject} from "../utils/icons.tsx";
 import {isGeomEditable, isMatEditable} from "../utils/three/assetEditorChecks.ts";
 import {RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
@@ -281,28 +281,19 @@ export function CompsSectionComp({object, ...panelProps}: {object: IObject3D} & 
         }
     }, [ecs, object])
 
-    // const viewer = manager.get()
-    // const picking = viewer?.getPlugin(PickingPlugin)
-    // const availablePlugins = picking?.availablePlugins() || []
-    const {loadingState, updateLoading} = useLoadingState()
+    const hasGeneratorInspector = manager.generatorStates.some(({nodeName}) => nodeName === object.name)
+    const visibleComps = comps.filter((comp) => (
+        !hasGeneratorInspector || comp.constructor.ComponentType !== 'Generator'
+    ))
 
-    const {project} = useProject()
-    // const removeProjectComp = async (p: ExternalComp)=>{
-    //     if(!project) return false
-    //     // todo confirm dialog
-    //     const res = await manager.removeProjectComp(p).then(()=>({error: null})).catch(e=>{
-    //         return {error: e?.message ?? 'Unknown error'}
-    //     })
-    //     const r = showSuccessErrorToast(res ? `Removed ${project.path}${p.import} successfully` : 'Unknown Error', 'Unable to remove plugin', res)
-    //     return r
-    // }
-
-    // const extComps = useListenProperty(manager.scriptUtil, 'extComps', 'extCompsChange', (v)=>([...v||[]]))
-
-    return <FolderHeadCard open={true} label={"Components"} minimal={true} level={0} onClick={()=>{}} icon={"stacked-chart"}>
-        {/*todo listen to extComps change*/}
-        {comps.map(comp=>{
+    return <section className="kite3d-panel-section kite3d-components-section" data-testid="components-section">
+        <header className="kite3d-section-header">
+            <h3>Components <span>{comps.length}</span></h3>
+        </header>
+        <div className="kite3d-components-list">
+        {visibleComps.map(comp=>{
             if(!comp.uiConfig) return null
+            comp.uiConfig.expanded = true
             return [
                 <ConfigObject key={comp.uuid} config={comp.uiConfig} icon={"package"} {...panelProps}/>,
                 <Divider key={comp.uuid+'div'} style={{margin: 0}}/>
@@ -310,7 +301,8 @@ export function CompsSectionComp({object, ...panelProps}: {object: IObject3D} & 
         }).flat()}
 
         <AddCompComp object={object} {...panelProps}/>
-    </FolderHeadCard>
+        </div>
+    </section>
 
 }
 

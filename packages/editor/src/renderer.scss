@@ -584,7 +584,7 @@ body{
   .bp5-button-text{
     flex-grow: 0 !important;
     //text-overflow: ellipsis !important;
-    overflow: scroll;
+    overflow: auto;
     max-width: 100%;
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -997,4 +997,415 @@ body{
 
 .file-metadata dd {
   margin: 0;
+}
+
+// Right panel redesign. The active Blueprint tab panel is the only vertical
+// scroll owner; nested inspector renderers expand into it.
+#right-panel {
+  --kite-panel-edge: rgb(255 255 255 / 12%);
+  --kite-panel-raised: rgb(255 255 255 / 7%);
+  --kite-panel-muted: var(--pt-text-color-muted);
+
+  > .window-panels-tabs > .bp5-tab-list {
+    border-bottom: 1px solid var(--kite-panel-edge);
+    gap: 2px;
+    overflow-y: hidden;
+    padding: 8px 8px 0;
+  }
+
+  > .window-panels-tabs > .bp5-tab-list .bp5-tab {
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    line-height: 20px;
+    margin-bottom: -1px;
+    padding: 5px 10px 7px;
+  }
+
+  > .window-panels-tabs > .bp5-tab-list .bp5-tab[aria-selected="true"] {
+    border-bottom-color: var(--pt-intent-primary);
+  }
+
+  > .window-panels-tabs > .bp5-tab-list .bp5-tab::before {
+    display: none;
+  }
+
+  > .window-panels-tabs > .bp5-tab-panel {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .window-panel-card {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  // Override uiconfig-blueprint's nested overflow without editing the vendor.
+  .bpInspectorCard,
+  .bp5-panel-stack2-view {
+    overflow-y: visible;
+  }
+
+  .bpInspectorCard,
+  .inspectorPanelStack,
+  .bp5-panel-stack2,
+  .bp5-panel-stack2-view {
+    height: auto;
+    min-height: 0;
+  }
+
+  .bpInspectorCard {
+    flex-grow: 0;
+  }
+
+  .bp5-panel-stack2 {
+    overflow: visible;
+    position: static;
+  }
+
+  .bp5-panel-stack2-view {
+    inset: auto;
+    position: relative;
+  }
+
+  .folder-children {
+    padding-bottom: 0 !important;
+  }
+
+  .folder-card {
+    border-bottom: 1px solid var(--kite-panel-edge);
+  }
+
+  .folder-card > .bp5-divider {
+    display: none;
+  }
+
+  .folder-head-card > .folder-trigger-button,
+  .folder-head-card-minimal > .folder-trigger-button {
+    color: var(--kite-panel-muted);
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.08em;
+    min-height: 32px;
+    padding: 6px 12px !important;
+    text-transform: uppercase !important;
+  }
+
+  .bp5-panel-stack2-view > div > .folder-card > .folder-head-card .folder-trigger-text,
+  .bp5-panel-stack2-view > div > .folder-card > .folder-head-card-minimal .folder-trigger-text,
+  .bp5-panel-stack2-view > div > .bp5-button-group > .folder-trigger-text {
+    font-size: 11px !important;
+    letter-spacing: 0.08em;
+    text-transform: uppercase !important;
+  }
+
+  .bp5-form-group.bp5-inline {
+    align-items: center;
+    box-sizing: border-box;
+    gap: 8px;
+    height: 28px;
+    margin: 0 !important;
+    min-height: 28px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .bp5-form-group.bp5-inline label.bp5-label,
+  .switch .bp5-label {
+    height: 28px;
+    max-width: 96px;
+    min-width: 96px;
+    width: 96px;
+  }
+
+  .bp5-input,
+  .bp5-button,
+  .bp5-html-select select {
+    border-radius: 3px;
+  }
+
+  .bp5-input,
+  .bp5-input-group,
+  .bp5-input-group .bp5-input {
+    min-height: 26px;
+  }
+}
+
+#center-bottom-panel > .window-panels-tabs > .bp5-tab-panel {
+  overflow: hidden;
+}
+
+.kite3d-selection-header,
+.kite3d-panel-section {
+  border-bottom: 1px solid var(--kite-panel-edge, var(--pt-divider-black));
+  box-sizing: border-box;
+  padding: 10px 12px 12px;
+}
+
+.kite3d-selection-header {
+  display: grid;
+  gap: 4px;
+}
+
+.kite3d-selection-name-line {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.kite3d-selection-name-line input {
+  background: transparent;
+  border: 0;
+  color: var(--pt-text-color);
+  flex: 1;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 0;
+  outline: 0;
+  padding: 0;
+}
+
+.kite3d-selection-header code,
+.kite3d-project-row code,
+.kite3d-summary-row code {
+  color: var(--pt-text-color-muted);
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.kite3d-section-header {
+  align-items: center;
+  display: flex;
+  height: 20px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.kite3d-section-header h3,
+.kite3d-editor-settings h2,
+.kite3d-editor-settings h3,
+.kite3d-settings-mode h4 {
+  color: var(--pt-text-color-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.kite3d-section-header h3 > span {
+  color: var(--pt-text-color-disabled);
+  margin-left: 3px;
+}
+
+.kite3d-section-header .bp5-button {
+  color: var(--pt-intent-primary);
+  font-size: 11px;
+  min-height: 20px;
+  padding: 0 4px;
+}
+
+.kite3d-status-chip {
+  background: var(--kite-panel-raised, rgb(127 127 127 / 12%));
+  border: 1px solid var(--kite-panel-edge, var(--pt-divider-black));
+  border-radius: 3px;
+  color: var(--pt-text-color-muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  max-width: 170px;
+  overflow: hidden;
+  padding: 2px 6px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.kite3d-status-chip.is-success {
+  border-color: rgb(50 164 103 / 40%);
+  color: var(--pt-intent-success);
+}
+
+.kite3d-status-chip.is-danger {
+  border-color: rgb(231 106 110 / 40%);
+  color: var(--pt-intent-danger);
+}
+
+.kite3d-status-chip.is-muted {
+  color: var(--pt-text-color-muted);
+}
+
+.kite3d-empty-prompt {
+  color: var(--pt-text-color-muted);
+  display: grid;
+  gap: 6px;
+  padding: 28px 16px;
+  text-align: center;
+}
+
+.kite3d-empty-prompt strong {
+  color: var(--pt-text-color);
+  font-size: 13px;
+}
+
+.kite3d-summary-row,
+.kite3d-control-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 96px minmax(0, 1fr);
+  min-height: 28px;
+}
+
+.kite3d-summary-row > span:first-child,
+.kite3d-control-row > span:first-child {
+  color: var(--pt-text-color-muted);
+  font-size: 11px;
+}
+
+.kite3d-summary-row code {
+  color: var(--pt-text-color);
+}
+
+.kite3d-control-row.is-textarea {
+  align-items: start;
+}
+
+.kite3d-control-row.is-textarea > span {
+  padding-top: 7px;
+}
+
+.generator-params-input {
+  min-height: 84px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.kite3d-generator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.kite3d-generator-actions .bp5-button {
+  border-radius: 3px;
+  min-height: 26px;
+}
+
+.kite3d-project-list {
+  display: grid;
+}
+
+.kite3d-project-row {
+  align-items: center;
+  border-top: 1px solid var(--kite-panel-edge, var(--pt-divider-black));
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 30px;
+  padding: 4px 0;
+}
+
+.kite3d-project-row:first-child {
+  border-top: 0;
+}
+
+.kite3d-project-row > div {
+  display: grid;
+  min-width: 0;
+}
+
+.kite3d-project-row strong,
+.kite3d-project-row code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kite3d-project-row strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kite3d-project-name {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kite3d-project-name small {
+  color: var(--pt-text-color-muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.kite3d-project-empty {
+  color: var(--pt-text-color-muted);
+  font-size: 11px;
+  min-height: 30px;
+  padding-top: 7px;
+}
+
+.kite3d-editor-settings {
+  background-color: var(--pt-app-background-color, #1c2127);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  width: 380px;
+}
+
+.kite3d-editor-settings-scroll {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.kite3d-editor-settings > h2,
+.kite3d-editor-settings-scroll > .folder-card,
+.kite3d-settings-modes {
+  border-bottom: 1px solid var(--pt-divider-black);
+}
+
+.kite3d-editor-settings > h2,
+.kite3d-editor-settings h3,
+.kite3d-settings-mode h4 {
+  padding: 6px 12px;
+}
+
+.kite3d-editor-settings .folder-children {
+  padding-bottom: 0 !important;
+}
+
+.kite3d-editor-settings .bpInspectorCard {
+  height: auto;
+  overflow: visible;
+}
+
+.kite3d-editor-settings .bp5-button {
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.kite3d-editor-settings .bp5-button:hover {
+  background: rgb(138 155 168 / 15%) !important;
+}
+
+.kite3d-editor-settings .bp5-button.bp5-intent-primary {
+  color: var(--pt-intent-primary);
+}
+
+.kite3d-settings-mode {
+  border-top: 1px solid var(--pt-divider-black);
+}
+
+.kite3d-settings-mode .bp5-menu {
+  background: transparent;
 }
