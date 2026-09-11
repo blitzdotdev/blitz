@@ -137,6 +137,7 @@ async function release() {
     try {
         run('npm', ['run', 'build'], {environment: npm.environment})
         run('npm', ['run', 'typecheck'], {environment: npm.environment})
+        run('npm', ['run', 'lint'], {environment: npm.environment})
         run('npm', ['run', 'test:kite3d'], {environment: npm.environment})
         run('npm', ['run', 'test:runtime'], {environment: npm.environment})
 
