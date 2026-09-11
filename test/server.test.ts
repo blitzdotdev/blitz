@@ -15,6 +15,7 @@ import {projectDependencies} from '@blitzdev/engine/importMap'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from '../src/versions.ts'
 import {generateIndexHtml} from '../src/indexHtml.ts'
 import {initializeGitRepository} from '../src/git.ts'
+import {FIXTURE_PLUGIN_NAME, installPackedFixturePlugin} from './pluginFixture.ts'
 
 const cleanup: Array<() => Promise<void>> = []
 
@@ -33,6 +34,28 @@ describe('NodeProjectDirectory', () => {
 })
 
 describe('Kite3D dev server', () => {
+    it('maps and serves installed plugin entries and sidecars from the plugin route', async () => {
+        const {server, root, headers} = await startServer()
+        await installPackedFixturePlugin(root)
+        const packagePath = resolve(root, 'package.json')
+        const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
+            kite3d: {plugins?: string[]}
+        }
+        packageJson.kite3d.plugins = [FIXTURE_PLUGIN_NAME]
+        await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
+
+        const importMap = await (await fetch(`${base(server)}/api/import-map`, {headers})).json() as {
+            imports: Record<string, string>
+        }
+        expect(importMap.imports[FIXTURE_PLUGIN_NAME])
+            .toBe(`/kite3d/plugins/${FIXTURE_PLUGIN_NAME}/Fixture.plugin.js`)
+        expect(importMap.imports[`${FIXTURE_PLUGIN_NAME}/`])
+            .toBe(`/kite3d/plugins/${FIXTURE_PLUGIN_NAME}/`)
+        expect(await (await fetch(`${base(server)}/kite3d/plugins/${FIXTURE_PLUGIN_NAME}/sidecar.bin`, {headers})).text())
+            .toBe('*\n')
+        expect((await fetch(`${base(server)}/kite3d/plugins/${FIXTURE_PLUGIN_NAME}/sidecar.bin`)).status).toBe(401)
+    })
+
     it('proxies slug checks and account authentication through the configured backend', async () => {
         const backend = await startMockBackend()
         cleanup.push(() => backend.close())
