@@ -24,7 +24,7 @@ After the version commit is clean and checked out on `main` or a release branch,
 npm run release
 ```
 
-After `npm publish` returns, the public registry can serve 404 for the new version for a minute or two while its read replicas catch up. A retry then fails with "cannot publish over the previously published versions", which confirms the publish landed. Wait, then verify with `npm view`.
+The release runs typecheck, lint, and the test suites before it publishes, and it asks the registry for each exact version first. A version that already exists is skipped with `<name>@<version> already published, skipping`, and the runtime registration and guide upload still run. So a second `npm run release` for the same version is safe, and the tag-triggered Release workflow becomes a verification run after a laptop release. One edge: the public registry can serve 404 for a new version for a minute or two while its read replicas catch up, so a rerun inside that window still tries to publish and fails with "cannot publish over the previously published versions". Wait, then verify with `npm view`.
 
 The `release:patch`, `release:minor`, and `release:major` aliases perform the version rewrite before invoking the release command. Because releases require a clean tree, use the explicit version/commit/release sequence above for production releases.
 
