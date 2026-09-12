@@ -38,7 +38,7 @@ export {
     statusFromDisk,
     upgradeProject,
 } from './commands.ts'
-export type {PublicDeployEntry, PublicDevServer, PublishFromDiskOptions} from './commands.ts'
+export type {PublicClaimEntry, PublicDeployEntry, PublicDevServer, PublishFromDiskOptions} from './commands.ts'
 export {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 export {enforceVersionPin, findPinnedProject} from './version-pin.ts'
 export {checkpointProject, gitHead, gitRepositoryRoot, latestCheckpointProject, restoreProject} from './git.ts'

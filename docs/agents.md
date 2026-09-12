@@ -1038,7 +1038,7 @@ Create a game with `npx kite3d publish --slug my-game --name "My Game" --message
 
 Publishing omits `package-lock.json`, `.env`, `.env.*`, `*.log`, `.eslintrc*`, `AGENTS.md`, `samples/**`, `tools/**`, and root Markdown files other than `README.md` by default. It publishes a sanitized `package.json` without `devDependencies` or `file:` dependency specs. Add other project-specific glob patterns under `kite3d.publish.exclude` in `package.json`.
 
-Run `npx kite3d status` to print the live local dev server and deploy metadata without tokens or secrets. Run `npx kite3d claim --email player@example.com --password "at-least-8-characters"` to register and claim every unclaimed local deploy. Add `--login` to use an existing account. Unknown flags fail with a nonzero exit code.
+Run `npx kite3d status` to print the live local dev server and deploy metadata without tokens or secrets. Run `npx kite3d claim` to print each unclaimed deploy's Blitz claim URL and open it in a browser for Google sign-in. Add `--no-open` to print the URLs without launching a browser. Unknown flags fail with a nonzero exit code.
 
 # Limits
 

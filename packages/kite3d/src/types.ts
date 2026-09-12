@@ -28,6 +28,7 @@ export interface DeployEntry {
     game_id: string
     deploy_token: string
     claim_secret: string
+    claim_url?: string
     preview_url: string
     expires_at: string
     last_release_hash?: string
@@ -75,6 +76,7 @@ export interface GameRecord {
     id: string
     slug: string
     name: string
+    expires_at?: string | null
     active_release: string | null
     [key: string]: unknown
 }
