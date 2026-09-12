@@ -1,6 +1,6 @@
 {
   "name": "kite3d",
-  "version": "0.15.3",
+  "version": "0.16.0",
   "private": true,
   "workspaces": [
     "packages/*"
