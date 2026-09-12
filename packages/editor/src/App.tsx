@@ -16,6 +16,7 @@ import {ContextMenuProvider} from './components/ContextMenuProvider.tsx'
 import {DevServerProjectBridge} from './adapters/DevServerProjectBridge.tsx'
 import {QueryClientProvider} from '@tanstack/react-query'
 import {queryClient} from './tsdb/client.ts'
+import {LibraryDropDialog} from './components/LibraryDropDialog.tsx'
 
 export default function App() {
     const sourceResult = useMemo(() => {
@@ -68,6 +69,7 @@ function EditorApp({source}: {source: DevServerSource}) {
             onClose={() => setPublishDialogOpen(false)}
         />
         <DialogComponent/>
+        <LibraryDropDialog/>
         <AppToasterOverlay/>
     </>
 }

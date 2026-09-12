@@ -4,6 +4,8 @@ import {getOrCall, type ThreeViewer, type UiObjectConfig} from 'threepipe'
 import {editorModesInspectorConfig} from './EditorModes.tsx'
 import {SceneOverrideMaterialMenu} from './SceneOverrideMaterialMenu.tsx'
 import type {OverrideLightingType, OverrideMaterialType} from '../utils/three/LightMaterialOverrider.ts'
+import {Button} from '@blueprintjs/core'
+import {clearLibraryDropChoices} from '../utils/libraryDropChoices.ts'
 
 export function EditorSettingsPopover({viewer}: {viewer: ThreeViewer}) {
     const [previewMaterial, setPreviewMaterial] = useState<OverrideMaterialType | null>(null)
@@ -40,6 +42,15 @@ export function EditorSettingsPopover({viewer}: {viewer: ThreeViewer}) {
                         currentMaterial={previewMaterial}
                         setCurrentLighting={setPreviewLighting}
                         setCurrentMaterial={setPreviewMaterial}/>
+                </div>
+                <div className="kite3d-settings-mode kite3d-drop-prompt-settings">
+                    <h4>Library drops</h4>
+                    <Button
+                        data-testid="reset-drop-prompts"
+                        icon="reset"
+                        onClick={clearLibraryDropChoices}
+                        text="Reset drop prompts"
+                    />
                 </div>
             </section>
         </div>

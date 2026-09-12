@@ -7,8 +7,9 @@ import {
     IObject3D,
     ITexture,
     JSUndoManagerCommand1,
-    Mesh,
+    PickingPlugin,
     Raycaster,
+    SelectionObject,
     ThreeViewer,
     UndoManagerPlugin,
     Vector2,
@@ -23,8 +24,25 @@ import {environmentCommand, materialCommand, objectCommand, textureCommand} from
 import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
 import {assetableFileTypes, isExternalObject, notAssetableFileTypes} from "./projectUtils.ts";
 import {cloneAssetItem} from "./AssetTracker.ts";
+import {requestLibraryDropDialog, type LibraryDropActionOption} from '../components/LibraryDropDialog.tsx'
+import {
+    getLibraryDropChoice,
+    setLibraryDropChoice,
+    type LibraryDropAssetType,
+    type LibraryDropChoice,
+} from './libraryDropChoices.ts'
 
 type DraggedItem = IMaterial | IObject3D | ITexture
+type LibraryEntry = FileManifestEntry | TExternalFile | {path: string, name?: string, assetType?: string, isFSEntry: false}
+
+const textureSlots: LibraryDropActionOption[] = [
+    {id: 'map', label: 'Base color'},
+    {id: 'normalMap', label: 'Normal'},
+    {id: 'roughnessMap', label: 'Roughness'},
+    {id: 'metalnessMap', label: 'Metalness'},
+    {id: 'emissiveMap', label: 'Emissive'},
+    {id: 'aoMap', label: 'Occlusion'},
+]
 
 function isEnvironmentTexture(texture: ITexture): boolean {
     // Check if it's a data texture with appropriate type and aspect ratio
@@ -185,16 +203,24 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         this.draggedItem = null;
     }
 
-    private draggingEntry: {path: string, isFSEntry: boolean} | TExternalFile | null = null
+    private draggingEntry: LibraryEntry | null = null
 
-    handleDragStart = async (e: React.DragEvent, f: FileManifestEntry | TExternalFile | {path: string, isFSEntry: false}) => {
+    handleDragStart = async (e: React.DragEvent, f: LibraryEntry) => {
         if(this.draggingEntry) return // already dragging something
         this.draggingEntry = f
         draggingSpinner.style.display = 'block'
         e.dataTransfer.setData('text/uri-list', ' ');
         e.dataTransfer!.setDragImage(transparentPixelCanvas, 16, 16);
         // e.preventDefault();
-        const r = await this.manager.getAssetFromEntry(f)
+        let r
+        try {
+            r = await this.manager.getAssetFromEntry(f)
+        } catch (error) {
+            draggingSpinner.style.display = 'none'
+            this.draggingEntry = null
+            console.error(`Unable to import library asset ${f.name || this.fileName(f.path)}`, error)
+            return
+        }
         if(!this.draggingEntry) return // drag was cancelled in the meantime
         draggingSpinner.style.display = 'none'
         if(!r) return
@@ -226,20 +252,12 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         draggingSpinner.style.top = `${e.pageY - 18}px`;
         const intersects = this.getIntersects(e).filter(i=>i.object !== this.draggedItem);
 
-        let res: boolean
         const effect = this.draggedItem === this.draggedItemSrc ? 'move' : 'copy'
-        if (intersects.length > 0 && this.draggedItem) {
-            const mesh = intersects[0].object as Mesh;
-            res = this.setDropTarget(mesh as any, false, {intersects: intersects as any});
-        } else {
-            res = this.setDropTarget(null, false, {});
-        }
+        this.lastIntersects = intersects as Array<Intersection<IObject3D>>
+        this.dropTarget = intersects[0]?.object as IObject3D || null
+        const res = Boolean(this.draggedItem)
         if (e.dataTransfer) {
             e.dataTransfer.dropEffect = res ? effect : 'none';
-        }
-        const draggedItem = this.draggedItem as IObject3D
-        if(res && draggedItem?.isObject3D) {
-            this.updatePosition(draggedItem);
         }
 
     }
@@ -255,13 +273,13 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         const intersects = this.getIntersects(e).filter(i=>i.object !== this.draggedItem);
 
         const mesh = intersects?.[0]?.object as IObject3D;
-        const draggedItem = this.draggedItem as IObject3D
+        const item = this.draggedItem
+        const entry = this.draggingEntry
+        const dropPosition = (item as IObject3D).isObject3D
+            ? this.getDroppedObjectWorldPosition(item as IObject3D, intersects as Array<Intersection<IObject3D>>)
+            : undefined
 
-        const res = this.setDropTarget(mesh||null, true, {intersects: intersects as any});
-
-        if(res && draggedItem?.isObject3D) {
-            this.updatePosition(draggedItem)
-        }
+        this.dropLibraryItem(item, entry, mesh || null, dropPosition)
 
         this.clearDraggedItem(true);
     }
@@ -271,11 +289,12 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         this.dropTarget = undefined;
     }
 
-    private updatePosition(draggedItem: IObject3D & {_bounds?: Box3B}) {
-        const cParent = draggedItem.parent
-
-        // Dragging an object
-        const intersect = this.lastIntersects?.[0];
+    private getDroppedObjectWorldPosition(
+        draggedItem: IObject3D & {_bounds?: Box3B},
+        intersects: Array<Intersection<IObject3D>>,
+    ) {
+        const intersect = intersects[0]
+        if (!intersect) return undefined
 
         const positionWorld = intersect?.point.clone() ?? new Vector3(0, 0, 0)
         const normalWorld = (intersect?.normal?.clone() ?? new Vector3(0, 1, 0))
@@ -294,11 +313,203 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         positionWorld.add(offset)
         positionWorld.sub(center) // so that it stays above the ground, not centered at ground
 
-        cParent?.worldToLocal(positionWorld);
-        draggedItem.position.copy(positionWorld);
-        draggedItem.setDirty && draggedItem.setDirty({change: 'position'})
+        return positionWorld
+    }
 
-        // this.draggedItem.lookAt(normalWorld.add(positionWorld)) // looks weird most of the time
+    dropLibraryItem(
+        item: DraggedItem,
+        entry: LibraryEntry | null,
+        hit: IObject3D | null,
+        dropPosition?: Vector3,
+    ) {
+        if (!this._viewer) return false
+        const assetRoot = this.manager.loadedScene ? this._viewer.scene.modelRoot : this.manager.loadedAssetObj as IObject3D
+        if (!assetRoot?.isObject3D) return false
+
+        const assetType = this.libraryAssetType(item, entry)
+        const assetName = entry?.name || item.name || this.fileName(entry?.path) || 'Library asset'
+        const selected = this._viewer.getPlugin(PickingPlugin)?.getSelectedObject() || null
+        const selectedTarget = this.validSelectedTarget(selected)
+        const cursorTarget = hit && this.isInAssetRoot(hit, assetRoot) ? hit : null
+        const target = selectedTarget || cursorTarget || assetRoot
+        const targetName = target === assetRoot ? 'Scene root' : target.name || target.uuid || 'Unnamed object'
+        const targetDescription = selectedTarget
+            ? (selectedTarget.isMaterial ? 'The selected material was used.' : 'The selected hierarchy object was used.')
+            : cursorTarget
+                ? 'No hierarchy selection was available. The object under the cursor was used.'
+                : 'No hierarchy selection or object under the cursor was available. The scene root was used.'
+
+        let actions: LibraryDropActionOption[] = []
+        let defaultAction = 'import-only'
+        let reason: string | undefined
+        let materialTargets: IObject3D[] = []
+        let materialOptions: Array<{index: number, name: string}> | undefined
+
+        if (assetType === 'model') {
+            const objectTarget = (target as IObject3D).isObject3D ? target as IObject3D : assetRoot
+            if (objectTarget !== assetRoot) {
+                actions.push({id: 'model-target', label: `Add under ${targetName}`})
+                defaultAction = 'model-target'
+            }
+            actions.push({id: 'model-root', label: 'Add at the scene root'})
+            if (defaultAction === 'import-only') defaultAction = 'model-root'
+        } else if (assetType === 'material') {
+            const objectTarget = (target as IObject3D).isObject3D ? target as IObject3D : null
+            if (objectTarget?.material) {
+                materialTargets = [objectTarget]
+                actions = [{id: 'material-apply', label: `Apply to ${targetName}`}]
+                defaultAction = 'material-apply'
+            } else if (objectTarget) {
+                objectTarget.traverse((object) => {
+                    const candidate = object as IObject3D
+                    if (candidate.material) materialTargets.push(candidate)
+                })
+                if (materialTargets.length) {
+                    actions = [{
+                        id: 'material-apply',
+                        label: `Apply to the ${materialTargets.length} meshes under ${targetName}`,
+                    }]
+                    defaultAction = 'material-apply'
+                }
+            }
+            if (!materialTargets.length) {
+                actions = [{id: 'import-only', label: 'Import into the project only'}]
+                reason = `${targetName} does not contain a mesh that can accept a material.`
+            }
+        } else if (assetType === 'texture') {
+            if ((target as IMaterial).isMaterial) {
+                actions = [{id: 'texture-apply', label: `Apply to ${targetName}`}]
+                defaultAction = 'texture-apply'
+            } else if ((target as IObject3D).isObject3D && (target as IObject3D).material) {
+                const materials = Array.isArray((target as IObject3D).material)
+                    ? (target as IObject3D).material as IMaterial[]
+                    : [(target as IObject3D).material as IMaterial]
+                materialOptions = materials.map((material, index) => ({
+                    index,
+                    name: material?.name || `Unnamed material ${index + 1}`,
+                }))
+                actions = [{id: 'texture-apply', label: `Apply to ${targetName}`}]
+                defaultAction = 'texture-apply'
+            } else {
+                actions = [{id: 'import-only', label: 'Import into the project only'}]
+                reason = `${targetName} cannot accept a texture because it has no material.`
+            }
+        } else {
+            actions = [
+                {id: 'environment', label: 'Set as scene environment'},
+                {id: 'background', label: 'Set as background'},
+                {id: 'both', label: 'Both'},
+            ]
+            defaultAction = 'environment'
+        }
+
+        const performChoice = (choice: LibraryDropChoice & {materialIndex?: number}) => {
+            if (choice.action === 'import-only') return true
+            if (choice.action === 'model-target' || choice.action === 'model-root') {
+                const requestedParent = choice.action === 'model-root' ? assetRoot : target
+                const parent = (requestedParent as IObject3D).isObject3D
+                    && this.isInScene(requestedParent as IObject3D)
+                    ? requestedParent as IObject3D
+                    : assetRoot
+                if (dropPosition) {
+                    parent.updateMatrixWorld()
+                    ;(item as IObject3D).position.copy(parent.worldToLocal(dropPosition.clone()))
+                    ;(item as IObject3D).setDirty?.({change: 'position'})
+                }
+                this.execCommand(objectCommand(item as IObject3D, parent), true)
+                return true
+            }
+            if (choice.action === 'material-apply' && materialTargets.length) {
+                this.execCommand(materialCommand(item as IMaterial, materialTargets), true)
+                return true
+            }
+            if (choice.action === 'texture-apply') {
+                const textureTarget = (target as IMaterial).isMaterial
+                    ? target as IMaterial
+                    : target as IObject3D
+                const slot = textureSlots.some(({id}) => id === choice.slot) ? choice.slot : 'map'
+                this.execCommand(textureCommand(item as ITexture, textureTarget, slot, choice.materialIndex || 0), true)
+                return true
+            }
+            if (assetType === 'environment' && ['environment', 'background', 'both'].includes(choice.action)) {
+                this.execCommand(environmentCommand(
+                    item as ITexture,
+                    this._viewer!,
+                    true,
+                    this.manager,
+                    choice.action as 'environment' | 'background' | 'both',
+                ), true)
+                return true
+            }
+            return false
+        }
+
+        const remembered = getLibraryDropChoice(assetType)
+        if (remembered && actions.some(({id}) => id === remembered.action)) {
+            return performChoice(remembered)
+        }
+
+        return requestLibraryDropDialog({
+            assetName,
+            assetType,
+            targetName: assetType === 'environment' ? 'Scene' : targetName,
+            targetDescription: assetType === 'environment'
+                ? 'Environment maps target the scene.'
+                : targetDescription,
+            reason,
+            actions,
+            defaultAction,
+            slots: assetType === 'texture' && defaultAction === 'texture-apply' ? textureSlots : undefined,
+            materials: materialOptions,
+            onApply: (choice, remember) => {
+                if (!performChoice(choice)) return
+                if (remember) setLibraryDropChoice(assetType, {action: choice.action, slot: choice.slot})
+            },
+        })
+    }
+
+    private libraryAssetType(item: DraggedItem, entry: LibraryEntry | null): LibraryDropAssetType {
+        const extension = (entry?.path || '').split(/[?#]/)[0].split('.').pop()?.toLowerCase()
+        if (entry?.assetType === 'hdri' || extension === 'hdr' || extension === 'exr') return 'environment'
+        if ((item as IObject3D).isObject3D) return 'model'
+        if ((item as IMaterial).isMaterial) return 'material'
+        return 'texture'
+    }
+
+    private validSelectedTarget(selected: SelectionObject): SelectionObject {
+        if (!selected) return null
+        if (selected === this._viewer?.scene) return this._viewer.scene.modelRoot
+        if ((selected as IObject3D).isObject3D) {
+            return this.isInScene(selected as IObject3D) ? selected : null
+        }
+        return selected
+    }
+
+    private isInScene(object: IObject3D) {
+        let current: IObject3D | null = object
+        while (current) {
+            if (current === this._viewer?.scene) return true
+            current = current.parent as IObject3D | null
+        }
+        return false
+    }
+
+    private isInAssetRoot(object: IObject3D, assetRoot: IObject3D) {
+        let current: IObject3D | null = object
+        while (current) {
+            if (current === assetRoot) return true
+            current = current.parent as IObject3D | null
+        }
+        return false
+    }
+
+    private fileName(path?: string) {
+        if (!path) return ''
+        try {
+            return new URL(path, window.location.href).pathname.split('/').pop() || ''
+        } catch {
+            return path.split('/').pop() || ''
+        }
     }
 
     execCommand(cmd: JSUndoManagerCommand1, final: boolean) {
@@ -516,8 +727,9 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         super.onRemove(viewer);
     }
 
-    canDragFile(f: { path: string, type?: 'file'|'directory' }): boolean {
+    canDragFile(f: {path: string, type?: 'file' | 'directory', assetType?: string}): boolean {
         if(f.type && f.type !== 'file') return false
+        if (f.assetType && ['model', 'material', 'texture', 'hdri'].includes(f.assetType)) return true
         // todo use isLoadableFile?
         return !notAssetableFileTypes.some(e=>f.path.endsWith(e)) // not a scene or something
             && assetableFileTypes.some(e=>f.path.endsWith(e)) // its a model, material, etc
