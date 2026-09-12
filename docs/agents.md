@@ -203,6 +203,22 @@ export default async function generate({node, params, viewer, engine}) {
 }
 ```
 
+A generator may export an optional flat `params` schema so the editor can show named controls, help, choices, defaults, and numeric bounds:
+
+```js
+export const params = {
+  detail: {
+    label: 'Shading',
+    help: 'Full builds the textured materials. Light is fast unlit blocks.',
+    options: [{value: 'light', label: 'Fast preview'}, {value: 'full', label: 'Full shaders'}],
+    default: 'light',
+  },
+  markers: {label: 'Spawn markers', type: 'boolean', default: true},
+}
+```
+
+Schema entries support `boolean`, `number`, `integer`, `string`, `select`, `vector`, `color`, and `json` types. An omitted type is inferred from `options` or the default value. Undeclared saved params still work and appear as inferred controls. Nested objects use a `json` control.
+
 The function may attach children or return one child or an array. Each run removes the prior generated children. It runs on scene load. It runs when `module` or `params` changes. A dev-server change event for the module reruns it in the editor.
 
 Generated objects have a `generated` badge. Their transforms are read-only. Generated objects do not enter the saved scene.

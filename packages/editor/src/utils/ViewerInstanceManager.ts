@@ -337,7 +337,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.loadedPath = this.source.fileUrl(scenePath)
         this.scenePath = scenePath
         this.sceneText = sceneText
-        this.generatorStates = readProjectGeneratorStates(sceneText)
+        this.generatorStates = this.readGeneratorStates(sceneText)
 
         await this.prepareEditViewer(config, assetsManifest)
         await this.loadEditScene(sceneText)
@@ -565,7 +565,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             await this.nestedAssets?.waitForPending()
             await GeneratorComponent.waitForViewer(viewer)
             this.sceneText = sceneText
-            this.generatorStates = readProjectGeneratorStates(sceneText)
+            this.generatorStates = this.readGeneratorStates(sceneText)
             this.error = undefined
             const editMode = viewer.getPlugin(EditModePlugin)
             const savedCamera = this.project?.config.viewer.camera ? viewer.scene.defaultCamera : undefined
@@ -710,7 +710,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.hashes.set(this.scenePath, result.sha256)
         this.savedSceneHash = await hashBytes(serialized.gltf)
         this.sceneText = decode(serialized.gltf)
-        this.generatorStates = readProjectGeneratorStates(this.sceneText)
+        this.generatorStates = this.readGeneratorStates(this.sceneText)
         this.manifest = await this.source.list()
         this.changed()
     }
@@ -1337,13 +1337,18 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             if (generator) {
                 const object = this.get().scene.modelRoot.getObjectByName(generator.nodeName)
                 if (object) {
+                    const component = EntityComponentPlugin.GetComponent(object, GeneratorComponent)
                     await runGenerator({
                         node: object as IObject3D,
                         params: generator.params,
                         viewer: this.get(),
                         module: versionedPath(generator.module, nextHash, moduleRevision),
                         base: new URL('/files/', location.origin),
+                        onSchema: (schema) => {
+                            if (component) component.schema = schema
+                        },
                     })
+                    this.generatorStates = this.readGeneratorStates(this.sceneText)
                 }
             }
             if (this.isPlaying) await this.restartPlay()
@@ -1374,6 +1379,16 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.manifest = entries
         for (const entry of entries) this.hashes.set(entry.path, entry.sha256)
         this.changed()
+    }
+
+    private readGeneratorStates(sceneText: string): ProjectGeneratorState[] {
+        return readProjectGeneratorStates(sceneText).map((generator) => {
+            const object = this.viewer?.scene.modelRoot.getObjectByName(generator.nodeName)
+            const component = object
+                ? EntityComponentPlugin.GetComponent(object, GeneratorComponent)
+                : undefined
+            return component ? {...generator, schema: component.schema} : generator
+        })
     }
 
     private setStatus(status: string) {

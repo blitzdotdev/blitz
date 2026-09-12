@@ -1,4 +1,5 @@
 import {parse, ParseError} from 'jsonc-parser'
+import type {GeneratorParamSchema} from '../generatorParams.ts'
 
 export const settingsKey = 'kite3d'
 export const assetUrlPrefix = `/${settingsKey}/`
@@ -12,6 +13,7 @@ export interface ProjectGeneratorState {
     nodeIndex: number
     nodeName: string
     params: Record<string, unknown>
+    schema: GeneratorParamSchema
 }
 
 export interface AssetsJSONManifest {
@@ -165,6 +167,7 @@ export function readProjectGeneratorStates(text: string): ProjectGeneratorState[
                     nodeIndex,
                     nodeName: typeof node.name === 'string' ? node.name : `Node ${nodeIndex}`,
                     params: isRecord(component.state.params) ? component.state.params : {},
+                    schema: {},
                 })
             }
         }

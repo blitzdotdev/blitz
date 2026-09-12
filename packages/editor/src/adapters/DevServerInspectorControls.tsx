@@ -1,8 +1,9 @@
-import {useEffect, useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import {Button, InputGroup} from '@blueprintjs/core'
 import {PickingPlugin, type IObject3D} from 'threepipe'
 import {useAssets} from '../utils/AssetsProvider.ts'
 import {useManagerVersion} from '../utils/UseManager.ts'
+import {GeneratorParamsControls} from './GeneratorParamsControls.tsx'
 
 export function DevServerInspectorControls({placement}: {placement: 'header' | 'controls'}) {
     const manager = useManagerVersion()
@@ -57,16 +58,21 @@ function GeneratorInspector({generator, object}: {
     const manager = useManagerVersion()
     const {fileManifest, setSelectedFiles} = useAssets()
     const [module, setModule] = useState(generator.module)
-    const [params, setParams] = useState(JSON.stringify(generator.params, null, 2))
+    const moduleFocused = useRef(false)
+    const moduleDirty = useRef(false)
+    const latestModule = useRef(generator.module)
+    latestModule.current = generator.module
 
     useEffect(() => {
-        setModule(generator.module)
-        setParams(JSON.stringify(generator.params, null, 2))
-    }, [generator.module, generator.params])
+        if (!moduleFocused.current) {
+            moduleDirty.current = false
+            setModule(generator.module)
+        }
+    }, [generator.module])
 
-    const apply = async () => {
+    const apply = async (nextParams = generator.params) => {
         try {
-            await manager.updateGenerator(generator, module, JSON.parse(params) as Record<string, unknown>)
+            await manager.updateGenerator(generator, module, nextParams)
         } catch (error) {
             await manager.reportError(error)
         }
@@ -90,18 +96,32 @@ function GeneratorInspector({generator, object}: {
             <InputGroup
                 data-testid={`generator-module-${generator.nodeIndex}`}
                 value={module}
-                onChange={(event) => setModule(event.target.value)}
-                onBlur={() => void apply()}/>
+                onChange={(event) => {
+                    moduleDirty.current = true
+                    setModule(event.target.value)
+                }}
+                onFocus={() => { moduleFocused.current = true }}
+                onKeyDown={(event) => {
+                    if (event.key === 'Enter' && moduleDirty.current) {
+                        moduleDirty.current = false
+                        void apply()
+                    }
+                }}
+                onBlur={() => {
+                    moduleFocused.current = false
+                    if (moduleDirty.current) {
+                        moduleDirty.current = false
+                        void apply()
+                    } else {
+                        setModule(latestModule.current)
+                    }
+                }}/>
         </label>
-        <label className="kite3d-control-row is-textarea">
-            <span>Params</span>
-            <textarea
-                className="bp5-input generator-params-input"
-                data-testid={`generator-params-${generator.nodeIndex}`}
-                value={params}
-                onChange={(event) => setParams(event.target.value)}
-                onBlur={() => void apply()}/>
-        </label>
+        <GeneratorParamsControls
+            nodeIndex={generator.nodeIndex}
+            params={generator.params}
+            schema={generator.schema}
+            onApply={apply}/>
         <div className="kite3d-generator-actions">
             <Button
                 data-testid={`bake-${generator.nodeIndex}`}

@@ -92,7 +92,7 @@ export default function generate({node, engine}) {
             EntityComponentPlugin: {
                 'round-trip-generator': {
                     type: 'Generator',
-                    state: {module: 'Generator.js', params: {count: 2}},
+                    state: {module: 'Generator.js', params: {count: 2, markers: true, legacyMode: 'classic'}},
                 },
             },
         },
@@ -116,7 +116,7 @@ export default function generate({node, engine}) {
     scene.nodes.push({
         name: 'Floor Generator',
         extras: {EntityComponentPlugin: {'floor-generator': {
-            type: 'Generator', state: {module: 'FloorGenerator.js', params: {}},
+            type: 'Generator', state: {module: 'FloorGenerator.js', params: {width: 40}},
         }}},
     })
     scene.nodes.push({
@@ -712,6 +712,74 @@ test('reports leaked runtime content after Stop in a toast and the console log',
         .toContain('runtime cleanup failed: RUNTIME_OBJECT_AFTER_STOP')
 })
 
+test('edits generator params with declared and inferred controls', async ({page}) => {
+    test.setTimeout(90_000)
+    await page.setViewportSize({width: 1400, height: 900})
+    await page.goto(server.url)
+    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await page.getByRole('tab', {name: 'Inspector'}).click()
+    await page.getByRole('button', {name: 'RoundTripObject'}).click()
+
+    const inspector = page.getByTestId('generator-inspector')
+    await expect(inspector.getByText('Shading', {exact: true})).toBeVisible()
+    await expect(inspector.getByText('Spawn markers', {exact: true})).toBeVisible()
+    await expect(inspector.getByText('Tree count', {exact: true})).toBeVisible()
+    await expect(inspector.getByText('Tree height', {exact: true})).toBeVisible()
+    await expect(inspector.getByText('Legacy mode', {exact: true})).toBeVisible()
+    await expect(inspector.getByTestId('generator-param-detail')).toHaveValue('0')
+    await expect(inspector.getByRole('checkbox', {name: 'Spawn markers'})).toBeChecked()
+    await expect(inspector.getByLabel('Tree count')).toHaveValue('2')
+    await expect(inspector.getByLabel('Tree height')).toHaveValue('3')
+    await expect(inspector.locator('.generator-param-row').filter({hasText: 'Tree height'})).toContainText('default')
+    await expect(inspector.getByTestId('generator-param-legacyMode')).toHaveValue('classic')
+    await expect(page.getByTestId('generator-params-1')).toBeHidden()
+
+    await mkdir(resolve(import.meta.dirname, '../../test-results/generator-params'), {recursive: true})
+    await inspector.scrollIntoViewIfNeeded()
+    await page.screenshot({path: resolve(import.meta.dirname, '../../test-results/generator-params/declared-params.png')})
+
+    const beforeRuns = await page.evaluate(() => (window as unknown as {__generatorRuns: number}).__generatorRuns)
+    await inspector.getByTestId('generator-param-detail').selectOption({label: 'Full shaders'})
+    await expect.poll(async () => (await readGeneratorState('RoundTripObject')).params.detail).toBe('full')
+    await expect.poll(() => page.evaluate(() => (window as unknown as {__generatorRuns: number}).__generatorRuns))
+        .toBeGreaterThan(beforeRuns)
+
+    await inspector.locator('.generator-param-row').filter({hasText: 'Spawn markers'})
+        .locator('.bp5-control-indicator').click()
+    await expect.poll(async () => (await readGeneratorState('RoundTripObject')).params.markers).toBe(false)
+
+    const beforeInvalidNumber = await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')
+    await inspector.getByLabel('Tree count').fill('9')
+    await inspector.getByLabel('Tree count').blur()
+    await expect(inspector.getByRole('alert')).toContainText('Tree count must be at most 5.')
+    expect(await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')).toBe(beforeInvalidNumber)
+
+    await inspector.getByLabel('Tree count').fill('3')
+    await writeFile(resolve(root, 'Generator.js'), generatorModule('Tree', 0, 'Render style'))
+    await expect(page.getByText('Generator.js regenerated')).toBeVisible({timeout: 20_000})
+    await expect(inspector.getByText('Render style', {exact: true})).toBeVisible()
+    await expect(inspector.getByLabel('Tree count')).toHaveValue('3')
+    await inspector.getByLabel('Tree count').fill('2')
+    await inspector.getByLabel('Tree count').blur()
+    await expect.poll(async () => (await readGeneratorState('RoundTripObject')).params.count).toBe(2)
+
+    await inspector.getByText('Edit as JSON').click()
+    const beforeInvalidJson = await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')
+    await page.getByTestId('generator-params-1').fill('{"count":')
+    await inspector.getByRole('button', {name: 'Apply', exact: true}).click()
+    await expect(inspector.locator('.generator-json-error')).toContainText('JSON')
+    expect(await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')).toBe(beforeInvalidJson)
+    await page.screenshot({path: resolve(import.meta.dirname, '../../test-results/generator-params/json-error.png')})
+
+    await page.getByRole('button', {name: 'Floor_Generator'}).click()
+    const inferredInspector = page.getByTestId('generator-inspector')
+    await expect(inferredInspector.getByText('Width', {exact: true})).toBeVisible()
+    await expect(inferredInspector.getByLabel('Width')).toHaveValue('40')
+    await expect(inferredInspector.getByText('Shading', {exact: true})).toHaveCount(0)
+    await expect(inferredInspector.getByText('Edit as JSON')).toBeVisible()
+    await page.screenshot({path: resolve(import.meta.dirname, '../../test-results/generator-params/inferred-params.png')})
+})
+
 test('loads the restored panels, watches generators, and saves text glTF without echo reload', async ({page}) => {
     test.setTimeout(90_000)
     const errors: string[] = []
@@ -786,8 +854,9 @@ test('loads the restored panels, watches generators, and saves text glTF without
     await expect(generatorInspector).toContainText('Generator · RoundTripObject')
     await expect(generatorInspector.getByRole('heading', {name: 'Generator', exact: true})).toHaveCount(1)
     const beforeGeneratorEdit = await manifestHash('assets/main.scene.gltf')
+    await generatorInspector.getByText('Edit as JSON').click()
     await page.getByTestId('generator-params-1').fill('{"count": 3}')
-    await page.getByTestId('generator-params-1').blur()
+    await generatorInspector.getByRole('button', {name: 'Apply', exact: true}).click()
     await expect(hierarchy).toContainText(/Tree 2\s*generated/, {timeout: 20_000})
     await expect.poll(() => manifestHash('assets/main.scene.gltf')).not.toBe(beforeGeneratorEdit)
     await expect.poll(async () => (await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')).includes('"count": 3')).toBe(true)
@@ -1488,9 +1557,35 @@ async function manifestHash(path: string): Promise<string | undefined> {
     return manifest.find((entry) => entry.path === path)?.sha256
 }
 
-function generatorModule(prefix: string, extra: number): string {
+async function readGeneratorState(nodeName: string): Promise<{module: string, params: Record<string, unknown>}> {
+    const scene = JSON.parse(await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')) as {
+        nodes: Array<{name?: string, extras?: {EntityComponentPlugin?: Record<string, {
+            type?: string
+            state?: {module?: string, params?: Record<string, unknown>}
+        }>}}>
+    }
+    const components = scene.nodes.find(({name}) => name === nodeName)?.extras?.EntityComponentPlugin || {}
+    const state = Object.values(components).find(({type}) => type === 'Generator')?.state
+    if (!state || typeof state.module !== 'string' || !state.params) throw new Error(`Generator state not found: ${nodeName}`)
+    return {module: state.module, params: state.params}
+}
+
+function generatorModule(prefix: string, extra: number, detailLabel = 'Shading'): string {
     return `
+export const params = {
+    detail: {
+        label: '${detailLabel}',
+        help: 'Full builds textured materials. Light is a fast preview.',
+        options: [{value: 'light', label: 'Fast preview'}, {value: 'full', label: 'Full shaders'}],
+        default: 'light',
+    },
+    markers: {label: 'Spawn markers', type: 'boolean', default: true},
+    count: {label: 'Tree count', type: 'integer', default: 2, min: 1, max: 5, step: 1},
+    height: {label: 'Tree height', type: 'number', default: 3, min: 1, max: 10},
+}
+
 export default function generate({node, params, engine}) {
+    window.__generatorRuns = (window.__generatorRuns || 0) + 1
     for (let index = 0; index < params.count + ${extra}; index += 1) {
         const child = new engine.Mesh(
             new engine.BoxGeometry(0.25, 0.25, 0.25),
