@@ -137,6 +137,26 @@ Fits: co-op waves, small PvP among friends, turn based, party games. Does not fi
    routes, Containers behind the gateway, billing.
 6. Abuse controls and metrics per game.
 
+## Results so far (2026-09-12)
+
+Signaling worker `blitz-games-signal`, deployed on the sandbox account, contract v0, 10 unit tests.
+
+| Concurrent rooms (host plus two guests each, six signals per pair) | Completed | p50 | p95 | Errors |
+|---|---:|---:|---:|---|
+| 20 | 20 | 1.8 s | 2.6 s | none |
+| 100 | 100 | 1.6 s | 2.8 s | none |
+| 300 | 300 | 3.9 s | 6.1 s | none |
+| 100 again | 100 | 2.9 s | 4.5 s | none |
+
+Terminator through the deployed worker, three headless players on one machine: room creation
+776 ms, guests connected in 627 ms and 601 ms, 60 inputs per second sent and 20 snapshots per
+second received per guest, zero errors, all three reached the wave one intermission. The two
+browser reliability harness (18 assertions: join, ready, start, pause, movement, reconnect, kills,
+spectate, wipe, return to the same party, restart) passes over WebRTC.
+
+Landed in the game as one squash commit; the WebSocket relay stays only behind `?relay=` for LAN.
+A load matrix at 12, 24, and 36 enemies with guest churn and room churn is in progress.
+
 ## Open questions
 
 - Room codes: global or per game in the URL (`?party=ABC234` versus `?party=terminator/ABC234`)?
