@@ -438,7 +438,7 @@ import {resolve} from 'node:path'
 export const PROJECT_MIGRATIONS = [
     {version: '0.9.0', migrate() { throw new Error('old migration ran') }},
     {version: '0.12.0', migrate(root) { return writeFile(resolve(root, 'migration.txt'), '0.12.0') }},
-    {version: '0.16.0', migrate() { throw new Error('future migration ran') }},
+    {version: '${futureVersion()}', migrate() { throw new Error('future migration ran') }},
 ]
 `)
     return root
@@ -468,4 +468,11 @@ function doctorRow(result: DoctorResult, check: DoctorResult['rows'][number]['ch
     const found = result.rows.find((candidate) => candidate.check === check)
     if (!found) throw new Error(`Missing doctor row ${check}`)
     return found
+}
+
+// A migration beyond every version the CLI can target, so it never runs
+// no matter what the current KITE3D_VERSION is.
+function futureVersion(): string {
+    const [major] = KITE3D_VERSION.split('.').map(Number)
+    return `${major + 1}.0.0`
 }
