@@ -121,7 +121,7 @@ export async function startMockBackend(options: {
                 preview_url: previewUrl(slug, 'create'),
                 deploy_token: game.deployToken,
                 claim_secret: game.claimSecret,
-                claim_url: `${baseUrl}/api/v1/games/${slug}/claim`,
+                claim_url: `${baseUrl}/claim/${encodeURIComponent(slug)}?secret=${encodeURIComponent(game.claimSecret)}`,
             })
         }
         const runtimeMatch = request.method === 'GET' && /^\/api\/v1\/runtimes\/([^/]+)$/.exec(url.pathname)

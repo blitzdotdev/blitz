@@ -158,6 +158,7 @@ describe('.kite3d/deploys.json', () => {
             game_id: 'game-id',
             deploy_token: 'tp_token',
             claim_secret: 'claim-secret',
+            claim_url: 'https://blitz.dev/claim/sample?secret=claim-secret',
             preview_url: 'https://gateway.example/sample/',
             expires_at: '2026-09-10 01:00:00',
             last_release_hash: 'a'.repeat(64),

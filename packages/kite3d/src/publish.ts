@@ -318,6 +318,7 @@ function deployEntryFromCreated(created: CreatedAnonymousGame): DeployEntry {
         game_id: created.game_id,
         deploy_token: created.deploy_token,
         claim_secret: created.claim_secret,
+        claim_url: created.claim_url,
         preview_url: created.preview_url,
         expires_at: created.expires_at,
     }

@@ -7,6 +7,7 @@ import {afterEach, describe, expect, it} from 'vitest'
 import {startMockBackend} from './mockBackend.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 import {initializeGitRepository} from '../src/git.ts'
+import type {DeployEntry} from '../src/types.ts'
 
 const execute = promisify(execFile)
 const cli = resolve('dist/cli.js')
@@ -33,8 +34,7 @@ Commands:
   publish [options]           Publish the project
   pull [--force]              Pull the active release
   status                      Show local deploy status
-  claim --email <email> --password <password> [--login]
-                              Register or sign in, then claim local deploys
+  claim [--no-open]           Open claim pages for local deploys
   bake <nodeName> [--force]   Bake a Generator node
   check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
@@ -368,6 +368,73 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
             .rejects.toMatchObject({code: 1, stderr: expect.stringContaining('Unknown flag: --bogus')})
     })
 
+    it('prints and opens a constructed Blitz claim URL for an unclaimed deploy', async () => {
+        const root = await pinnedProject(KITE3D_VERSION)
+        await writeClaimDeploys(root, {'space game': claimDeploy({claim_secret: 'secret/? value'})})
+        const browser = await mockBrowser(root)
+        const expected = 'https://blitz.dev/claim/space%20game?secret=secret%2F%3F%20value'
+
+        const result = await execute(process.execPath, [cli, 'claim'], {
+            cwd: root,
+            env: {...browser.env, BLITZ_BACKEND_URL: 'https://blitz.dev///'},
+        })
+
+        expect(result.stdout.trim()).toBe(`Claim space game: ${expected}`)
+        expect(result.stderr).toBe('')
+        expect((await readFile(browser.log, 'utf8')).trim()).toBe(expected)
+    })
+
+    it('prefers a stored claim URL and --no-open only prints it', async () => {
+        const root = await pinnedProject(KITE3D_VERSION)
+        const stored = 'https://blitz.dev/claim/stored-game?ticket=stored-value'
+        await writeClaimDeploys(root, {stored: claimDeploy({claim_url: stored})})
+        const browser = await mockBrowser(root)
+
+        const result = await execute(process.execPath, [cli, 'claim', '--no-open'], {
+            cwd: root,
+            env: {...browser.env, BLITZ_BACKEND_URL: 'https://wrong.example'},
+        })
+
+        expect(result.stdout.trim()).toBe(`Claim stored: ${stored}`)
+        expect(result.stderr).toBe('')
+        await expect(access(browser.log)).rejects.toMatchObject({code: 'ENOENT'})
+    })
+
+    it('keeps the existing error when there are no deploys to claim', async () => {
+        const root = await pinnedProject(KITE3D_VERSION)
+
+        await expect(execute(process.execPath, [cli, 'claim'], {cwd: root})).rejects.toMatchObject({
+            code: 1,
+            stderr: expect.stringContaining('No deploy exists yet. Run kite3d publish first.'),
+        })
+    })
+
+    it('reports when every local deploy is claimed and opens nothing', async () => {
+        const root = await pinnedProject(KITE3D_VERSION)
+        await writeClaimDeploys(root, {
+            first: claimDeploy({claimed: true}),
+            second: claimDeploy({game_id: 'second-id', claimed: true}),
+        })
+        const browser = await mockBrowser(root)
+
+        const result = await execute(process.execPath, [cli, 'claim'], {cwd: root, env: browser.env})
+
+        expect(result.stdout.trim()).toBe('All local deploys are already claimed.')
+        expect(result.stderr).toBe('')
+        await expect(access(browser.log)).rejects.toMatchObject({code: 'ENOENT'})
+    })
+
+    it('rejects the removed password option as an unknown flag', async () => {
+        const root = await pinnedProject(KITE3D_VERSION)
+        const removedPasswordFlag = ['--', 'password'].join('')
+
+        await expect(execute(process.execPath, [cli, 'claim', removedPasswordFlag, 'secret'], {cwd: root}))
+            .rejects.toMatchObject({
+                code: 1,
+                stderr: expect.stringContaining(`Unknown flag: ${removedPasswordFlag}`),
+            })
+    })
+
     it('publishes the explicit slug, name, and message', async () => {
         const backend = await startMockBackend({
             previewUrl: (slug, response) => response === 'release'
@@ -394,9 +461,12 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
         expect(backend.games.get('agent-picked-slug')?.name).toBe('Agent Picked Name')
         expect(backend.requests.find(({path}) => path.endsWith('/releases'))?.body).toMatchObject({message: 'agent release'})
         const deploys = JSON.parse(await readFile(resolve(root, '.kite3d/deploys.json'), 'utf8')) as {
-            games: Record<string, {preview_url?: string}>
+            games: Record<string, {claim_url?: string, preview_url?: string}>
         }
         expect(deploys.games['agent-picked-slug'].preview_url).toBe('https://agent-picked-slug.app.blitz.dev/')
+        expect(deploys.games['agent-picked-slug'].claim_url).toBe(
+            `${backend.url}/claim/agent-picked-slug?secret=secret_agent-picked-slug`,
+        )
     })
 
     it('never prints deploy tokens or claim secrets from a failed publish', async () => {
@@ -647,6 +717,49 @@ async function writeProjectRoot(root: string): Promise<void> {
     await writeFile(resolve(root, 'package.json'), JSON.stringify({
         devDependencies: {'kite3d': KITE3D_VERSION},
     }))
+}
+
+function claimDeploy(overrides: Partial<DeployEntry> = {}): DeployEntry {
+    return {
+        game_id: 'game-id',
+        deploy_token: 'deploy-token',
+        claim_secret: 'claim-secret',
+        preview_url: 'https://example.app.blitz.dev/',
+        expires_at: '2026-09-12 00:00:00',
+        ...overrides,
+    }
+}
+
+async function writeClaimDeploys(root: string, games: Record<string, DeployEntry>): Promise<void> {
+    await mkdir(resolve(root, '.kite3d'), {recursive: true})
+    await writeFile(resolve(root, '.kite3d/deploys.json'), `${JSON.stringify({games}, null, 2)}\n`)
+}
+
+async function mockBrowser(root: string): Promise<{env: NodeJS.ProcessEnv, log: string}> {
+    const log = resolve(root, 'browser-open.log')
+    const preload = resolve(root, 'mock-browser.cjs')
+    await writeFile(preload, `const childProcess = require('node:child_process')
+const {appendFileSync} = require('node:fs')
+childProcess.spawn = function(command, args = []) {
+    let url = args.find((value) => typeof value === 'string' && value.startsWith('https://'))
+    if (!url) {
+        const encoded = args.find((value) => typeof value === 'string' && /^[A-Za-z0-9+/]+=*$/.test(value))
+        const decoded = encoded ? Buffer.from(encoded, 'base64').toString('utf16le') : ''
+        url = /https:\\/\\/[^"\\s]+/.exec(decoded)?.[0]
+    }
+    if (!url) throw new Error('Browser command did not include a URL: ' + command + ' ' + args.join(' '))
+    appendFileSync(process.env.KITE3D_TEST_OPEN_LOG, url + '\\n')
+    return {unref() {}}
+}
+`)
+    return {
+        log,
+        env: {
+            ...process.env,
+            KITE3D_TEST_OPEN_LOG: log,
+            NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${preload}`].filter(Boolean).join(' '),
+        },
+    }
 }
 
 async function installPackageVersion(root: string, version: string): Promise<void> {
