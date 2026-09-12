@@ -91,7 +91,7 @@ export function main({viewer}) {
         warning.mockRestore()
     })
 
-    it('imports configured scripts, lists their types, and validates plugins, generators, and scene components', async () => {
+    it('imports configured scripts, lists their types, and validates plugins and scene components', async () => {
         const root = await project({
             scripts: ['./Player.script.js'],
             plugins: ['./LocalPlugin.js'],
@@ -100,7 +100,6 @@ export function main({viewer}) {
             mesh: 0,
             extras: {EntityComponentPlugin: {
                 player: {type: 'PlayerComponent', state: {}},
-                generator: {type: 'Generator', state: {module: './generators/level.js'}},
             }},
         }])
         await writeFile(resolve(root, 'Player.script.js'), `
@@ -111,11 +110,6 @@ export class Player extends Object3DComponent { static ComponentType = 'PlayerCo
 import {AViewerPluginSync} from 'threepipe'
 export default class LocalPlugin extends AViewerPluginSync { static PluginType = 'LocalPlugin' }
 `)
-        await mkdir(resolve(root, 'generators'), {recursive: true})
-        await writeFile(resolve(root, 'generators/level.js'), `
-export default ({engine}) => new engine.Mesh(new engine.BoxGeometry(1, 1, 1), new engine.MeshStandardMaterial())
-`)
-
         const result = await checkProject(root)
 
         expect(result.ok, JSON.stringify(result, null, 2)).toBe(true)
@@ -129,12 +123,32 @@ export default ({engine}) => new engine.Mesh(new engine.BoxGeometry(1, 1, 1), ne
         expect(result.rows).toEqual(expect.arrayContaining([
             expect.objectContaining({kind: 'script', status: 'pass', detail: 'PlayerComponent'}),
             expect.objectContaining({kind: 'plugin', status: 'pass'}),
-            expect.objectContaining({kind: 'generator', status: 'pass'}),
             expect.objectContaining({kind: 'component', status: 'pass', detail: 'PlayerComponent'}),
         ]))
         expect(JSON.parse(await readFile(resolve(root, '.kite3d/check.json'), 'utf8'))).toMatchObject({ok: true})
         expect(await readFile(resolve(root, '.kite3d/console.log'), 'utf8'))
             .toContain('[kite3d check] Playable=pass Editable=pass Persisted=pass')
+    })
+
+    it('fails Editable with migration guidance for a removed Generator component', async () => {
+        const root = await project({}, [{
+            name: 'Old World',
+            mesh: 0,
+            extras: {EntityComponentPlugin: {
+                old: {type: 'Generator', state: {module: './old-world.js'}},
+            }},
+        }])
+        const message = "Generator components were removed in Kite3D 0.19.0. Convert Old World to a build step. See the guide's Authoring rules."
+
+        const result = await checkProject(root)
+
+        expect(result.ok).toBe(false)
+        expect(result.mode).toBe('static')
+        expect(result.rows).toContainEqual({kind: 'component', path: 'Old World', status: 'fail', detail: message})
+        expect(result.outcomes).toContainEqual({
+            name: 'Editable', status: 'fail', summary: message, codes: ['REMOVED_GENERATOR_COMPONENT'],
+        })
+        expect(formatCheckTable(result)).toContain(`Editable   FAIL     REMOVED_GENERATOR_COMPONENT: ${message}`)
     })
 
     it('resolves exact dependency keys and reports normalized project module paths', async () => {
@@ -237,7 +251,6 @@ export function main() {
             name: 'Broken Node',
             extras: {EntityComponentPlugin: {
                 unknown: {type: 'UnknownComponent', state: {}},
-                generator: {type: 'Generator', state: {module: './generators/missing.js'}},
             }},
         }])
         await writeFile(resolve(root, 'Broken.script.js'), 'throw new Error("top-level failure")\n')
@@ -251,7 +264,6 @@ export function main() {
             expect.objectContaining({kind: 'script', detail: expect.stringContaining('top-level failure')}),
             expect.objectContaining({kind: 'plugin', detail: 'file not found'}),
             expect.objectContaining({kind: 'component', detail: 'UnknownComponent is not registered'}),
-            expect.objectContaining({kind: 'generator', detail: 'file not found'}),
         ]))
         await expect(publishFromDisk(root, {slug: 'blocked-check', backendUrl: backend.url}))
             .rejects.toThrow('Project check failed')

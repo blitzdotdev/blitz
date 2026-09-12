@@ -25,7 +25,6 @@ export interface ProjectSource {
     write(path: string, bytes: Uint8Array, ifMatch: string | '*'): Promise<{sha256: string}>
     delete(path: string): Promise<void>
     events(listener: (event: ProjectEvent) => void): () => void
-    bake?(nodeName: string, force?: boolean): Promise<Record<string, unknown>>
     checkpoint?(label?: string): Promise<{hash: string, label?: string}>
     latestCheckpoint?(): Promise<{hash: string, label?: string} | undefined>
     restore?(hash?: string): Promise<{hash: string}>

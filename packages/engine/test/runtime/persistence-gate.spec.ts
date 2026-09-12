@@ -9,7 +9,6 @@ const sourceFiles = [
     'assets.json',
     'main.js',
     'Spinner.script.js',
-    'Generator.js',
     'assets/prop.gltf',
 ]
 
@@ -39,7 +38,6 @@ test('serializes, reloads, persists edits deterministically, then cleans up afte
         const {
             createGame,
             EntityComponentPlugin,
-            GeneratorComponent,
             semanticSceneSnapshot,
             serializeSceneGltf,
         } = await import('/runtime.js')
@@ -49,7 +47,6 @@ test('serializes, reloads, persists edits deterministically, then cleans up afte
         game.viewer.getPlugin(EntityComponentPlugin)?.stop()
         game.viewer.timeline.stop()
         game.viewer.scene.modelRoot.getObjectByName('Spinner').rotation.y = 0
-        await GeneratorComponent.waitForViewer(game.viewer)
         const snapshot = semanticSceneSnapshot(game.viewer)
         const first = await serializeSceneGltf(game.viewer, {scenePath: 'assets/main.scene.gltf'})
         const second = await serializeSceneGltf(game.viewer, {scenePath: 'assets/main.scene.gltf'})
@@ -87,7 +84,6 @@ test('serializes, reloads, persists edits deterministically, then cleans up afte
         const {
             createGame,
             EntityComponentPlugin,
-            GeneratorComponent,
             persistenceReport,
             semanticSceneSnapshot,
             serializeSceneGltf,
@@ -103,13 +99,6 @@ test('serializes, reloads, persists edits deterministically, then cleans up afte
         const prop = game.viewer.scene.modelRoot.getObjectByName('PropRef')
         prop.position.set(4, 5, 6)
         prop.setDirty?.({source: 'persistence gate', change: 'position'})
-        const generatorRoot = game.viewer.scene.modelRoot.getObjectByName('GeneratorRoot')
-        const generator = EntityComponentPlugin.GetComponent(generatorRoot, GeneratorComponent)
-        generator.setState({module: generator.module, params: {count: 4}})
-        const componentData = EntityComponentPlugin.GetObjectData(generatorRoot)
-        componentData[generator.uuid].state = generator.stateRef
-        await GeneratorComponent.waitForViewer(game.viewer)
-
         const editedSnapshot = semanticSceneSnapshot(game.viewer)
         const serialized = await serializeSceneGltf(game.viewer, {scenePath: 'assets/main.scene.gltf'})
         const cleanup = game.dispose()
@@ -150,18 +139,14 @@ test('serializes, reloads, persists edits deterministically, then cleans up afte
     await expect.poll(() => page.evaluate(() => (window as any).__kite3dUpdates || 0)).toBeGreaterThan(0)
 
     const final = await page.evaluate(async (before) => {
-        const {EntityComponentPlugin, GeneratorComponent, persistenceReport, semanticSceneSnapshot} = await import('/runtime.js')
+        const {EntityComponentPlugin, persistenceReport, semanticSceneSnapshot} = await import('/runtime.js')
         const game = (window as any).__persistenceGateGame
         game.viewer.getPlugin(EntityComponentPlugin)?.stop()
         game.viewer.timeline.stop()
         game.viewer.scene.modelRoot.getObjectByName('Spinner').rotation.y = 0
         const prop = game.viewer.scene.modelRoot.getObjectByName('PropRef')
-        const generatorRoot = game.viewer.scene.modelRoot.getObjectByName('GeneratorRoot')
-        const generator = EntityComponentPlugin.GetComponent(generatorRoot, GeneratorComponent)
         const result = {
             transform: prop.position.toArray(),
-            count: generator.params.count,
-            generatedCount: generatorRoot.children.length,
             persistence: persistenceReport(before, semanticSceneSnapshot(game.viewer)),
             cleanup: game.dispose(),
         }
@@ -169,8 +154,6 @@ test('serializes, reloads, persists edits deterministically, then cleans up afte
     }, edited.editedSnapshot)
 
     expect(final.transform).toEqual([4, 5, 6])
-    expect(final.count).toBe(4)
-    expect(final.generatedCount).toBe(4)
     expect(final.persistence).toMatchObject({ok: true, status: 'pass', changes: []})
     expect(final.cleanup).toMatchObject({ok: true, status: 'pass', trackedObjectCount: 0})
 })

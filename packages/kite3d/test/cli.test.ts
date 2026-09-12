@@ -35,7 +35,6 @@ Commands:
   pull [--force]              Pull the active release
   status                      Show local deploy status
   claim [--no-open]           Open claim pages for local deploys
-  bake <nodeName> [--force]   Bake a Generator node
   check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
   open                        Open the running local editor
@@ -123,6 +122,14 @@ describe('kite3d CLI', () => {
         const root = await mkdtemp(resolve(tmpdir(), 'kite3d-cli-legacy-upgrade-'))
         cleanup.push(() => rm(root, {recursive: true, force: true}))
         await cp(resolve(import.meta.dirname, 'fixtures/legacy-project'), root, {recursive: true})
+        const scenePath = resolve(root, 'assets/main.scene.gltf')
+        const scene = JSON.parse(await readFile(scenePath, 'utf8'))
+        scene.nodes = [{
+            name: 'Old World',
+            extras: {EntityComponentPlugin: {old: {type: 'Generator', state: {module: 'old-world.js'}}}},
+        }]
+        scene.scenes[0].nodes = [0]
+        await writeFile(scenePath, `${JSON.stringify(scene, null, 2)}\n`)
         await mkdir(resolve(root, '.blitz'))
         await writeFile(resolve(root, '.blitz/deploys.json'), '{"games":{}}\n')
         await mkdir(resolve(root, 'node_modules/@blitzdev/blitz'), {recursive: true})
@@ -152,6 +159,7 @@ await symlink(${JSON.stringify(resolve(import.meta.dirname, '../../engine'))}, r
             'Removed package-lock.json.',
             'Removed node_modules/.',
             `Upgraded Kite3D from 0.12.2 to ${KITE3D_VERSION}`,
+            "Generator components were removed in Kite3D 0.19.0. Convert Old World to a build step. See the guide's Authoring rules.",
         ])
     })
 
@@ -220,7 +228,7 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
     it('prints command-specific help without performing the command', async () => {
         const commands = [
             'init', 'dev', 'doctor', 'checkpoint', 'restore', 'archive', 'publish', 'pull', 'status', 'claim',
-            'bake', 'check', 'journal', 'open', 'sources', 'skills', 'upgrade',
+            'check', 'journal', 'open', 'sources', 'skills', 'upgrade',
         ]
         const results = await Promise.all(commands.map(async (command) => ({
             command,

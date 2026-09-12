@@ -1,20 +1,11 @@
 import {parse, ParseError} from 'jsonc-parser'
-import type {GeneratorParamSchema} from '../generatorParams.ts'
 
 export const settingsKey = 'kite3d'
 export const assetUrlPrefix = `/${settingsKey}/`
+export const REMOVED_GENERATOR_GUIDANCE = 'Generator components were removed in Kite3D 0.19.0.'
 
 export type JSONValue = string | number | boolean | null | JSONValue[] | {[key: string]: JSONValue}
 export type ProjectPackageJSON = Record<string, JSONValue> & {mainScene: string}
-
-export interface ProjectGeneratorState {
-    componentId: string
-    module: string
-    nodeIndex: number
-    nodeName: string
-    params: Record<string, unknown>
-    schema: GeneratorParamSchema
-}
 
 export interface AssetsJSONManifest {
     files: Record<string, {
@@ -149,46 +140,28 @@ export function validateSceneSource(path: string, text: string): void {
     }
 }
 
-export function readProjectGeneratorStates(text: string): ProjectGeneratorState[] {
-    try {
-        const document = JSON.parse(text) as {
-            nodes?: Array<{
-                name?: unknown
-                extras?: {EntityComponentPlugin?: Record<string, {type?: unknown, state?: unknown}>}
-            }>
-        }
-        const generators: ProjectGeneratorState[] = []
-        for (const [nodeIndex, node] of (document.nodes || []).entries()) {
-            for (const [componentId, component] of Object.entries(node.extras?.EntityComponentPlugin || {})) {
-                if (component.type !== 'Generator' || !isRecord(component.state)) continue
-                generators.push({
-                    componentId,
-                    module: typeof component.state.module === 'string' ? component.state.module : '',
-                    nodeIndex,
-                    nodeName: typeof node.name === 'string' ? node.name : `Node ${nodeIndex}`,
-                    params: isRecord(component.state.params) ? component.state.params : {},
-                    schema: {},
-                })
-            }
-        }
-        return generators
-    } catch {
-        return []
+/** Find nodes that still carry the component removed in Kite3D 0.19.0. */
+export function findRemovedGeneratorNodes(text: string): Array<{nodeIndex: number, nodeName: string}> {
+    const document = JSON.parse(text) as {
+        nodes?: Array<{
+            name?: unknown
+            extras?: {EntityComponentPlugin?: Record<string, {type?: unknown}>}
+        }>
     }
+    const nodes: Array<{nodeIndex: number, nodeName: string}> = []
+    for (const [nodeIndex, node] of (document.nodes || []).entries()) {
+        const components = Object.values(node.extras?.EntityComponentPlugin || {})
+        if (!components.some(({type}) => type === 'Generator')) continue
+        nodes.push({
+            nodeIndex,
+            nodeName: typeof node.name === 'string' && node.name.trim() ? node.name : `Node ${nodeIndex}`,
+        })
+    }
+    return nodes
 }
 
-export function updateProjectGeneratorState(
-    text: string,
-    generator: Pick<ProjectGeneratorState, 'componentId' | 'nodeIndex' | 'nodeName'>,
-    update: Partial<Pick<ProjectGeneratorState, 'module' | 'params'>>,
-): {text: string, state: Record<string, unknown>} {
-    const document = JSON.parse(text) as {
-        nodes?: Array<{extras?: {EntityComponentPlugin?: Record<string, {state?: unknown}>}}>
-    }
-    const state = document.nodes?.[generator.nodeIndex]?.extras?.EntityComponentPlugin?.[generator.componentId]?.state
-    if (!isRecord(state)) throw new Error(`Generator component is missing on ${generator.nodeName}`)
-    Object.assign(state, update)
-    return {text: JSON.stringify(document, null, 2), state}
+export function removedGeneratorMessage(nodeName: string): string {
+    return `${REMOVED_GENERATOR_GUIDANCE} Convert ${nodeName} to a build step. See the guide's Authoring rules.`
 }
 
 export async function parsePackageJsonSettingsConfig(json: ProjectPackageJSON, _project?: unknown): Promise<ProjectConfigSettings> {

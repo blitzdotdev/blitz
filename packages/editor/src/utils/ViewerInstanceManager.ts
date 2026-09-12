@@ -27,7 +27,7 @@ import {
     CannonPhysicsPlugin,
     authoringQualityReport,
     createGame,
-    GeneratorComponent,
+    findRemovedGeneratorNodes,
     HtmlUiComponent,
     isDependencyModuleSpecifier,
     assetUrlPrefix,
@@ -36,11 +36,10 @@ import {
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
     persistenceReport,
-    readProjectGeneratorStates,
     registerScripts,
+    removedGeneratorMessage,
     RUNTIME_VERSION,
     RuntimeNestedAssetLoader,
-    runGenerator,
     semanticSceneSnapshot,
     serializeSceneGltf,
     validateSceneSource,
@@ -49,7 +48,6 @@ import {
     type CreatedGame,
     type ExternalPlugin,
     type ProjectConfigSettings,
-    type ProjectGeneratorState,
     type ProjectPackageJSON,
     type RuntimeCleanupReport,
     type SerializedSceneGltf,
@@ -143,8 +141,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     assetsManifest: AssetsJSONManifest = {version: 1, files: {}}
     sceneText = ''
     scenePath = 'assets/main.scene.gltf'
-    generatorStates: ProjectGeneratorState[] = []
-    componentTypes: string[] = [GeneratorComponent.ComponentType]
+    removedGeneratorNodes: Array<{nodeIndex: number, nodeName: string}> = []
+    componentTypes: string[] = []
     scriptLoadStatuses = new Map<string, ProjectLoadStatus>()
     pluginLoadStatuses = new Map<string, ProjectLoadStatus>()
     status = 'Loading project…'
@@ -188,6 +186,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     private runtimeErrorCount = 0
     private moduleReloadSequence = 0
     private moduleRevision?: string
+    private readonly reportedRemovedGenerators = new Set<string>()
     private consoleWriteQueue: Promise<void> = Promise.resolve()
     private stateWriteQueue: Promise<void> = Promise.resolve()
     private originalConsoleError?: typeof console.error
@@ -337,7 +336,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.loadedPath = this.source.fileUrl(scenePath)
         this.scenePath = scenePath
         this.sceneText = sceneText
-        this.generatorStates = this.readGeneratorStates(sceneText)
+        this.removedGeneratorNodes = findRemovedGeneratorNodes(sceneText)
 
         await this.prepareEditViewer(config, assetsManifest)
         await this.loadEditScene(sceneText)
@@ -420,7 +419,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         })
         viewer.addPluginSync(EditModePlugin)
         entityComponents.addComponentType(HtmlUiComponent)
-        entityComponents.addComponentType(GeneratorComponent)
         viewer.getPlugin(GLTFAnimationPlugin)!.autoIncrementTime = false
         viewer.timeline.endTime = 0
         viewer.scene.addEventListener('sceneUpdate', this.onEditSceneUpdate)
@@ -452,7 +450,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     private async prepareEditViewer(config: ProjectConfigSettings, assetsManifest: AssetsJSONManifest) {
         const viewer = this.get()
         const base = new URL('/files/', location.origin)
-        GeneratorComponent.configureViewer(viewer, {base, onError: (error) => void this.reportError(error)})
 
         const configuredCamera = config.viewer.camera
         if (configuredCamera) {
@@ -517,7 +514,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         try {
             const registered = await registerScripts(this.get(), modules)
             this.componentTypes = [
-                GeneratorComponent.ComponentType,
                 ...registered.components.map(({value}) => value.ComponentType),
                 ...registered.plugins.map(({value}) => (value as unknown as {PluginType: string}).PluginType),
             ].filter((value, index, values) => values.indexOf(value) === index).sort()
@@ -563,9 +559,9 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             if (!loaded?.isObject3D) throw new Error(`The main scene did not load as an Object3D: ${this.scenePath}`)
             await this.nestedAssets?.loadObjectDependencies(loaded as IObject3D)
             await this.nestedAssets?.waitForPending()
-            await GeneratorComponent.waitForViewer(viewer)
             this.sceneText = sceneText
-            this.generatorStates = this.readGeneratorStates(sceneText)
+            this.removedGeneratorNodes = findRemovedGeneratorNodes(sceneText)
+            await this.reportRemovedGenerators()
             this.error = undefined
             const editMode = viewer.getPlugin(EditModePlugin)
             const savedCamera = this.project?.config.viewer.camera ? viewer.scene.defaultCamera : undefined
@@ -583,7 +579,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             } else {
                 editMode?.fitView()
             }
-            this.selectInitialGenerator()
             this.savedSceneHash = await hashBytes((await serializeSceneGltf(viewer, {scenePath: this.scenePath})).gltf)
             // AGREED-4: DevServerSource reloads may finish with renderer updates queued for the next frame.
             // Keep the load guard raised until those updates settle so a disk reload is not reported as an edit.
@@ -595,19 +590,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
-    private selectInitialGenerator() {
-        const first = this.generatorStates[0]
-        if (!first) return
-        const object = this.get().scene.modelRoot.getObjectByName(first.nodeName)
-        if (object) this.get().getPlugin(PickingPlugin)?.setSelectedObject(object)
-    }
-
     private onEditSceneUpdate = (event: {object?: IObject3D}) => {
-        const generatorParent = event.object?.parent
-            ? EntityComponentPlugin.GetComponent(event.object.parent, GeneratorComponent)
-            : undefined
-        if (!this.loadingScene && !this.savingScene && event.object
-            && event.object.userData.kite3dGenerated !== true && !generatorParent) {
+        if (!this.loadingScene && !this.savingScene && event.object) {
             this.loadedNeedsSave = true
         }
         this.changed()
@@ -710,45 +694,9 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.hashes.set(this.scenePath, result.sha256)
         this.savedSceneHash = await hashBytes(serialized.gltf)
         this.sceneText = decode(serialized.gltf)
-        this.generatorStates = this.readGeneratorStates(this.sceneText)
+        this.removedGeneratorNodes = findRemovedGeneratorNodes(this.sceneText)
         this.manifest = await this.source.list()
         this.changed()
-    }
-
-    async updateGenerator(generator: ProjectGeneratorState, module: string, params: Record<string, unknown>) {
-        const object = this.get().scene.modelRoot.getObjectByName(generator.nodeName)
-        if (!object) throw new Error(`Generator node not found: ${generator.nodeName}`)
-        const component = EntityComponentPlugin.GetComponent(object, GeneratorComponent)
-        if (!component) throw new Error(`Generator component not found on ${generator.nodeName}`)
-        component.setState({module, params})
-        const objectComponents = EntityComponentPlugin.GetObjectData(object)
-        if (objectComponents?.[component.uuid]) objectComponents[component.uuid].state = component.stateRef
-        object.setDirty?.({change: 'generator state', source: 'Kite3D editor'})
-        await GeneratorComponent.waitForViewer(this.get())
-        this.loadedNeedsSave = true
-        await this.saveScene()
-        this.changed()
-    }
-
-    async requestBake(nodeName: string, force = false) {
-        if (!this.source.bake) throw new Error('Bake is not supported by this project source')
-        this.setStatus(`Baking ${nodeName}…`)
-        await this.source.bake(nodeName, force)
-    }
-
-    private async performBake(nodeName: string) {
-        const matches: IObject3D[] = []
-        this.get().scene.modelRoot.traverse((object) => {
-            if (object.name === nodeName) matches.push(object as IObject3D)
-        })
-        if (matches.length !== 1) throw new Error(`Generator node is not unique: ${nodeName}`)
-        const component = EntityComponentPlugin.GetComponent(matches[0], GeneratorComponent)
-        if (!component) throw new Error(`Generator component not found on ${nodeName}`)
-        const children = await component.bake()
-        this.loadedNeedsSave = true
-        await this.saveScene()
-        this.setStatus(`Baked ${nodeName}`)
-        return {ok: true, nodeName, children}
     }
 
     async startPlay(canvas: HTMLCanvasElement): Promise<void> {
@@ -1271,17 +1219,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             }
             return
         }
-        if (event.type === 'command' && event.command === 'bake'
-            && typeof event.id === 'string' && typeof event.nodeName === 'string') {
-            try {
-                const result = await this.performBake(event.nodeName)
-                await this.source.commandResult?.(event.id, result)
-            } catch (error) {
-                await this.source.commandResult?.(event.id, {ok: false, error: errorMessage(error)})
-                await this.reportError(error)
-            }
-            return
-        }
         if (event.type !== 'change' && event.type !== 'add' && event.type !== 'unlink') return
         if (event.client === this.source.clientId || !event.path) return
         if (event.sha256 && this.hashes.get(event.path) === event.sha256) return
@@ -1328,31 +1265,13 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
 
         const isJavaScript = /\.m?js$/i.test(path)
-        const generator = this.generatorStates.find(({module}) => normalizeProjectPath(module) === path)
 
         if (isJavaScript) {
             const moduleRevision = String(++this.moduleReloadSequence)
             this.moduleRevision = moduleRevision
             await this.registerProjectScripts(this.project!.config, moduleRevision)
-            if (generator) {
-                const object = this.get().scene.modelRoot.getObjectByName(generator.nodeName)
-                if (object) {
-                    const component = EntityComponentPlugin.GetComponent(object, GeneratorComponent)
-                    await runGenerator({
-                        node: object as IObject3D,
-                        params: generator.params,
-                        viewer: this.get(),
-                        module: versionedPath(generator.module, nextHash, moduleRevision),
-                        base: new URL('/files/', location.origin),
-                        onSchema: (schema) => {
-                            if (component) component.schema = schema
-                        },
-                    })
-                    this.generatorStates = this.readGeneratorStates(this.sceneText)
-                }
-            }
             if (this.isPlaying) await this.restartPlay()
-            this.setStatus(`${path} ${generator ? 'regenerated' : 'reloaded'}`)
+            this.setStatus(`${path} reloaded`)
         }
         this.changed()
     }
@@ -1381,14 +1300,24 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.changed()
     }
 
-    private readGeneratorStates(sceneText: string): ProjectGeneratorState[] {
-        return readProjectGeneratorStates(sceneText).map((generator) => {
-            const object = this.viewer?.scene.modelRoot.getObjectByName(generator.nodeName)
-            const component = object
-                ? EntityComponentPlugin.GetComponent(object, GeneratorComponent)
-                : undefined
-            return component ? {...generator, schema: component.schema} : generator
+    private async reportRemovedGenerators() {
+        const names = new Set(this.removedGeneratorNodes.map(({nodeName}) => nodeName))
+        this.get().scene.modelRoot.traverse((object) => {
+            if (!names.has(object.name)) return
+            Object.defineProperty(object.userData, 'kite3dRemovedGenerator', {
+                configurable: true,
+                enumerable: false,
+                value: true,
+            })
         })
+        for (const {nodeIndex, nodeName} of this.removedGeneratorNodes) {
+            const key = `${nodeIndex}:${nodeName}`
+            if (this.reportedRemovedGenerators.has(key)) continue
+            this.reportedRemovedGenerators.add(key)
+            const message = removedGeneratorMessage(nodeName)
+            console.warn(message)
+            await this.appendConsoleLine(message)
+        }
     }
 
     private setStatus(status: string) {
@@ -1455,16 +1384,6 @@ function normalizeProjectPath(path: string) {
 async function hashBytes(bytes: Uint8Array): Promise<string> {
     const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource)
     return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
-}
-
-function versionedPath(path: string, sha256?: string, reloadRevision?: string) {
-    const [withoutFragment, fragment = ''] = path.split('#', 2)
-    const [pathname, query = ''] = withoutFragment.split('?', 2)
-    const parameters = new URLSearchParams(query)
-    if (sha256) parameters.set('v', sha256)
-    if (reloadRevision) parameters.set('r', reloadRevision)
-    const suffix = parameters.size ? `?${parameters}` : ''
-    return `${pathname}${suffix}${fragment ? `#${fragment}` : ''}`
 }
 
 function uniqueImportPath(name: string, entries: ProjectFileEntry[]) {
