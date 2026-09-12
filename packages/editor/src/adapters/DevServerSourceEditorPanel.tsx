@@ -1,8 +1,13 @@
 import {Button, ButtonGroup, Callout, Intent, Spinner} from '@blueprintjs/core'
-import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent} from 'react'
+import {lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react'
 import {ProjectConflictError, type ProjectFileEntry} from '../ProjectSource.ts'
 import {useManager} from '../utils/UseManager.ts'
-import {editableSourceExtensions, isEditableSourceFile, maxSourceBytes} from '../utils/sourceFiles.ts'
+import {isEditableSourceFile, isTextSourcePath, maxSourceBytes} from '../utils/sourceFiles.ts'
+
+const SourceCodeEditor = lazy(async () => {
+    const module = await import('./SourceCodeEditor.tsx')
+    return {default: module.SourceCodeEditor}
+})
 
 const encode = (text: string) => new TextEncoder().encode(text)
 
@@ -40,7 +45,6 @@ export function SourceEditorPanel({selectedFile}: {selectedFile?: ProjectFileEnt
     const savingRef = useRef(false)
     const loadGeneration = useRef(0)
     const externalChangePending = useRef(false)
-    const lineNumbersRef = useRef<HTMLPreElement>(null)
     const invalidateLoad = useCallback(() => { ++loadGeneration.current }, [])
 
     const setActive = useCallback((entry: ProjectFileEntry, content: string, sha256: string) => {
@@ -220,11 +224,6 @@ export function SourceEditorPanel({selectedFile}: {selectedFile?: ProjectFileEnt
         return () => window.removeEventListener('keydown', keydown)
     }, [activePath, save, selectedPath])
 
-    const lineNumbers = useMemo(() => {
-        const count = draft.split('\n').length
-        return Array.from({length: count}, (_, index) => index + 1).join('\n')
-    }, [draft])
-
     if (!selectedSource) return null
     if (!activeEntry) return <div className="source-editor-placeholder">
         {loading && <Spinner size={24}/>}
@@ -273,23 +272,19 @@ export function SourceEditorPanel({selectedFile}: {selectedFile?: ProjectFileEnt
             onClick={() => void load(pendingEntry, true)}
         />}
         <div className="source-editor-input">
-            <pre ref={lineNumbersRef} className="source-line-numbers" aria-hidden="true">{lineNumbers}</pre>
-            <textarea
-                aria-label={`Source editor: ${activeEntry.path}`}
-                className="bp5-input source-textarea"
-                value={draft}
-                spellCheck={false}
-                onScroll={(event: UIEvent<HTMLTextAreaElement>) => {
-                    if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop
-                }}
-                onChange={(event) => {
-                    ++loadGeneration.current
-                    setLoading(false)
-                    draftRef.current = event.target.value
-                    setDraft(event.target.value)
-                    if (!conflicted) setMessage(undefined)
-                }}
-            />
+            <Suspense fallback={<div className="source-editor-loading"><Spinner size={20}/></div>}>
+                <SourceCodeEditor
+                    path={activeEntry.path}
+                    value={draft}
+                    onChange={(value) => {
+                        ++loadGeneration.current
+                        setLoading(false)
+                        draftRef.current = value
+                        setDraft(value)
+                        if (!conflicted) setMessage(undefined)
+                    }}
+                />
+            </Suspense>
         </div>
     </div>
 }
@@ -303,8 +298,7 @@ function decodeUtf8(bytes: Uint8Array): string {
 }
 
 function isTextExtension(path: string): boolean {
-    const dot = path.lastIndexOf('.')
-    return dot >= 0 && editableSourceExtensions.has(path.slice(dot).toLowerCase())
+    return isTextSourcePath(path)
 }
 
 function fileType(path: string): string {
@@ -312,7 +306,8 @@ function fileType(path: string): string {
     return ({
         css: 'text/css', glb: 'model/gltf-binary', gltf: 'model/gltf+json', html: 'text/html',
         jpeg: 'image/jpeg', jpg: 'image/jpeg', js: 'text/javascript', json: 'application/json',
-        md: 'text/markdown', mjs: 'text/javascript', png: 'image/png', txt: 'text/plain',
+        md: 'text/markdown', mjcf: 'application/xml', mjs: 'text/javascript', png: 'image/png',
+        ts: 'text/typescript', tsx: 'text/typescript', txt: 'text/plain', xml: 'application/xml',
         webp: 'image/webp',
     } as Record<string, string>)[extension] || 'application/octet-stream'
 }
