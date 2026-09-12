@@ -22,6 +22,7 @@ import {FileManifestEntry} from "./AssetsProvider.ts";
 import {environmentCommand, materialCommand, objectCommand, textureCommand} from "./objectApplyCommands.tsx";
 import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
 import {assetableFileTypes, isExternalObject, notAssetableFileTypes} from "./projectUtils.ts";
+import {cloneAssetItem} from "./AssetTracker.ts";
 
 type DraggedItem = IMaterial | IObject3D | ITexture
 
@@ -127,12 +128,13 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         if(!isAsset) {
             clone = item
         }else {
-            if ((item as IMaterial).isMaterial) {
-                clone = this.manager.cloneAssetMaterial(item as IMaterial)
-            } else if ((item as IObject3D).isObject3D) {
-                clone = this.manager.cloneAssetObject(item as IObject3D)
-            } else if ((item as ITexture).isTexture) {
-                clone = this.manager.cloneAssetTexture(item as ITexture)
+            if ((item as IMaterial).isMaterial || (item as IObject3D).isObject3D || (item as ITexture).isTexture) {
+                clone = cloneAssetItem(item)
+                delete clone._tpRootPath
+                if ((clone as IObject3D).isObject3D) {
+                    delete (clone as IObject3D)._tpRootUid
+                    ;(clone as IObject3D)._sChildren ||= []
+                }
             } else {
                 console.error('CanvasFileDropHandler: Unsupported dragged item type:', item);
                 clone = null

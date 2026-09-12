@@ -475,7 +475,7 @@ test('registers a dropped GLB as an asset and loads it from the published projec
                 excluded: wrapper.children.every((child) => child.userData.excludeFromExport === true),
             }
             return state
-        })).toEqual({meshCount: 1, excluded: true})
+        }), {timeout: 20_000}).toEqual({meshCount: 1, excluded: true})
         await page.evaluate(() => {
             const wrapper = (window as unknown as {
                 viewer: {scene: {modelRoot: {getObjectByName(name: string): {
@@ -513,6 +513,141 @@ test('registers a dropped GLB as an asset and loads it from the published projec
             return wrapper?.children.length || 0
         }), {timeout: 30_000}).toBeGreaterThan(0)
         await popup.close()
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
+})
+
+test('persists a dropped library glTF with its buffer and texture', async ({page}) => {
+    test.setTimeout(90_000)
+    const fixture = await startPublishEditor()
+    const libraryRootUrl = 'https://library.example.test/assets/mock-textured/mock-textured.gltf'
+    const libraryRequests: Array<{method: string, url: string, status?: number}> = []
+    const consoleErrors: string[] = []
+    const pageErrors: string[] = []
+    const httpErrors: Array<{status: number, url: string}> = []
+    const gltf = texturedTriangleGltf()
+    const binary = texturedTriangleBuffer()
+    const texture = await readFile(fileURLToPath(new URL('../../public/favicon-96x96.png', import.meta.url)))
+    await writeFile(resolve(fixture.root, '.kite3d/console.log'), '')
+    await writeFile(resolve(fixture.root, '.kite3d/check.json'), '{}\n')
+    page.on('request', (request) => {
+        if (request.url().startsWith('https://library.example.test/') || request.url().includes('/files/assets/imports/mock-textured/')) {
+            libraryRequests.push({method: request.method(), url: request.url()})
+        }
+    })
+    page.on('response', (response) => {
+        if (response.status() >= 400) httpErrors.push({status: response.status(), url: response.url()})
+        const request = libraryRequests.findLast(({method, url, status}) =>
+            status === undefined && method === response.request().method() && url === response.url())
+        if (request) request.status = response.status()
+    })
+    page.on('console', (message) => {
+        if (message.type() === 'error') consoleErrors.push(message.text())
+    })
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await page.route('https://blitz-asset-library-proxy.blitzapp.workers.dev/assets/v1/list', async (route) => {
+        await route.fulfill({json: {assets: [{
+            id: '@mock/mock-textured',
+            name: 'Mock Textured Triangle',
+            type: 'model',
+            fileUrl: libraryRootUrl,
+            thumbnailUrl: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>',
+        }]}})
+    })
+    await page.route('https://library.example.test/assets/mock-textured/**', async (route) => {
+        const path = new URL(route.request().url()).pathname
+        if (path.endsWith('/mock-textured.gltf')) {
+            await route.fulfill({status: 200, contentType: 'model/gltf+json', body: gltf})
+        } else if (path.endsWith('/mesh.bin')) {
+            await route.fulfill({status: 200, contentType: 'application/octet-stream', body: binary})
+        } else if (path.endsWith('/textures/pixel.png')) {
+            await route.fulfill({status: 200, contentType: 'image/png', body: texture})
+        } else {
+            await route.fulfill({status: 404, body: 'Not found'})
+        }
+    })
+
+    try {
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await page.getByRole('tab', {name: 'Library'}).click()
+        await page.getByRole('tab', {name: '3D Models'}).click()
+        const item = page.getByTitle(libraryRootUrl)
+        await expect(item).toBeVisible()
+        await expect(item).toHaveAttribute('draggable', 'true')
+
+        const transfer = await page.evaluateHandle(() => new DataTransfer())
+        await item.dispatchEvent('dragstart', {dataTransfer: transfer})
+        await expect.poll(() => libraryRequests.filter(({method, url}) =>
+            method === 'GET' && url.startsWith('https://library.example.test/')).length, {
+            timeout: 20_000,
+        }).toBe(3)
+        await expect.poll(() => page.locator('.native-spinner').evaluate((element) =>
+            getComputedStyle(element).display)).toBe('none')
+        const canvas = page.locator('.editorCanvasContainer canvas').first()
+        const bounds = await canvas.boundingBox()
+        expect(bounds).not.toBeNull()
+        const position = {clientX: bounds!.x + bounds!.width / 2, clientY: bounds!.y + bounds!.height / 2}
+        await canvas.dispatchEvent('dragover', {...position, dataTransfer: transfer})
+        await canvas.dispatchEvent('drop', {...position, dataTransfer: transfer})
+        await item.dispatchEvent('dragend', {dataTransfer: transfer})
+
+        await expect(page.getByTestId('scene-hierarchy')).toContainText('Mock Textured Triangle')
+        const expectedAsset = {
+            path: 'assets/imports/mock-textured/f.gltf',
+            files: {
+                'f.gltf': 'assets/imports/mock-textured/f.gltf',
+                'mesh.bin': 'assets/imports/mock-textured/mesh.bin',
+                'textures/pixel.png': 'assets/imports/mock-textured/textures/pixel.png',
+            },
+        }
+        await expect.poll(async () => JSON.parse(await readFile(resolve(fixture.root, 'assets.json'), 'utf8')))
+            .toEqual({version: 1, files: {'mock-textured': expectedAsset}})
+        expect(await readFile(resolve(fixture.root, expectedAsset.files['f.gltf']), 'utf8')).toContain('mesh.bin')
+        expect(await readFile(resolve(fixture.root, expectedAsset.files['mesh.bin']))).toEqual(binary)
+        expect(await readFile(resolve(fixture.root, expectedAsset.files['textures/pixel.png']))).toEqual(texture)
+
+        await expect.poll(() => texturedObjectState(page)).toEqual({meshCount: 1, positionCount: 3, textureWidth: 96})
+        await expect(page.getByTestId('save-scene')).toBeEnabled()
+        await page.getByTestId('save-scene').click()
+        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+        const savedScene = JSON.parse(await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8')) as {
+            nodes: Array<{extras?: {rootPath?: string}}>
+        }
+        expect(savedScene.nodes.some(({extras}) => extras?.rootPath === '/kite3d/@mock-textured/f.gltf')).toBe(true)
+
+        await page.reload()
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await expect.poll(() => texturedObjectState(page)).toEqual({meshCount: 1, positionCount: 3, textureWidth: 96})
+
+        await page.getByTestId('check-game').click()
+        await expect(page.getByTestId('check-game')).toBeDisabled()
+        await expect(page.getByTestId('check-game')).toHaveAttribute('data-check-status', 'pass', {timeout: 45_000})
+        await expect(page.getByTestId('check-game')).toBeEnabled()
+        const check = JSON.parse(await readFile(resolve(fixture.root, '.kite3d/check.json'), 'utf8')) as {
+            outcomes: Array<{name: string, status: string}>
+        }
+        expect(check.outcomes).toContainEqual(expect.objectContaining({name: 'Persisted', status: 'pass'}))
+
+        await page.reload()
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await expect.poll(() => texturedObjectState(page)).toEqual({meshCount: 1, positionCount: 3, textureWidth: 96})
+        expect(libraryRequests.map(({method, url, status}) => ({method, path: new URL(url).pathname, status})))
+            .toEqual(expect.arrayContaining([
+                {method: 'GET', path: '/assets/mock-textured/mock-textured.gltf', status: 200},
+                {method: 'GET', path: '/assets/mock-textured/mesh.bin', status: 200},
+                {method: 'GET', path: '/assets/mock-textured/textures/pixel.png', status: 200},
+                {method: 'PUT', path: '/files/assets/imports/mock-textured/f.gltf', status: 201},
+                {method: 'PUT', path: '/files/assets/imports/mock-textured/mesh.bin', status: 201},
+                {method: 'PUT', path: '/files/assets/imports/mock-textured/textures/pixel.png', status: 201},
+                {method: 'GET', path: '/files/assets/imports/mock-textured/f.gltf', status: 200},
+                {method: 'GET', path: '/files/assets/imports/mock-textured/mesh.bin', status: 200},
+                {method: 'GET', path: '/files/assets/imports/mock-textured/textures/pixel.png', status: 200},
+            ]))
+        expect({consoleErrors, httpErrors}).toEqual({consoleErrors: [], httpErrors: []})
+        expect(pageErrors).toEqual([])
     } finally {
         await page.close()
         await fixture.close()
@@ -591,9 +726,11 @@ test('loads the restored panels, watches generators, and saves text glTF without
         }]}})
     })
     await page.route('**/api/files', async (route) => {
-        const response = await route.fetch()
+        const response = await fetch(`http://127.0.0.1:${server.port}/api/files`, {
+            headers: {'X-Kite3D-Token': server.token},
+        })
         const files = await response.json() as Array<Record<string, unknown>>
-        await route.fulfill({response, json: [
+        await route.fulfill({json: [
             ...files,
             {path: '.kite3d/deploys.json', size: 1, sha256: 'a'.repeat(64), mtime: 0},
             {path: '.kite3d/dev.json', size: 1, sha256: 'b'.repeat(64), mtime: 0},
@@ -1475,4 +1612,75 @@ function minimalTriangleGlb(nodeName: string): Buffer {
     output.writeUInt32LE(0x004e4942, binaryHeader + 4)
     binary.copy(output, binaryHeader + 8)
     return output
+}
+
+function texturedTriangleGltf(): string {
+    return JSON.stringify({
+        asset: {version: '2.0'},
+        scene: 0,
+        scenes: [{nodes: [0]}],
+        nodes: [{name: 'Textured Triangle', mesh: 0}],
+        meshes: [{primitives: [{attributes: {POSITION: 0, TEXCOORD_0: 1}, material: 0}]}],
+        accessors: [{
+            bufferView: 0,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        }, {
+            bufferView: 1,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC2',
+            min: [0, 0],
+            max: [1, 1],
+        }],
+        bufferViews: [
+            {buffer: 0, byteOffset: 0, byteLength: 36, target: 34962},
+            {buffer: 0, byteOffset: 36, byteLength: 24, target: 34962},
+        ],
+        buffers: [{byteLength: 60, uri: 'mesh.bin'}],
+        images: [{mimeType: 'image/png', uri: 'textures/pixel.png'}],
+        samplers: [{}],
+        textures: [{sampler: 0, source: 0}],
+        materials: [{pbrMetallicRoughness: {baseColorTexture: {index: 0}}}],
+    })
+}
+
+function texturedTriangleBuffer(): Buffer {
+    const values = [
+        0, 0, 0,
+        1, 0, 0,
+        0, 1, 0,
+        0, 0,
+        1, 0,
+        0, 1,
+    ]
+    const buffer = Buffer.alloc(values.length * 4)
+    values.forEach((value, index) => buffer.writeFloatLE(value, index * 4))
+    return buffer
+}
+
+async function texturedObjectState(page: import('@playwright/test').Page) {
+    return page.evaluate(() => {
+        const modelRoot = (window as unknown as {viewer: {scene: {modelRoot: {
+            getObjectByName(name: string): {traverse(callback: (object: {
+                isMesh?: boolean
+                geometry?: {attributes?: {position?: {count?: number}}}
+                material?: {map?: {image?: {width?: number}}}
+            }) => void): void
+        } | undefined}}}}).viewer.scene.modelRoot
+        const wrapper = modelRoot.getObjectByName('Mock Textured Triangle')
+        let meshCount = 0
+        let positionCount = 0
+        let textureWidth = 0
+        wrapper?.traverse((object) => {
+            if (!object.isMesh) return
+            meshCount += 1
+            positionCount += object.geometry?.attributes?.position?.count || 0
+            textureWidth = object.material?.map?.image?.width || textureWidth
+        })
+        return {meshCount, positionCount, textureWidth}
+    })
 }

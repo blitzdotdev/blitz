@@ -12,11 +12,11 @@ export interface SelectFileRef {
     userData?: Record<string, unknown>
 }
 
-export const assetableFileTypes = ['.glb', '.mat', '.json']
+export const assetableFileTypes = ['.glb', '.gltf', '.phmatgltf', '.mat', '.json', '.hdr']
 export const notAssetableFileTypes = ['.scene.glb']
 
 export function isLoadableFile(file: string) {
-    return /\.(glb|mat|json|png|jpe?g|gif|bmp|tiff|webp|hdr|exr|ktx2|svg)$/i.test(file)
+    return /\.(glb|gltf|phmatgltf|mat|json|png|jpe?g|gif|bmp|tiff|webp|hdr|exr|ktx2|svg)$/i.test(file)
         && !notAssetableFileTypes.some((extension) => file.endsWith(extension))
 }
 

@@ -1,16 +1,20 @@
 import {useManager} from "../utils/UseManager.ts";
-import React, {useRef} from "react";
+import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.tsx";
+import React, {useEffect, useRef} from "react";
 import {ButtonGroup} from "@blueprintjs/core";
 import {FileButton} from "./FilesPanel.tsx";
 import {useVirtualizer} from '@tanstack/react-virtual';
 import {TExternalFile} from "./ExternalFilesPanel.tsx";
 import {FileManifestEntry} from "../utils/AssetsProvider.ts";
+import type {IMaterial, ImportResult, IObject3D, ITexture} from 'threepipe'
 
 export function ExternalFilesGrid({group}: {
     group: TExternalFile
 }) {
     const manager = useManager()
+    const dragger = manager.get().getPlugin(CanvasFileDropHandler)
     const parentRef = useRef<HTMLDivElement>(null)
+    useEffect(() => () => dragger?.handleDragEnd(), [dragger])
     const items = group.children || []
     const onClick = (f: FileManifestEntry | TExternalFile, e: React.MouseEvent) => {
         void f
@@ -18,7 +22,13 @@ export function ExternalFilesGrid({group}: {
     }
     const onDoubleClick = async (f: FileManifestEntry | TExternalFile, e: React.MouseEvent) => {
         void e
-        if (f.type === 'file') await manager.importUrl(f.path)
+        if (!dragger || f.type !== 'file') return
+        const item = await manager.getAssetFromEntry(f)
+        if (!item || !isDraggedItem(item)) return
+        const clone = dragger.cloneItem(item)
+        if (!clone) return
+        const result = dragger.dropAction(clone, null, true, {})
+        if (result && result.cmd) dragger.execCommand(result.cmd, true)
     }
 
     const cssVar = (varName: string, defaultValue: string) => {
@@ -44,7 +54,6 @@ export function ExternalFilesGrid({group}: {
         overscan: 5,
     })
 
-    // AGREED-4: importing a library item is delegated to DevServerSource.
     return <div
         ref={parentRef}
         className={"files-panel-grid"}
@@ -82,10 +91,16 @@ export function ExternalFilesGrid({group}: {
                         disabled={f.type === 'directory'}
                         onClick={(e) => onClick(f, e)}
                         onDoubleClick={(e) => void onDoubleClick(f, e)}
-                        draggable={false}
+                        draggable={dragger?.canDragFile(f)}
+                        onDragStart={(e) => void dragger?.handleDragStart(e, f)}
+                        onDragEnd={dragger?.handleDragEnd}
                     />)}
                 </ButtonGroup>
             })}
         </div>
     </div>
+}
+
+function isDraggedItem(item: ImportResult): item is IObject3D | IMaterial | ITexture {
+    return Boolean(item.isObject3D || item.isMaterial || item.isTexture)
 }

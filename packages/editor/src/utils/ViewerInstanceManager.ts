@@ -31,6 +31,7 @@ import {
     HtmlUiComponent,
     isDependencyModuleSpecifier,
     assetUrlPrefix,
+    createProjectAssetURLModifier,
     parseAssetsJSONManifest,
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
@@ -63,6 +64,7 @@ import {EditorFeatures} from './EditorFeatures.ts'
 import {FileTracker} from './FileTracker.ts'
 import {DevServerAssetTracker} from '../adapters/DevServerAssetTracker.ts'
 import {writeEditorState, type EditorState} from './editorState.ts'
+import {CanvasFileDropHandler} from './CanvasFileDropHandler.tsx'
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 const encode = (text: string) => new TextEncoder().encode(text)
@@ -390,6 +392,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             new GBufferPlugin(),
             physics,
             new PopmotionPlugin(),
+            new CanvasFileDropHandler(this),
             new GLTFAnimationPlugin(),
             new GLTFMeshOptDecodePlugin(true, document.head),
             new KTX2LoadPlugin(),
@@ -464,7 +467,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
 
         if (this.assetUrlModifier) viewer.assetManager.importer.removeURLModifier(this.assetUrlModifier)
-        this.assetUrlModifier = createURLModifier(base, assetsManifest)
+        this.assetUrlModifier = createProjectAssetURLModifier(base, assetsManifest)
         viewer.assetManager.importer.addURLModifier(this.assetUrlModifier)
 
         await this.registerProjectPlugins(config)
@@ -1012,15 +1015,17 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.replaceManifest(await this.source.list())
     }
 
-    private async registerAsset(path: string): Promise<string> {
+    private async registerAsset(path: string, preferredId?: string, files?: Record<string, string>): Promise<string> {
         const existing = Object.entries(this.assetsManifest.files)
             .find(([, asset]) => asset.path === path)?.[0]
         if (existing) return existing
 
-        const assetId = uniqueAssetId(path, this.assetsManifest)
+        const assetId = preferredId && !this.assetsManifest.files[preferredId]
+            ? preferredId
+            : uniqueAssetId(path, this.assetsManifest)
         const next: AssetsJSONManifest = {
             ...this.assetsManifest,
-            files: {...this.assetsManifest.files, [assetId]: {path}},
+            files: {...this.assetsManifest.files, [assetId]: {path, ...(files ? {files} : {})}},
         }
         const written = await this.source.write(
             'assets.json',
@@ -1041,8 +1046,51 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     /** AGREED-4: reference asset pickers delegate reads to the dev-server URL space. */
-    async getAssetFromEntry(entry: {path: string}) {
+    async getAssetFromEntry(entry: {path: string, name?: string, libFileId?: string}) {
+        if (entry.libFileId) return this.importLibraryAsset(entry)
         return this.getAssetFromPath(entry.path)
+    }
+
+    private async importLibraryAsset(entry: {path: string, name?: string}) {
+        const sourceName = new URL(entry.path).pathname.split('/').pop() || 'library-asset.gltf'
+        const assetId = uniqueAssetId(sourceName, this.assetsManifest)
+        const extension = sourceName.split('.').pop()?.toLowerCase() || 'bin'
+        const rootName = `f.${extension}`
+        const directory = `assets/imports/${assetId}`
+        const resources = await downloadLibraryAsset(entry.path, rootName)
+        const files = Object.fromEntries(resources.map(({path}) => [path, `${directory}/${path}`]))
+        const writtenPaths: string[] = []
+        try {
+            for (const resource of resources) {
+                const path = files[resource.path]
+                const written = await this.source.write(path, resource.bytes, '*')
+                writtenPaths.push(path)
+                this.hashes.set(path, written.sha256)
+            }
+            await this.registerAsset(files[rootName], assetId, files)
+        } catch (error) {
+            await Promise.all(writtenPaths.map(async (path) => {
+                await this.source.delete(path).catch(() => undefined)
+                this.hashes.delete(path)
+            }))
+            throw error
+        }
+        const rootPath = assetIdUrl(assetId, files[rootName])
+        const imported = await this.get().assetManager.importer.import(rootPath)
+        const loaded = imported.find(Boolean)
+        if (loaded) {
+            loaded.userData ||= {}
+            loaded.userData.rootPath = rootPath
+            loaded.userData.kite3dImportedInstance = true
+            loaded.userData.sProperties = [...assetInstanceProperties]
+            loaded._tpRootPath = rootPath
+            loaded.name = entry.name || sourceName
+            if (loaded.isObject3D) {
+                for (const child of loaded.children) child.userData.excludeFromExport = true
+            }
+        }
+        this.replaceManifest(await this.source.list())
+        return loaded
     }
 
     async getAssetFromPath(path: string) {
@@ -1369,19 +1417,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 }
 
-function createURLModifier(base: URL, assets: AssetsJSONManifest) {
-    return (url: string): string => {
-        if (url.startsWith('/kite3d/@')) {
-            const id = url.slice('/kite3d/@'.length).split('/', 1)[0]
-            const asset = assets.files[id]
-            if (!asset?.path) throw new Error(`Unknown asset id in URL: ${id}`)
-            return new URL(asset.path, base).href
-        }
-        if (url.startsWith('/kite3d/')) return new URL(url.slice('/kite3d/'.length), base).href
-        return url
-    }
-}
-
 function findPluginExport(module: ModuleExports, definition: ExternalPlugin): Class<IViewerPlugin> {
     const requested = definition.className || 'default'
     const selected = module[requested]
@@ -1443,6 +1478,80 @@ function uniqueAssetId(path: string, manifest: AssetsJSONManifest): string {
 function assetIdUrl(id: string, path: string): string {
     const extension = path.split(/[?#]/, 1)[0].split('.').pop()?.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'bin'
     return `${assetUrlPrefix}@${id}/f.${extension}`
+}
+
+interface DownloadedLibraryResource {
+    path: string
+    bytes: Uint8Array
+}
+
+async function downloadLibraryAsset(url: string, rootName: string): Promise<DownloadedLibraryResource[]> {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`Unable to import ${url}: ${response.status}`)
+    const rootBytes = new Uint8Array(await response.arrayBuffer())
+    if (!rootName.toLowerCase().endsWith('gltf')) return [{path: rootName, bytes: rootBytes}]
+
+    let document: {
+        buffers?: Array<{uri?: string}>
+        images?: Array<{uri?: string}>
+    }
+    try {
+        document = JSON.parse(decode(rootBytes)) as typeof document
+    } catch {
+        throw new Error(`Unable to import ${url}: the library file is not valid JSON glTF`)
+    }
+
+    const references = [
+        ...(document.buffers || []).filter((value) => externalResourceUri(value.uri)),
+        ...(document.images || []).filter((value) => externalResourceUri(value.uri)),
+    ] as Array<{uri: string}>
+    const pathsByUrl = new Map<string, string>()
+    const urlsByPath = new Map<string, string>()
+    const downloads: Array<{path: string, url: string}> = []
+    for (const [index, reference] of references.entries()) {
+        const resourceUrl = new URL(reference.uri, url).href
+        let path = pathsByUrl.get(resourceUrl)
+        if (!path) {
+            path = safeLibraryResourcePath(reference.uri, index)
+            if (urlsByPath.has(path) && urlsByPath.get(path) !== resourceUrl) {
+                path = `resources/${index}-${safeFileName(path.split('/').pop() || 'file.bin')}`
+            }
+            pathsByUrl.set(resourceUrl, path)
+            urlsByPath.set(path, resourceUrl)
+            downloads.push({path, url: resourceUrl})
+        }
+        reference.uri = path
+    }
+
+    const dependencies = await Promise.all(downloads.map(async ({path, url: resourceUrl}) => {
+        const resource = await fetch(resourceUrl)
+        if (!resource.ok) throw new Error(`Unable to import ${resourceUrl}: ${resource.status}`)
+        return {path, bytes: new Uint8Array(await resource.arrayBuffer())}
+    }))
+    return [{path: rootName, bytes: encode(`${JSON.stringify(document, null, 2)}\n`)}, ...dependencies]
+}
+
+function externalResourceUri(uri?: string): uri is string {
+    return typeof uri === 'string' && !uri.startsWith('data:') && !uri.startsWith('blob:')
+}
+
+function safeLibraryResourcePath(uri: string, index: number): string {
+    const withoutQuery = uri.split(/[?#]/, 1)[0].replace(/\\/g, '/')
+    let decoded = withoutQuery
+    try {
+        decoded = decodeURIComponent(withoutQuery)
+    } catch { /* keep the encoded path */ }
+    const segments = decoded.split('/')
+    if (decoded && !decoded.startsWith('/') && !/^[a-z][a-z\d+.-]*:/i.test(decoded)
+        && segments.every((segment) => segment && segment !== '.' && segment !== '..')) {
+        return segments.join('/')
+    }
+    const fallback = safeFileName(new URL(uri, 'https://kite3d.invalid/').pathname.split('/').pop() || 'file.bin')
+    return `resources/${index}-${fallback}`
+}
+
+function safeFileName(name: string): string {
+    return name.replace(/[^a-zA-Z0-9._-]+/g, '-') || 'file.bin'
 }
 
 function selectedNames(viewer?: ThreeViewer): string[] {

@@ -29,8 +29,8 @@ import {
 } from '../authoringValidation.ts'
 import {RuntimeNestedAssetLoader} from './nestedAssets.ts'
 import {
-    assetUrlPrefix,
     AssetsJSONManifest,
+    createProjectAssetURLModifier,
     ExternalPlugin,
     isDependencyModuleSpecifier,
     parseAssetsJSONManifest,
@@ -142,7 +142,7 @@ async function createProjectGame({
 
         // Three's LoadingManager delegates through this importer hook. It covers
         // glTF buffers/textures and nested imports without patching global fetch.
-        const urlModifier = createURLModifier(baseUrl, assetsManifest)
+        const urlModifier = createProjectAssetURLModifier(baseUrl, assetsManifest)
         viewer.assetManager.importer.addURLModifier(urlModifier)
         removeURLModifier = () => viewer?.assetManager.importer.removeURLModifier(urlModifier)
 
@@ -244,22 +244,6 @@ async function registerProjectScripts(
         modules.push(await importModule(specifier))
     }
     await registerScripts(viewer, modules)
-}
-
-function createURLModifier(base: URL, assets: AssetsJSONManifest) {
-    const assetIdPrefix = `${assetUrlPrefix}@`
-    return (url: string): string => {
-        if (url.startsWith(assetIdPrefix)) {
-            const id = url.slice(assetIdPrefix.length).split('/', 1)[0]
-            const asset = assets.files[id]
-            if (!asset?.path) throw new Error(`Unknown asset id in URL: ${id}`)
-            return new URL(asset.path, base).href
-        }
-        if (url.startsWith(assetUrlPrefix)) {
-            return new URL(url.slice(assetUrlPrefix.length), base).href
-        }
-        return url
-    }
 }
 
 function resolvePluginSpecifier(
