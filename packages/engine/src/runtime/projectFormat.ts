@@ -161,7 +161,7 @@ export function findRemovedGeneratorNodes(text: string): Array<{nodeIndex: numbe
 }
 
 export function removedGeneratorMessage(nodeName: string): string {
-    return `${REMOVED_GENERATOR_GUIDANCE} Convert ${nodeName} to a build step. See the guide's Authoring rules.`
+    return `${REMOVED_GENERATOR_GUIDANCE} Convert ${nodeName} to asset files. See the guide's Scene asset management section.`
 }
 
 export async function parsePackageJsonSettingsConfig(json: ProjectPackageJSON, _project?: unknown): Promise<ProjectConfigSettings> {

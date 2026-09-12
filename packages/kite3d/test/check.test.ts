@@ -138,7 +138,7 @@ export default class LocalPlugin extends AViewerPluginSync { static PluginType =
                 old: {type: 'Generator', state: {module: './old-world.js'}},
             }},
         }])
-        const message = "Generator components were removed in Kite3D 0.19.0. Convert Old World to a build step. See the guide's Authoring rules."
+        const message = "Generator components were removed in Kite3D 0.19.0. Convert Old World to asset files. See the guide's Scene asset management section."
 
         const result = await checkProject(root)
 

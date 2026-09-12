@@ -916,7 +916,7 @@ test('warns about a removed Generator component without blocking Edit or Play', 
     scene.scenes[0].nodes.push(nodeIndex)
     await writeFile(scenePath, `${JSON.stringify(scene, null, 2)}\n`)
     const removedServer = await runDev({projectRoot: removedRoot, port: 0, noOpen: true})
-    const warning = "Generator components were removed in Kite3D 0.19.0. Convert Old World to a build step. See the guide's Authoring rules."
+    const warning = "Generator components were removed in Kite3D 0.19.0. Convert Old World to asset files. See the guide's Scene asset management section."
     const browserWarnings: string[] = []
     page.on('console', (message) => {
         if (message.type() === 'warning') browserWarnings.push(message.text())

@@ -159,7 +159,7 @@ await symlink(${JSON.stringify(resolve(import.meta.dirname, '../../engine'))}, r
             'Removed package-lock.json.',
             'Removed node_modules/.',
             `Upgraded Kite3D from 0.12.2 to ${KITE3D_VERSION}`,
-            "Generator components were removed in Kite3D 0.19.0. Convert Old World to a build step. See the guide's Authoring rules.",
+            "Generator components were removed in Kite3D 0.19.0. Convert Old World to asset files. See the guide's Scene asset management section.",
         ])
     })
 
