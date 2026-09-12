@@ -38,6 +38,11 @@ export interface PublicDeployEntry {
     claimed: boolean
 }
 
+export interface PublicClaimEntry {
+    slug: string
+    claim_url: string
+}
+
 export interface PublicDevServer {
     pid: number
     port: number
@@ -270,6 +275,7 @@ export async function publishFromDisk(
 export async function statusFromDisk(projectRoot = process.cwd()): Promise<PublicDeployEntry[]> {
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
+    await reconcileClaimedDeploys(directory, deploys)
     return Object.entries(deploys.games).map(([slug, entry]) => ({
         game_id: entry.game_id,
         slug,
@@ -309,26 +315,42 @@ export async function devStatusFromDisk(projectRoot = process.cwd()): Promise<Pu
     }
 }
 
-export async function claimFromDisk(
-    options: {email: string, password: string, login?: boolean},
-    projectRoot = process.cwd(),
-): Promise<PublicDeployEntry[]> {
+export async function claimFromDisk(projectRoot = process.cwd()): Promise<PublicClaimEntry[]> {
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
-    const games = Object.entries(deploys.games)
-    if (!games.length) throw new Error('No deploy exists yet. Run kite3d publish first.')
-    const api = new Kite3dApi({baseUrl: resolveBackendUrl()})
-    const auth = options.login
-        ? await api.login({identity: options.email, password: options.password})
-        : await api.register({email: options.email, username: usernameFromEmail(options.email), password: options.password})
-    api.useToken(auth.token)
-    for (const [slug, entry] of games) {
+    if (!Object.keys(deploys.games).length) throw new Error('No deploy exists yet. Run kite3d publish first.')
+    await reconcileClaimedDeploys(directory, deploys)
+    const backendUrl = resolveBackendUrl()
+    return Object.entries(deploys.games).flatMap(([slug, entry]) => entry.claimed ? [] : [{
+        slug,
+        claim_url: entry.claim_url
+            ?? `${backendUrl}/claim/${encodeURIComponent(slug)}?secret=${encodeURIComponent(entry.claim_secret)}`,
+    }])
+}
+
+async function reconcileClaimedDeploys(
+    directory: FileSystemDirectoryHandle,
+    deploys: DeploysFile,
+): Promise<void> {
+    const backendUrl = resolveBackendUrl()
+    let changed = false
+    for (const [slug, entry] of Object.entries(deploys.games)) {
         if (entry.claimed) continue
-        await api.claim(slug, entry.claim_secret)
-        deploys.games[slug] = {...entry, claimed: true}
-        await writeDeploys(directory, deploys)
+        try {
+            const api = new Kite3dApi({
+                baseUrl: backendUrl,
+                gameId: entry.game_id,
+                token: entry.deploy_token,
+            })
+            const game = await api.getGame()
+            if (game.expires_at !== null && game.expires_at !== undefined) continue
+            deploys.games[slug] = {...entry, claimed: true}
+            changed = true
+        } catch {
+            // Claim reconciliation is best-effort. Keep the local state and claim URL usable.
+        }
     }
-    return statusFromDisk(projectRoot)
+    if (changed) await writeDeploys(directory, deploys)
 }
 
 export async function pullFromDisk(projectRoot = process.cwd(), options: {force?: boolean} = {}) {
@@ -520,12 +542,6 @@ export function slugify(name: string): string {
     let slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/--+/g, '-')
     if (slug.length < 3) slug = `${slug || 'game'}-game`
     return slug.slice(0, 49).replace(/-+$/, '')
-}
-
-function usernameFromEmail(email: string): string {
-    let username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
-    if (!/^[a-z]/.test(username)) username = `player_${username}`
-    return (username || 'player').slice(0, 30)
 }
 
 function record(value: unknown): Record<string, unknown> {

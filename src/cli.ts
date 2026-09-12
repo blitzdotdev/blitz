@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {resolve} from 'node:path'
+import openBrowser from 'open'
 import {
     bakeFromEditor,
     claimFromDisk,
@@ -44,8 +45,7 @@ Commands:
   publish [options]           Publish the project
   pull [--force]              Pull the active release
   status                      Show local deploy status
-  claim --email <email> --password <password> [--login]
-                              Register or sign in, then claim local deploys
+  claim [--no-open]           Open claim pages for local deploys
   bake <nodeName> [--force]   Bake a Generator node
   check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
@@ -65,7 +65,7 @@ const COMMAND_USAGE: Record<string, string> = {
     publish: 'Usage: kite3d publish [--slug <slug>] [--name <name>] [--message <message>] [--no-check] [--no-verify]',
     pull: 'Usage: kite3d pull [--force]',
     status: 'Usage: kite3d status',
-    claim: 'Usage: kite3d claim --email <email> --password <password> [--login]',
+    claim: 'Usage: kite3d claim [--no-open]',
     bake: 'Usage: kite3d bake <nodeName> [--force]',
     check: 'Usage: kite3d check',
     journal: 'Usage: kite3d journal [--since <iso>] [-n <count>]',
@@ -210,11 +210,16 @@ try {
         if (!entries.length) console.log('No deploys. Run kite3d publish first.')
         for (const entry of entries) console.log(JSON.stringify({...entry, time_left: timeLeft(entry)}))
     } else if (command === 'claim') {
-        const parsed = parseArgs(args, {'--email': 'value', '--password': 'value', '--login': 'boolean'})
-        const email = requiredOption(parsed.values['--email'], '--email')
-        const password = requiredOption(parsed.values['--password'], '--password')
-        const entries = await claimFromDisk({email, password, login: parsed.values['--login'] === true})
-        for (const entry of entries.filter(({claimed}) => claimed)) console.log(`Claimed ${entry.slug}: ${entry.preview_url}`)
+        const parsed = parseArgs(args, {'--no-open': 'boolean'})
+        const entries = await claimFromDisk()
+        if (!entries.length) {
+            console.log('All local deploys are already claimed.')
+        } else {
+            for (const entry of entries) console.log(`Claim ${entry.slug}: ${entry.claim_url}`)
+            if (parsed.values['--no-open'] !== true) {
+                for (const entry of entries) await openBrowser(entry.claim_url)
+            }
+        }
     } else if (command === 'open') {
         parseArgs(args, {})
         console.log(await openCurrentProject())
@@ -283,12 +288,6 @@ function parseArgs(
 
 function valueOption(value: string | boolean | undefined): string | undefined {
     return typeof value === 'string' ? value : undefined
-}
-
-function requiredOption(value: string | boolean | undefined, name: string): string {
-    const result = valueOption(value)
-    if (!result) throw new Error(`${name} is required`)
-    return result
 }
 
 function portOption(value: string | boolean | undefined): number | undefined {
