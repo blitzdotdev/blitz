@@ -150,7 +150,7 @@ export async function runGenerator({
     const moduleUrl = resolveGeneratorModule(module, base)
     if (revision) moduleUrl.searchParams.set('kite3d-generator', String(revision))
     const loaded = await importGeneratorModule(moduleUrl.href)
-    onSchema?.(parseGeneratorParamsSchema(loaded.params, module))
+    if (!isCurrent || isCurrent()) onSchema?.(parseGeneratorParamsSchema(loaded.params, module))
     if (typeof loaded.default !== 'function') {
         throw new Error(`Generator module must have a default generate function: ${module}`)
     }

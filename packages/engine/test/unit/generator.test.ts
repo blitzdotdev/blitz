@@ -73,6 +73,7 @@ describe('Generator', () => {
     it('drops stale asynchronous output instead of multiplying previews', async () => {
         const node = new Group()
         const returned = new Group()
+        const schemas: unknown[] = []
         node.userData.returned = returned
         node.userData.attached = new Group()
 
@@ -83,9 +84,11 @@ describe('Generator', () => {
             module: 'forest.mjs',
             base: generatorBase,
             isCurrent: () => false,
+            onSchema: (schema) => schemas.push(schema),
         })
 
         expect(generated).toEqual([])
         expect(node.children).toEqual([])
+        expect(schemas).toEqual([{}])
     })
 })
