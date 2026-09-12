@@ -17,8 +17,33 @@ export interface ProjectGeneratorState {
 export interface AssetsJSONManifest {
     files: Record<string, {
         path: string
+        files?: Record<string, string>
     }>
     version: number
+}
+
+export function createProjectAssetURLModifier(base: URL, assets: AssetsJSONManifest) {
+    const assetIdPrefix = `${assetUrlPrefix}@`
+    return (url: string): string => {
+        if (url.startsWith(assetIdPrefix)) {
+            const request = new URL(url, 'https://kite3d.invalid')
+            const relative = decodeURIComponent(request.pathname.slice(assetIdPrefix.length))
+            const slash = relative.indexOf('/')
+            const id = slash < 0 ? relative : relative.slice(0, slash)
+            const assetPath = slash < 0 ? '' : relative.slice(slash + 1)
+            const asset = assets.files[id]
+            if (!asset?.path) throw new Error(`Unknown asset id in URL: ${id}`)
+            const registered = asset.files?.[assetPath]
+            if (registered) return new URL(registered, base).href
+            if (asset.files) throw new Error(`Unknown file for asset ${id}: ${assetPath}`)
+            if (/^f\.[^/]+$/i.test(assetPath)) return new URL(asset.path, base).href
+            return new URL(assetPath, new URL(asset.path, base)).href
+        }
+        if (url.startsWith(assetUrlPrefix)) {
+            return new URL(url.slice(assetUrlPrefix.length), base).href
+        }
+        return url
+    }
 }
 
 export interface ProjectDependency {
