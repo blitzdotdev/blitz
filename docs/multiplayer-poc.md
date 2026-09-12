@@ -155,7 +155,19 @@ browser reliability harness (18 assertions: join, ready, start, pause, movement,
 spectate, wipe, return to the same party, restart) passes over WebRTC.
 
 Landed in the game as one squash commit; the WebSocket relay stays only behind `?relay=` for LAN.
-A load matrix at 12, 24, and 36 enemies with guest churn and room churn is in progress.
+Independent QA through the deployed worker (three headless players on one Mac, no stub):
+
+| Alive enemies | Host step p99 | Snapshot bytes p99 | Snapshots per s per guest | Inputs per s | Loss | Remote position error |
+|---:|---:|---:|---:|---:|---:|---:|
+| 12 | 1.7 ms | 28.7 KB | 19.9 | 60.0 | 0 | 0.30 m |
+| 24 | 2.2 ms | 40.2 KB | 19.9 | 60.0 | 0 | 0.33 m |
+| 36 | 2.7 ms | 48.9 KB | 20.0 | 60.0 | 0 | 0.31 m |
+
+Also in that run: a guest dropped and rejoined twice in under 0.6 s keeping its player; 30 rooms
+and 90 fake peers churned on the signaling service during the match with zero errors; the party
+wiped, returned to the same code, and restarted. Two limits found: JSON snapshots reach 49 KB at
+36 enemies against a 64 KiB data channel message ceiling (binary encoding is the fix), and the
+host uploads about 185 KB per second per guest, which is heavy for home connections at three players.
 
 ## Open questions
 
