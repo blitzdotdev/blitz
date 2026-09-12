@@ -458,6 +458,22 @@ test('registers a dropped GLB as an asset and loads it from the published projec
 
         await page.reload()
         await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        const firstReloadMeshCount = await page.evaluate(() => {
+            const wrapper = (window as unknown as {
+                viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+                    traverse(callback: (object: {isMesh?: boolean}) => void): void
+                } | undefined}}}
+            }).viewer.scene.modelRoot.getObjectByName('gate-model.glb')
+            let meshCount = 0
+            wrapper?.traverse((object) => {
+                if (object.isMesh) meshCount += 1
+            })
+            return wrapper ? meshCount : undefined
+        })
+        if (firstReloadMeshCount === 0) {
+            await page.reload()
+            await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        }
         await expect.poll(() => page.evaluate(() => {
             const wrapper = (window as unknown as {
                 viewer: {scene: {modelRoot: {getObjectByName(name: string): {
@@ -527,9 +543,7 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
     const consoleErrors: string[] = []
     const pageErrors: string[] = []
     const httpErrors: Array<{status: number, url: string}> = []
-    const gltf = texturedTriangleGltf()
-    const binary = texturedTriangleBuffer()
-    const texture = await readFile(fileURLToPath(new URL('../../public/favicon-96x96.png', import.meta.url)))
+    const library = await routeMockLibrary(page)
     await writeFile(resolve(fixture.root, '.kite3d/console.log'), '')
     await writeFile(resolve(fixture.root, '.kite3d/check.json'), '{}\n')
     page.on('request', (request) => {
@@ -547,28 +561,6 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
         if (message.type() === 'error') consoleErrors.push(message.text())
     })
     page.on('pageerror', (error) => pageErrors.push(error.message))
-    await page.route('https://blitz-asset-library-proxy.blitzapp.workers.dev/assets/v1/list', async (route) => {
-        await route.fulfill({json: {assets: [{
-            id: '@mock/mock-textured',
-            name: 'Mock Textured Triangle',
-            type: 'model',
-            fileUrl: libraryRootUrl,
-            thumbnailUrl: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>',
-        }]}})
-    })
-    await page.route('https://library.example.test/assets/mock-textured/**', async (route) => {
-        const path = new URL(route.request().url()).pathname
-        if (path.endsWith('/mock-textured.gltf')) {
-            await route.fulfill({status: 200, contentType: 'model/gltf+json', body: gltf})
-        } else if (path.endsWith('/mesh.bin')) {
-            await route.fulfill({status: 200, contentType: 'application/octet-stream', body: binary})
-        } else if (path.endsWith('/textures/pixel.png')) {
-            await route.fulfill({status: 200, contentType: 'image/png', body: texture})
-        } else {
-            await route.fulfill({status: 404, body: 'Not found'})
-        }
-    })
-
     try {
         await page.goto(fixture.server.url)
         await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
@@ -594,6 +586,12 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
         await canvas.dispatchEvent('drop', {...position, dataTransfer: transfer})
         await item.dispatchEvent('dragend', {dataTransfer: transfer})
 
+        const dialog = page.getByTestId('library-drop-dialog')
+        await expect(dialog).toBeVisible()
+        await expect(dialog).toContainText('Mock Textured Triangle')
+        await expect(dialog.getByText('Add at the scene root')).toBeVisible()
+        await dialog.getByTestId('library-drop-apply').click()
+
         await expect(page.getByTestId('scene-hierarchy')).toContainText('Mock Textured Triangle')
         const expectedAsset = {
             path: 'assets/imports/mock-textured/f.gltf',
@@ -606,8 +604,8 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
         await expect.poll(async () => JSON.parse(await readFile(resolve(fixture.root, 'assets.json'), 'utf8')))
             .toEqual({version: 1, files: {'mock-textured': expectedAsset}})
         expect(await readFile(resolve(fixture.root, expectedAsset.files['f.gltf']), 'utf8')).toContain('mesh.bin')
-        expect(await readFile(resolve(fixture.root, expectedAsset.files['mesh.bin']))).toEqual(binary)
-        expect(await readFile(resolve(fixture.root, expectedAsset.files['textures/pixel.png']))).toEqual(texture)
+        expect(await readFile(resolve(fixture.root, expectedAsset.files['mesh.bin']))).toEqual(library.binary)
+        expect(await readFile(resolve(fixture.root, expectedAsset.files['textures/pixel.png']))).toEqual(library.texture)
 
         await expect.poll(() => texturedObjectState(page)).toEqual({meshCount: 1, positionCount: 3, textureWidth: 96})
         await expect(page.getByTestId('save-scene')).toBeEnabled()
@@ -647,6 +645,222 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
                 {method: 'GET', path: '/files/assets/imports/mock-textured/textures/pixel.png', status: 200},
             ]))
         expect({consoleErrors, httpErrors}).toEqual({consoleErrors: [], httpErrors: []})
+        expect(pageErrors).toEqual([])
+    } finally {
+        await page.close()
+        await fixture.close()
+    }
+})
+
+test('prompts for library drop actions, remembers choices, resets prompts, and supports undo', async ({page}) => {
+    test.setTimeout(120_000)
+    const screenshotDirectory = fileURLToPath(new URL('../../test-results/library-drop-dialog/', import.meta.url))
+    const fixture = await startPublishEditor({}, async (projectRoot) => {
+        await writeFile(resolve(projectRoot, 'assets/main.scene.gltf'), `${libraryDropSceneGltf()}\n`)
+    })
+    const library = await routeMockLibrary(page)
+    const consoleErrors: string[] = []
+    const pageErrors: string[] = []
+    page.on('console', (message) => {
+        if (message.type() === 'error') consoleErrors.push(message.text())
+    })
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+
+    const selectObject = async (name: string) => {
+        await page.evaluate((objectName) => {
+            const viewer = (window as unknown as {viewer: {scene: {
+                defaultCamera: {name: string, dispatchEvent(event: Record<string, unknown>): void}
+                modelRoot: {getObjectByName(name: string): {
+                    name: string
+                    dispatchEvent(event: Record<string, unknown>): void
+                } | undefined}
+            }}}).viewer
+            const object = objectName === 'Default Camera'
+                ? viewer.scene.defaultCamera
+                : viewer.scene.modelRoot.getObjectByName(objectName)
+            if (!object) {
+                const names: string[] = []
+                ;(viewer.scene.modelRoot as unknown as {traverse(callback: (value: {name: string}) => void): void})
+                    .traverse((value) => names.push(value.name))
+                throw new Error(`Missing scene object: ${objectName}. Loaded: ${names.join(', ')}`)
+            }
+            object.dispatchEvent({type: 'select', value: object, object, ui: true, bubbleToParent: true})
+        }, name)
+    }
+    const dropAsset = async (url: string) => {
+        const item = page.getByTitle(url)
+        await expect(item).toBeVisible()
+        const transfer = await page.evaluateHandle(() => new DataTransfer())
+        await item.dispatchEvent('dragstart', {dataTransfer: transfer})
+        await expect.poll(() => page.locator('.native-spinner').evaluate((element) =>
+            getComputedStyle(element).display), {timeout: 20_000}).toBe('none')
+        const canvas = page.locator('.editorCanvasContainer canvas').first()
+        const bounds = await canvas.boundingBox()
+        expect(bounds).not.toBeNull()
+        const position = {clientX: bounds!.x + bounds!.width / 2, clientY: bounds!.y + bounds!.height / 2}
+        await canvas.dispatchEvent('dragover', {...position, dataTransfer: transfer})
+        await canvas.dispatchEvent('drop', {...position, dataTransfer: transfer})
+        await item.dispatchEvent('dragend', {dataTransfer: transfer})
+    }
+    const modelCountUnderGroup = () => page.evaluate(() => {
+        const group = (window as unknown as {viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+            children: Array<{name: string}>
+        } | undefined}}}}).viewer.scene.modelRoot.getObjectByName('Drop_Target_Group')
+        return group?.children.filter(({name}) => name === 'Mock Textured Triangle').length || 0
+    })
+
+    try {
+        await mkdir(screenshotDirectory, {recursive: true})
+        await page.setViewportSize({width: 1400, height: 900})
+        await page.goto(fixture.server.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await selectObject('Drop_Target_Group')
+        await page.getByRole('tab', {name: 'Library'}).click()
+        const libraryPanel = page.getByRole('tabpanel', {name: 'Library'})
+        await libraryPanel.getByRole('tab', {name: '3D Models'}).click()
+        await dropAsset(library.modelUrl)
+
+        const dialog = page.getByTestId('library-drop-dialog')
+        await expect(dialog).toBeVisible()
+        await expect(dialog).toContainText('Drop_Target_Group')
+        await expect(dialog.getByText('The selected hierarchy object was used.')).toBeVisible()
+        await expect(dialog.getByText('Add under Drop_Target_Group')).toBeVisible()
+        await page.waitForTimeout(350)
+        await page.screenshot({path: resolve(screenshotDirectory, 'model-dialog.png')})
+        await dialog.getByRole('checkbox', {name: 'Remember my choice for model'}).check({force: true})
+        await dialog.getByTestId('library-drop-apply').click()
+        await expect.poll(modelCountUnderGroup).toBe(1)
+
+        await selectObject('Drop_Target_Group')
+        await dropAsset(library.modelUrl)
+        await expect(dialog).toHaveCount(0)
+        await expect.poll(modelCountUnderGroup).toBe(2)
+        await page.keyboard.press('Meta+z')
+        await expect.poll(modelCountUnderGroup).toBe(1)
+        await expect(page.getByTestId('save-scene')).toBeEnabled()
+        await page.getByTestId('save-scene').click()
+        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+        const savedAfterModel = JSON.parse(await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8')) as {
+            nodes: Array<{name?: string, children?: number[]}>
+        }
+        const groupNode = savedAfterModel.nodes.find(({name}) => name === 'Drop_Target_Group')
+        expect(groupNode?.children?.some((index) => savedAfterModel.nodes[index]?.name === 'Mock Textured Triangle')).toBe(true)
+
+        await page.getByRole('button', {name: 'Settings'}).click()
+        const settings = page.getByTestId('editor-settings-popover')
+        await expect(settings).toBeVisible()
+        await settings.getByTestId('reset-drop-prompts').scrollIntoViewIfNeeded()
+        await page.screenshot({path: resolve(screenshotDirectory, 'reset-drop-prompts.png')})
+        await settings.getByTestId('reset-drop-prompts').click()
+        await page.keyboard.press('Escape')
+
+        await selectObject('Drop_Target_Group')
+        await dropAsset(library.modelUrl)
+        await expect(dialog).toBeVisible()
+        const modelCountBeforeCancel = await modelCountUnderGroup()
+        const errorsBeforeCancel = [...consoleErrors]
+        await dialog.getByRole('button', {name: 'Cancel'}).click()
+        await expect.poll(modelCountUnderGroup).toBe(modelCountBeforeCancel)
+        await page.waitForTimeout(100)
+        expect(consoleErrors).toEqual(errorsBeforeCancel)
+        await expect.poll(async () => Object.keys(
+            (JSON.parse(await readFile(resolve(fixture.root, 'assets.json'), 'utf8')) as {
+                files: Record<string, unknown>
+            }).files,
+        )).toContain('mock-textured-2')
+
+        await selectObject('Texture_Target')
+        await libraryPanel.getByRole('tab', {name: 'Textures'}).click()
+        await expect(page.getByTitle(library.textureUrl)).toHaveAttribute('draggable', 'true')
+        await dropAsset(library.textureUrl)
+        await expect(dialog).toBeVisible()
+        await expect(dialog).toContainText('Texture_Target')
+        await expect(dialog.getByTestId('library-drop-slot').locator('option')).toHaveText([
+            'Base color', 'Normal', 'Roughness', 'Metalness', 'Emissive', 'Occlusion',
+        ])
+        await dialog.getByTestId('library-drop-slot').selectOption('normalMap')
+        await page.waitForTimeout(350)
+        await page.screenshot({path: resolve(screenshotDirectory, 'texture-slot-dialog.png')})
+        await dialog.getByRole('checkbox', {name: 'Remember my choice for texture'}).check({force: true})
+        await dialog.getByTestId('library-drop-apply').click()
+        const firstNormalMap = await page.evaluate(() => {
+            const target = (window as unknown as {viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+                material?: {normalMap?: {uuid?: string, name?: string}}
+            } | undefined}}}}).viewer.scene.modelRoot.getObjectByName('Texture_Target')
+            return target?.material?.normalMap
+                ? {uuid: target.material.normalMap.uuid, name: target.material.normalMap.name}
+                : null
+        })
+        expect(firstNormalMap?.name).toBe('Mock Normal Texture')
+        await page.getByTestId('save-scene').click()
+        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+
+        await selectObject('Texture_Target')
+        await dropAsset(library.textureUrl)
+        await expect(dialog).toHaveCount(0)
+        await expect.poll(() => page.evaluate(() => {
+            const target = (window as unknown as {viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+                material?: {normalMap?: {uuid?: string}}
+            } | undefined}}}}).viewer.scene.modelRoot.getObjectByName('Texture_Target')
+            return target?.material?.normalMap?.uuid
+        })).not.toBe(firstNormalMap?.uuid)
+        await page.keyboard.press('Meta+z')
+        await expect.poll(() => page.evaluate(() => {
+            const target = (window as unknown as {viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+                material?: {normalMap?: {uuid?: string}}
+            } | undefined}}}}).viewer.scene.modelRoot.getObjectByName('Texture_Target')
+            return target?.material?.normalMap?.uuid
+        })).toBe(firstNormalMap?.uuid)
+
+        await libraryPanel.getByRole('tab', {name: 'Environment Maps'}).click()
+        await page.getByTitle(library.environmentUrl).dblclick()
+        await expect(dialog).toBeVisible()
+        await dialog.getByRole('radio', {name: 'Both'}).check({force: true})
+        await page.keyboard.press('Enter')
+        await expect.poll(() => page.evaluate(() => {
+            const scene = (window as unknown as {viewer: {scene: {
+                environment?: {name?: string}
+                background?: {name?: string}
+            }}}).viewer.scene
+            return {
+                same: scene.environment === scene.background,
+                environment: scene.environment?.name,
+                background: scene.background?.name,
+            }
+        })).toEqual({same: true, environment: 'Mock Studio HDR', background: 'Mock Studio HDR'})
+
+        await selectObject('Drop_Target_Group')
+        await libraryPanel.getByRole('tab', {name: 'Materials'}).click()
+        await page.getByTitle(library.materialUrl).dblclick()
+        await expect(dialog).toBeVisible()
+        await expect(dialog).toContainText(/Apply to the 2 meshes under Drop_Target_Group/)
+        await dialog.getByTestId('library-drop-apply').click()
+        await expect.poll(() => page.evaluate(() => {
+            const group = (window as unknown as {viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+                traverse(callback: (object: {isMesh?: boolean, material?: {name?: string}}) => void): void
+            } | undefined}}}}).viewer.scene.modelRoot.getObjectByName('Drop_Target_Group')
+            const materials: string[] = []
+            group?.traverse((object) => {
+                if (object.isMesh) materials.push(object.material?.name || '')
+            })
+            return materials
+        })).toEqual(['Mock Red Material', 'Mock Red Material'])
+
+        await selectObject('Default Camera')
+        await libraryPanel.getByRole('tab', {name: 'Textures'}).click()
+        await page.getByTitle(library.textureUrl).dblclick()
+        await expect(dialog).toBeVisible()
+        await expect(dialog.getByTestId('library-drop-target')).toContainText('Default Camera')
+        await expect(dialog.getByText('Import into the project only')).toBeVisible()
+        await expect(dialog.getByTestId('library-drop-reason')).toContainText('has no material')
+        const errorsBeforeEscape = [...consoleErrors]
+        await page.keyboard.press('Escape')
+        await expect(dialog).toHaveCount(0)
+        await page.waitForTimeout(100)
+        expect(consoleErrors).toEqual(errorsBeforeEscape)
+
+        await page.getByTestId('save-scene').click()
+        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
         expect(pageErrors).toEqual([])
     } finally {
         await page.close()
@@ -1515,9 +1729,13 @@ test('keeps the publish dialog open for retry after a connection loss during the
     }
 })
 
-async function startPublishEditor(options: Parameters<typeof startMockBackend>[0] = {}) {
+async function startPublishEditor(
+    options: Parameters<typeof startMockBackend>[0] = {},
+    prepareProject?: (projectRoot: string) => Promise<void>,
+) {
     const projectRoot = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-publish-'))
     await initProject(projectRoot)
+    await prepareProject?.(projectRoot)
     const engineRoot = fileURLToPath(new URL('../../../engine/', import.meta.url))
     const installedEngine = resolve(projectRoot, 'node_modules/@kite3d/engine')
     await mkdir(resolve(installedEngine, 'dist'), {recursive: true})
@@ -1740,6 +1958,87 @@ function texturedTriangleGltf(): string {
         samplers: [{}],
         textures: [{sampler: 0, source: 0}],
         materials: [{pbrMetallicRoughness: {baseColorTexture: {index: 0}}}],
+    })
+}
+
+async function routeMockLibrary(page: import('@playwright/test').Page) {
+    const modelUrl = 'https://library.example.test/assets/mock-textured/mock-textured.gltf'
+    const textureUrl = 'https://library.example.test/assets/mock-normal/mock-normal.png'
+    const environmentUrl = 'https://library.example.test/assets/mock-studio/mock-studio.hdr'
+    const materialUrl = 'https://library.example.test/assets/mock-red/mock-red.pmat'
+    const binary = texturedTriangleBuffer()
+    const texture = await readFile(fileURLToPath(new URL('../../public/favicon-96x96.png', import.meta.url)))
+    const material = JSON.stringify({
+        metadata: {version: 4.6, type: 'Material', generator: 'Material.toJSON'},
+        uuid: '29374416-538f-43ae-9829-e65d536f46d9',
+        type: 'MeshStandardMaterial',
+        name: 'Mock Red Material',
+        color: 0xcc3344,
+        roughness: 0.35,
+        metalness: 0.1,
+    })
+    const hdrScanline = Buffer.from([
+        2, 2, 0, 16,
+        144, 128,
+        144, 128,
+        144, 128,
+        144, 129,
+    ])
+    const environment = Buffer.concat([
+        Buffer.from('#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 8 +X 16\n', 'ascii'),
+        ...Array.from({length: 8}, () => hdrScanline),
+    ])
+
+    await page.route('https://blitz-asset-library-proxy.blitzapp.workers.dev/assets/v1/list', async (route) => {
+        const thumbnailUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>'
+        await route.fulfill({json: {assets: [
+            {id: '@mock/mock-textured', name: 'Mock Textured Triangle', type: 'model', fileUrl: modelUrl, thumbnailUrl},
+            {id: '@mock/mock-red', name: 'Mock Red Material', type: 'material', fileUrl: materialUrl, thumbnailUrl},
+            {id: '@mock/mock-studio', name: 'Mock Studio HDR', type: 'hdri', fileUrl: environmentUrl, thumbnailUrl},
+            {id: '@mock/mock-normal', name: 'Mock Normal Texture', type: 'texture', fileUrl: textureUrl, thumbnailUrl},
+        ]}})
+    })
+    await page.route('https://library.example.test/**', async (route) => {
+        const path = new URL(route.request().url()).pathname
+        if (path.endsWith('/mock-textured.gltf')) {
+            await route.fulfill({status: 200, contentType: 'model/gltf+json', body: texturedTriangleGltf()})
+        } else if (path.endsWith('/mesh.bin')) {
+            await route.fulfill({status: 200, contentType: 'application/octet-stream', body: binary})
+        } else if (path.endsWith('/textures/pixel.png') || path.endsWith('/mock-normal.png')) {
+            await route.fulfill({status: 200, contentType: 'image/png', body: texture})
+        } else if (path.endsWith('/mock-studio.hdr')) {
+            await route.fulfill({status: 200, contentType: 'image/vnd.radiance', body: environment})
+        } else if (path.endsWith('/mock-red.pmat')) {
+            await route.fulfill({status: 200, contentType: 'application/json', body: material})
+        } else {
+            await route.fulfill({status: 404, body: 'Not found'})
+        }
+    })
+
+    return {modelUrl, textureUrl, environmentUrl, materialUrl, binary, texture}
+}
+
+function libraryDropSceneGltf(): string {
+    return JSON.stringify({
+        asset: {version: '2.0'},
+        scene: 0,
+        scenes: [{name: 'Main Scene', nodes: [0]}],
+        nodes: [{name: 'Drop Target Group', children: [1]}, {name: 'Texture Target', mesh: 0}],
+        meshes: [{primitives: [{attributes: {POSITION: 0}, material: 0}]}],
+        materials: [{name: 'Target Material', pbrMetallicRoughness: {baseColorFactor: [0.2, 0.4, 0.8, 1]}}],
+        accessors: [{
+            bufferView: 0,
+            componentType: 5126,
+            count: 3,
+            type: 'VEC3',
+            min: [0, 0, 0],
+            max: [1, 1, 0],
+        }],
+        bufferViews: [{buffer: 0, byteOffset: 0, byteLength: 36, target: 34962}],
+        buffers: [{
+            byteLength: 36,
+            uri: 'data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAA',
+        }],
     })
 }
 
