@@ -30,6 +30,7 @@ export async function startMockBackend(options: {
     releaseStatus?: number
     runtimeHashes?: string[]
     createStatuses?: number[]
+    gameStatuses?: number[]
     missingStatuses?: number[]
     uploadStatuses?: number[]
     releaseStatuses?: number[]
@@ -222,12 +223,18 @@ export async function startMockBackend(options: {
         }
         const gameRequest = request.method === 'GET' && /^\/api\/v1\/games\/([^/]+)$/.exec(url.pathname)
         if (gameRequest) {
+            const failure = options.gameStatuses?.shift()
+            if (failure) return sendFailure(response, failure, options.failureMessage)
             const game = findGame(decodeURIComponent(gameRequest[1]), games)
             if (!game) return sendJson(response, 404, {error: {code: 'game_not_found', message: 'Game not found.'}})
+            if (request.headers.authorization !== `Bearer ${game.deployToken}`) {
+                return sendJson(response, 401, {error: {code: 'invalid_token', message: 'Invalid deploy token.'}})
+            }
             return sendJson(response, 200, {game: {
                 id: game.id,
                 slug: game.slug,
                 name: game.name,
+                expires_at: game.claimed ? null : game.expiresAt,
                 active_release: game.releases.at(-1)?.release_hash || null,
             }})
         }

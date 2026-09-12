@@ -424,6 +424,109 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
         await expect(access(browser.log)).rejects.toMatchObject({code: 'ENOENT'})
     })
 
+    it('reconciles a backend-claimed deploy, persists it, and opens nothing', async () => {
+        const backend = await startMockBackend()
+        cleanup.push(() => backend.close())
+        const root = await pinnedProject(KITE3D_VERSION)
+        const entry = await createBackendDeploy(backend, 'claimed-remotely')
+        backend.games.get('claimed-remotely')!.claimed = true
+        await writeClaimDeploys(root, {'claimed-remotely': entry})
+        const browser = await mockBrowser(root)
+
+        const result = await execute(process.execPath, [cli, 'claim'], {
+            cwd: root,
+            env: {...browser.env, BLITZ_BACKEND_URL: backend.url},
+        })
+
+        expect(result.stdout.trim()).toBe('All local deploys are already claimed.')
+        expect(result.stderr).toBe('')
+        await expect(access(browser.log)).rejects.toMatchObject({code: 'ENOENT'})
+        const deploys = JSON.parse(await readFile(resolve(root, '.kite3d/deploys.json'), 'utf8')) as {
+            games: Record<string, DeployEntry>
+        }
+        expect(deploys.games['claimed-remotely'].claimed).toBe(true)
+        expect(backend.requests.find(({method, path}) =>
+            method === 'GET' && path === `/api/v1/games/${entry.game_id}`
+        )?.authorization).toBe(`Bearer ${entry.deploy_token}`)
+    })
+
+    it('opens only the backend-unclaimed game in a mixed claim set', async () => {
+        const backend = await startMockBackend()
+        cleanup.push(() => backend.close())
+        const root = await pinnedProject(KITE3D_VERSION)
+        const claimed = await createBackendDeploy(backend, 'already-claimed')
+        const open = await createBackendDeploy(backend, 'still-open')
+        backend.games.get('already-claimed')!.claimed = true
+        await writeClaimDeploys(root, {'already-claimed': claimed, 'still-open': open})
+        const browser = await mockBrowser(root)
+
+        const result = await execute(process.execPath, [cli, 'claim'], {
+            cwd: root,
+            env: {...browser.env, BLITZ_BACKEND_URL: backend.url},
+        })
+
+        expect(result.stdout.trim()).toBe(`Claim still-open: ${open.claim_url}`)
+        expect(result.stderr).toBe('')
+        expect((await readFile(browser.log, 'utf8')).trim()).toBe(open.claim_url)
+        const deploys = JSON.parse(await readFile(resolve(root, '.kite3d/deploys.json'), 'utf8')) as {
+            games: Record<string, DeployEntry>
+        }
+        expect(deploys.games['already-claimed'].claimed).toBe(true)
+        expect(deploys.games['still-open'].claimed).not.toBe(true)
+    })
+
+    it('falls back to the claim URL after an error and continues reconciling later games', async () => {
+        const backend = await startMockBackend({gameStatuses: [401]})
+        cleanup.push(() => backend.close())
+        const root = await pinnedProject(KITE3D_VERSION)
+        const unavailable = await createBackendDeploy(backend, 'unavailable-check')
+        const healthy = await createBackendDeploy(backend, 'healthy-check')
+        backend.games.get('healthy-check')!.claimed = true
+        await writeClaimDeploys(root, {'unavailable-check': unavailable, 'healthy-check': healthy})
+        const browser = await mockBrowser(root)
+
+        const result = await execute(process.execPath, [cli, 'claim'], {
+            cwd: root,
+            env: {...browser.env, BLITZ_BACKEND_URL: backend.url},
+        })
+
+        expect(result.stdout.trim()).toBe(`Claim unavailable-check: ${unavailable.claim_url}`)
+        expect(result.stderr).toBe('')
+        expect((await readFile(browser.log, 'utf8')).trim()).toBe(unavailable.claim_url)
+        const deploys = JSON.parse(await readFile(resolve(root, '.kite3d/deploys.json'), 'utf8')) as {
+            games: Record<string, DeployEntry>
+        }
+        expect(deploys.games['unavailable-check'].claimed).not.toBe(true)
+        expect(deploys.games['healthy-check'].claimed).toBe(true)
+        expect(backend.requests.filter(({method, path}) =>
+            method === 'GET' && path.startsWith('/api/v1/games/')
+        )).toHaveLength(2)
+    })
+
+    it('reconciles claim state in status without changing its output shape', async () => {
+        const backend = await startMockBackend()
+        cleanup.push(() => backend.close())
+        const root = await pinnedProject(KITE3D_VERSION)
+        const entry = await createBackendDeploy(backend, 'status-claimed')
+        backend.games.get('status-claimed')!.claimed = true
+        await writeClaimDeploys(root, {'status-claimed': entry})
+
+        const result = await execute(process.execPath, [cli, 'status'], {
+            cwd: root,
+            env: {...process.env, BLITZ_BACKEND_URL: backend.url},
+        })
+
+        expect(result.stderr).toBe('')
+        expect(JSON.parse(result.stdout)).toEqual({
+            game_id: entry.game_id,
+            slug: 'status-claimed',
+            preview_url: entry.preview_url,
+            expires_at: entry.expires_at,
+            claimed: true,
+            time_left: 'claimed',
+        })
+    })
+
     it('rejects the removed password option as an unknown flag', async () => {
         const root = await pinnedProject(KITE3D_VERSION)
         const removedPasswordFlag = ['--', 'password'].join('')
@@ -735,17 +838,23 @@ async function writeClaimDeploys(root: string, games: Record<string, DeployEntry
     await writeFile(resolve(root, '.kite3d/deploys.json'), `${JSON.stringify({games}, null, 2)}\n`)
 }
 
+async function createBackendDeploy(backend: Awaited<ReturnType<typeof startMockBackend>>, slug: string): Promise<DeployEntry> {
+    const response = await fetch(`${backend.url}/api/v1/new-game/${encodeURIComponent(slug)}`, {method: 'POST'})
+    expect(response.status).toBe(201)
+    return response.json() as Promise<DeployEntry>
+}
+
 async function mockBrowser(root: string): Promise<{env: NodeJS.ProcessEnv, log: string}> {
     const log = resolve(root, 'browser-open.log')
     const preload = resolve(root, 'mock-browser.cjs')
     await writeFile(preload, `const childProcess = require('node:child_process')
 const {appendFileSync} = require('node:fs')
 childProcess.spawn = function(command, args = []) {
-    let url = args.find((value) => typeof value === 'string' && value.startsWith('https://'))
+    let url = args.find((value) => typeof value === 'string' && /^https?:\\/\\//.test(value))
     if (!url) {
         const encoded = args.find((value) => typeof value === 'string' && /^[A-Za-z0-9+/]+=*$/.test(value))
         const decoded = encoded ? Buffer.from(encoded, 'base64').toString('utf16le') : ''
-        url = /https:\\/\\/[^"\\s]+/.exec(decoded)?.[0]
+        url = /https?:\\/\\/[^"\\s]+/.exec(decoded)?.[0]
     }
     if (!url) throw new Error('Browser command did not include a URL: ' + command + ' ' + args.join(' '))
     appendFileSync(process.env.KITE3D_TEST_OPEN_LOG, url + '\\n')

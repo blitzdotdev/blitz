@@ -275,6 +275,7 @@ export async function publishFromDisk(
 export async function statusFromDisk(projectRoot = process.cwd()): Promise<PublicDeployEntry[]> {
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
+    await reconcileClaimedDeploys(directory, deploys)
     return Object.entries(deploys.games).map(([slug, entry]) => ({
         game_id: entry.game_id,
         slug,
@@ -317,14 +318,39 @@ export async function devStatusFromDisk(projectRoot = process.cwd()): Promise<Pu
 export async function claimFromDisk(projectRoot = process.cwd()): Promise<PublicClaimEntry[]> {
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
-    const games = Object.entries(deploys.games)
-    if (!games.length) throw new Error('No deploy exists yet. Run kite3d publish first.')
+    if (!Object.keys(deploys.games).length) throw new Error('No deploy exists yet. Run kite3d publish first.')
+    await reconcileClaimedDeploys(directory, deploys)
     const backendUrl = resolveBackendUrl()
-    return games.flatMap(([slug, entry]) => entry.claimed ? [] : [{
+    return Object.entries(deploys.games).flatMap(([slug, entry]) => entry.claimed ? [] : [{
         slug,
         claim_url: entry.claim_url
             ?? `${backendUrl}/claim/${encodeURIComponent(slug)}?secret=${encodeURIComponent(entry.claim_secret)}`,
     }])
+}
+
+async function reconcileClaimedDeploys(
+    directory: FileSystemDirectoryHandle,
+    deploys: DeploysFile,
+): Promise<void> {
+    const backendUrl = resolveBackendUrl()
+    let changed = false
+    for (const [slug, entry] of Object.entries(deploys.games)) {
+        if (entry.claimed) continue
+        try {
+            const api = new Kite3dApi({
+                baseUrl: backendUrl,
+                gameId: entry.game_id,
+                token: entry.deploy_token,
+            })
+            const game = await api.getGame()
+            if (game.expires_at !== null && game.expires_at !== undefined) continue
+            deploys.games[slug] = {...entry, claimed: true}
+            changed = true
+        } catch {
+            // Claim reconciliation is best-effort. Keep the local state and claim URL usable.
+        }
+    }
+    if (changed) await writeDeploys(directory, deploys)
 }
 
 export async function pullFromDisk(projectRoot = process.cwd(), options: {force?: boolean} = {}) {

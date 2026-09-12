@@ -76,6 +76,7 @@ export interface GameRecord {
     id: string
     slug: string
     name: string
+    expires_at?: string | null
     active_release: string | null
     [key: string]: unknown
 }
