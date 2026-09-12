@@ -52,6 +52,7 @@ export function ExternalFilesPanel({}: {}) {
             ...f,
             name: f.name,
             type: 'file',
+            assetType: f.type,
             path: f.fileUrl || '',
             icon: f.thumbnailUrl.replace('width=256&height=256', 'width=64&height=64'), // use smaller thumbnail
             // variants: f.files || {},

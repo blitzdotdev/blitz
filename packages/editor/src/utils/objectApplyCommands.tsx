@@ -42,53 +42,98 @@ export function objectCommand(source: IObject3D, target: IObject3D, newIndex = -
     return cmd;
 }
 
-export function materialCommand(material: IMaterial, target: IObject3D, index?: number) {
+export function materialCommand(material: IMaterial, target: IObject3D | IObject3D[], index?: number) {
+    const targets = Array.isArray(target) ? target : [target]
     const cmd = {
-        lastMaterial: material as IMaterial | IMaterial[] | null| undefined,
+        lastMaterials: [] as Array<IMaterial | IMaterial[] | null | undefined>,
         redo: () => {
-            const lastMaterial = material
-            cmd.lastMaterial = target.material
-            target.material = lastMaterial
+            cmd.lastMaterials = targets.map((object) => {
+                const previous = object.material
+                if (index !== undefined && Array.isArray(previous)) {
+                    const next = [...previous]
+                    next[index] = material
+                    object.material = next
+                } else {
+                    object.material = material
+                }
+                return previous
+            })
         },
         undo: () => {
-            const lastMaterial = cmd.lastMaterial
-            cmd.lastMaterial = target.material
-            if(lastMaterial) target.material = lastMaterial
+            const current = targets.map((object) => object.material)
+            targets.forEach((object, targetIndex) => {
+                const previous = cmd.lastMaterials[targetIndex]
+                if (previous) object.material = previous
+            })
+            cmd.lastMaterials = current
         }
-    } satisfies JSUndoManagerCommand1 & {lastMaterial: IMaterial|IMaterial[] | null | undefined}
+    } satisfies JSUndoManagerCommand1 & {lastMaterials: Array<IMaterial | IMaterial[] | null | undefined>}
     return cmd;
 }
 
-export function textureCommand(texture: ITexture, target: IObject3D, textureSlot: string = 'map') {
+export function textureCommand(
+    texture: ITexture,
+    target: IObject3D | IMaterial,
+    textureSlot: string = 'map',
+    materialIndex = 0,
+) {
+    const getMaterial = () => {
+        if ((target as IMaterial).isMaterial) return target as IMaterial
+        const material = (target as IObject3D).material
+        return Array.isArray(material) ? material[materialIndex] : material as IMaterial
+    }
+    const markTargetDirty = (material: IMaterial) => {
+        if ((target as IObject3D).isObject3D) {
+            ;(target as IObject3D).setDirty?.({change: 'material'})
+        } else {
+            material.appliedMeshes?.forEach((mesh) => mesh.setDirty?.({change: 'material'}))
+        }
+    }
     const cmd = {
         lastTexture: null as ITexture | null | undefined,
         redo: () => {
-            const mat = Array.isArray(target.material) ? target.material[0] : target.material as IMaterial;
+            const mat = getMaterial()
             if (!mat) return;
             cmd.lastTexture = (mat as any)[textureSlot];
             (mat as any)[textureSlot] = texture;
             mat.setDirty && mat.setDirty();
+            markTargetDirty(mat)
         },
         undo: () => {
-            const mat = Array.isArray(target.material) ? target.material[0] : target.material as IMaterial;
+            const mat = getMaterial()
             if (!mat) return;
             const lastTexture = cmd.lastTexture;
             cmd.lastTexture = (mat as any)[textureSlot];
             (mat as any)[textureSlot] = lastTexture;
             mat.setDirty && mat.setDirty();
+            markTargetDirty(mat)
         }
     } satisfies JSUndoManagerCommand1 & {lastTexture: ITexture | null | undefined}
     return cmd;
 }
 
-export function environmentCommand(texture: ITexture, viewer: ThreeViewer, final: boolean, manager: ViewerInstanceManager) {
+export function environmentCommand(
+    texture: ITexture,
+    viewer: ThreeViewer,
+    final: boolean,
+    manager: ViewerInstanceManager,
+    applyTo: 'environment' | 'background' | 'both' = 'environment',
+) {
     const cmd = {
         lastEnvironment: null as ITexture | null | undefined,
+        lastBackground: null as unknown,
         dialogContent: undefined as React.ReactNode | undefined,
         timeoutId: undefined as number | undefined,
         redo: () => {
-            cmd.lastEnvironment = viewer.scene.environment as ITexture;
-            viewer.scene.environment = texture;
+            if (applyTo === 'environment' || applyTo === 'both') {
+                cmd.lastEnvironment = viewer.scene.environment as ITexture;
+                viewer.scene.environment = texture;
+            }
+            if (applyTo === 'background' || applyTo === 'both') {
+                cmd.lastBackground = viewer.scene.background
+                viewer.scene.background = texture
+            }
+            viewer.scene.setDirty?.({change: applyTo})
 
             if(final) {
                 let libInfo: ImportResultExtras['_libFileInfo']|undefined = undefined;
@@ -136,7 +181,8 @@ export function environmentCommand(texture: ITexture, viewer: ThreeViewer, final
                     if(!texture || !texture.isTexture){
                         console.error('Failed to load environment texture from url:', url);
                     }else {
-                        viewer.scene.environment = texture as ITexture;
+                        if (applyTo === 'environment' || applyTo === 'both') viewer.scene.environment = texture as ITexture;
+                        if (applyTo === 'background' || applyTo === 'both') viewer.scene.background = texture as ITexture;
                     }
                 }
 
@@ -174,13 +220,21 @@ export function environmentCommand(texture: ITexture, viewer: ThreeViewer, final
             }
         },
         undo: () => {
-            const lastEnv = cmd.lastEnvironment;
-            cmd.lastEnvironment = viewer.scene.environment as ITexture;
-            viewer.scene.environment = lastEnv ?? null;
+            if (applyTo === 'environment' || applyTo === 'both') {
+                const lastEnv = cmd.lastEnvironment;
+                cmd.lastEnvironment = viewer.scene.environment as ITexture;
+                viewer.scene.environment = lastEnv ?? null;
+            }
+            if (applyTo === 'background' || applyTo === 'both') {
+                const lastBackground = cmd.lastBackground
+                cmd.lastBackground = viewer.scene.background
+                viewer.scene.background = lastBackground as typeof viewer.scene.background
+            }
+            viewer.scene.setDirty?.({change: applyTo})
 
             // Clear the popup on undo only if it's showing this command's content
             dialogPopupCard.resetDialogContent(cmd);
         }
-    } satisfies JSUndoManagerCommand1 & {lastEnvironment: ITexture | null | undefined, [k:string]: any}
+    } satisfies JSUndoManagerCommand1 & {lastEnvironment: ITexture | null | undefined, lastBackground: unknown, [k:string]: any}
     return cmd;
 }

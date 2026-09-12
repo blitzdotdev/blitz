@@ -23,12 +23,17 @@ export function ExternalFilesGrid({group}: {
     const onDoubleClick = async (f: FileManifestEntry | TExternalFile, e: React.MouseEvent) => {
         void e
         if (!dragger || f.type !== 'file') return
-        const item = await manager.getAssetFromEntry(f)
+        let item: ImportResult | null | undefined
+        try {
+            item = await manager.getAssetFromEntry(f)
+        } catch (error) {
+            console.error(`Unable to import library asset ${f.name}`, error)
+            return
+        }
         if (!item || !isDraggedItem(item)) return
         const clone = dragger.cloneItem(item)
         if (!clone) return
-        const result = dragger.dropAction(clone, null, true, {})
-        if (result && result.cmd) dragger.execCommand(result.cmd, true)
+        dragger.dropLibraryItem(clone, f, null)
     }
 
     const cssVar = (varName: string, defaultValue: string) => {
