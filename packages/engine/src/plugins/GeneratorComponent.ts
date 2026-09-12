@@ -6,6 +6,11 @@ import {
     type ThreeViewer,
 } from 'threepipe'
 import {getAuthoringMetadata, setAuthoringMetadata, type AuthoringMetadata} from '../authoring.ts'
+import {
+    parseGeneratorParamsSchema,
+    type GeneratorParamDefinition,
+    type GeneratorParamSchema,
+} from '../generatorParams.ts'
 
 export interface GeneratorParams {
     [key: string]: unknown
@@ -20,6 +25,7 @@ export interface GeneratorContext {
 
 export interface GeneratorModule {
     default?: (context: GeneratorContext) => unknown | Promise<unknown>
+    params?: Record<string, GeneratorParamDefinition>
 }
 
 export interface GeneratorViewerOptions {
@@ -42,6 +48,7 @@ export class GeneratorComponent extends Object3DComponent {
 
     module = ''
     params: GeneratorParams = {}
+    schema: GeneratorParamSchema = {}
     private runRevision = 0
 
     static configureViewer(viewer: ThreeViewer, options: GeneratorViewerOptions): void {
@@ -78,6 +85,7 @@ export class GeneratorComponent extends Object3DComponent {
             base: config.base,
             revision: ++generatorImportRevision,
             isCurrent: () => revision === this.runRevision,
+            onSchema: (schema) => { this.schema = schema },
         }).then(() => {
             if (revision === this.runRevision) viewer.setDirty(this)
         }).finally(() => config.pending.delete(task))
@@ -122,6 +130,7 @@ export interface RunGeneratorOptions extends Omit<GeneratorContext, 'engine'> {
     base: URL
     revision?: number
     isCurrent?: () => boolean
+    onSchema?: (schema: GeneratorParamSchema) => void
 }
 
 export async function runGenerator({
@@ -132,13 +141,16 @@ export async function runGenerator({
     base,
     revision = 0,
     isCurrent,
+    onSchema,
 }: RunGeneratorOptions): Promise<IObject3D[]> {
     removeGeneratedChildren(node)
+    onSchema?.({})
     if (!module) return []
     const source = ensureGeneratorMetadata(node)
     const moduleUrl = resolveGeneratorModule(module, base)
     if (revision) moduleUrl.searchParams.set('kite3d-generator', String(revision))
     const loaded = await importGeneratorModule(moduleUrl.href)
+    onSchema?.(parseGeneratorParamsSchema(loaded.params, module))
     if (typeof loaded.default !== 'function') {
         throw new Error(`Generator module must have a default generate function: ${module}`)
     }

@@ -18,6 +18,7 @@ beforeAll(async () => {
     generatorDirectory = await mkdtemp(resolve(import.meta.dirname, 'generator-'))
     generatorBase = pathToFileURL(`${generatorDirectory}/`)
     await writeFile(resolve(generatorDirectory, 'forest.mjs'), `
+export const params = {count: {type: 'integer', min: 1, default: 2}}
 export default function generate({node}) {
     node.add(node.userData.attached)
     return node.userData.returned
@@ -42,6 +43,7 @@ describe('Generator', () => {
         attached.name = 'Attached'
         node.userData.returned = returned
         node.userData.attached = attached
+        let schema
 
         const generated = await generator.runGenerator({
             node,
@@ -49,10 +51,12 @@ describe('Generator', () => {
             viewer: {} as ThreeViewer,
             module: 'forest.mjs',
             base: generatorBase,
+            onSchema: (loaded) => { schema = loaded },
         })
 
         expect(node.children.map(({name}) => name)).toEqual(['Human', 'Attached', 'Returned'])
         expect(generated).toEqual([attached, returned])
+        expect(schema).toEqual({count: {type: 'integer', min: 1, default: 2}})
         for (const child of generated) {
             expect(child.userData).toMatchObject({kite3dGenerated: true, excludeFromExport: true})
         }
