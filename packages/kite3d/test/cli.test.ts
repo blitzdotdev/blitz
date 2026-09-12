@@ -40,6 +40,7 @@ Commands:
   journal [options]           Read the edit journal
   open                        Open the running local editor
   sources                     Locate installed source
+  skills [--json]             List bundled skills and their readable paths
   upgrade                     Upgrade the project to this Kite3D version
 
 Run kite3d <command> --help for command usage.`
@@ -219,7 +220,7 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
     it('prints command-specific help without performing the command', async () => {
         const commands = [
             'init', 'dev', 'doctor', 'checkpoint', 'restore', 'archive', 'publish', 'pull', 'status', 'claim',
-            'bake', 'check', 'journal', 'open', 'sources', 'upgrade',
+            'bake', 'check', 'journal', 'open', 'sources', 'skills', 'upgrade',
         ]
         const results = await Promise.all(commands.map(async (command) => ({
             command,
@@ -229,6 +230,8 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
             expect(result.stdout).toContain(`Usage: kite3d ${command}`)
             expect(result.stderr).toBe('')
         }
+        expect(results.find(({command}) => command === 'skills')?.result.stdout.trim())
+            .toBe('Usage: kite3d skills [--json]')
     })
 
     it('prints its package version without applying the project version rule', async () => {
