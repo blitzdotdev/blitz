@@ -19,7 +19,8 @@
   "files": [
     "dist",
     "src",
-    "template"
+    "template",
+    "skills"
   ],
   "engines": {
     "node": ">=20"

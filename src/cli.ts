@@ -24,6 +24,7 @@ import {doctorProject, formatDoctorTable} from './doctor.ts'
 import {checkpointProject, gitRepositoryRoot, restoreProject} from './git.ts'
 import {assertKite3dProjectRoot, isKite3dProjectRoot} from './project-root.ts'
 import {LEGACY_PROJECT_MESSAGE, legacyProjectMigrationNeeded} from './legacy.ts'
+import {bundledSkills} from './skills.ts'
 
 const ROOT_USAGE = `Kite3D ${KITE3D_VERSION} builds browser 3D games with an agent and a local editor.
 Workflow:
@@ -51,6 +52,7 @@ Commands:
   journal [options]           Read the edit journal
   open                        Open the running local editor
   sources                     Locate installed source
+  skills [--json]             List bundled skills and their readable paths
   upgrade                     Upgrade the project to this Kite3D version
 
 Run kite3d <command> --help for command usage.`
@@ -71,6 +73,7 @@ const COMMAND_USAGE: Record<string, string> = {
     journal: 'Usage: kite3d journal [--since <iso>] [-n <count>]',
     open: 'Usage: kite3d open',
     sources: 'Usage: kite3d sources',
+    skills: 'Usage: kite3d skills [--json]',
     upgrade: 'Usage: kite3d upgrade',
 }
 
@@ -82,7 +85,7 @@ const [command = 'help', ...args] = process.argv.slice(2)
 
 try {
     const legacyProject = await legacyProjectMigrationNeeded(process.cwd())
-    const allowsLegacyProject = command === 'upgrade' || command === 'doctor'
+    const allowsLegacyProject = command === 'upgrade' || command === 'doctor' || command === 'skills'
         || command === 'help' || command === '--help' || command === '-h'
         || command === '--version' || command === '-v'
         || args.includes('--help') || args.includes('-h')
@@ -91,7 +94,7 @@ try {
         if (!(command === 'doctor' && legacyProject)) await assertKite3dProjectRoot(process.cwd())
     }
     const skipsVersionRule = command === 'help' || command === '--help' || command === '-h'
-        || command === 'doctor' || command === 'upgrade'
+        || command === 'doctor' || command === 'upgrade' || command === 'skills'
         || command === '--version' || command === '-v'
         || args.includes('--help') || args.includes('-h')
     const delegatedExitCode = skipsVersionRule ? undefined : await enforceVersionPin(command, process.argv.slice(2))
@@ -226,6 +229,13 @@ try {
     } else if (command === 'sources') {
         parseArgs(args, {})
         console.log(await sourcesInstructions())
+    } else if (command === 'skills') {
+        const parsed = parseArgs(args, {'--json': 'boolean'})
+        const skills = await bundledSkills()
+        const output = parsed.values['--json'] === true
+            ? JSON.stringify(skills)
+            : skills.map(({name, path}) => `${name}\t${path}`).join('\n')
+        if (output) console.log(output)
     } else if (command === 'bake') {
         const parsed = parseArgs(args, {'--force': 'boolean'}, 1)
         const nodeName = parsed.positionals[0] || ''
