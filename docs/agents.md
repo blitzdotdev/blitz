@@ -13,7 +13,7 @@ npx kite3d dev
 
 `kite3d dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx kite3d pull`; then run `npx kite3d publish` and report the exact live URL it prints, normally `https://<slug>.app.blitz.dev/`. Run `npx kite3d <command> --help` for command-specific usage.
 
-`kite3d init` stamps the running command's exact version into both `devDependencies["kite3d"]` and `kite3d.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, `doctor`, and `upgrade` checks the resolved version. `doctor` reports a mismatch as a FAIL row. `upgrade` runs in the invoked CLI so it can apply that version's migrations. Other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
+`kite3d init` stamps the running command's exact version into both `devDependencies["kite3d"]` and `kite3d.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, `doctor`, `upgrade`, and `skills` checks the resolved version. `doctor` reports a mismatch as a FAIL row. `upgrade` runs in the invoked CLI so it can apply that version's migrations. Other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
 
 `kite3d init` also initializes a Git repository and commits the generated template. Inside a parent repository it creates a project repository unless that parent already tracks a file below the project directory. Use `kite3d init --no-git` only when Git is deliberately managed elsewhere. The command always prints which Git decision it made.
 
@@ -24,6 +24,8 @@ Create a recoverable point before agent work with `npx kite3d checkpoint "before
 Run `npx kite3d archive` to write `<project-name>-source.zip`. The archive uses the publish exclusion rules, omits `node_modules`, `.kite3d`, and `.git`, and includes `KITE3D-PROJECT.txt` with the creation date, Git commit, and installed Kite3D package versions.
 
 Upgrade the project with `npx kite3d upgrade`. Upgrade targets the invoked CLI's exact version even when the project pins an older CLI. It applies every migration the invoked version knows, rewrites both version fields, runs `npm install --ignore-scripts`, validates the scene, and records a `kite3d-upgrade` journal entry.
+
+`npx kite3d skills` lists the invoked CLI's bundled skills and absolute, readable `SKILL.md` paths. It works outside a project and does not install or execute a skill; pass `--json` for structured output.
 
 Source code to grep after `npm install`:
 
