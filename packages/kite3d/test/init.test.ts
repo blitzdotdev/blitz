@@ -12,6 +12,7 @@ afterEach(async () => {
 })
 
 describe('initProject', () => {
+    // Guards the core workflow and the owner's report that the generated guide drifted from the repository guide.
     it('copies the complete template tree with the one rename and stamped versions', async () => {
         const parent = await mkdtemp(resolve(tmpdir(), 'kite3d-init-'))
         roots.push(parent)

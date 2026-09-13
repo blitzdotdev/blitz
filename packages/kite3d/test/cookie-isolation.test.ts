@@ -46,6 +46,7 @@ afterEach(async () => {
 })
 
 describe('editor token cookie isolation', () => {
+    // Guards the owner's report: a second editor on the same host caused 401 responses in the first editor.
     it('loads editor A scene after editor B opens, then reloads A without 401s', async () => {
         const rootA = await temporaryProject('cookie-editor-a')
         const rootB = await temporaryProject('cookie-editor-b')

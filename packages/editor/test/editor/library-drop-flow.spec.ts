@@ -11,6 +11,7 @@ const failedDropUrl = 'https://library.example.test/failed-drop.gltf'
 const failedDoubleClickUrl = 'https://library.example.test/failed-double-click.gltf'
 const materialUrl = 'https://library.example.test/red-material.pmat'
 
+// Guards the owner's report: a slow library drop completed before its import finished.
 test('waits for a slow library import before completing the drop', async ({page}) => {
     test.setTimeout(60_000)
     const fixture = await startEditor()
@@ -36,6 +37,7 @@ test('waits for a slow library import before completing the drop', async ({page}
     }
 })
 
+// Guards the owner's report: a failed library drop was silent and left partial scene state.
 test('shows an error and leaves the scene clean when a library drop import fails', async ({page}) => {
     const fixture = await startEditor()
     await routeLibrary(page)
@@ -54,6 +56,7 @@ test('shows an error and leaves the scene clean when a library drop import fails
     }
 })
 
+// Guards the owner's report: an applied library material was not marked dirty or saved.
 test('marks a material drop dirty and saves the applied material', async ({page}) => {
     const fixture = await startEditor()
     await routeLibrary(page)

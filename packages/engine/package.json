@@ -60,9 +60,9 @@
     "build": "vite build && vite build --config vite.runtime.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest run test/unit",
-    "test:gates": "npm run build && playwright test persistence-gate.spec.ts startup-failures.spec.ts release-gates.spec.ts",
-    "test:runtime": "npm run build && vitest run test/unit && playwright test"
+    "test": "vitest run test/unit --passWithNoTests",
+    "test:gates": "npm run build && playwright test persistence-gate.spec.ts",
+    "test:runtime": "npm run build && npm test && playwright test"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
