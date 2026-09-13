@@ -1,5 +1,5 @@
 import {useManager} from "../utils/UseManager.ts";
-import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.tsx";
+import {CanvasFileDropHandler, showLibraryImportError} from "../utils/CanvasFileDropHandler.tsx";
 import React, {useEffect, useRef} from "react";
 import {ButtonGroup} from "@blueprintjs/core";
 import {FileButton} from "./FilesPanel.tsx";
@@ -28,11 +28,18 @@ export function ExternalFilesGrid({group}: {
             item = await manager.getAssetFromEntry(f)
         } catch (error) {
             console.error(`Unable to import library asset ${f.name}`, error)
+            showLibraryImportError(f, error)
             return
         }
-        if (!item || !isDraggedItem(item)) return
+        if (!item || !isDraggedItem(item)) {
+            showLibraryImportError(f, new Error('The asset type is not supported by the editor.'))
+            return
+        }
         const clone = dragger.cloneItem(item)
-        if (!clone) return
+        if (!clone) {
+            showLibraryImportError(f, new Error('The asset could not be prepared for use in the editor.'))
+            return
+        }
         dragger.dropLibraryItem(clone, f, null)
     }
 

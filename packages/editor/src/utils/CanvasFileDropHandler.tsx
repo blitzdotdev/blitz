@@ -31,6 +31,7 @@ import {
     type LibraryDropAssetType,
     type LibraryDropChoice,
 } from './libraryDropChoices.ts'
+import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib'
 
 type DraggedItem = IMaterial | IObject3D | ITexture
 type LibraryEntry = FileManifestEntry | TExternalFile | {path: string, name?: string, assetType?: string, isFSEntry: false}
@@ -225,9 +226,11 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             const item = await libraryImport
             if (this.libraryImport !== libraryImport) return
             this.setDraggedItem(item);
+            if (!this.draggedItem) throw new Error('The asset type is not supported by the editor.')
             loaded = true
         } catch (error) {
             console.error(`Unable to import library asset ${f.name || this.fileName(f.path)}`, error)
+            showLibraryImportError(f, error)
         } finally {
             if (this.libraryImport === libraryImport) {
                 draggingSpinner.style.display = 'none'
@@ -777,6 +780,18 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         return new Vector2(x, y);
     }
 
+}
+
+export function showLibraryImportError(entry: {path: string, name?: string}, error: unknown) {
+    const name = entry.name || entry.path.split(/[?#]/)[0].split('/').pop() || 'Library asset'
+    const reason = error instanceof Error ? error.message : String(error)
+    AppToaster().show({
+        message: `Unable to import ${name}: ${reason}`,
+        intent: 'danger',
+        icon: 'error',
+        timeout: 5000,
+        isCloseButtonShown: true,
+    })
 }
 
 export function isDraggableDroppableNode(obj: IObject3D){
