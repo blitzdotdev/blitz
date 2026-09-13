@@ -34,6 +34,7 @@ import {
     DependenciesSectionComp,
     PluginsSectionComp,
     ScriptsSectionComp,
+    WorktreesSectionComp,
 } from '../adapters/DevServerProjectSettings.tsx';
 import {
     FileMetadataPanel,
@@ -47,6 +48,7 @@ import {
 } from '../adapters/Kite3dToolbarControls.tsx';
 import {EditorSettingsPopover} from './EditorSettingsPopover.tsx';
 import {DevServerSceneSummary} from '../adapters/DevServerSceneSummary.tsx';
+import {HubProjectPicker} from './HubProjectPicker.tsx';
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){
@@ -356,6 +358,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                                 content:
                                 <>
                                 {/*<Card className={"bpInspectorCard "} style={{borderRadius: 0}}>*/}
+                                    <WorktreesSectionComp/>
                                     <ScriptsSectionComp/>
                                     <Divider style={{margin: 0}}/>
                                     <PluginsSectionComp/>
@@ -452,7 +455,9 @@ export function NavProjectFileName(){
     const fileNeedsSave = manager.loadedNeedsSave
     if(!project) return null
     return <>
-        {project && <Button role="heading" variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>}
+        {pkgProject
+            ? <HubProjectPicker fallbackPath={project.path || 'New File'}/>
+            : <Button role="heading" variant="minimal" size="small" icon={projectIcon} text={(typeof project.file === 'string' ? project.file : project.file.name) || 'New File'}/>}
         {/* AGREED-4: Kite3D scenes are text glTF; present the stem in the same reference slot. */}
         {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.(?:glb|gltf)$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
     </>
