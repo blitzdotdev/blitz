@@ -7,7 +7,7 @@
 	"name": "kite3d-landing",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-12-29",
-	"account_id": "3c4cf55a12810e878be2349f1411ca08",
+	"account_id": "05a4d66bb904478be9db2f885faa2aca",
 	"assets": {
 		"binding": "ASSETS",
 		"directory": "./public"
