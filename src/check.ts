@@ -7,11 +7,12 @@ import {
     isDependencyModuleSpecifier,
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
+    removedGeneratorMessage,
 } from '@kite3d/engine/projectFormat'
 import {createDevServer} from './server.ts'
 
 export interface CheckRow {
-    kind: 'project' | 'script' | 'plugin' | 'generator' | 'component'
+    kind: 'project' | 'script' | 'plugin' | 'component'
     path: string
     status: 'pass' | 'fail'
     detail: string
@@ -39,7 +40,6 @@ const BUILT_IN_COMPONENT_TYPES = new Set([
     'Cannon3DBodyComponent',
     'Cannon3DShapeComponent',
     'CannonRagdollComponent',
-    'Generator',
     'HtmlUiComponent',
 ])
 const execute = promisify(execFile)
@@ -67,6 +67,7 @@ export async function checkProject(projectRoot = process.cwd()): Promise<CheckRe
     const root = resolve(projectRoot)
     const rows: CheckRow[] = []
     const registeredTypes = new Set(BUILT_IN_COMPONENT_TYPES)
+    const removedComponentMessages: string[] = []
 
     try {
         const packageJson = parsePackageJSON(await readFile(resolve(root, 'package.json'), 'utf8'))
@@ -116,23 +117,18 @@ export async function checkProject(projectRoot = process.cwd()): Promise<CheckRe
                     rows.push({kind: 'component', path: nodeName, status: 'fail', detail: 'component type is missing'})
                     continue
                 }
+                if (type === 'Generator') {
+                    const message = removedGeneratorMessage(nodeName)
+                    removedComponentMessages.push(message)
+                    rows.push({kind: 'component', path: nodeName, status: 'fail', detail: message})
+                    continue
+                }
                 rows.push({
                     kind: 'component',
                     path: nodeName,
                     status: registeredTypes.has(type) ? 'pass' : 'fail',
                     detail: registeredTypes.has(type) ? type : `${type} is not registered`,
                 })
-                if (type !== 'Generator') continue
-                const module = isRecord(component.state) && typeof component.state.module === 'string'
-                    ? component.state.module
-                    : ''
-                try {
-                    if (!module) throw new Error('generator module is missing')
-                    await resolveModule(root, module, false)
-                    rows.push({kind: 'generator', path: module, status: 'pass', detail: nodeName})
-                } catch (error) {
-                    rows.push({kind: 'generator', path: module || nodeName, status: 'fail', detail: errorMessage(error)})
-                }
             }
         }
     } catch (error) {
@@ -140,7 +136,9 @@ export async function checkProject(projectRoot = process.cwd()): Promise<CheckRe
     }
 
     const staticOk = rows.every(({status}) => status === 'pass')
-    const runtime = staticOk
+    const runtime = removedComponentMessages.length
+        ? removedComponentOutcomes(removedComponentMessages)
+        : staticOk
         ? await runRuntimeChecks(root)
         : {
             mode: 'static' as const,
@@ -163,6 +161,17 @@ export async function checkProject(projectRoot = process.cwd()): Promise<CheckRe
     await writeFile(resolve(root, '.kite3d/check.json'), `${JSON.stringify(result, null, 2)}\n`, {mode: 0o600})
     await appendFile(resolve(root, '.kite3d/console.log'), `${formatCheckSummary(result)}\n`, {mode: 0o600})
     return result
+}
+
+function removedComponentOutcomes(messages: string[]): RuntimeCheckResult {
+    return {
+        mode: 'static',
+        outcomes: [
+            {name: 'Playable', status: 'skipped', summary: 'Runtime checks were not started because Editable failed.', codes: []},
+            {name: 'Editable', status: 'fail', summary: messages.join(' '), codes: ['REMOVED_GENERATOR_COMPONENT']},
+            {name: 'Persisted', status: 'skipped', summary: 'Persistence was not checked because Editable failed.', codes: []},
+        ],
+    }
 }
 
 async function inspectScriptModule(root: string, path: string): Promise<string[]> {
@@ -227,7 +236,7 @@ function projectValidationReport(outcome: CheckOutcome): Record<string, unknown>
 const outcomeNames: CheckOutcome['name'][] = ['Playable', 'Editable', 'Persisted']
 
 interface RuntimeCheckResult {
-    mode: 'editor' | 'headless' | 'unavailable'
+    mode: 'editor' | 'headless' | 'unavailable' | 'static'
     outcomes: CheckOutcome[]
 }
 

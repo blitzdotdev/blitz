@@ -8,7 +8,7 @@
       "extras": {
         "gltfUUID": "root-uuid",
         "EntityComponentPlugin": {
-          "generator": {"type": "Generator", "state": {"module": "forest.js", "params": {"count": 2}}}
+          "settings": {"type": "WorldSettings", "state": {"density": 2}}
         }
       }
     },

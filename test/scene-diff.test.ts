@@ -19,7 +19,7 @@ describe('scene semantic diff', () => {
             new: [1, 2, 3],
         }])
         expect(diff.components).toMatchObject([
-            {id: 'generator', type: 'Generator', change: 'state'},
+            {id: 'settings', type: 'WorldSettings', change: 'state'},
             {id: 'spin', type: 'Spin', change: 'added'},
         ])
         expect(diff.materials).toEqual([{

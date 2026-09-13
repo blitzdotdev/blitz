@@ -2,7 +2,6 @@
 import {resolve} from 'node:path'
 import openBrowser from 'open'
 import {
-    bakeFromEditor,
     claimFromDisk,
     devStatusFromDisk,
     initProject,
@@ -25,6 +24,7 @@ import {checkpointProject, gitRepositoryRoot, restoreProject} from './git.ts'
 import {assertKite3dProjectRoot, isKite3dProjectRoot} from './project-root.ts'
 import {LEGACY_PROJECT_MESSAGE, legacyProjectMigrationNeeded} from './legacy.ts'
 import {bundledSkills} from './skills.ts'
+import {removedGeneratorMessage} from '@kite3d/engine/projectFormat'
 
 const ROOT_USAGE = `Kite3D ${KITE3D_VERSION} builds browser 3D games with an agent and a local editor.
 Workflow:
@@ -47,7 +47,6 @@ Commands:
   pull [--force]              Pull the active release
   status                      Show local deploy status
   claim [--no-open]           Open claim pages for local deploys
-  bake <nodeName> [--force]   Bake a Generator node
   check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
   open                        Open the running local editor
@@ -68,7 +67,6 @@ const COMMAND_USAGE: Record<string, string> = {
     pull: 'Usage: kite3d pull [--force]',
     status: 'Usage: kite3d status',
     claim: 'Usage: kite3d claim [--no-open]',
-    bake: 'Usage: kite3d bake <nodeName> [--force]',
     check: 'Usage: kite3d check',
     journal: 'Usage: kite3d journal [--since <iso>] [-n <count>]',
     open: 'Usage: kite3d open',
@@ -236,11 +234,6 @@ try {
             ? JSON.stringify(skills)
             : skills.map(({name, path}) => `${name}\t${path}`).join('\n')
         if (output) console.log(output)
-    } else if (command === 'bake') {
-        const parsed = parseArgs(args, {'--force': 'boolean'}, 1)
-        const nodeName = parsed.positionals[0] || ''
-        const result = await bakeFromEditor(nodeName, {force: parsed.values['--force'] === true})
-        console.log(`Baked ${String(result.nodeName || nodeName)}`)
     } else if (command === 'check') {
         parseArgs(args, {})
         const result = await checkProject()
@@ -258,6 +251,7 @@ try {
         const result = await upgradeProject(process.cwd())
         for (const change of result.changes) console.log(change)
         console.log(`Upgraded Kite3D from ${result.from} to ${result.to}`)
+        for (const nodeName of result.removedGeneratorNodes) console.log(removedGeneratorMessage(nodeName))
         if (result.next) console.log(`Next: ${result.next}`)
     }
 } catch (error) {
