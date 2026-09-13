@@ -318,6 +318,43 @@ describe('Kite3D dev server', () => {
         controller.abort()
     })
 
+    it('keeps editor token cookies separate for two server ports', async () => {
+        const rootA = await temporaryProject()
+        const rootB = await temporaryProject()
+        const serverA = await createDevServer({projectRoot: rootA, port: 0, strictPort: true})
+        cleanup.push(() => serverA.close())
+        const serverB = await createDevServer({projectRoot: rootB, port: 0, strictPort: true})
+        cleanup.push(() => serverB.close())
+
+        const indexA = await fetch(serverA.url)
+        const indexB = await fetch(serverB.url)
+        const cookieA = indexA.headers.get('set-cookie')?.split(';', 1)[0]
+        const cookieB = indexB.headers.get('set-cookie')?.split(';', 1)[0]
+        expect(cookieA).toBeDefined()
+        expect(cookieB).toBeDefined()
+
+        const cookieNameA = cookieA!.split('=', 1)[0]
+        const cookieNameB = cookieB!.split('=', 1)[0]
+        expect(cookieNameA).toBe(`kite3d-token-${serverA.port}`)
+        expect(cookieNameB).toBe(`kite3d-token-${serverB.port}`)
+        expect(new Set([cookieNameA, cookieNameB])).toHaveLength(2)
+
+        expect((await fetch(`${base(serverA)}/files/main.js`, {
+            headers: {Cookie: cookieB!},
+        })).status).toBe(401)
+        expect((await fetch(`${base(serverA)}/files/main.js`, {
+            headers: {Cookie: cookieA!},
+        })).status).toBe(200)
+
+        const bothCookies = `${cookieA}; ${cookieB}`
+        expect((await fetch(`${base(serverA)}/files/main.js`, {
+            headers: {Cookie: bothCookies},
+        })).status).toBe(200)
+        expect((await fetch(`${base(serverB)}/files/main.js`, {
+            headers: {Cookie: bothCookies},
+        })).status).toBe(200)
+    })
+
     it('aborts active event streams while closing', async () => {
         const {server, headers} = await startServer()
         const events = await fetch(`${base(server)}/api/events`, {headers})

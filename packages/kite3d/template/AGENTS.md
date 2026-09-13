@@ -86,6 +86,9 @@ The local server owns the project folder. Edit files directly; do not attempt to
 
 # Local feedback and health
 
+- `kite3d dev --detach` runs the server in the background with its log in `.kite3d/dev.log`.
+- `kite3d dev --stop` stops the background development server.
+- `kite3d open` opens the launcher that lists every known project and every running editor.
 - Run npx kite3d screenshot to save a PNG of the editor viewport under .kite3d/screenshots/ and print its path. Look at it before and after visual changes. Add --headless when no editor is open.
 
 Read `.kite3d/state.json` and `.kite3d/console.log` for the editor and runtime feedback loop. While Play is active, the editor refreshes `state.json.updatedAt` every 5 seconds and writes its `clientId`. Treat a timestamp more than 15 seconds old as stale. A `pagehide` writes `playState: "stopped"`.
