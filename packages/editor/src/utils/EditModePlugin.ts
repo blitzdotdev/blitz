@@ -27,10 +27,16 @@ import {editorCameraController} from "./three/EditorCameraController.ts";
 import {LightMaterialOverrider} from "./three/LightMaterialOverrider.ts";
 import {isExternalObject} from "./projectUtils.ts";
 
+export const wasdMovementSpeedStorageKey = 'kite3d.editor.wasdMovementSpeed'
+const minWASDMovementSpeed = 0.0625
+const maxWASDMovementSpeed = 64
+
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
 export class EditModePlugin extends AViewerPluginSync<{
     enableChanged: object
+    speedChanged: {speed: number}
+    isolateChanged: {isolated: boolean}
 } & AViewerPluginEventMap>{
     public static readonly PluginType = 'EditModePlugin';
 
@@ -130,6 +136,16 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.cameraOrtho.autoAspect = true
         super.onAdded(viewer);
 
+        try {
+            const storedSpeed = Number(localStorage.getItem(wasdMovementSpeedStorageKey))
+            if (Number.isFinite(storedSpeed) && storedSpeed > 0) {
+                this.wasdMovementSpeed = Math.max(minWASDMovementSpeed, Math.min(maxWASDMovementSpeed, storedSpeed))
+            }
+        } catch {
+            // Storage is optional. Camera movement still works when it is unavailable.
+        }
+        this._wasdPreferenceLoaded = true
+
         // this.grid.material.color.set(0xff0000)
 
         // console.log(this.grid)
@@ -189,10 +205,96 @@ export class EditModePlugin extends AViewerPluginSync<{
     @serialize()
     enableWASDMovement = true
 
-    @onChange('setDirty')
-    @uiNumber()
-    @serialize()
+    private _wasdPreferenceLoaded = false
+
+    @uiNumber(undefined, (plugin: EditModePlugin) => ({
+        onChange: () => plugin.setWASDMovementSpeed(plugin.wasdMovementSpeed),
+    }))
     wasdMovementSpeed = 1
+
+    private setWASDMovementSpeed(value: number) {
+        const speed = Number.isFinite(value)
+            ? Math.max(minWASDMovementSpeed, Math.min(maxWASDMovementSpeed, value))
+            : 1
+        this.wasdMovementSpeed = speed
+        this.setDirty()
+        if (!this._wasdPreferenceLoaded) return
+        try {
+            localStorage.setItem(wasdMovementSpeedStorageKey, String(speed))
+        } catch {
+            // Storage is optional. The current editor session keeps the speed.
+        }
+        this.dispatchEvent({type: 'speedChanged', speed})
+    }
+
+    private _isolatedVisibility?: Map<IObject3D, boolean>
+
+    get isIsolated() {
+        return this._isolatedVisibility !== undefined
+    }
+
+    toggleIsolate(objects?: IObject3D[]) {
+        if (this.isIsolated) {
+            this.exitIsolate()
+            return true
+        }
+        if (!this._viewer) return false
+        const root = this._viewer.scene.modelRoot
+        const selected = (objects ?? this._viewer.getPlugin(PickingPlugin)?.getSelectedObjects() ?? [])
+            .filter((object): object is IObject3D => object.isObject3D && this.isUnderModelRoot(object, root))
+        if (!selected.length) return false
+
+        const shownObjects = new Set<IObject3D>()
+        for (const object of selected) {
+            object.traverse(child => shownObjects.add(child as IObject3D))
+            for (let current: IObject3D | null = object; current && current !== root; current = current.parent as IObject3D | null) {
+                shownObjects.add(current)
+            }
+        }
+
+        const previousVisibility = new Map<IObject3D, boolean>()
+        root.traverse(child => {
+            const object = child as IObject3D
+            if (object === root) return
+            previousVisibility.set(object, object.visible)
+            if (!object.isLight && !object.isCamera) object.visible = shownObjects.has(object)
+        })
+        this._isolatedVisibility = previousVisibility
+        this._viewer.setDirty()
+        this.dispatchEvent({type: 'isolateChanged', isolated: true})
+        return true
+    }
+
+    exitIsolate() {
+        if (!this._isolatedVisibility) return false
+        for (const [object, visible] of this._isolatedVisibility) object.visible = visible
+        this._isolatedVisibility = undefined
+        this._viewer?.setDirty()
+        this.dispatchEvent({type: 'isolateChanged', isolated: false})
+        return true
+    }
+
+    async withIsolateVisibilityRestored<T>(operation: () => Promise<T>): Promise<T> {
+        if (!this._isolatedVisibility) return operation()
+        const isolatedVisibility = new Map<IObject3D, boolean>()
+        for (const [object, visible] of this._isolatedVisibility) {
+            isolatedVisibility.set(object, object.visible)
+            object.visible = visible
+        }
+        try {
+            return await operation()
+        } finally {
+            for (const [object, visible] of isolatedVisibility) object.visible = visible
+            this._viewer?.setDirty()
+        }
+    }
+
+    private isUnderModelRoot(object: IObject3D, root: IObject3D) {
+        for (let current: IObject3D | null = object.parent as IObject3D | null; current; current = current.parent as IObject3D | null) {
+            if (current === root) return true
+        }
+        return false
+    }
 
     // @onChange('setDirty')
     @uiNumber()
@@ -220,6 +322,21 @@ export class EditModePlugin extends AViewerPluginSync<{
         onDown?: (event: KeyboardEvent)=>void,
         onUp?: (event: KeyboardEvent)=>void,
     }[] = [
+        {
+            keys: ['/'],
+            onDown: (event: KeyboardEvent) => {
+                if (!this._viewer?.renderEnabled) return
+                if (this.toggleIsolate()) event.preventDefault()
+            }
+        },
+        {
+            keys: ['[', ']'],
+            onDown: (event: KeyboardEvent) => {
+                if (!this._viewer?.renderEnabled) return
+                event.preventDefault()
+                this.setWASDMovementSpeed(this.wasdMovementSpeed * (event.key === ']' ? 2 : 0.5))
+            }
+        },
         // delete object
         {
             keys: ['Backspace', 'Delete'],
@@ -463,6 +580,7 @@ export class EditModePlugin extends AViewerPluginSync<{
     }
 
     onDisable(){
+        this.exitIsolate()
         this.grid.visible = false
         if(!this._viewer) return
         if(!this._settingsSet) return

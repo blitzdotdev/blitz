@@ -551,6 +551,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         const viewer = this.get()
         this.loadingScene = true
         try {
+            viewer.getPlugin(EditModePlugin)?.exitIsolate()
             viewer.scene.disposeSceneModels(true, true)
             viewer.scene.disposeTextures(true)
             const loaded = await viewer.load(this.source.fileUrl(this.scenePath, this.hashes.get(this.scenePath)), {
@@ -602,7 +603,11 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.savingScene = true
         this.setStatus('Saving scene…')
         try {
-            const serialized = await serializeSceneGltf(this.get(), {scenePath: this.scenePath})
+            const viewer = this.get()
+            const editMode = viewer.getPlugin(EditModePlugin)!
+            const serialized = await editMode.withIsolateVisibilityRestored(
+                () => serializeSceneGltf(viewer, {scenePath: this.scenePath}),
+            )
             await this.writeSerializedScene(serialized)
             this.loadedNeedsSave = false
             await this.writeState()
@@ -739,6 +744,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     async startPlay(canvas: HTMLCanvasElement): Promise<void> {
         this.playCanvas = canvas
+        this.get().getPlugin(EditModePlugin)?.exitIsolate()
         if (this.isPlaying) return
         if (this.playPromise) return this.playPromise
         const task = this.createPlayGame()
