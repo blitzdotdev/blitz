@@ -1,4 +1,4 @@
-import type {ThreeViewer} from 'threepipe'
+import type {IObject3D, ThreeViewer} from 'threepipe'
 
 export interface SerializeSceneGltfOptions {
     scenePath?: string
@@ -51,11 +51,19 @@ export async function serializeSceneGltf(
         preserveUUIDs: true,
         viewerConfig: true,
         embedUrlImages: false,
-        onlyVisible: true,
+        onlyVisible: false,
+        shouldExportObject: isAuthoredSceneObject,
         jsonSpaces: 2,
     }, false)
     if (!blob) throw new Error('The scene exporter returned no glTF data')
     return serializeSceneGltfDocument(JSON.parse(await blob.text()), options)
+}
+
+function isAuthoredSceneObject(object: IObject3D): boolean {
+    return object.userData?.excludeFromExport !== true
+        && object.userData?.isWidgetRoot !== true
+        && object.isWidget !== true
+        && object.assetType !== 'widget'
 }
 
 /** Canonicalize JSON glTF and extract every embedded resource. */

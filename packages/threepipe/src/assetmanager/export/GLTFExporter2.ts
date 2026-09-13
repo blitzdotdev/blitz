@@ -37,6 +37,8 @@ export interface GLTFExporter2Options {
      */
     exportExt?: string,
     preserveUUIDs?: boolean,
+    /** Return false to omit an object and its descendants from the export. */
+    shouldExportObject?: (object: Object3D) => boolean,
     /**
      * see GLTFDracoExporter and {@link GLTFMaterialExtrasExtension}
      */
