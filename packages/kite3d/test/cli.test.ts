@@ -26,7 +26,7 @@ Usage: kite3d <command> [options]
 
 Commands:
   init [dir] [--no-git]       Create a Kite3D project and Git repository
-  dev [--port <port>]         Start the local editor
+  dev [options]               Start or stop the local editor
   doctor [--port <port>]      Check the local development prerequisites
   checkpoint [label]          Commit a project checkpoint
   restore [hash]              Restore files from a checkpoint
@@ -38,7 +38,7 @@ Commands:
   screenshot [options]        Save a PNG of the editor viewport
   check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
-  open                        Open the running local editor
+  open [options]              Open or stop the project launcher
   sources                     Locate installed source
   skills [--json]             List bundled skills and their readable paths
   upgrade                     Upgrade the project to this Kite3D version
@@ -243,6 +243,10 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
             .toBe('Usage: kite3d skills [--json]')
         expect(results.find(({command}) => command === 'screenshot')?.result.stdout.trim())
             .toBe('Usage: kite3d screenshot [--name <name>] [--headless] [--full] [--width <px>] [--height <px>] [--json]')
+        expect(results.find(({command}) => command === 'dev')?.result.stdout.trim())
+            .toBe('Usage: kite3d dev [--port <port>] [--no-open] [--force] [--detach | --stop]')
+        expect(results.find(({command}) => command === 'open')?.result.stdout.trim())
+            .toBe('Usage: kite3d open [--no-open] [--stop]')
     })
 
     it('prints its package version without applying the project version rule', async () => {

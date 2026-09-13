@@ -37,6 +37,7 @@ import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 import {checkpointProject, latestCheckpointProject, restoreProject} from './git.ts'
 import {DEVELOPMENT_PLUGIN_URL, installedPluginPackages} from './plugins.ts'
 import {pngDimensions, saveScreenshotPng} from './screenshot.ts'
+import {mountHubRoutes} from './hubRoutes.ts'
 
 export interface ManifestEntry {
     path: string
@@ -95,10 +96,64 @@ const watchedFileSettleMs = 50
 const maxScreenshotBytes = 50 * 1024 * 1024
 const serverRequire = createRequire(import.meta.url)
 
+export type LocalAppEnv = {Bindings: HttpBindings, Variables: {clientId: string | undefined}}
+
+export function installLocalServerMiddleware(app: Hono<LocalAppEnv>, token: string): void {
+    app.use('*', async (c, next) => {
+        if (!isLocalHost(c.req.header('Host'))) return textResponse('Invalid Host', 403)
+        c.set('clientId', c.req.header('X-Kite3D-Client'))
+        await next()
+    })
+    const checkToken = async (c: Context<LocalAppEnv>, next: Next): Promise<void | Response> => {
+        const queryToken = c.req.method === 'GET' ? c.req.query('t') : undefined
+        if (c.req.header('X-Kite3D-Token') !== token && getCookie(c, 'kite3d-token') !== token && queryToken !== token) {
+            return textResponse('Missing or invalid Kite3D token', 401)
+        }
+        return next()
+    }
+    app.use('/api/*', checkToken)
+    app.use('/files/*', checkToken)
+    app.use('/kite3d/plugins/*', checkToken)
+}
+
+export async function resolveEditorDirectory(): Promise<string> {
+    return await resolvePackageDirectory('@kite3d/editor') + '/dist'
+}
+
+export async function serveEditorIndex(
+    request: Request,
+    token: string,
+    editorDirectory: string,
+    transform: (source: string) => string | Promise<string> = (source) => source,
+    headlessSource?: string,
+): Promise<Response> {
+    const url = new URL(request.url)
+    if (url.searchParams.get('t') !== token) return textResponse('Missing or invalid Kite3D token', 401)
+    const source = url.searchParams.get('headless') === 'check' && headlessSource !== undefined
+        ? headlessSource
+        : await readFile(resolve(editorDirectory, 'index.html'), 'utf8')
+    const response = new Response(await transform(source), {
+        headers: {'Content-Type': 'text/html; charset=utf-8'},
+    })
+    response.headers.set('Set-Cookie', `kite3d-token=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`)
+    return response
+}
+
+export function serveEditorPath(pathname: string, editorDirectory: string): Promise<Response> {
+    const relative = decodeURIComponent(pathname.slice(1))
+    if (relative && !relative.includes('..') && !relative.includes('\\')) {
+        const staticPath = resolve(editorDirectory, relative)
+        if (staticPath.startsWith(`${resolve(editorDirectory)}${sep}`)) {
+            return serveStaticFile(staticPath, editorDirectory)
+        }
+    }
+    return Promise.resolve(textResponse('Not found', 404))
+}
+
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
     const projectRoot = await realpath(resolve(options.projectRoot || process.cwd()))
     const token = randomBytes(24).toString('base64url')
-    const editorDirectory = await resolvePackageDirectory('@kite3d/editor') + '/dist'
+    const editorDirectory = await resolveEditorDirectory()
     const clients = new Map<SSEStreamingApi, string | undefined>()
     const pendingCommands = new Map<string, PendingCommand>()
     const pendingScreenshots = new Map<string, PendingScreenshot>()
@@ -119,37 +174,16 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
 
     for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)
 
-    type AppEnv = {Bindings: HttpBindings, Variables: {clientId: string | undefined}}
-    const app = new Hono<AppEnv>({router: new LinearRouter()})
+    const app = new Hono<LocalAppEnv>({router: new LinearRouter()})
+    installLocalServerMiddleware(app, token)
 
-    app.use('*', async (c, next) => {
-        if (!isLocalHost(c.req.header('Host'))) return textResponse('Invalid Host', 403)
-        c.set('clientId', c.req.header('X-Kite3D-Client'))
-        await next()
-    })
-    app.use('/api/*', checkToken)
-    app.use('/files/*', checkToken)
-    app.use('/kite3d/plugins/*', checkToken)
-
-    async function checkToken(c: Context<AppEnv>, next: Next): Promise<void | Response> {
-        const queryToken = c.req.method === 'GET' ? c.req.query('t') : undefined
-        if (c.req.header('X-Kite3D-Token') !== token && getCookie(c, 'kite3d-token') !== token && queryToken !== token) {
-            return textResponse('Missing or invalid Kite3D token', 401)
-        }
-        return next()
-    }
-
-    const serveIndex = async (c: Context<AppEnv>) => {
-        if (new URL(c.req.url).searchParams.get('t') !== token) return textResponse('Missing or invalid Kite3D token', 401)
-        const source = new URL(c.req.url).searchParams.get('headless') === 'check'
-            ? headlessCheckHtml()
-            : await readFile(resolve(editorDirectory, 'index.html'), 'utf8')
-        const response = new Response(await injectProjectImportMap(source, projectRoot), {
-            headers: {'Content-Type': 'text/html; charset=utf-8'},
-        })
-        response.headers.set('Set-Cookie', `kite3d-token=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`)
-        return response
-    }
+    const serveIndex = (c: Context<LocalAppEnv>) => serveEditorIndex(
+        c.req.raw,
+        token,
+        editorDirectory,
+        (source) => injectProjectImportMap(source, projectRoot),
+        headlessCheckHtml(),
+    )
     app.get('/', serveIndex)
     app.get('/index.html', serveIndex)
     app.get('/favicon.ico', () => serveStaticFile(resolve(editorDirectory, 'favicon.ico'), editorDirectory))
@@ -420,6 +454,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         if (!options.pull) return jsonResponse({error: {code: 'pull_unavailable', message: 'Pull is not configured.'}}, 501)
         return jsonResponse(await runServerMutation(options.pull))
     })
+    mountHubRoutes(app)
     app.get('/kite3d/plugins/*', async (c) => {
         const packageJson = await readProjectPackageJson(projectRoot)
         const plugins = await installedPluginPackages(projectDirectory, packageJson, DEVELOPMENT_PLUGIN_URL)
@@ -491,16 +526,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         scheduleEvent(relativePath, c.get('clientId'), 'unlink')
         return new Response(null, {status: 204})
     })
-    app.get('*', async (c) => {
-        const relative = decodeURIComponent(new URL(c.req.url).pathname.slice(1))
-        if (relative && !relative.includes('..') && !relative.includes('\\')) {
-            const staticPath = resolve(editorDirectory, relative)
-            if (staticPath.startsWith(`${resolve(editorDirectory)}${sep}`)) {
-                return serveStaticFile(staticPath, editorDirectory)
-            }
-        }
-        return textResponse('Not found', 404)
-    })
+    app.get('*', (c) => serveEditorPath(new URL(c.req.url).pathname, editorDirectory))
     app.onError((error) => {
         const rawMessage = error instanceof Error ? error.message : 'Internal server error'
         const status = httpErrorStatus(error) ?? (isMissing(error) ? 404 : (/Invalid project path|forbidden|symlink|escape/i.test(rawMessage) ? 403 : 500))
@@ -636,7 +662,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             server.closeIdleConnections()
             server.closeAllConnections()
             await serverClosed
-            await unlink(resolve(projectRoot, '.kite3d/dev.json')).catch(() => undefined)
+            await removeDevFileIfOwned(projectRoot, process.pid, token)
         },
     }
 
@@ -1168,6 +1194,14 @@ async function readJsonBody(request: Request): Promise<Record<string, unknown>> 
 async function writeDevFile(root: string, value: unknown): Promise<void> {
     const {writeFile} = await import('node:fs/promises')
     await writeFile(resolve(root, '.kite3d/dev.json'), `${JSON.stringify(value, null, 2)}\n`, {mode: 0o600})
+}
+
+async function removeDevFileIfOwned(root: string, pid: number, token: string): Promise<void> {
+    const path = resolve(root, '.kite3d/dev.json')
+    try {
+        const value = JSON.parse(await readFile(path, 'utf8')) as {pid?: unknown, token?: unknown}
+        if (value.pid === pid && value.token === token) await unlink(path)
+    } catch { /* already removed or replaced */ }
 }
 
 async function resolvePackageDirectory(packageName: string): Promise<string> {

@@ -26,18 +26,25 @@ export {
     devStatusFromDisk,
     initProject,
     journalFromDisk,
-    openCurrentProject,
     publishFromDisk,
     pullFromDisk,
+    runDetachedDev,
     runDev,
     screenshotFromDisk,
     slugify,
     sourcesInstructions,
     statusFromDisk,
+    stopDev,
     upgradeProject,
 } from './commands.ts'
 export type {PublicClaimEntry, PublicDeployEntry, PublicDevServer, PublishFromDiskOptions} from './commands.ts'
 export type {ScreenshotOptions, ScreenshotResult} from './screenshot.ts'
+export {branch, repoKey, repoRoot, worktrees} from './gitInfo.ts'
+export type {GitWorktree} from './gitInfo.ts'
+export {kite3dHomeDirectory, readProjectIndex, registerProject} from './projectIndex.ts'
+export type {IndexedProject, ProjectIndex} from './projectIndex.ts'
+export {createHubServer, openProjectHub, readHubState, stopProjectHub} from './hub.ts'
+export type {HubServer, HubState} from './hub.ts'
 export {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 export {enforceVersionPin, findPinnedProject} from './version-pin.ts'
 export {checkpointProject, gitHead, gitRepositoryRoot, latestCheckpointProject, restoreProject} from './git.ts'
