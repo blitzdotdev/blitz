@@ -5,6 +5,12 @@ import type {GLTFExporter2Options} from './GLTFExporter2'
 import {getEmptyMeta, isNonRelativeUrl, ThreeSerialization} from '../../utils'
 import {IMaterial} from '../../core'
 
+declare module 'three/examples/jsm/exporters/GLTFExporter.js' {
+    interface GLTFWriter {
+        processNode(object: Object3D): number|null
+    }
+}
+
 export class GLTFWriter2 extends GLTFExporter.Utils.GLTFWriter {
 
     readonly TPAssetVersion = 1
@@ -16,7 +22,7 @@ export class GLTFWriter2 extends GLTFExporter.Utils.GLTFWriter {
     }
 
     // Hook for deterministic-injection.js to patch processBufferViewImage/write for testing.
-    // Guarded by import.meta.env.DEV — stripped from production builds by Vite.
+    // Guarded by import.meta.env.DEV, then stripped from production builds by Vite.
     static { if (import.meta.env.DEV) (globalThis as any).testing_patchGLTFWriter2?.(GLTFWriter2) }
 
     declare options: GLTFExporterOptions & {
@@ -61,6 +67,11 @@ export class GLTFWriter2 extends GLTFExporter.Utils.GLTFWriter {
             // delete objects[0].isScene
         } else
             super.processObjects(objects)
+    }
+
+    processNode(object: Object3D): number|null {
+        if (this.options.exporterOptions.shouldExportObject?.(object) === false) return null
+        return super.processNode(object)
     }
 
     protected _defaultMaterial = new MeshStandardMaterial()
