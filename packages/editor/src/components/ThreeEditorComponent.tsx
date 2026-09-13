@@ -394,6 +394,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
 function EditModeStatusChips({viewer}: {viewer: ThreeViewer}) {
     const editMode = viewer.getPlugin(EditModePlugin)
     const [speed, setSpeed] = useState<number | null>(null)
+    const [isolated, setIsolated] = useState(editMode?.isIsolated ?? false)
 
     useEffect(() => {
         if (!editMode) return
@@ -403,15 +404,19 @@ function EditModeStatusChips({viewer}: {viewer: ThreeViewer}) {
             window.clearTimeout(speedTimer)
             speedTimer = window.setTimeout(() => setSpeed(null), 1_000)
         }
+        const isolateChanged = () => setIsolated(editMode.isIsolated)
         editMode.addEventListener('speedChanged', speedChanged)
+        editMode.addEventListener('isolateChanged', isolateChanged)
         return () => {
             editMode.removeEventListener('speedChanged', speedChanged)
+            editMode.removeEventListener('isolateChanged', isolateChanged)
             window.clearTimeout(speedTimer)
         }
     }, [editMode])
 
     return <div className="kite3d-viewport-status-chips" data-testid="edit-mode-status">
         {speed === null ? null : <span className="kite3d-status-chip" data-testid="camera-speed-chip">SPEED {speed}</span>}
+        {isolated ? <button className="kite3d-status-chip" data-testid="isolated-chip" onClick={() => editMode?.exitIsolate()}>ISOLATED</button> : null}
     </div>
 }
 

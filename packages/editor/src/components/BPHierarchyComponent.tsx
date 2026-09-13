@@ -17,6 +17,7 @@ import {BPTreeComponent} from "./BPTreeComponent.tsx";
 import {TreeNodeInfo} from "./treeTypes.ts";
 import {canDropNode, CanvasFileDropHandler, isDraggableDroppableNode} from "../utils/CanvasFileDropHandler.tsx";
 import {uiConfigToMenuItem} from "../utils/ContextMenuUtils.ts";
+import {EditModePlugin} from "../utils/EditModePlugin.ts";
 
 interface BPHierarchyComponentPropsExtras extends HandleContextMenuCallback<IObject3D>{
 }
@@ -141,6 +142,22 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         const node = this._infoMap.get(_id)
         if(!node) return
         const obj = node.nodeData!
+        const editMode = this.context.viewer.getPlugin(EditModePlugin)
+        const selected = this.context.viewer.getPlugin(PickingPlugin)?.getSelectedObjects<IObject3D>() ?? []
+        const isolateObjects = selected.includes(obj) ? [...selected] : [obj]
+
+        if (editMode?.isIsolated || isolateObjects.some(object => {
+            for (let current = object.parent; current; current = current.parent) {
+                if (current === this.context.viewer.scene.modelRoot) return true
+            }
+            return false
+        })) {
+            items.push({
+                props: {text: editMode?.isIsolated ? 'Exit Isolate' : 'Isolate'},
+                key: 'isolate',
+                action: () => editMode?.toggleIsolate(isolateObjects),
+            })
+        }
 
         // todo disable only editable options for external objects(using some uiconfig tags.), right now its all.
         const isExternal = isExternalObject(obj)

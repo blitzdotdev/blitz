@@ -40,12 +40,103 @@ test('persists bracket-key camera speed and shows the viewport label', async ({p
     expect(await cameraSpeed(page), 'the ] shortcut should double camera speed twice').toBe(4)
 
     await page.keyboard.press('[')
-    expect(await cameraSpeed(page)).toBe(2)
+    expect(await cameraSpeed(page), 'the [ shortcut should halve camera speed').toBe(2)
     await expect(page.getByTestId('camera-speed-chip'), 'the speed shortcut should show its viewport label').toHaveText('SPEED 2')
 
     await page.reload()
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
     expect(await cameraSpeed(page), 'camera speed should survive a page reload').toBe(2)
+
+    await page.evaluate(() => {
+        const input = document.createElement('input')
+        input.dataset.testid = 'shortcut-input'
+        document.body.append(input)
+        input.focus()
+    })
+    await page.keyboard.press(']')
+    expect(await cameraSpeed(page), 'speed shortcuts should be ignored while typing').toBe(2)
+    await page.getByTestId('shortcut-input').evaluate(element => element.remove())
+
+    for (let index = 0; index < 6; index += 1) await page.keyboard.press(']')
+    expect(await cameraSpeed(page), 'camera speed should clamp at 64').toBe(64)
+    for (let index = 0; index < 11; index += 1) await page.keyboard.press('[')
+    expect(await cameraSpeed(page), 'camera speed should clamp at 0.0625').toBe(0.0625)
+})
+
+test('isolates every picked object and restores visibility without changing the scene file', async ({page}) => {
+    await openEditor(page)
+    const scenePath = resolve(root, 'assets/main.scene.gltf')
+    const before = await readFile(scenePath)
+    await selectObjects(page, ['Mesh_A', 'Mesh_B'])
+
+    await page.keyboard.press('/')
+    expect(await objectVisibility(page), 'the / shortcut should hide objects outside the selected set').toEqual({
+        Mesh_A: true,
+        Mesh_B: true,
+        Mesh_C: false,
+        Key_Light: true,
+    })
+    await expect(page.getByTestId('isolated-chip'), 'isolate should show its viewport chip').toHaveText('ISOLATED')
+
+    await clearSelection(page)
+    await expect(page.getByTestId('isolated-chip'), 'deselecting should keep isolate active').toBeVisible()
+    await page.keyboard.press('/')
+    expect(await objectVisibility(page), 'exiting isolate should restore every previous visibility value').toEqual({
+        Mesh_A: true,
+        Mesh_B: false,
+        Mesh_C: true,
+        Key_Light: true,
+    })
+    await expect(page.getByTestId('isolated-chip')).toHaveCount(0)
+    await page.waitForTimeout(250)
+    expect(await readFile(scenePath), 'isolate should leave the scene file byte-identical').toEqual(before)
+
+    await page.keyboard.press('/')
+    await expect(page.getByTestId('isolated-chip'), 'an empty selection should not enter isolate').toHaveCount(0)
+})
+
+test('isolates the captured hierarchy node subtree from its context menu', async ({page}) => {
+    await openEditor(page)
+
+    await page.locator('.bp5-tree-node-label', {hasText: 'Isolate_Group'}).click({button: 'right'})
+    await page.getByText('Isolate', {exact: true}).click()
+    expect(await objectVisibility(page), 'the hierarchy Isolate action should keep only that node subtree visible').toEqual({
+        Mesh_A: false,
+        Mesh_B: true,
+        Mesh_C: false,
+        Key_Light: true,
+    })
+    await expect(page.getByTestId('isolated-chip')).toBeVisible()
+
+    await page.locator('.bp5-tree-node-label', {hasText: 'Isolate_Group'}).click({button: 'right'})
+    await expect(page.getByText('Exit Isolate', {exact: true}), 'the menu should offer Exit Isolate while active').toBeVisible()
+    await page.getByText('Exit Isolate', {exact: true}).click()
+    await selectObjects(page, ['Mesh_A', 'Mesh_C'])
+    await page.locator('.bp5-tree-node-label', {hasText: 'Mesh_A'}).click({button: 'right'})
+    await page.getByText('Isolate', {exact: true}).click()
+    expect(await objectVisibility(page), 'right-clicking a selected node should isolate the captured multi-selection').toEqual({
+        Mesh_A: true,
+        Mesh_B: false,
+        Mesh_C: true,
+        Key_Light: true,
+    })
+})
+
+test('exits isolate on Play and ignores edit shortcuts while playing', async ({page}) => {
+    await openEditor(page)
+    await selectObjects(page, ['Mesh_A'])
+    await page.keyboard.press('/')
+    await expect(page.getByTestId('isolated-chip'), 'the setup isolate should be active before entering Play').toBeVisible()
+
+    const storedSpeed = await page.evaluate(() => localStorage.getItem('kite3d.editor.wasdMovementSpeed'))
+    await page.getByTestId('play').click()
+    await expect(page.getByTestId('game-canvas')).toBeVisible()
+    await expect(page.getByTestId('isolated-chip'), 'entering Play should exit isolate').toHaveCount(0)
+    await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
+    await page.keyboard.press('/')
+    await page.keyboard.press(']')
+    await expect(page.getByTestId('isolated-chip'), 'the isolate shortcut should be ignored in Play').toHaveCount(0)
+    expect(await page.evaluate(() => localStorage.getItem('kite3d.editor.wasdMovementSpeed')), 'the speed shortcut should be ignored in Play').toBe(storedSpeed)
 })
 
 async function openEditor(page: Page) {
@@ -60,6 +151,41 @@ async function cameraSpeed(page: Page) {
     }).viewer.getPlugin('EditModePlugin')?.wasdMovementSpeed)
 }
 
+async function selectObjects(page: Page, names: string[]) {
+    await page.evaluate(selectedNames => {
+        const viewer = (window as unknown as {
+            viewer: {
+                scene: {modelRoot: {traverse(callback: (object: {name: string}) => void): void}}
+                getPlugin(type: string): {setSelectedObject(objects: unknown[], focus: boolean, trackUndo: boolean): void}
+            }
+        }).viewer
+        const objects: unknown[] = []
+        viewer.scene.modelRoot.traverse(object => {
+            if (selectedNames.includes(object.name)) objects.push(object)
+        })
+        viewer.getPlugin('PickingPlugin').setSelectedObject(objects, false, false)
+    }, names)
+}
+
+async function clearSelection(page: Page) {
+    await page.evaluate(() => (window as unknown as {
+        viewer: {getPlugin(type: string): {clearSelection(): void}}
+    }).viewer.getPlugin('PickingPlugin').clearSelection())
+}
+
+async function objectVisibility(page: Page) {
+    return page.evaluate(() => {
+        const viewer = (window as unknown as {
+            viewer: {scene: {modelRoot: {traverse(callback: (object: {name: string, visible: boolean}) => void): void}}}
+        }).viewer
+        const visibility: Record<string, boolean> = {}
+        viewer.scene.modelRoot.traverse(object => {
+            if (['Mesh_A', 'Mesh_B', 'Mesh_C', 'Key_Light'].includes(object.name)) visibility[object.name] = object.visible
+        })
+        return visibility
+    })
+}
+
 function keysScene() {
     return {
         asset: {version: '2.0', generator: 'Kite3D keys test'},
@@ -67,12 +193,12 @@ function keysScene() {
         scenes: [{name: 'Main Scene', nodes: [0, 2, 3, 4]}],
         nodes: [
             {name: 'Isolate Group', children: [1]},
-            {name: 'Mesh B', mesh: 0},
+            {name: 'Mesh B', mesh: 0, extensions: {WEBGI_object3d_extras: {visible: false}}},
             {name: 'Mesh A', mesh: 0},
             {name: 'Mesh C', mesh: 0},
             {name: 'Key Light', extensions: {KHR_lights_punctual: {light: 0}}},
         ],
-        extensionsUsed: ['KHR_lights_punctual'],
+        extensionsUsed: ['KHR_lights_punctual', 'WEBGI_object3d_extras'],
         extensions: {KHR_lights_punctual: {lights: [{type: 'directional', intensity: 2}]}},
         buffers: [{
             byteLength: 36,

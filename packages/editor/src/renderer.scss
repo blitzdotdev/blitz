@@ -838,8 +838,14 @@ body{
   gap: 6px;
   left: 8px;
   position: absolute;
-  top: 8px;
+  top: 46px;
   z-index: 10;
+}
+
+.kite3d-viewport-status-chips button.kite3d-status-chip {
+  cursor: pointer;
+  font-family: inherit;
+  line-height: inherit;
 }
 
 .kite3d-check-badge {
