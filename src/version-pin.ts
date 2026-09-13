@@ -9,7 +9,7 @@ export interface PinnedProject {
     version: string
 }
 
-const EXACT_VERSION = /^\d+\.\d+\.\d+$/
+const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[A-Za-z][0-9A-Za-z-]*\.\d+)?$/
 
 export async function findPinnedProject(start = process.cwd()): Promise<PinnedProject | undefined> {
     let directory = resolve(start)

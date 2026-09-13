@@ -276,14 +276,15 @@ async function usePinnedRuntimeVersion(dirHandle: FileSystemDirectoryHandle, pac
         throw new Error('package.json must specify kite3d in devDependencies.')
     }
     let version = spec
-    if (!/^\d+\.\d+\.\d+$/.test(spec)) {
+    const exactVersion = /^\d+\.\d+\.\d+(?:-[A-Za-z][0-9A-Za-z-]*\.\d+)?$/
+    if (!exactVersion.test(spec)) {
         const enginePackageFile = await readProjectFile(dirHandle, 'node_modules/@kite3d/engine/package.json')
         if (!enginePackageFile) {
             throw new Error(`Project uses kite3d ${spec}, but @kite3d/engine is not installed. Run npm install before publishing.`)
         }
         const enginePackage = parsePackageJson(await enginePackageFile.text())
-        if (typeof enginePackage.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(enginePackage.version)) {
-            throw new Error('Installed @kite3d/engine package.json must have an exact x.y.z version.')
+        if (typeof enginePackage.version !== 'string' || !exactVersion.test(enginePackage.version)) {
+            throw new Error('Installed @kite3d/engine package.json must have an exact supported version.')
         }
         version = enginePackage.version
     }
