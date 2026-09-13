@@ -25,6 +25,7 @@ interface HubWorktree {
     path: string
     name: string
     branch: string | null
+    head: string | null
     running: boolean
     url: string | null
 }
@@ -219,6 +220,7 @@ async function listHubProjects(): Promise<{
         path: project.path,
         name: project.name,
         branch: null,
+        head: null,
         running: server !== null,
         url: server?.url ?? null,
     }))
@@ -242,6 +244,7 @@ async function listHubProjects(): Promise<{
                 path: worktree.path,
                 name: await projectName(worktree.path),
                 branch: worktree.branch,
+                head: worktree.head || null,
                 running: server !== null,
                 url: server?.url ?? null,
             }
