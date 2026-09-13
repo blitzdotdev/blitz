@@ -682,12 +682,26 @@ test('prompts for library drop actions, remembers choices, resets prompts, and s
         } | undefined}}}}).viewer.scene.modelRoot.getObjectByName('Drop_Target_Group')
         return group?.children.filter(({name}) => name === 'Mock Textured Triangle').length || 0
     })
+    const meshCountUnderGroup = () => page.evaluate(() => {
+        const group = (window as unknown as {viewer: {scene: {modelRoot: {getObjectByName(name: string): {
+            traverse(callback: (object: {isMesh?: boolean}) => void): void
+        } | undefined}}}}).viewer.scene.modelRoot.getObjectByName('Drop_Target_Group')
+        let count = 0
+        group?.traverse((object) => {
+            if (object.isMesh) count += 1
+        })
+        return count
+    })
 
     try {
         await mkdir(screenshotDirectory, {recursive: true})
         await page.setViewportSize({width: 1400, height: 900})
         await page.goto(fixture.server.url)
         await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        const hierarchy = page.getByTestId('scene-hierarchy')
+        const groupRow = hierarchy.getByText('Drop_Target_Group', {exact: true}).locator('..')
+        await groupRow.locator('.bp5-tree-node-caret').click()
+        await expect(hierarchy).toContainText('Texture_Target')
         await selectObject('Drop_Target_Group')
         await page.getByRole('tab', {name: 'Library'}).click()
         const libraryPanel = page.getByRole('tabpanel', {name: 'Library'})
@@ -704,6 +718,8 @@ test('prompts for library drop actions, remembers choices, resets prompts, and s
         await dialog.getByRole('checkbox', {name: 'Remember my choice for model'}).check({force: true})
         await dialog.getByTestId('library-drop-apply').click()
         await expect.poll(modelCountUnderGroup).toBe(1)
+        await expect.poll(meshCountUnderGroup, {timeout: 20_000}).toBe(2)
+        await expect(hierarchy).toContainText('Mock Textured Triangle', {timeout: 20_000})
 
         await selectObject('Drop_Target_Group')
         await dropAsset(library.modelUrl)
@@ -827,11 +843,11 @@ test('prompts for library drop actions, remembers choices, resets prompts, and s
         await expect(dialog.getByTestId('library-drop-target')).toContainText('Default Camera')
         await expect(dialog.getByText('Import into the project only')).toBeVisible()
         await expect(dialog.getByTestId('library-drop-reason')).toContainText('has no material')
-        const errorsBeforeEscape = [...consoleErrors]
-        await page.keyboard.press('Escape')
+        const errorsBeforeFinalCancel = [...consoleErrors]
+        await dialog.getByRole('button', {name: 'Cancel'}).click()
         await expect(dialog).toHaveCount(0)
         await page.waitForTimeout(100)
-        expect(consoleErrors).toEqual(errorsBeforeEscape)
+        expect(consoleErrors).toEqual(errorsBeforeFinalCancel)
 
         await page.getByTestId('save-scene').click()
         await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
