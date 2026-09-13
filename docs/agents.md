@@ -86,6 +86,8 @@ The local server owns the project folder. Edit files directly; do not attempt to
 
 # Local feedback and health
 
+- Run npx kite3d screenshot to save a PNG of the editor viewport under .kite3d/screenshots/ and print its path. Look at it before and after visual changes. Add --headless when no editor is open.
+
 Read `.kite3d/state.json` and `.kite3d/console.log` for the editor and runtime feedback loop. While Play is active, the editor refreshes `state.json.updatedAt` every 5 seconds and writes its `clientId`. Treat a timestamp more than 15 seconds old as stale. A `pagehide` writes `playState: "stopped"`.
 
 The editor creates `.kite3d/console.log` with a header when Play starts. It records `console.warn`, `console.error`, uncaught window errors, and unhandled promise rejections during Play. It deliberately does not record `console.log`; use the browser console for that level. Log forwarding is rate-limited.

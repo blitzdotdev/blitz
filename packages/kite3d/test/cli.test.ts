@@ -35,6 +35,7 @@ Commands:
   pull [--force]              Pull the active release
   status                      Show local deploy status
   claim [--no-open]           Open claim pages for local deploys
+  screenshot [options]        Save a PNG of the editor viewport
   check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
   open                        Open the running local editor
@@ -63,7 +64,7 @@ describe('kite3d CLI', () => {
         }
     })
 
-    it.each(['dev', 'check', 'publish', 'doctor', 'checkpoint', 'restore', 'archive', 'status'])(
+    it.each(['dev', 'check', 'screenshot', 'publish', 'doctor', 'checkpoint', 'restore', 'archive', 'status'])(
         'refuses %s outside a Kite3D project root',
         async (command) => {
             const emptyRoot = await mkdtemp(resolve(tmpdir(), 'kite3d-cli-empty-root-'))
@@ -228,7 +229,7 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
     it('prints command-specific help without performing the command', async () => {
         const commands = [
             'init', 'dev', 'doctor', 'checkpoint', 'restore', 'archive', 'publish', 'pull', 'status', 'claim',
-            'check', 'journal', 'open', 'sources', 'skills', 'upgrade',
+            'screenshot', 'check', 'journal', 'open', 'sources', 'skills', 'upgrade',
         ]
         const results = await Promise.all(commands.map(async (command) => ({
             command,
@@ -240,6 +241,8 @@ await writeFile(${JSON.stringify(delegatedMarker)}, 'delegated')
         }
         expect(results.find(({command}) => command === 'skills')?.result.stdout.trim())
             .toBe('Usage: kite3d skills [--json]')
+        expect(results.find(({command}) => command === 'screenshot')?.result.stdout.trim())
+            .toBe('Usage: kite3d screenshot [--name <name>] [--headless] [--full] [--width <px>] [--height <px>] [--json]')
     })
 
     it('prints its package version without applying the project version rule', async () => {

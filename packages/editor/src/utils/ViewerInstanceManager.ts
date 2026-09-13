@@ -699,6 +699,44 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.changed()
     }
 
+    private async captureScreenshot(): Promise<Blob> {
+        await this.ready
+        if (this.playPromise) await this.playPromise
+        const viewer = this.isPlaying ? this.game?.viewer : this.get()
+        if (!viewer) throw new Error('The active editor viewer is unavailable.')
+        if (viewer.canvas.width < 1 || viewer.canvas.height < 1
+            || viewer.canvas.clientWidth < 1 || viewer.canvas.clientHeight < 1) {
+            throw new Error('The editor canvas has zero size.')
+        }
+
+        let finished = false
+        const frameWaitTime = viewer.renderManager.frameWaitTime
+        const capture = viewer.getScreenshotBlob({mimeType: 'image/png'}).finally(() => {
+            finished = true
+        })
+        const render = this.renderScreenshotOnDemand(viewer, () => finished)
+        try {
+            const blob = await Promise.race([capture, render.then(() => undefined)])
+            if (!blob) throw new Error('The editor did not produce a screenshot.')
+            return await compositeScreenshot(viewer.canvas)
+        } finally {
+            finished = true
+            viewer.renderManager.frameWaitTime = document.hidden ? Number.POSITIVE_INFINITY : frameWaitTime
+        }
+    }
+
+    private async renderScreenshotOnDemand(viewer: ThreeViewer, finished: () => boolean): Promise<void> {
+        const deadline = performance.now() + 5_000
+        await Promise.resolve()
+        while (!finished()) {
+            viewer.setDirty()
+            viewer.renderManager.frameWaitTime = 0
+            viewer.renderManager.animationLoop(performance.now())
+            await new Promise<void>((resolveRender) => window.setTimeout(resolveRender, 0))
+            if (performance.now() >= deadline) throw new Error('The editor screenshot render timed out.')
+        }
+    }
+
     async startPlay(canvas: HTMLCanvasElement): Promise<void> {
         this.playCanvas = canvas
         if (this.isPlaying) return
@@ -1219,6 +1257,14 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             }
             return
         }
+        if (event.type === 'command' && event.command === 'screenshot' && typeof event.id === 'string') {
+            try {
+                await this.source.screenshotResult(event.id, await this.captureScreenshot())
+            } catch (error) {
+                await this.reportError(error)
+            }
+            return
+        }
         if (event.type !== 'change' && event.type !== 'add' && event.type !== 'unlink') return
         if (event.client === this.source.clientId || !event.path) return
         if (event.sha256 && this.hashes.get(event.path) === event.sha256) return
@@ -1384,6 +1430,41 @@ function normalizeProjectPath(path: string) {
 async function hashBytes(bytes: Uint8Array): Promise<string> {
     const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource)
     return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
+}
+
+async function compositeScreenshot(source: HTMLCanvasElement): Promise<Blob> {
+    const canvas = document.createElement('canvas')
+    canvas.width = source.width
+    canvas.height = source.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('The editor could not create a screenshot canvas.')
+    const viewport = source.closest<HTMLElement>('.editorCanvasContainer') || source.parentElement
+    const app = source.closest<HTMLElement>('.editorSplitContainer')
+    const viewportBackground = viewport ? getComputedStyle(viewport).backgroundColor : ''
+    const appBackground = app ? getComputedStyle(app).backgroundColor : ''
+    context.fillStyle = isTransparent(viewportBackground) ? appBackground : viewportBackground
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(source, 0, 0, canvas.width, canvas.height)
+    return await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            if (blob) resolve(blob)
+            else reject(new Error('The editor did not produce a screenshot.'))
+        }, 'image/png')
+    })
+}
+
+function isTransparent(color: string): boolean {
+    return !color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)'
+}
+
+function versionedPath(path: string, sha256?: string, reloadRevision?: string) {
+    const [withoutFragment, fragment = ''] = path.split('#', 2)
+    const [pathname, query = ''] = withoutFragment.split('?', 2)
+    const parameters = new URLSearchParams(query)
+    if (sha256) parameters.set('v', sha256)
+    if (reloadRevision) parameters.set('r', reloadRevision)
+    const suffix = parameters.size ? `?${parameters}` : ''
+    return `${pathname}${suffix}${fragment ? `#${fragment}` : ''}`
 }
 
 function uniqueImportPath(name: string, entries: ProjectFileEntry[]) {

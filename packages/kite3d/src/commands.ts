@@ -17,6 +17,7 @@ import {KITE3D_VERSION} from './versions.ts'
 import {checkProject} from './check.ts'
 import {gitRepositoryRoot, gitTracksProject, initializeGitRepository} from './git.ts'
 import {assertLegacyEngineIsHoisted, migrateLegacyProject} from './legacy.ts'
+import {screenshotProject, type ScreenshotOptions, type ScreenshotResult} from './screenshot.ts'
 
 const commandRequire = createRequire(import.meta.url)
 
@@ -468,6 +469,13 @@ export async function openCurrentProject(projectRoot = process.cwd()): Promise<s
     if (typeof state.url !== 'string') throw new Error('.kite3d/dev.json does not contain a dev URL')
     await openBrowser(state.url)
     return state.url
+}
+
+export function screenshotFromDisk(
+    projectRoot = process.cwd(),
+    options: ScreenshotOptions = {},
+): Promise<ScreenshotResult> {
+    return screenshotProject(projectRoot, options)
 }
 
 export async function journalFromDisk(

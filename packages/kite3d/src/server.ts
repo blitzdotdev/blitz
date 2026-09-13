@@ -36,6 +36,7 @@ import type {PublishProgress} from './types.ts'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 import {checkpointProject, latestCheckpointProject, restoreProject} from './git.ts'
 import {DEVELOPMENT_PLUGIN_URL, installedPluginPackages} from './plugins.ts'
+import {pngDimensions, saveScreenshotPng} from './screenshot.ts'
 
 export interface ManifestEntry {
     path: string
@@ -84,9 +85,14 @@ interface PendingCommand {
     timer: ReturnType<typeof setTimeout>
 }
 
+interface PendingScreenshot extends PendingCommand {
+    name: string
+}
+
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
 const protectedProjectPaths = new Set(['.kite3d/deploys.json', '.kite3d/dev.json'])
 const watchedFileSettleMs = 50
+const maxScreenshotBytes = 50 * 1024 * 1024
 const serverRequire = createRequire(import.meta.url)
 
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
@@ -95,6 +101,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const editorDirectory = await resolvePackageDirectory('@kite3d/editor') + '/dist'
     const clients = new Map<SSEStreamingApi, string | undefined>()
     const pendingCommands = new Map<string, PendingCommand>()
+    const pendingScreenshots = new Map<string, PendingScreenshot>()
     const pendingEvents = new Map<string, PendingEvent>()
     const pendingWatchedFiles = new Map<string, ReturnType<typeof setTimeout>>()
     const knownHashes = new Map<string, string>()
@@ -265,6 +272,77 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         return result.ok
             ? jsonResponse(result)
             : jsonResponse({error: {code: 'check_failed', message: result.error || 'Check failed.'}, ...result}, 409)
+    })
+    app.post('/api/screenshot', async (c) => {
+        const body = await readJsonBody(c.req.raw)
+        if (body.name !== undefined && typeof body.name !== 'string') {
+            return jsonResponse({error: {code: 'invalid_name', message: 'name must be a string.'}}, 400)
+        }
+        if (![...clients.values()].some(Boolean)) {
+            return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected.'}}, 409)
+        }
+        const id = randomBytes(16).toString('hex')
+        const result = await new Promise<CommandResult>((resolveScreenshot) => {
+            const timer = setTimeout(() => {
+                pendingScreenshots.delete(id)
+                resolveScreenshot({
+                    ok: false,
+                    code: 'screenshot_timeout',
+                    error: 'The editor did not answer the screenshot request. Reload the editor tab or run kite3d screenshot --headless.',
+                })
+            }, 10_000)
+            pendingScreenshots.set(id, {
+                name: typeof body.name === 'string' ? body.name : 'editor',
+                resolve: resolveScreenshot,
+                timer,
+            })
+            void broadcast('command', {
+                id,
+                command: 'screenshot',
+                options: {
+                    name: typeof body.name === 'string' ? body.name : 'editor',
+                    ...(typeof body.width === 'number' ? {width: body.width} : {}),
+                    ...(typeof body.height === 'number' ? {height: body.height} : {}),
+                },
+            })
+        })
+        if (result.ok) return jsonResponse(result)
+        const code = result.code === 'screenshot_timeout' ? 'screenshot_timeout' : 'screenshot_failed'
+        const status = code === 'screenshot_timeout' ? 504 : 409
+        return jsonResponse({error: {code, message: result.error || 'Screenshot failed.'}}, status)
+    })
+    app.post('/api/screenshot/:id', async (c) => {
+        const id = c.req.param('id')
+        if (!/^[a-f\d]+$/.test(id) || !pendingScreenshots.has(id)) {
+            return jsonResponse({error: {code: 'screenshot_not_found', message: 'Screenshot is no longer pending.'}}, 404)
+        }
+        const contentLength = Number(c.req.header('Content-Length'))
+        if (Number.isFinite(contentLength) && contentLength > maxScreenshotBytes) {
+            return jsonResponse({error: {code: 'screenshot_too_large', message: 'The screenshot is larger than 50 MB.'}}, 413)
+        }
+        const bytes = new Uint8Array(await c.req.arrayBuffer())
+        if (bytes.byteLength > maxScreenshotBytes) {
+            return jsonResponse({error: {code: 'screenshot_too_large', message: 'The screenshot is larger than 50 MB.'}}, 413)
+        }
+        try {
+            pngDimensions(bytes)
+        } catch (error) {
+            return jsonResponse({error: {code: 'invalid_screenshot', message: errorMessage(error)}}, 400)
+        }
+        const pending = pendingScreenshots.get(id)
+        if (!pending) {
+            return jsonResponse({error: {code: 'screenshot_not_found', message: 'Screenshot is no longer pending.'}}, 404)
+        }
+        pendingScreenshots.delete(id)
+        clearTimeout(pending.timer)
+        try {
+            const saved = await saveScreenshotPng(projectRoot, bytes, pending.name)
+            pending.resolve({ok: true, ...saved, source: 'editor'})
+            return jsonResponse({accepted: true}, 202)
+        } catch (error) {
+            pending.resolve({ok: false, error: errorMessage(error)})
+            throw error
+        }
     })
     app.get('/api/checkpoint', async () => jsonResponse({
         checkpoint: await latestCheckpointProject(projectRoot),
@@ -547,6 +625,11 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 command.resolve({ok: false, error: 'The development server closed before the command finished.'})
             }
             pendingCommands.clear()
+            for (const screenshot of pendingScreenshots.values()) {
+                clearTimeout(screenshot.timer)
+                screenshot.resolve({ok: false, error: 'The development server closed before the screenshot finished.'})
+            }
+            pendingScreenshots.clear()
             const serverClosed = new Promise<void>((resolveClose, reject) => {
                 server.close((error) => error ? reject(error) : resolveClose())
             })
@@ -1013,6 +1096,10 @@ async function fileExists(path: string): Promise<boolean> {
 
 function isMissing(error: unknown): boolean {
     return error instanceof Error && 'code' in error && error.code === 'ENOENT'
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error)
 }
 
 function textResponse(body: string, status = 200): Response {
