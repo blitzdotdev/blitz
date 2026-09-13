@@ -1,26 +1,8 @@
-import {Alignment, NonIdealState} from '@blueprintjs/core'
-import {WelcomeDialogCreateProjectActions} from './WelcomeDialogCreateProjectActions'
-import {WelcomeDialogGameActions} from './WelcomeDialogGameActions.tsx'
-import {isWorkspaceLaunch} from '../utils/ai/workspaceLaunch.ts'
+import {NonIdealState} from '@blueprintjs/core'
 
 export function WelcomeDialogEmptyProjectState() {
-    if (isWorkspaceLaunch()) return <WelcomeDialogGameActions/>
     return <NonIdealState
-        // icon={'projects'}
-        icon={<img src={'/logo.svg'} height={100}/>}
-        title={'Kite 3D Editor'}
-        description={(
-            <p style={{textAlign: 'justify'}}>
-                <br/>
-                View, Edit, Render, Export and Embed 3D files and games
-                <br/>
-                Drag and Drop any 3D file to start editing.
-            </p>)}
-        // action={<Button icon={"add"} text={"New Project"} outlined />}
-        children={(
-            <div className="welcome-dialog-empty-actions">
-                <WelcomeDialogCreateProjectActions alignText={Alignment.LEFT} minimal={true} outlined={false} />
-            </div>
-        )}
-    />
+        icon={<img src="/logo.svg" height={100} alt="Kite3D"/>}
+        title="No projects yet"
+        description="Create a project or add an existing Kite3D project."/>
 }

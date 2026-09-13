@@ -9,6 +9,7 @@ function useSetupProject() {
     // const [scene, setScene] = useState<null | string>(null)
     const [path, setPath] = useState<null | string>(null)
     const [welcomeOpen, setWelcomeOpen] = useState(true)
+    const [welcomeView, setWelcomeView] = useState<'projects' | 'open' | 'new'>('projects')
 
     // Custom setProject that also updates URL immediately
     // const setProject = useCallback((newProject: string) => {
@@ -47,6 +48,7 @@ function useSetupProject() {
             // console.warn('welcome open', v)
             setWelcomeOpen(v)
         },
+        welcomeView, setWelcomeView,
     }
 }
 
