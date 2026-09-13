@@ -1,18 +1,16 @@
-import {execFile, spawn} from 'node:child_process'
+import {spawn} from 'node:child_process'
 import {randomUUID} from 'node:crypto'
 import {closeSync, openSync} from 'node:fs'
 import {access, mkdir, open as openFile, readFile, readdir, realpath, stat, unlink} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import {basename, dirname, isAbsolute, relative, resolve, sep} from 'node:path'
-import {promisify} from 'node:util'
 import type {Hono} from 'hono'
 import {branch, repoKey, repoRoot, worktrees, type GitWorktree} from './gitInfo.ts'
 import {readProjectIndex, registerProject, type IndexedProject} from './projectIndex.ts'
 import {isKite3dProjectRoot} from './project-root.ts'
 import type {LocalAppEnv} from './server.ts'
 
-const executeFile = promisify(execFile)
-const developmentStartTimeoutMilliseconds = 60_000
+const defaultDevelopmentStartTimeoutMilliseconds = 60_000
 const developmentStopTimeoutMilliseconds = 5_000
 
 export interface RunningDevelopmentServer {
@@ -42,19 +40,14 @@ export function mountHubRoutes(app: Hono<LocalAppEnv>): void {
         if (existing) return {url: existing.url}
         const pinnedCli = resolve(projectPath, 'node_modules/kite3d/dist/cli.js')
         if (!await isFile(pinnedCli)) throw routeError(409, `Run npm install in ${projectPath} first.`)
+        let server: RunningDevelopmentServer
         try {
-            await executeFile(process.execPath, [pinnedCli, 'dev', '--detach', '--no-open'], {
-                cwd: projectPath,
-                env: process.env,
-                encoding: 'utf8',
-                timeout: developmentStartTimeoutMilliseconds + 5_000,
-                maxBuffer: 1024 * 1024,
-            })
+            server = await startDetachedDevelopmentServer(projectPath, pinnedCli)
         } catch (error) {
             const concurrent = await readDevelopmentServer(projectPath)
-            if (!concurrent) throw routeError(500, `Could not start the development server for ${projectPath}.`)
+            if (!concurrent) throw await developmentStartRouteError(projectPath, error)
+            server = concurrent
         }
-        const server = await waitForDevelopmentServer(projectPath, developmentStartTimeoutMilliseconds)
         await registerProject(projectPath)
         return {url: server.url}
     }))
@@ -130,16 +123,17 @@ export async function startDetachedDevelopmentServer(
     options: {port?: number, force?: boolean} = {},
 ): Promise<RunningDevelopmentServer> {
     const root = resolve(projectRoot)
+    const timeoutMilliseconds = developmentStartTimeoutMilliseconds()
     const existing = await readDevelopmentServer(root)
     if (existing && !options.force) return existing
     await mkdir(resolve(root, '.kite3d'), {recursive: true})
     const release = await acquireDetachStartupLock(root)
+    let child: ReturnType<typeof spawn> | undefined
     try {
         const concurrent = await readDevelopmentServer(root)
         if (concurrent && !options.force) return concurrent
         const logPath = resolve(root, '.kite3d/dev.log')
         const output = openSync(logPath, 'a', 0o600)
-        let child
         try {
             const args = [cliPath, 'dev', '--no-open']
             if (options.port !== undefined) args.push('--port', String(options.port))
@@ -154,7 +148,15 @@ export async function startDetachedDevelopmentServer(
         } finally {
             closeSync(output)
         }
-        return await waitForDevelopmentServer(root, developmentStartTimeoutMilliseconds, () => child?.exitCode)
+        try {
+            return await waitForDevelopmentServer(root, timeoutMilliseconds, () => {
+                if (child?.exitCode !== null && child?.exitCode !== undefined) return `code ${child.exitCode}`
+                return child?.signalCode ? `signal ${child.signalCode}` : undefined
+            })
+        } catch (error) {
+            await stopFailedDevelopmentProcess(child)
+            throw error
+        }
     } finally {
         await release()
     }
@@ -321,15 +323,15 @@ function isPathInside(path: string, root: string): boolean {
 async function waitForDevelopmentServer(
     projectRoot: string,
     timeoutMilliseconds: number,
-    exitCode: () => number | null | undefined = () => undefined,
+    exitStatus: () => string | undefined = () => undefined,
 ): Promise<RunningDevelopmentServer> {
     const started = Date.now()
     for (;;) {
         const server = await readDevelopmentServer(projectRoot)
         if (server) return server
-        const code = exitCode()
-        if (code !== undefined && code !== null) {
-            throw new Error(`Development server exited with code ${code} before it became ready.`)
+        const status = exitStatus()
+        if (status !== undefined) {
+            throw new Error(`Development server exited with ${status} before it became ready.`)
         }
         if (Date.now() - started >= timeoutMilliseconds) {
             throw new Error(`Timed out waiting for the development server for ${projectRoot}.`)
@@ -361,7 +363,7 @@ async function acquireDetachStartupLock(projectRoot: string): Promise<() => Prom
             try { current = JSON.parse(await readFile(path, 'utf8')) as typeof current } catch { /* replace below */ }
             const createdAt = typeof current.created_at === 'string' ? Date.parse(current.created_at) : Number.NaN
             if (typeof current.pid !== 'number' || !Number.isInteger(current.pid) || !processIsAlive(current.pid)
-                || !Number.isFinite(createdAt) || Date.now() - createdAt > developmentStartTimeoutMilliseconds) {
+                || !Number.isFinite(createdAt) || Date.now() - createdAt > defaultDevelopmentStartTimeoutMilliseconds) {
                 await unlink(path).catch(() => undefined)
                 continue
             }
@@ -369,6 +371,18 @@ async function acquireDetachStartupLock(projectRoot: string): Promise<() => Prom
         }
     }
     throw new Error(`Timed out waiting to start the development server for ${projectRoot}.`)
+}
+
+async function stopFailedDevelopmentProcess(child: ReturnType<typeof spawn> | undefined): Promise<void> {
+    if (!child?.pid || !processIsAlive(child.pid)) return
+    try { process.kill(child.pid, 'SIGTERM') } catch (error) {
+        if (errorCode(error) !== 'ESRCH') throw error
+    }
+    if (await waitForProcessExit(child.pid, developmentStopTimeoutMilliseconds)) return
+    try { process.kill(child.pid, 'SIGKILL') } catch (error) {
+        if (errorCode(error) !== 'ESRCH') throw error
+    }
+    await waitForProcessExit(child.pid, 1_000)
 }
 
 async function waitForProcessExit(pid: number, timeoutMilliseconds: number): Promise<boolean> {
@@ -429,21 +443,46 @@ async function routeResponse(operation: () => Promise<unknown>): Promise<Respons
     } catch (error) {
         const status = errorStatus(error)
         return jsonResponse({error: {
-            code: status >= 500
+            code: routeErrorCode(error) || (status >= 500
                 ? 'internal_error'
-                : status === 403 ? 'invalid_path' : status === 404 ? 'not_found' : status === 409 ? 'conflict' : 'invalid_request',
-            message: status >= 500 ? 'Internal server error' : errorMessage(error),
+                : status === 403 ? 'invalid_path' : status === 404 ? 'not_found' : status === 409 ? 'conflict' : 'invalid_request'),
+            message: errorMessage(error),
         }}, status)
     }
 }
 
-function routeError(status: number, message: string): Error {
-    return Object.assign(new Error(message), {status})
+function routeError(status: number, message: string, routeCode?: string): Error {
+    return Object.assign(new Error(message), {status, routeCode})
+}
+
+async function developmentStartRouteError(projectPath: string, error: unknown): Promise<Error> {
+    const logPath = resolve(projectPath, '.kite3d/dev.log')
+    let lastLine: string | undefined
+    try {
+        lastLine = (await readFile(logPath, 'utf8')).split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1)
+    } catch { /* use the thrown error below */ }
+    const detail = oneLine(lastLine || errorMessage(error))
+    return routeError(502, `Could not start the development server for ${projectPath}: ${JSON.stringify(detail)}`, 'start_failed')
+}
+
+function developmentStartTimeoutMilliseconds(): number {
+    const configured = Number(process.env.KITE3D_DEV_START_TIMEOUT_MS)
+    return Number.isFinite(configured) && configured > 0 ? configured : defaultDevelopmentStartTimeoutMilliseconds
+}
+
+function oneLine(value: string): string {
+    return value.replace(/\s+/g, ' ').trim()
 }
 
 function errorStatus(error: unknown): number {
     if (error && typeof error === 'object' && 'status' in error && typeof error.status === 'number') return error.status
     return 500
+}
+
+function routeErrorCode(error: unknown): string | undefined {
+    return error && typeof error === 'object' && 'routeCode' in error && typeof error.routeCode === 'string'
+        ? error.routeCode
+        : undefined
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
