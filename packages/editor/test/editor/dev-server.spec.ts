@@ -61,25 +61,13 @@ export async function main({viewer}) {
 import {Object3DComponent} from 'threepipe'
 export class UnlistedComponent extends Object3DComponent { static ComponentType = 'UnlistedComponent' }
 `)
-    await writeFile(resolve(root, 'Generator.js'), generatorModule('Tree', 0))
-    await writeFile(resolve(root, 'FloorGenerator.js'), `
-export default function generate({node, engine}) {
-    const floor = new engine.Mesh(
-        new engine.BoxGeometry(40, 1, 40),
-        new engine.MeshStandardMaterial({color: 0x6688aa}),
-    )
-    floor.name = 'Floor Preview'
-    floor.position.y = -0.5
-    node.add(floor)
-}
-`)
-
     const scenePath = resolve(root, 'assets/main.scene.gltf')
     const scene = JSON.parse(await readFile(scenePath, 'utf8')) as {
         scenes: Array<{nodes: number[]}>
         nodes: Array<Record<string, unknown>>
         [key: string]: unknown
     }
+    const firstAddedNode = scene.nodes.length
     scene.nodes.push({
         name: 'Hot reload target',
         mesh: 0,
@@ -88,14 +76,6 @@ export default function generate({node, engine}) {
     scene.nodes.push({
         name: 'RoundTripObject',
         mesh: 0,
-        extras: {
-            EntityComponentPlugin: {
-                'round-trip-generator': {
-                    type: 'Generator',
-                    state: {module: 'Generator.js', params: {count: 2, markers: true, legacyMode: 'classic'}},
-                },
-            },
-        },
     })
     scene.nodes.push({
         name: 'Transitive reload target',
@@ -114,16 +94,10 @@ export default function generate({node, engine}) {
         extras: {EntityComponentPlugin: {'dynamic-component': {type: 'DynamicScript', state: {}}}},
     })
     scene.nodes.push({
-        name: 'Floor Generator',
-        extras: {EntityComponentPlugin: {'floor-generator': {
-            type: 'Generator', state: {module: 'FloorGenerator.js', params: {width: 40}},
-        }}},
-    })
-    scene.nodes.push({
         name: 'Directional Key',
         extensions: {KHR_lights_punctual: {light: 0}},
     })
-    scene.scenes[0].nodes.push(0, 1, 2, 3, 4, 5, 6, 7)
+    scene.scenes[0].nodes.push(...Array.from({length: 7}, (_, index) => firstAddedNode + index))
     scene.extensionsUsed = ['KHR_lights_punctual']
     scene.extensions = {KHR_lights_punctual: {lights: [{type: 'directional', color: [1, 0.95, 0.85], intensity: 2}]}}
     scene.buffers = [{
@@ -331,7 +305,7 @@ test('runs Playable, Editable, and Persisted checks through the connected editor
             children: Array<{userData: Record<string, unknown>}>
         }}}}).viewer
         viewer.scene.modelRoot.children[0].userData.kite3dAuthoring = {
-            role: 'generator', id: 'orphan-preview', sourceId: 'missing-generator',
+            role: 'template', id: 'orphan-copy', sourceId: 'missing-template',
         }
     })
     await check.click()
@@ -926,75 +900,46 @@ test('reports leaked runtime content after Stop in a toast and the console log',
         .toContain('runtime cleanup failed: RUNTIME_OBJECT_AFTER_STOP')
 })
 
-test('edits generator params with declared and inferred controls', async ({page}) => {
-    test.setTimeout(90_000)
-    await page.setViewportSize({width: 1400, height: 900})
-    await page.goto(server.url)
-    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
-    await page.getByRole('tab', {name: 'Inspector'}).click()
-    await page.getByRole('button', {name: 'RoundTripObject'}).click()
-
-    const inspector = page.getByTestId('generator-inspector')
-    await expect(inspector.getByText('Shading', {exact: true})).toBeVisible()
-    await expect(inspector.getByText('Spawn markers', {exact: true})).toBeVisible()
-    await expect(inspector.getByText('Tree count', {exact: true})).toBeVisible()
-    await expect(inspector.getByText('Tree height', {exact: true})).toBeVisible()
-    await expect(inspector.getByText('Legacy mode', {exact: true})).toBeVisible()
-    await expect(inspector.getByTestId('generator-param-detail')).toHaveValue('0')
-    await expect(inspector.getByRole('checkbox', {name: 'Spawn markers'})).toBeChecked()
-    await expect(inspector.getByLabel('Tree count')).toHaveValue('2')
-    await expect(inspector.getByLabel('Tree height')).toHaveValue('3')
-    await expect(inspector.locator('.generator-param-row').filter({hasText: 'Tree height'})).toContainText('default')
-    await expect(inspector.getByTestId('generator-param-legacyMode')).toHaveValue('classic')
-    await expect(page.getByTestId('generator-params-1')).toBeHidden()
-
-    await mkdir(resolve(import.meta.dirname, '../../test-results/generator-params'), {recursive: true})
-    await inspector.scrollIntoViewIfNeeded()
-    await page.screenshot({path: resolve(import.meta.dirname, '../../test-results/generator-params/declared-params.png')})
-
-    const beforeRuns = await page.evaluate(() => (window as unknown as {__generatorRuns: number}).__generatorRuns)
-    await inspector.getByTestId('generator-param-detail').selectOption({label: 'Full shaders'})
-    await expect.poll(async () => (await readGeneratorState('RoundTripObject')).params.detail).toBe('full')
-    await expect.poll(() => page.evaluate(() => (window as unknown as {__generatorRuns: number}).__generatorRuns))
-        .toBeGreaterThan(beforeRuns)
-
-    await inspector.locator('.generator-param-row').filter({hasText: 'Spawn markers'})
-        .locator('.bp5-control-indicator').click()
-    await expect.poll(async () => (await readGeneratorState('RoundTripObject')).params.markers).toBe(false)
-
-    const beforeInvalidNumber = await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')
-    await inspector.getByLabel('Tree count').fill('9')
-    await inspector.getByLabel('Tree count').blur()
-    await expect(inspector.getByRole('alert')).toContainText('Tree count must be at most 5.')
-    expect(await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')).toBe(beforeInvalidNumber)
-
-    await inspector.getByLabel('Tree count').fill('3')
-    await writeFile(resolve(root, 'Generator.js'), generatorModule('Tree', 0, 'Render style'))
-    await expect(page.getByText('Generator.js regenerated')).toBeVisible({timeout: 20_000})
-    await expect(inspector.getByText('Render style', {exact: true})).toBeVisible()
-    await expect(inspector.getByLabel('Tree count')).toHaveValue('3')
-    await inspector.getByLabel('Tree count').fill('2')
-    await inspector.getByLabel('Tree count').blur()
-    await expect.poll(async () => (await readGeneratorState('RoundTripObject')).params.count).toBe(2)
-
-    await inspector.getByText('Edit as JSON').click()
-    const beforeInvalidJson = await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')
-    await page.getByTestId('generator-params-1').fill('{"count":')
-    await inspector.getByRole('button', {name: 'Apply', exact: true}).click()
-    await expect(inspector.locator('.generator-json-error')).toContainText('JSON')
-    expect(await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')).toBe(beforeInvalidJson)
-    await page.screenshot({path: resolve(import.meta.dirname, '../../test-results/generator-params/json-error.png')})
-
-    await page.getByRole('button', {name: 'Floor_Generator'}).click()
-    const inferredInspector = page.getByTestId('generator-inspector')
-    await expect(inferredInspector.getByText('Width', {exact: true})).toBeVisible()
-    await expect(inferredInspector.getByLabel('Width')).toHaveValue('40')
-    await expect(inferredInspector.getByText('Shading', {exact: true})).toHaveCount(0)
-    await expect(inferredInspector.getByText('Edit as JSON')).toBeVisible()
-    await page.screenshot({path: resolve(import.meta.dirname, '../../test-results/generator-params/inferred-params.png')})
+test('warns about a removed Generator component without blocking Edit or Play', async ({page}) => {
+    const removedRoot = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-removed-component-'))
+    await initProject(removedRoot, {git: false})
+    const scenePath = resolve(removedRoot, 'assets/main.scene.gltf')
+    const scene = JSON.parse(await readFile(scenePath, 'utf8')) as {
+        scenes: Array<{nodes: number[]}>
+        nodes: Array<Record<string, unknown>>
+    }
+    const nodeIndex = scene.nodes.length
+    scene.nodes.push({
+        name: 'Old World',
+        extras: {EntityComponentPlugin: {old: {type: 'Generator', state: {module: 'old-world.js'}}}},
+    })
+    scene.scenes[0].nodes.push(nodeIndex)
+    await writeFile(scenePath, `${JSON.stringify(scene, null, 2)}\n`)
+    const removedServer = await runDev({projectRoot: removedRoot, port: 0, noOpen: true})
+    const warning = "Generator components were removed in Kite3D 0.19.0. Convert Old World to asset files. See the guide's Scene asset management section."
+    const browserWarnings: string[] = []
+    page.on('console', (message) => {
+        if (message.type() === 'warning') browserWarnings.push(message.text())
+    })
+    try {
+        await page.goto(removedServer.url)
+        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await expect(page.getByTestId('scene-hierarchy')).toContainText('Old_World')
+        await expect(page.getByTestId('removed-generator-chip')).toHaveText('Generator removed')
+        await expect.poll(() => browserWarnings).toContain(warning)
+        await expect.poll(async () => readFile(resolve(removedRoot, '.kite3d/console.log'), 'utf8')).toContain(warning)
+        await page.getByTestId('play').click()
+        await expect(page.getByText('Playing')).toBeVisible({timeout: 20_000})
+        await page.getByTestId('play').click()
+        await expect(page.getByText('Stopped')).toBeVisible()
+    } finally {
+        await page.close()
+        await removedServer.close()
+        await rm(removedRoot, {recursive: true, force: true, maxRetries: 5, retryDelay: 50})
+    }
 })
 
-test('loads the restored panels, watches generators, and saves text glTF without echo reload', async ({page}) => {
+test('loads the restored panels and saves text glTF without echo reload', async ({page}) => {
     test.setTimeout(90_000)
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -1032,8 +977,6 @@ test('loads the restored panels, watches generators, and saves text glTF without
 
     const hierarchy = page.getByTestId('scene-hierarchy')
     await expect(hierarchy).toContainText('RoundTripObject')
-    await expect(hierarchy).toContainText(/Tree 0\s*generated/)
-    await expect(hierarchy).toContainText(/Tree 1\s*generated/)
     await expect(page.getByTestId('unlisted-script-warning').filter({hasText: 'Unlisted.script.js'})).toBeVisible()
     await expect(page.getByTestId('unlisted-script-warning').filter({hasText: 'samples/Spin.script.js'})).toHaveCount(0)
     await expect(page.getByTestId('project-files')).not.toContainText('.kite3d/deploys.json')
@@ -1041,7 +984,6 @@ test('loads the restored panels, watches generators, and saves text glTF without
 
     await page.getByRole('tab', {name: 'Project'}).click()
     await expect(page.getByTestId('component-types')).toContainText('HotScript')
-    await expect(page.getByTestId('component-types')).toContainText('Generator')
     await expect(page.getByTestId('component-types')).not.toContainText('UnlistedComponent')
 
     await page.getByRole('tab', {name: 'Inspector'}).click()
@@ -1063,18 +1005,6 @@ test('loads the restored panels, watches generators, and saves text glTF without
     const components = rightPanel.getByTestId('components-section')
     await expect(components.getByRole('heading', {name: /Components/})).toBeVisible()
     await expect(components.getByText('Add Comp', {exact: true})).toBeVisible()
-    await expect(components.locator('.folder-trigger-text').filter({hasText: /^Generator$/})).toHaveCount(0)
-    const generatorInspector = rightPanel.getByTestId('generator-inspector')
-    await expect(generatorInspector).toContainText('Generator · RoundTripObject')
-    await expect(generatorInspector.getByRole('heading', {name: 'Generator', exact: true})).toHaveCount(1)
-    const beforeGeneratorEdit = await manifestHash('assets/main.scene.gltf')
-    await generatorInspector.getByText('Edit as JSON').click()
-    await page.getByTestId('generator-params-1').fill('{"count": 3}')
-    await generatorInspector.getByRole('button', {name: 'Apply', exact: true}).click()
-    await expect(hierarchy).toContainText(/Tree 2\s*generated/, {timeout: 20_000})
-    await expect.poll(() => manifestHash('assets/main.scene.gltf')).not.toBe(beforeGeneratorEdit)
-    await expect.poll(async () => (await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')).includes('"count": 3')).toBe(true)
-    await expect(page.getByText('Scene saved')).toBeVisible()
 
     const savedScene = await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')
     const savedDocument = JSON.parse(savedScene) as {asset: unknown, buffers?: Array<{uri?: string}>}
@@ -1084,33 +1014,11 @@ test('loads the restored panels, watches generators, and saves text glTF without
     expect((await readFile(resolve(root, 'assets/main.scene.bin'))).byteLength).toBe(36)
     expect(savedScene).toContain('Saved target')
     expect(savedScene).not.toContain('data:')
-    expect(savedScene).not.toContain('Tree 0')
-    expect(savedScene).not.toContain('kite3dGenerated')
 
     const journal = (await readFile(resolve(root, '.kite3d/journal.jsonl'), 'utf8'))
         .split('\n').filter(Boolean).map((line) => JSON.parse(line) as {client: string})
     expect(journal.some(({client}) => client !== 'external')).toBe(true)
 
-    await writeFile(resolve(root, 'Generator.js'), generatorModule('Reloaded tree', 1))
-    await expect(page.getByText('Generator.js regenerated')).toBeVisible({timeout: 20_000})
-    await expect(hierarchy).toContainText(/Reloaded tree 3\s*generated/)
-
-    await page.getByTestId('bake-1').click()
-    await expect(page.getByText('Baked RoundTripObject')).toBeVisible({timeout: 20_000})
-    const bakedSceneText = await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')
-    const bakedScene = JSON.parse(bakedSceneText) as {
-        nodes: Array<{name?: string, children?: number[], extras?: {
-            EntityComponentPlugin?: Record<string, {type?: string}>
-            [key: string]: unknown
-        }}>
-    }
-    const bakedRoot = bakedScene.nodes.find(({name}) => name === 'RoundTripObject')
-    expect(bakedRoot?.children).toHaveLength(4)
-    expect(bakedRoot?.extras).toHaveProperty('kite3dBakedFrom')
-    expect(bakedSceneText).not.toContain('kite3dGenerated')
-    expect(bakedSceneText).not.toContain('excludeFromExport')
-    expect(Object.values(bakedRoot?.extras?.EntityComponentPlugin || {}).map(({type}) => type))
-        .not.toContain('Generator')
     expect(errors).toEqual([])
 })
 
@@ -1773,47 +1681,6 @@ async function manifestHash(path: string): Promise<string | undefined> {
     const response = await fetch(`http://127.0.0.1:${server.port}/api/files`, {headers: {'X-Kite3D-Token': server.token}})
     const manifest = await response.json() as Array<{path: string, sha256: string}>
     return manifest.find((entry) => entry.path === path)?.sha256
-}
-
-async function readGeneratorState(nodeName: string): Promise<{module: string, params: Record<string, unknown>}> {
-    const scene = JSON.parse(await readFile(resolve(root, 'assets/main.scene.gltf'), 'utf8')) as {
-        nodes: Array<{name?: string, extras?: {EntityComponentPlugin?: Record<string, {
-            type?: string
-            state?: {module?: string, params?: Record<string, unknown>}
-        }>}}>
-    }
-    const components = scene.nodes.find(({name}) => name === nodeName)?.extras?.EntityComponentPlugin || {}
-    const state = Object.values(components).find(({type}) => type === 'Generator')?.state
-    if (!state || typeof state.module !== 'string' || !state.params) throw new Error(`Generator state not found: ${nodeName}`)
-    return {module: state.module, params: state.params}
-}
-
-function generatorModule(prefix: string, extra: number, detailLabel = 'Shading'): string {
-    return `
-export const params = {
-    detail: {
-        label: '${detailLabel}',
-        help: 'Full builds textured materials. Light is a fast preview.',
-        options: [{value: 'light', label: 'Fast preview'}, {value: 'full', label: 'Full shaders'}],
-        default: 'light',
-    },
-    markers: {label: 'Spawn markers', type: 'boolean', default: true},
-    count: {label: 'Tree count', type: 'integer', default: 2, min: 1, max: 5, step: 1},
-    height: {label: 'Tree height', type: 'number', default: 3, min: 1, max: 10},
-}
-
-export default function generate({node, params, engine}) {
-    window.__generatorRuns = (window.__generatorRuns || 0) + 1
-    for (let index = 0; index < params.count + ${extra}; index += 1) {
-        const child = new engine.Mesh(
-            new engine.BoxGeometry(0.25, 0.25, 0.25),
-            new engine.MeshStandardMaterial({color: 0x44ccaa}),
-        )
-        child.name = '${prefix} ' + index
-        node.add(child)
-    }
-}
-`
 }
 
 function hotScript(version: string): string {

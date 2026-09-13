@@ -46,9 +46,8 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 # Engine quick reference
 
 - `createGame` and `createStoppedGame`: boot Play mode or an authoring-only stopped scene; `@kite3d/engine/src/runtime/createGame.ts`.
-- `setAuthoringMetadata`, `getAuthoringMetadata`, and `AuthoringRole`: tag and read stable `direct`, `template`, or `generator` sources; `@kite3d/engine/src/authoring.ts`.
+- `setAuthoringMetadata`, `getAuthoringMetadata`, and `AuthoringRole`: tag and read stable `direct` or `template` sources; `@kite3d/engine/src/authoring.ts`.
 - `RuntimeObjectOwner`: own Play-only roots, clones, effects, and cleanup; `@kite3d/engine/src/authoring.ts`.
-- `GeneratorComponent`, `runGenerator`, and `markGenerated`: run deterministic procedural previews excluded from saves; `@kite3d/engine/src/plugins/GeneratorComponent.ts`.
 - `registerGameValidation`: register a gameplay assertion consumed by `kite3d check`; `@kite3d/engine/src/authoringValidation.ts`.
 - `publishGameTelemetry`: replace `window.kite3dGame.telemetry` with an immutable test snapshot; `@kite3d/engine/src/authoringValidation.ts`.
 - `authoringQualityReport`, `runtimeCleanupReport`, `semanticSceneSnapshot`, and `persistenceReport`: implement the three check outcomes; `@kite3d/engine/src/authoringValidation.ts`.
@@ -77,11 +76,11 @@ export function main({viewer}) {
 
 For camera ownership during Play, `camera.controlsMode = ''` disables built-in controls; set `autoLookAtTarget = true` when driving `target`, or false when driving the quaternion. Save `scene.mainCamera` and the changed camera properties in `start()`, call the gameplay camera's `activateMain()`, then reactivate the saved camera and restore its properties in `stop()`.
 
-The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `check-game`, `check-results`, `checkpoint-game`, `restore-checkpoint`, `open-game`, `project-files`, `scene-hierarchy`, `component-types`, `generator-inspector`, `generator-module-<nodeIndex>`, `generator-params-<nodeIndex>`, and `bake-<nodeIndex>`; select them through `page.getByTestId()`.
+The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `check-game`, `check-results`, `checkpoint-game`, `restore-checkpoint`, `open-game`, `project-files`, `scene-hierarchy`, and `component-types`; select them through `page.getByTestId()`.
 
 The token-protected local API is `GET /api/state`, `GET /api/files`, `GET /api/events`, `GET /api/slug/:slug`, `GET /api/import-map`, `POST /api/check`, and `POST /api/publish`.
 
-Editable is measured from the stopped scene using authored visibility and selectability, generator previews and source relationships, plus the saved camera; camera containment uses a small epsilon so a point on a mesh face is outside. Persisted serializes that stopped scene, reloads the serialized files, and compares supported semantics with node names in drift paths when available.
+Editable is measured from the stopped scene using authored visibility and selectability, source relationships, plus the saved camera; camera containment uses a small epsilon so a point on a mesh face is outside. Persisted serializes that stopped scene, reloads the serialized files, and compares supported semantics with node names in drift paths when available.
 
 The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Keep secrets from `.kite3d/deploys.json` and `.kite3d/dev.json` private.
 
@@ -95,7 +94,7 @@ Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/a
 
 # Authored versus runtime game content
 
-Every meaningful system must have a useful stopped-mode representation under `viewer.scene.modelRoot`: direct named objects; a selectable `template` copied for Play; or a `generator` with bounded preview output. Tag stable sources with `setAuthoringMetadata`. Generator output is tagged automatically, excluded from saves, and replaced rather than multiplied on rerun or reload.
+Every meaningful system must have a useful stopped-mode representation under `viewer.scene.modelRoot`: direct named objects, or a selectable `template` copied for Play. Tag stable sources with `setAuthoringMetadata`.
 
 Keep runtime roots outside `modelRoot` through `RuntimeObjectOwner`. Treat `start()` as repeatable and `stop()`/`destroy()` as mandatory: remove listeners, timers, DOM, physics state, effects, and every runtime root. Never delete or mutate the authored template.
 
@@ -108,16 +107,6 @@ start() {
   this.runtime.cloneFrom(source, root, {position: [4, 0, 0]})
 }
 stop() { this.runtime?.cleanup(); this.runtime = undefined }
-```
-
-Use a Generator component for saved parameters plus a deterministic preview:
-
-```js
-export default function generate({node, params, engine}) {
-  const preview = new engine.Mesh(new engine.BoxGeometry(params.width, 1, 1), new engine.MeshStandardMaterial())
-  preview.name = 'Platform Preview'
-  node.add(preview)
-}
 ```
 
 Keep Play state out of the saved scene. The saved camera must frame authored content and stay outside solid geometry on every load, including reloads of an existing scene. Before calling a change done, Stop, run `npx kite3d check`, and read `.kite3d/check.json`; Playable, Editable, and Persisted are separate outcomes.
@@ -172,11 +161,8 @@ Components live in node extras. The shape is:
     "gltfUUID": "stable-object-id",
     "EntityComponentPlugin": {
       "stable-component-id": {
-        "type": "Generator",
-        "state": {
-          "module": "generators/forest.js",
-          "params": {"count": 20}
-        }
+        "type": "Spin",
+        "state": {"speed": 1}
       }
     }
   }
@@ -187,53 +173,16 @@ Preserve every extras field you do not own. Preserve unknown glTF extensions too
 
 For example, list a project component as `{"kite3d":{"scripts":["./scripts/X.script.js"]}}`. In `kite3d.scripts` and `kite3d.plugins`, an entry is a bare module only when it exactly matches a key in `package.json`'s `dependencies`; every other entry is a project file, whether or not it starts with `./`.
 
-# Procedural content
+# Scene asset management
 
-Put procedural content under a node with a `Generator` component. Its state is `{module, params}`. `module` is a project-relative ES module path. The path must resolve on the project origin.
-
-The module has one default export:
-
-```js
-export default async function generate({node, params, viewer, engine}) {
-  for (let index = 0; index < params.count; index += 1) {
-    const child = new engine.Group()
-    child.name = `Tree ${index + 1}`
-    node.add(child)
-  }
-}
-```
-
-A generator may export an optional flat `params` schema so the editor can show named controls, help, choices, defaults, and numeric bounds:
-
-```js
-export const params = {
-  detail: {
-    label: 'Shading',
-    help: 'Full builds the textured materials. Light is fast unlit blocks.',
-    options: [{value: 'light', label: 'Fast preview'}, {value: 'full', label: 'Full shaders'}],
-    default: 'light',
-  },
-  markers: {label: 'Spawn markers', type: 'boolean', default: true},
-}
-```
-
-Schema entries support `boolean`, `number`, `integer`, `string`, `select`, `vector`, `color`, and `json` types. An omitted type is inferred from `options` or the default value. Undeclared saved params still work and appear as inferred controls. Nested objects use a `json` control.
-
-The function may attach children or return one child or an array. Each run removes the prior generated children. It runs on scene load. It runs when `module` or `params` changes. A dev-server change event for the module reruns it in the editor.
-
-Generated objects have a `generated` badge. Their transforms are read-only. Generated objects do not enter the saved scene.
-
-# Bake
-
-Bake only when generated results should become authored scene objects. Select a Generator node and use Bake. Agents can run:
-
-```sh
-npx kite3d bake "Forest"
-```
-
-The editor must be open and connected to `kite3d dev`. Bake removes the Generator component. It keeps the old module and params in `extras.kite3dBakedFrom`. It saves the generated children as real children under the same node.
-
-Bake refuses when the node already has non-generated children. It also refuses after human edits under a previously baked node. Use `--force` only after checking those edits. The editor asks for confirmation before a forced bake.
+- Keep every visible thing as a file under `assets/`: one glTF per prop, unit, or piece, with its textures beside it, under `assets/models/<category>/<name>/`.
+- Keep the scene a list of placed assets. Edit `assets/main.scene.gltf` with a script. Never build geometry in code at load or at Play.
+- A script that makes an asset lives in the folder it writes into, for example `assets/models/props/crate/build.mjs`. Run it by hand with `node` or `python3`. Keep its settings as constants at the top. Commit its outputs.
+- Keep source files such as `.blend` files beside the asset they produce.
+- Keep every prop its own node with a human name, for example `Sandbag stack 12`, grouped by area. A human must be able to select, move, replace, or delete it in the editor.
+- Do not merge or instance meshes in the files for speed. Speed work belongs at Play, in `main.js` or a component, and never changes the files.
+- Put placement scripts and layout data under `scene/`. Nothing under `assets/` or `scene/` runs in the game. Runtime code lives in `scripts/` and `lib/`.
+- Register each asset in `assets.json`, for example `{"version": 1, "files": {"crate": {"path": "assets/models/props/crate/f.gltf"}}}`. Place it in the editor, or with a script that writes the node extras the editor writes on a drop: `rootPath` of `/kite3d/@crate/f.gltf` and `sProperties` for the saved transform.
 
 # Human edits
 
@@ -512,7 +461,7 @@ export async function main({viewer}) {
 }
 ```
 
-`main({viewer})` runs after the scene and nested assets load, generators finish, and the timeline, components, and physics start. It is the right place for runtime setup that depends on the complete scene. `window.viewer` is set by your `main.js` after components start, so tests must wait for it.
+`main({viewer})` runs after the scene and nested assets load, and the timeline, components, and physics start. It is the right place for runtime setup that depends on the complete scene. `window.viewer` is set by your `main.js` after components start, so tests must wait for it.
 
 ## Core Properties
 - `viewer.scene` - RootScene: Main scene for rendering (extends three.js Scene)
@@ -1050,7 +999,7 @@ class EnemySystemComponent extends Object3DComponent {
 
 # Publishing
 
-Run `npx kite3d pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx kite3d pull --force` overwrites them. Then run `npx kite3d check`. It imports configured scripts in Node, resolves plugins and Generator modules, verifies scene component types, prints the project validation below Playable on pass or fail, and writes `.kite3d/check.json`; any failure exits 1. `kite3d publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
+Run `npx kite3d pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx kite3d pull --force` overwrites them. Then run `npx kite3d check`. It imports configured scripts in Node, resolves plugins, verifies scene component types, prints the project validation below Playable on pass or fail, and writes `.kite3d/check.json`; any failure exits 1. `kite3d publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
 
 Create a game with `npx kite3d publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `kite3d.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@kite3d/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.kite3d/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
 
@@ -1061,10 +1010,7 @@ Run `npx kite3d status` to print the live local dev server and deploy metadata w
 # Limits
 
 - Source scripts are native ES modules. Bare imports must be declared in `package.json`.
-- Generator modules must use project-relative, same-origin paths.
 - The main glTF must not contain data URLs. Keep its sibling `.bin` and texture files.
-- Generated children are transient until an explicit bake.
-- `kite3d bake` needs a connected local editor.
 - Scene tools must preserve node extras and unknown extensions.
 - Keep generated output, dependencies, secrets, logs, and transient editor data under excluded paths (`dist/`, `node_modules/`, and `.kite3d/`).
 - The editor is served only by `kite3d dev` on localhost. Keep its random token private.

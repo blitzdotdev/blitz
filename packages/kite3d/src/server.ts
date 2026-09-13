@@ -20,14 +20,13 @@ import {fileURLToPath} from 'node:url'
 import {serve, type HttpBindings} from '@hono/node-server'
 import {mimeTypeForPath} from '@kite3d/engine/fileTypes'
 import {dependencyImportMap, projectDependencies} from '@kite3d/engine/importMap'
-import {KITE3D_SERVER_CLIENT_ID, JOURNAL_PATH} from '@kite3d/engine/paths'
+import {KITE3D_SERVER_CLIENT_ID} from '@kite3d/engine/paths'
 import {Hono, type Context, type Next} from 'hono'
 import {getCookie} from 'hono/cookie'
 import {LinearRouter} from 'hono/router/linear-router'
 import {streamSSE, type SSEStreamingApi} from 'hono/streaming'
 import {watch, type FSWatcher} from 'chokidar'
 import {resolveBackendUrl} from './backend.ts'
-import {checkBakeSafety, type BakeJournalEntry} from './bake.ts'
 import {appendSceneJournal} from './journal.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {readDeploys, writeDeploys} from './deploys.ts'
@@ -250,31 +249,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         await writeDeploys(projectDirectory, deploys)
         return jsonResponse(payload, backendResponse.status)
     })
-    app.post('/api/bake', async (c) => {
-        const body = await readJsonBody(c.req.raw)
-        const nodeName = typeof body.nodeName === 'string' ? body.nodeName.trim() : ''
-        const force = body.force === true
-        if (!nodeName) return jsonResponse({error: {code: 'invalid_node', message: 'nodeName is required.'}}, 400)
-        if (![...clients.values()].some(Boolean)) {
-            return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected. Open the URL from kite3d dev and try again.'}}, 409)
-        }
-        const {document, journal} = await readBakeInputs(projectRoot)
-        const safety = checkBakeSafety(document, nodeName, journal, force)
-        if (!safety.ok) return jsonResponse({error: {code: safety.code, message: safety.reason}}, 409)
-
-        const id = randomBytes(16).toString('hex')
-        const result = await new Promise<CommandResult>((resolveCommand) => {
-            const timer = setTimeout(() => {
-                pendingCommands.delete(id)
-                resolveCommand({ok: false, error: 'The connected editor did not finish the bake within 30 seconds.'})
-            }, 30_000)
-            pendingCommands.set(id, {resolve: resolveCommand, timer})
-            void broadcast('command', {id, command: 'bake', nodeName, force})
-        })
-        return result.ok
-            ? jsonResponse(result)
-            : jsonResponse({error: {code: 'bake_failed', message: result.error || 'Bake failed.'}}, 409)
-    })
     app.post('/api/check', async () => {
         if (![...clients.values()].some(Boolean)) {
             return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected.'}}, 409)
@@ -420,7 +394,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         }
         if (relativePath === mainScenePath) {
             const afterSceneText = await readFile(filePath, 'utf8')
-            const client = pendingCommands.size ? 'kite3d-bake' : c.get('clientId') || 'external'
+            const client = c.get('clientId') || 'external'
             await recordSceneWrite(beforeSceneText, afterSceneText, client)
         } else if (relativePath === 'package.json') {
             const snapshot = await readMainSceneSnapshot(projectRoot)
@@ -708,26 +682,6 @@ async function readMainSceneSnapshot(root: string): Promise<{path: string, text?
     } catch {
         return {path}
     }
-}
-
-async function readBakeInputs(root: string): Promise<{
-    document: Parameters<typeof checkBakeSafety>[0]
-    journal: BakeJournalEntry[]
-}> {
-    const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as {mainScene?: unknown}
-    if (typeof packageJson.mainScene !== 'string') throw new Error('package.json mainScene must be a string')
-    const scenePath = await safeProjectPath(root, packageJson.mainScene)
-    const document = JSON.parse(await readFile(scenePath, 'utf8')) as Parameters<typeof checkBakeSafety>[0]
-    let journal: BakeJournalEntry[] = []
-    try {
-        journal = (await readFile(resolve(root, JOURNAL_PATH), 'utf8'))
-            .split('\n')
-            .filter(Boolean)
-            .map((line) => JSON.parse(line) as BakeJournalEntry)
-    } catch (error) {
-        if (!isMissing(error)) throw error
-    }
-    return {document, journal}
 }
 
 function manifestHashes(entries: ManifestEntry[]): Map<string, string> {

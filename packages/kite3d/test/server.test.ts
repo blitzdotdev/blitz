@@ -556,17 +556,8 @@ describe('Kite3D dev server', () => {
         expect(forced.port).toBeGreaterThan(0)
     })
 
-    it('fails bake clearly when no editor is connected', async () => {
+    it('fails an editor-hosted check clearly when no editor is connected', async () => {
         const {server, headers} = await startServer()
-        const response = await fetch(`${base(server)}/api/bake`, {
-            method: 'POST',
-            headers: {...headers, 'Content-Type': 'application/json'},
-            body: JSON.stringify({nodeName: 'Forest'}),
-        })
-        expect(response.status).toBe(409)
-        expect(await response.json()).toMatchObject({
-            error: {code: 'editor_not_connected', message: expect.stringContaining('No editor is connected')},
-        })
         const check = await fetch(`${base(server)}/api/check`, {method: 'POST', headers})
         expect(check.status).toBe(409)
         expect(await check.json()).toMatchObject({error: {code: 'editor_not_connected'}})

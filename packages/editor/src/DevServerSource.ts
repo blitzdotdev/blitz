@@ -184,14 +184,6 @@ export class DevServerSource implements ProjectSource {
         return url.href
     }
 
-    async bake(nodeName: string, force = false): Promise<Record<string, unknown>> {
-        return this.json('/api/bake', {
-            method: 'POST',
-            headers: this.headers({'Content-Type': 'application/json'}),
-            body: JSON.stringify({nodeName, force}),
-        })
-    }
-
     async checkpoint(label?: string): Promise<{hash: string, label?: string}> {
         return this.json('/api/checkpoint', {
             method: 'POST',

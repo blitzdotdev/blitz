@@ -323,7 +323,7 @@ describe('publishProject', () => {
 
     it('publishes installed runtime bytes and only uses the registry for a mismatch warning', async () => {
         const root = sampleProject()
-        installEngine(root, KITE3D_VERSION, 'new local runtime with Generator')
+        installEngine(root, KITE3D_VERSION, 'new local runtime')
         const localRuntime = await root.file('node_modules/@kite3d/engine/dist/runtime.js')
         const localHash = await sha256(localRuntime)
         const {api, backend} = await testApi()
@@ -338,7 +338,7 @@ describe('publishProject', () => {
             mime: 'text/javascript; charset=utf-8',
         })
         const upload = backend.requests.find(({method, path}) => method === 'PUT' && path.endsWith(`/blobs/${localHash}`))
-        expect((upload?.body as Buffer).toString()).toBe('new local runtime with Generator')
+        expect((upload?.body as Buffer).toString()).toBe('new local runtime')
         expect(await root.text('.kite3d/publish/index.html')).toContain(`<meta name="kite3d-runtime" content="${KITE3D_VERSION} ${localHash}">`)
         expect(warning).toHaveBeenCalledWith(expect.stringContaining('publishing the installed runtime'))
         warning.mockRestore()

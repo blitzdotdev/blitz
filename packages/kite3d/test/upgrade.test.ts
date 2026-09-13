@@ -38,7 +38,7 @@ describe('upgradeProject', () => {
 
         try {
             const result = await upgradeProject(root)
-            expect(result).toEqual({from: '0.10.0', to: KITE3D_VERSION, changes: []})
+            expect(result).toEqual({from: '0.10.0', to: KITE3D_VERSION, changes: [], removedGeneratorNodes: []})
         } finally {
             process.env.PATH = originalPath
         }
@@ -197,7 +197,7 @@ describe('upgradeProject', () => {
             restorePath()
         }
 
-        expect(result).toEqual({from: '0.14.1', to: KITE3D_VERSION, changes: []})
+        expect(result).toEqual({from: '0.14.1', to: KITE3D_VERSION, changes: [], removedGeneratorNodes: []})
         const after = JSON.parse(await readFile(packagePath, 'utf8'))
         expect({...after, devDependencies: before.devDependencies, kite3d: before.kite3d}).toEqual(before)
         expect(after.devDependencies.kite3d).toBe(KITE3D_VERSION)
@@ -327,6 +327,13 @@ export async function parsePackageJsonSettingsConfig() {}
 export function validateSceneSource(_path, text) {
     if (!JSON.parse(text).asset) throw new Error('missing glTF asset')
 }
+export function findRemovedGeneratorNodes(text) {
+    const scene = JSON.parse(text)
+    return (scene.nodes || []).flatMap((node, nodeIndex) =>
+        Object.values(node.extras?.EntityComponentPlugin || {}).some((component) => component.type === 'Generator')
+            ? [{nodeIndex, nodeName: node.name || 'Node ' + nodeIndex}]
+            : [])
+}
 \`)
 await writeFile(resolve(engineRoot, 'migrations.js'), 'export const PROJECT_MIGRATIONS = []\\n')
 ` : ''
@@ -397,6 +404,13 @@ export async function parsePackageJsonSettingsConfig() {}
 export function validateSceneSource(_path, text) {
     if (!JSON.parse(text).asset) throw new Error('missing glTF asset')
 }
+export function findRemovedGeneratorNodes(text) {
+    const scene = JSON.parse(text)
+    return (scene.nodes || []).flatMap((node, nodeIndex) =>
+        Object.values(node.extras?.EntityComponentPlugin || {}).some((component) => component.type === 'Generator')
+            ? [{nodeIndex, nodeName: node.name || 'Node ' + nodeIndex}]
+            : [])
+}
 `)
     await writeFile(resolve(engine, 'migrations.js'), 'export const PROJECT_MIGRATIONS = []\n')
 }
@@ -430,6 +444,13 @@ export const parseAssetsJSONManifest = JSON.parse
 export async function parsePackageJsonSettingsConfig() {}
 export function validateSceneSource(_path, text) {
     if (!JSON.parse(text).asset) throw new Error('missing glTF asset')
+}
+export function findRemovedGeneratorNodes(text) {
+    const scene = JSON.parse(text)
+    return (scene.nodes || []).flatMap((node, nodeIndex) =>
+        Object.values(node.extras?.EntityComponentPlugin || {}).some((component) => component.type === 'Generator')
+            ? [{nodeIndex, nodeName: node.name || 'Node ' + nodeIndex}]
+            : [])
 }
 `)
     await writeFile(resolve(engine, 'migrations.js'), `

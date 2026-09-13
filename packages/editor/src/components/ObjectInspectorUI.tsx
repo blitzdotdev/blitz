@@ -246,9 +246,7 @@ export const NewMaterialContextMenu: FC<ContextMenuItemsProps<IObject3D>&{
 }
 
 export function CompsSectionComp({object, ...panelProps}: {object: IObject3D} & PanelActions){
-    const manager = useManager()
-
-    const ecs = manager.get().getPlugin(EntityComponentPlugin)
+    const ecs = useManager().get().getPlugin(EntityComponentPlugin)
     const [comps, setComps] = useState<Object3DComponent[]>([...EntityComponentPlugin.ObjectToComponents.get(object) || []])
 
     // for reacting to changes in object, because we are accessing object.material etc
@@ -281,17 +279,12 @@ export function CompsSectionComp({object, ...panelProps}: {object: IObject3D} & 
         }
     }, [ecs, object])
 
-    const hasGeneratorInspector = manager.generatorStates.some(({nodeName}) => nodeName === object.name)
-    const visibleComps = comps.filter((comp) => (
-        !hasGeneratorInspector || comp.constructor.ComponentType !== 'Generator'
-    ))
-
     return <section className="kite3d-panel-section kite3d-components-section" data-testid="components-section">
         <header className="kite3d-section-header">
             <h3>Components <span>{comps.length}</span></h3>
         </header>
         <div className="kite3d-components-list">
-        {visibleComps.map(comp=>{
+        {comps.map(comp=>{
             if(!comp.uiConfig) return null
             comp.uiConfig.expanded = true
             return [

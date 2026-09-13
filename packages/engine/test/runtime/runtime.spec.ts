@@ -34,16 +34,6 @@ test('the published runtime boots scripts, main, and nested assets', async ({pag
     })
     expect(nestedAssetMeshCount).toBe(1)
 
-    const generated = await page.evaluate(() => {
-        const root = window.__kite3dGame?.viewer.scene.modelRoot.getObjectByName('GeneratorRoot')
-        return root?.children.map((child) => ({
-            generated: child.userData.kite3dGenerated,
-            excluded: child.userData.excludeFromExport,
-        }))
-    })
-    expect(generated).toHaveLength(3)
-    expect(generated).toEqual(Array(3).fill({generated: true, excluded: true}))
-
     await expect.poll(() => page.evaluate(() => window.__kite3dUpdates || 0)).toBeGreaterThan(0)
     const updatesBefore = await page.evaluate(() => window.__kite3dUpdates || 0)
     await expect.poll(() => page.evaluate(() => window.__kite3dUpdates || 0)).toBeGreaterThan(updatesBefore)
@@ -78,5 +68,29 @@ test('the published runtime replaces a legacy nested asset child instead of dupl
     })
     expect(meshCount).toBe(1)
 
+    await page.evaluate(() => window.__kite3dGame?.dispose())
+})
+
+test('the published runtime ignores a removed Generator component', async ({page}) => {
+    const scene = JSON.parse(await readFile(sampleScenePath, 'utf8')) as {
+        scenes: Array<{nodes: number[]}>
+        nodes: Array<Record<string, unknown>>
+    }
+    const nodeIndex = scene.nodes.length
+    scene.nodes.push({
+        name: 'Old World',
+        extras: {EntityComponentPlugin: {old: {type: 'Generator', state: {module: 'old-world.js'}}}},
+    })
+    scene.scenes[0].nodes.push(nodeIndex)
+    await page.route('**/sample-project/assets/main.scene.gltf', async (route) => {
+        await route.fulfill({contentType: 'model/gltf+json', json: scene})
+    })
+
+    await page.goto('/')
+    await expect.poll(() => page.evaluate(() => Boolean(window.__kite3dReady))).toBe(true)
+    expect(await page.evaluate(() => window.__kite3dStartupError)).toBeUndefined()
+    expect(await page.evaluate(() => (
+        window.__kite3dGame?.viewer.scene.modelRoot.getObjectByName('Old World')?.name
+    ))).toBe('Old World')
     await page.evaluate(() => window.__kite3dGame?.dispose())
 })

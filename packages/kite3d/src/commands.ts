@@ -51,6 +51,7 @@ export interface PublicDevServer {
 }
 
 interface RuntimeProjectTools {
+    findRemovedGeneratorNodes(text: string): Array<{nodeName: string}>
     parsePackageJSON(text: string): Record<string, unknown>
     parseAssetsJSONManifest(text: string): unknown
     parsePackageJsonSettingsConfig(json: Record<string, unknown>): Promise<unknown>
@@ -101,7 +102,7 @@ export async function initProject(directory = '.', options: {git?: boolean} = {}
 
 export async function upgradeProject(
     projectRoot = process.cwd(),
-): Promise<{from: string, to: string, changes: string[], next?: string}> {
+): Promise<{from: string, to: string, changes: string[], removedGeneratorNodes: string[], next?: string}> {
     const root = resolve(projectRoot)
     const packagePath = resolve(root, 'package.json')
     const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as Record<string, unknown>
@@ -151,10 +152,11 @@ export async function upgradeProject(
     if (typeof mainScene !== 'string') throw new Error('package.json mainScene must be a string')
     const sceneText = await readFile(resolve(root, mainScene), 'utf8')
     runtime.tools.validateSceneSource(mainScene, sceneText)
+    const removedGeneratorNodes = runtime.tools.findRemovedGeneratorNodes(sceneText).map(({nodeName}) => nodeName)
     await appendJournalEntry(root, 'kite3d-upgrade', {upgrade: {from, to}})
     return legacySpecifier && await legacyPackageInstalled(root)
-        ? {from, to, changes, next: 'npm install'}
-        : {from, to, changes}
+        ? {from, to, changes, removedGeneratorNodes, next: 'npm install'}
+        : {from, to, changes, removedGeneratorNodes}
 }
 
 export async function runDev(options: {
@@ -466,38 +468,6 @@ export async function openCurrentProject(projectRoot = process.cwd()): Promise<s
     if (typeof state.url !== 'string') throw new Error('.kite3d/dev.json does not contain a dev URL')
     await openBrowser(state.url)
     return state.url
-}
-
-export async function bakeFromEditor(
-    nodeName: string,
-    options: {projectRoot?: string, force?: boolean} = {},
-): Promise<Record<string, unknown>> {
-    if (!nodeName.trim()) throw new Error('A Generator node name is required.')
-    const projectRoot = resolve(options.projectRoot || process.cwd())
-    let state: {url?: unknown, token?: unknown}
-    try {
-        state = JSON.parse(await readFile(resolve(projectRoot, '.kite3d/dev.json'), 'utf8')) as typeof state
-    } catch {
-        throw new Error('No Kite3D development server is running. Start kite3d dev first.')
-    }
-    if (typeof state.url !== 'string' || typeof state.token !== 'string') {
-        throw new Error('.kite3d/dev.json does not contain a valid development server connection.')
-    }
-    const response = await fetch(new URL('/api/bake', state.url), {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Kite3D-Token': state.token,
-            'X-Kite3D-Client': 'kite3d-bake',
-        },
-        body: JSON.stringify({nodeName, force: options.force === true}),
-    })
-    const body = await response.json().catch(() => ({})) as {
-        error?: {message?: string}
-        [key: string]: unknown
-    }
-    if (!response.ok) throw new Error(body.error?.message || `Bake failed with status ${response.status}.`)
-    return body
 }
 
 export async function journalFromDisk(

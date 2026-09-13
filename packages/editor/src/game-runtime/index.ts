@@ -14,7 +14,7 @@ export {CannonPhysicsPlugin} from '../plugins/cannon/CannonPhysicsPlugin.ts'
 export const KITE_GAME_RUNTIME_VERSION = 1
 export const KITE_AUTHORING_METADATA_KEY = 'kiteAuthoring'
 
-export type KiteAuthoringRole = 'direct' | 'template' | 'generator' | 'preview' | 'runtime-instance'
+export type KiteAuthoringRole = 'direct' | 'template' | 'runtime-instance'
 
 export interface KiteAuthoringMetadata {
     schemaVersion: 1
@@ -33,13 +33,13 @@ type PersistentAuthoringMetadata = Omit<KiteAuthoringMetadata, 'schemaVersion'> 
     role: Exclude<KiteAuthoringRole, 'runtime-instance'>
 }
 
-const persistentRoles = new Set<KiteAuthoringRole>(['direct', 'template', 'generator', 'preview'])
+const persistentRoles = new Set<KiteAuthoringRole>(['direct', 'template'])
 
 /** Read validated authoring metadata without trusting arbitrary userData. */
 export function getKiteAuthoringMetadata(object: IObject3D): KiteAuthoringMetadata | undefined {
     const value = object.userData?.[KITE_AUTHORING_METADATA_KEY] as Partial<KiteAuthoringMetadata> | undefined
     if (!value || value.schemaVersion !== 1 || typeof value.id !== 'string' || !value.id ||
-        !['direct', 'template', 'generator', 'preview', 'runtime-instance'].includes(String(value.role))) return undefined
+        !['direct', 'template', 'runtime-instance'].includes(String(value.role))) return undefined
     return value as KiteAuthoringMetadata
 }
 
@@ -50,9 +50,6 @@ export function setKiteAuthoringMetadata(
 ): KiteAuthoringMetadata {
     if (!persistentRoles.has(metadata.role) || !metadata.id?.trim()) {
         throw new Error('Persistent Kite authoring metadata requires a valid role and stable id')
-    }
-    if (metadata.role === 'preview' && !metadata.sourceId?.trim()) {
-        throw new Error('A Kite authoring preview requires its generator sourceId')
     }
     const value: KiteAuthoringMetadata = {schemaVersion: 1, ...metadata, id: metadata.id.trim()}
     object.userData[KITE_AUTHORING_METADATA_KEY] = value
@@ -86,7 +83,7 @@ export class KiteRuntimeObjectOwner {
      * template copies. The caller remains responsible for effect resources. */
     trackEffect<T extends IObject3D>(effect: T, source: IObject3D): T {
         const metadata = getKiteAuthoringMetadata(source)
-        if (metadata?.role === 'runtime-instance' || metadata?.role === 'preview') {
+        if (metadata?.role === 'runtime-instance') {
             throw new Error('Effects require a persistent authored owner')
         }
         effect.userData[KITE_AUTHORING_METADATA_KEY] = {
@@ -122,8 +119,8 @@ export class KiteRuntimeObjectOwner {
 
     cloneFrom<T extends IObject3D>(source: T, parent: IObject3D, options: KiteRuntimeCloneOptions = {}): T {
         const sourceMetadata = getKiteAuthoringMetadata(source)
-        if (!sourceMetadata || sourceMetadata.role === 'runtime-instance' || sourceMetadata.role === 'preview') {
-            throw new Error('Runtime clones require a direct, template, or generator source with a stable id')
+        if (!sourceMetadata || sourceMetadata.role === 'runtime-instance') {
+            throw new Error('Runtime clones require a direct or template source with a stable id')
         }
         const clone = source.clone(true) as T
         clone.traverse(child => {
@@ -165,35 +162,6 @@ export class KiteRuntimeObjectOwner {
         this.instances.clear()
         this.materials.clear()
     }
-}
-
-/** Create or reuse one bounded preview root for an authored generator. */
-export function ensureKiteAuthoringPreview<T extends IObject3D>(
-    generator: IObject3D,
-    createPreview: () => T,
-    updatePreview?: (preview: T) => void,
-): T {
-    const generatorMetadata = getKiteAuthoringMetadata(generator)
-    if (generatorMetadata?.role !== 'generator') {
-        throw new Error('Kite previews require a generator with stable authoring metadata')
-    }
-    const matches = generator.children.filter(child => {
-        const metadata = getKiteAuthoringMetadata(child as IObject3D)
-        return metadata?.role === 'preview' && metadata.sourceId === generatorMetadata.id
-    }) as T[]
-    let preview = matches.shift()
-    for (const duplicate of matches) duplicate.removeFromParent()
-    if (!preview) {
-        preview = createPreview()
-        preview.name ||= `${generator.name || generatorMetadata.id} Preview`
-        setKiteAuthoringMetadata(preview, {
-            role: 'preview', id: `${generatorMetadata.id}:preview`, sourceId: generatorMetadata.id,
-        })
-        generator.add(preview)
-    }
-    updatePreview?.(preview)
-    generator.setDirty?.({source: 'KiteAuthoringPreview', change: 'children'})
-    return preview
 }
 
 export interface KiteGameTelemetry {

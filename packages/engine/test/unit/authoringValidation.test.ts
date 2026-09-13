@@ -28,7 +28,6 @@ import {
     runtimeCleanupReport,
     semanticSceneSnapshot,
 } from '../../src/authoringValidation.ts'
-import {markGenerated} from '../../src/plugins/GeneratorComponent.ts'
 
 describe('authoring validation fixture matrix', () => {
     it('passes a direct authored room', () => {
@@ -96,40 +95,6 @@ describe('authoring validation fixture matrix', () => {
         expect(effect.parent).toBeNull()
         expect(geometryDispose).toHaveBeenCalledOnce()
         expect(materialDispose).toHaveBeenCalledOnce()
-    })
-
-    it('passes a generator with one bounded preview and preserves its transform semantically', () => {
-        const before = createFixture()
-        const generator = addGenerator(before.modelRoot, -4)
-        const firstPreview = generator.children[0]
-        markGenerated(firstPreview, 'track-generator')
-        const first = semanticSceneSnapshot(before.viewer)
-
-        const after = createFixture()
-        const reloadedGenerator = addGenerator(after.modelRoot, -4)
-        markGenerated(reloadedGenerator.children[0], 'track-generator')
-        const second = semanticSceneSnapshot(after.viewer)
-
-        expect(authoringQualityReport(before.viewer)).toMatchObject({ok: true, status: 'pass'})
-        expect(persistenceReport(first, second)).toMatchObject({ok: true})
-        expect(reloadedGenerator.children).toHaveLength(1)
-        expect(reloadedGenerator.children[0].position.z).toBe(-4)
-    })
-
-    it('rejects a controller-only scene with no generator preview', () => {
-        const fixture = createFixture()
-        const controller = new Group()
-        setAuthoringMetadata(controller, {role: 'generator', id: 'world-generator'})
-        controller.name = 'World Controller'
-        controller.userData.EntityComponentPlugin = {
-            controller: {type: 'WorldController', state: {seed: 7}},
-        }
-        fixture.modelRoot.add(controller)
-
-        expect(codes(authoringQualityReport(fixture.viewer))).toEqual(expect.arrayContaining([
-            'NO_VISIBLE_AUTHORED_CONTENT',
-            'GENERATOR_PREVIEW_MISSING',
-        ]))
     })
 
     it('warns but passes when a new scene has no authored nodes', () => {
@@ -322,20 +287,6 @@ function addDirectRoom(modelRoot: Group) {
     room.add(floor, marker)
     modelRoot.add(room)
     return {room, floor, marker}
-}
-
-function addGenerator(modelRoot: Group, previewZ: number) {
-    const generator = new Group()
-    setAuthoringMetadata(generator, {role: 'generator', id: 'track-generator'})
-    generator.name = 'Track Generator'
-    generator.userData.EntityComponentPlugin = {
-        generator: {type: 'Generator', state: {module: 'generators/track.js', params: {segments: 1}}},
-    }
-    const preview = box('Track Preview', 0x4ad6d6, [3, 0.2, 3])
-    preview.position.z = previewZ
-    generator.add(preview)
-    modelRoot.add(generator)
-    return generator
 }
 
 function box(name: string, color: number, size: [number, number, number] = [1, 1, 1]): Mesh {

@@ -17,14 +17,11 @@ export {publishProject, pullProject} from './publish.ts'
 export {NodeProjectDirectory} from './node-filesystem.ts'
 export {createDevServer} from './server.ts'
 export type {DevServer, DevServerOptions} from './server.ts'
-export {checkBakeSafety} from './bake.ts'
-export type {BakeJournalEntry, BakeSafetyResult} from './bake.ts'
 export {diffSceneGltf, diffSceneGltfText} from './scene-diff.ts'
 export type {SceneComponentChange, SceneDiff, SceneIdentity, SceneMaterialChange, SceneNodeRename, SceneTransformChange} from './scene-diff.ts'
 export {appendJournalEntry, appendSceneJournal, readJournal} from './journal.ts'
 export type {JournalEntry, ReadJournalOptions, UpgradeSummary} from './journal.ts'
 export {
-    bakeFromEditor,
     claimFromDisk,
     devStatusFromDisk,
     initProject,

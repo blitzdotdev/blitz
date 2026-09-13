@@ -3,9 +3,9 @@ import {publishGameTelemetry, registerGameValidation} from '@kite3d/engine'
 export function main({viewer}) {
     window.__kite3dMainRan = true
     window.__kite3dViewer = viewer
-    publishGameTelemetry({state: 'playing', generated: 3})
+    publishGameTelemetry({state: 'playing', nestedAsset: true})
     registerGameValidation(() => ({
-        status: viewer.scene.modelRoot.getObjectByName('GeneratorRoot')?.children.length === 3 ? 'pass' : 'fail',
-        summary: 'The runtime generator produced three preview objects.',
+        status: viewer.scene.modelRoot.getObjectByName('PropRef')?.children.length === 1 ? 'pass' : 'fail',
+        summary: 'The runtime loaded one nested asset.',
     }))
 }

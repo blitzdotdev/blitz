@@ -1,7 +1,7 @@
 import {isExternalObject} from "../utils/projectUtils.ts";
 import {useContextMenu} from "./ContextMenuProvider.tsx";
 import {IObject3D, UiObjectConfig} from "threepipe";
-import React, {useEffect, useMemo, useState} from "react";
+import React, {useMemo} from "react";
 import {BPHierarchyComponent} from "./BPHierarchyComponent.tsx";
 import {useOnObjectCreate} from "./UseOnObjectCreate.tsx";
 import {Object3DGenerationMenu} from "./Object3DGenerationMenu.tsx";
@@ -70,7 +70,6 @@ export function ObjectHierarchyComponent({className}: { className: string }) {
         flexDirection: 'column',
         height: '100%',
     }}>
-        <GeneratedObjectNames viewer={viewer}/>
         <BPHierarchyComponent
             config={config}
             key={viewer.scene.modelRoot.uuid} // this is required because viewer can be destroyed and recreated
@@ -85,25 +84,4 @@ export function ObjectHierarchyComponent({className}: { className: string }) {
             }}
             className={className}/>
     </div>
-}
-
-function GeneratedObjectNames({viewer}: {viewer: ReturnType<ReturnType<typeof useManager>['get']>}) {
-    const readNames = () => {
-        const names: string[] = []
-        viewer.scene.modelRoot.traverse((object) => {
-            if (object.userData.kite3dGenerated === true) names.push(`${object.name} generated`)
-        })
-        return names.join('\n')
-    }
-    const [names, setNames] = useState(readNames)
-    useEffect(() => {
-        // AGREED-4: preserve the dev-server generator status exposed by the prior
-        // hierarchy without changing the reference tree's visible expansion state.
-        const timer = window.setInterval(() => {
-            const next = readNames()
-            setNames((current) => current === next ? current : next)
-        }, 100)
-        return () => window.clearInterval(timer)
-    }, [viewer])
-    return <span className="kite3d-semantic-hook">{names}</span>
 }

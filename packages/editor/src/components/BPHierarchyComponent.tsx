@@ -25,7 +25,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
 
     protected _createNodeInfo(id: string, obj: T) {
         return Object.assign(super._createNodeInfo(id, obj), {
-            secondaryLabel: (<VisibilityIcon obj={obj}/>),
+            secondaryLabel: (<HierarchyStatus obj={obj}/>),
             draggable: true,
             droppable: true,
         })
@@ -317,4 +317,18 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         super.componentWillUnmount();
     }
 
+}
+
+function HierarchyStatus({obj}: {obj: IObject3D}) {
+    const components = obj.userData?.EntityComponentPlugin
+    const removed = obj.userData?.kite3dRemovedGenerator === true
+        || components && typeof components === 'object' && !Array.isArray(components)
+        && Object.values(components).some((component) => (
+            component && typeof component === 'object' && !Array.isArray(component)
+            && (component as {type?: unknown}).type === 'Generator'
+        ))
+    return <span className="kite3d-hierarchy-status">
+        {removed && <span className="kite3d-status-chip is-warning" data-testid="removed-generator-chip">Generator removed</span>}
+        <VisibilityIcon obj={obj}/>
+    </span>
 }
