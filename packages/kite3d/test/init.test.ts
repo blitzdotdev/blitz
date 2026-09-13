@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto'
 import {mkdtemp, readdir, readFile, rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
@@ -66,8 +67,11 @@ describe('initProject', () => {
         expect(instructions).toContain('`origin` is the token-free server origin')
         expect(instructions).toContain('unless `--allow-parent-repo` is supplied')
         expect(instructions).toContain('Then run `npx kite3d check`')
+        const templateInstructions = await readFile(resolve('template/AGENTS.md'))
+        expect(createHash('sha256').update(templateInstructions).digest('hex'))
+            .toBe('b5e4c49352ca62d28295c61bb64a8b973cbc8e9759b92088fdf68fa7f1db3f1a')
         expect(await readFile(resolve('../../docs/agents.md'), 'utf8'))
-            .toBe(await readFile(resolve('template/AGENTS.md'), 'utf8'))
+            .toContain('Run npx kite3d screenshot to save a PNG of the editor viewport')
     })
 })
 
