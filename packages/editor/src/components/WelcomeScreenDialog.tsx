@@ -7,7 +7,7 @@ import {useProject} from '../utils/UseProject.ts'
 import {useHubClient} from '../hubClient.tsx'
 
 const tabs = {
-    projects: {icon: 'projects' as IconName, text: 'Files', color: Colors.BLUE4},
+    projects: {icon: 'projects' as IconName, text: 'Projects', color: Colors.BLUE4},
     templates: {icon: 'star-empty' as IconName, text: 'Templates', color: Colors.GOLD4},
     learn: {icon: 'help' as IconName, text: 'Learn', color: Colors.GREEN4},
     community: {

@@ -1,4 +1,4 @@
-import {expect, test, type Page} from '@playwright/test'
+import {expect, test, type Locator, type Page} from '@playwright/test'
 import {execFile} from 'node:child_process'
 import {mkdir, mkdtemp, readFile, rm, symlink} from 'node:fs/promises'
 import {homedir} from 'node:os'
@@ -21,6 +21,8 @@ interface HubFixture {
     home: string
     main: string
     feature: string
+    detached: string
+    detachedCommit: string
     loose: string
     nested: string
     hub: HubServer
@@ -42,6 +44,7 @@ test.beforeEach(async ({page}) => {
     process.env.GIT_CEILING_DIRECTORIES = root
     const main = resolve(root, 'terminator')
     const feature = resolve(root, 'terminator-feature')
+    const detached = resolve(root, 'terminator-detached')
     const loose = resolve(root, 'terminator-v2')
     const folders = resolve(root, 'folders')
     const nested = resolve(folders, 'nested')
@@ -50,6 +53,9 @@ test.beforeEach(async ({page}) => {
     try {
         await initProject(main)
         await executeFile('git', ['-C', main, 'worktree', 'add', '-qb', 'hub-feature', feature])
+        await executeFile('git', ['-C', main, 'worktree', 'add', '-q', '--detach', detached, 'HEAD'])
+        const {stdout: detachedHead} = await executeFile('git', ['-C', detached, 'rev-parse', '--short=7', 'HEAD'])
+        const detachedCommit = detachedHead.trim()
         await linkKite3d(main)
         await linkKite3d(feature)
         await initProject(loose, {git: false})
@@ -61,7 +67,7 @@ test.beforeEach(async ({page}) => {
         const mainServer = await runDev({projectRoot: main, port: 0, noOpen: true})
         const hub = await createHubServer(0)
         fixture = {
-            root, home, main, feature, loose, nested, hub, mainServer, detachedPaths,
+            root, home, main, feature, detached, detachedCommit, loose, nested, hub, mainServer, detachedPaths,
             previousHome, previousGitCeiling,
         }
         await page.setViewportSize(viewport)
@@ -101,6 +107,7 @@ test('hub mode shows active editors and projects without a viewport or ports', a
     const dialog = page.locator('#welcome-dialog')
     await expect(dialog).toBeVisible()
     await expect(dialog.getByRole('heading', {name: 'Open a project'})).toBeVisible()
+    await expect(dialog.locator('#welcome-sidebar-list-button-projects')).toHaveText('Projects')
     await expect(page.locator('.editorCanvasContainer')).toHaveCount(0)
     await expect(page.locator('.bp5-navbar')).toHaveText(/Kite 3D/)
     await expect(page.locator('.bp5-navbar button')).toHaveCount(1)
@@ -108,14 +115,27 @@ test('hub mode shows active editors and projects without a viewport or ports', a
     await expect(dialog.getByText('Active editors', {exact: true})).toBeVisible()
     await expect(dialog.locator('.hub-active-row')).toHaveCount(1)
     await expect(dialog.locator('.hub-repo-group')).toHaveCount(1)
-    await expect(dialog.locator('.hub-repo-group .hub-project-row.is-indented')).toHaveCount(2)
+    await expect(dialog.locator('.hub-repo-group .hub-project-row.is-indented')).toHaveCount(3)
     await expect(dialog.getByText('hub-feature', {exact: true})).toBeVisible()
+    const detachedTag = dialog.locator('.hub-branch-tag').filter({hasText: current.detachedCommit})
+    await expect(detachedTag).toHaveText(current.detachedCommit)
+    await expect(detachedTag).toHaveAttribute('title', 'detached')
     await expect(dialog.getByText('terminator-v2', {exact: true})).toBeVisible()
     await expect(dialog.getByText('Running', {exact: true})).toHaveCount(1)
     expect(await dialog.innerText()).not.toMatch(/:4\d{3}/)
 
     await mkdir(screenshotDirectory, {recursive: true})
     await page.screenshot({path: resolve(screenshotDirectory, 'dialog-lists.png')})
+})
+
+test('shows the server install instruction when an uninstalled worktree cannot start', async ({page}) => {
+    const current = requiredFixture()
+    await page.goto(current.hub.url)
+    const worktree = page.locator('.hub-project-row.is-indented').filter({hasText: current.detachedCommit})
+    await expect(worktree).toBeVisible()
+
+    await worktree.getByRole('button', {name: 'Open'}).click()
+    await expect(worktree.getByTestId('hub-project-error')).toHaveText(`Run npm install in ${current.detached} first.`)
 })
 
 test('opens a stopped worktree in a new page and stops its server', async ({page, context}) => {
@@ -203,19 +223,22 @@ test('project picker and Worktrees section open a worktree in a new page', async
     await page.getByRole('tab', {name: 'Project'}).click()
     const section = page.locator('.kite3d-project-section').filter({hasText: 'Worktrees'})
     await expect(section).toBeVisible()
-    await expect(section.locator('.kite3d-worktree-row')).toHaveCount(2)
+    await expect(section.locator('.kite3d-worktree-row')).toHaveCount(3)
+    await expect(section.locator('.hub-branch-tag').filter({hasText: current.detachedCommit})).toHaveAttribute('title', 'detached')
     await expect(section.getByText('this tab', {exact: true})).toHaveCount(1)
     await expect(section.getByText('Running', {exact: true})).toHaveCount(1)
     await mkdir(screenshotDirectory, {recursive: true})
     await page.screenshot({path: resolve(screenshotDirectory, 'worktrees-section.png')})
 
-    await page.getByTestId('project-picker').click()
+    const picker = page.getByTestId('project-picker')
+    await picker.click()
     const menu = page.getByTestId('hub-project-menu')
-    await expect(menu).toBeVisible()
+    await waitForProjectMenu(picker, menu)
     await expect(menu.getByText('Active editors', {exact: true})).toBeVisible()
     await expect(menu.getByText('Projects', {exact: true})).toBeVisible()
     await page.screenshot({path: resolve(screenshotDirectory, 'picker-menu.png')})
 
+    await waitForProjectMenu(picker, menu)
     const openedPromise = context.waitForEvent('page')
     await menu.locator('.hub-worktree-menu-item').filter({hasText: 'hub-feature'}).click()
     const opened = await openedPromise
@@ -235,6 +258,14 @@ async function mockGoogle(page: Page): Promise<void> {
             body: 'window.google = {accounts: {id: {initialize() {}, renderButton() {}, prompt() {}}}}',
         })
     })
+}
+
+async function waitForProjectMenu(picker: Locator, menu: Locator): Promise<void> {
+    await expect(menu).toBeVisible()
+    const target = picker.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " bp5-popover-target ")]').first()
+    await expect(target).toHaveClass(/bp5-popover-open/)
+    const transition = menu.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " bp5-popover-transition-container ")]').first()
+    await expect(transition).toHaveClass(/bp5-popover-enter-done/)
 }
 
 function requiredFixture(): HubFixture {
