@@ -571,18 +571,24 @@ function record(value: unknown): Record<string, unknown> {
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
-function compareVersions(left: string, right: string): number {
-    const parseVersion = (value: string): [number, number, number] => {
-        const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value)
-        if (!match) throw new Error(`Kite3D version must be an exact x.y.z version: ${value}`)
-        return [Number(match[1]), Number(match[2]), Number(match[3])]
+export function compareVersions(left: string, right: string): number {
+    const parseVersion = (value: string): [number, number, number, string | null, number] => {
+        const match = /^(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z][0-9A-Za-z-]*)\.(\d+))?$/.exec(value)
+        if (!match) throw new Error(`Kite3D version must be an exact x.y.z or x.y.z-word.n version: ${value}`)
+        return [Number(match[1]), Number(match[2]), Number(match[3]), match[4] ?? null, Number(match[5] ?? 0)]
     }
     const leftParts = parseVersion(left)
     const rightParts = parseVersion(right)
-    for (let index = 0; index < leftParts.length; index += 1) {
-        if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index]
+    const numericPairs = [
+        [leftParts[0], rightParts[0]],
+        [leftParts[1], rightParts[1]],
+        [leftParts[2], rightParts[2]],
+    ]
+    for (const [leftPart, rightPart] of numericPairs) {
+        if (leftPart !== rightPart) return leftPart - rightPart
     }
-    return 0
+    if (leftParts[3] === null || rightParts[3] === null) return leftParts[3] === rightParts[3] ? 0 : leftParts[3] === null ? 1 : -1
+    return leftParts[3].localeCompare(rightParts[3]) || leftParts[4] - rightParts[4]
 }
 
 function legacyProjectVersion(configured: unknown, specifier: string): string {
