@@ -1,4 +1,4 @@
-import {Button, Classes, Menu, MenuDivider, MenuItem, Popover, Spinner} from '@blueprintjs/core'
+import {Button, Callout, Classes, Menu, MenuDivider, MenuItem, Popover, Spinner} from '@blueprintjs/core'
 import {useEffect, useState, type ReactNode} from 'react'
 import {displayHubPath, useHubClient} from '../hubClient.tsx'
 import {useProject} from '../utils/UseProject.ts'
@@ -7,7 +7,7 @@ import {BranchTag} from './WelcomeDialogProjectsTab.tsx'
 export function HubProjectPicker({fallbackPath}: {fallbackPath: string}) {
     const [open, setOpen] = useState(false)
     const {
-        projects, refreshing, starting, stopping, currentProjectPath, refresh, openProject, stop,
+        projects, error, refreshing, starting, stopping, currentProjectPath, refresh, openProject, stop,
     } = useHubClient()
     const {setWelcomeOpen, setWelcomeView} = useProject()
 
@@ -27,6 +27,9 @@ export function HubProjectPicker({fallbackPath}: {fallbackPath: string}) {
         minimal={true}
         placement="bottom-start"
         content={<Menu className={`${Classes.ELEVATION_0} hub-project-menu`} data-testid="hub-project-menu">
+            {error && <li className="hub-menu-error" role="none">
+                <Callout intent="danger" compact={true}>{error.message}</Callout>
+            </li>}
             <MenuDivider title="Active editors"/>
             {!projects && refreshing && (
                 <MenuItem disabled={true} text={<LoadingMenuText text="Loading projects"/>}/>
@@ -58,7 +61,7 @@ export function HubProjectPicker({fallbackPath}: {fallbackPath: string}) {
                     icon="git-branch"
                     shouldDismissPopover={false}
                     text={<span className="hub-menu-title">
-                        <span>{worktree.branch || worktree.name}</span>
+                        <BranchTag branch={worktree.branch} head={worktree.head}/>
                         {worktree.running && <span className="kite3d-status-chip">Running</span>}
                     </span>}
                     labelElement={starting.has(worktree.path)

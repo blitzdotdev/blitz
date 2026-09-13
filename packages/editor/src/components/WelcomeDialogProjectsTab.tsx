@@ -20,11 +20,13 @@ function ProjectLists({onNew, onOpen}: {onNew(): void, onOpen(): void}) {
         <div className="welcome-main-create-actions">
             <WelcomeDialogCreateProjectActions onNew={onNew} onOpen={onOpen}/>
         </div>
-        {error && <Callout intent="danger" compact={true}>{error}</Callout>}
+        {error && !error.projectPath && <Callout intent="danger" compact={true}>{error.message}</Callout>}
         <WelcomeSectionLabel text="Active editors"/>
         {!projects && refreshing && <LoadingRow text="Loading projects"/>}
         {projects && projects.active.length === 0 && <EmptyRow text="No active editors"/>}
-        {projects?.active.map((active) => <div className="hub-project-row hub-active-row" key={active.path}>
+        {projects?.active.map((active) => <div
+            className={`hub-project-row hub-active-row ${error?.projectPath === active.path ? 'has-error' : ''}`}
+            key={active.path}>
             <Icon icon="desktop"/>
             <strong>{active.name}</strong>
             <BranchTag branch={active.branch}/>
@@ -36,6 +38,7 @@ function ProjectLists({onNew, onOpen}: {onNew(): void, onOpen(): void}) {
                 text={stopping.has(active.path) ? 'stopping' : 'Stop'}
                 loading={stopping.has(active.path)}
                 onClick={() => void stop(active.path)}/>
+            {error?.projectPath === active.path && <ProjectError message={error.message}/>}
         </div>)}
         <WelcomeSectionLabel text="Projects"/>
         {projects?.repos.map((repo) => <div className="hub-repo-group" key={repo.root}>
@@ -50,32 +53,36 @@ function ProjectLists({onNew, onOpen}: {onNew(): void, onOpen(): void}) {
                 project={worktree}
                 indented={true}
                 starting={starting.has(worktree.path)}
+                error={error?.projectPath === worktree.path ? error.message : null}
                 onOpen={() => void openProject(worktree.path, worktree.url)}/>) }
         </div>)}
         {projects?.loose.map((project) => <ProjectRow
             key={project.path}
             project={project}
             starting={starting.has(project.path)}
+            error={error?.projectPath === project.path ? error.message : null}
             loose={true}
             onOpen={() => void openProject(project.path, project.url)}/>) }
         {projects && projects.repos.length === 0 && projects.loose.length === 0 && <EmptyRow text="No projects yet"/>}
     </div>
 }
 
-function ProjectRow({project, indented = false, loose = false, starting, onOpen}: {
+function ProjectRow({project, indented = false, loose = false, starting, error, onOpen}: {
     project: HubWorktree
     indented?: boolean
     loose?: boolean
     starting: boolean
+    error: string | null
     onOpen(): void
 }) {
-    return <div className={`hub-project-row ${indented ? 'is-indented' : ''}`}>
+    return <div className={`hub-project-row ${indented ? 'is-indented' : ''} ${error ? 'has-error' : ''}`}>
         <Icon icon={loose ? 'folder-close' : 'git-branch'}/>
-        {loose ? <strong>{project.name}</strong> : <BranchTag branch={project.branch}/>}
+        {loose ? <strong>{project.name}</strong> : <BranchTag branch={project.branch} head={project.head}/>}
         <HubPath path={project.path}/>
         {loose && <span className="hub-row-note">no git</span>}
         {project.running && <span className="kite3d-status-chip">Running</span>}
         <StartButton starting={starting} onClick={onOpen}/>
+        {error && <ProjectError message={error}/>}
     </div>
 }
 
@@ -127,7 +134,7 @@ function FolderProjectView({mode, onCancel}: {mode: 'open' | 'new', onCancel(): 
                     setName(event.currentTarget.value)
                 }}/>
         </label>}
-        {error && <Callout intent="danger" compact={true}>{error}</Callout>}
+        {error && <Callout intent="danger" compact={true}>{error.message}</Callout>}
         <div className="hub-folder-list">
             {loading && <LoadingRow text="Loading folders"/>}
             {!loading && listing?.folders.map((folder) => <div
@@ -169,8 +176,9 @@ function FolderProjectView({mode, onCancel}: {mode: 'open' | 'new', onCancel(): 
     </div>
 }
 
-export function BranchTag({branch}: {branch: string | null}) {
-    return branch ? <span className="hub-branch-tag">{branch}</span> : null
+export function BranchTag({branch, head}: {branch: string | null, head?: string | null}) {
+    const label = branch || head?.slice(0, 7)
+    return label ? <span className="hub-branch-tag" title={branch ? undefined : 'detached'}>{label}</span> : null
 }
 
 export function HubPath({path}: {path: string}) {
@@ -193,6 +201,10 @@ function LoadingRow({text}: {text: string}) {
 
 function EmptyRow({text}: {text: string}) {
     return <div className="hub-empty-row">{text}</div>
+}
+
+function ProjectError({message}: {message: string}) {
+    return <Callout className="hub-project-error" data-testid="hub-project-error" intent="danger" compact={true}>{message}</Callout>
 }
 
 function freeProjectName(names: string[]): string {

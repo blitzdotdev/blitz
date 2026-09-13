@@ -274,6 +274,15 @@
   padding-left: 24px;
 }
 
+.hub-project-row.has-error {
+  flex-wrap: wrap;
+}
+
+.hub-project-error {
+  flex-basis: 100%;
+  margin: 2px 0 3px 23px;
+}
+
 .hub-path {
   color: var(--pt-text-color-muted);
   flex: 1;
@@ -404,6 +413,10 @@
   max-height: min(620px, calc(100vh - 60px));
   min-width: 520px;
   overflow-y: auto;
+}
+
+.hub-menu-error {
+  padding: 5px;
 }
 
 .hub-project-menu .bp5-menu-header h6 {

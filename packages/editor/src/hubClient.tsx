@@ -5,6 +5,7 @@ export interface HubWorktree {
     path: string
     name: string
     branch: string | null
+    head: string | null
     running: boolean
     url: string | null
 }
@@ -21,9 +22,14 @@ export interface HubFolderListing {
     folders: Array<{name: string, path: string, isProject: boolean, isRepo: boolean}>
 }
 
+interface HubClientError {
+    message: string
+    projectPath?: string
+}
+
 interface HubClientValue {
     projects: HubProjects | null
-    error: string | null
+    error: HubClientError | null
     refreshing: boolean
     starting: ReadonlySet<string>
     stopping: ReadonlySet<string>
@@ -41,7 +47,7 @@ const HubClientContext = createContext<HubClientValue | undefined>(undefined)
 export function HubClientProvider({children}: {children: ReactNode}) {
     const client = useMemo(() => new HubRouteClient(), [])
     const [projects, setProjects] = useState<HubProjects | null>(null)
-    const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<HubClientError | null>(null)
     const [refreshing, setRefreshing] = useState(false)
     const [starting, setStarting] = useState<ReadonlySet<string>>(new Set())
     const [stopping, setStopping] = useState<ReadonlySet<string>>(new Set())
@@ -52,7 +58,7 @@ export function HubClientProvider({children}: {children: ReactNode}) {
             setProjects(await client.projects())
             setError(null)
         } catch (caught) {
-            setError(errorMessage(caught))
+            setError({message: errorMessage(caught)})
         } finally {
             setRefreshing(false)
         }
@@ -64,7 +70,7 @@ export function HubClientProvider({children}: {children: ReactNode}) {
             setError(null)
             return listing
         } catch (caught) {
-            setError(errorMessage(caught))
+            setError({message: errorMessage(caught)})
             throw caught
         }
     }, [client])
@@ -75,7 +81,7 @@ export function HubClientProvider({children}: {children: ReactNode}) {
         try {
             await operation()
         } catch (caught) {
-            setError(errorMessage(caught))
+            setError({message: errorMessage(caught), projectPath: path})
         } finally {
             setStarting((current) => without(current, path))
         }
@@ -145,7 +151,7 @@ export function HubClientProvider({children}: {children: ReactNode}) {
             await refresh()
             setStopping((current) => without(current, path))
         }
-        if (caughtError) setError(caughtError)
+        if (caughtError) setError({message: caughtError, projectPath: path})
     }, [client, refresh])
 
     const currentProjectPath = useMemo(() => {
@@ -229,7 +235,7 @@ class HubRouteClient {
         const response = await fetch(path, {...init, headers})
         if (!response.ok) {
             const body = await response.json().catch(() => ({})) as {error?: {message?: string}}
-            throw new Error(body.error?.message || `${path} failed: ${response.status}`)
+            throw new Error(body.error?.message || `HTTP ${response.status}`)
         }
         return response.json() as Promise<T>
     }

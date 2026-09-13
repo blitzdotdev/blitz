@@ -1,12 +1,13 @@
-import {Button, Icon, Spinner} from '@blueprintjs/core'
+import {Button, Callout, Icon, Spinner} from '@blueprintjs/core'
 import {useEffect} from 'react'
 import {useAssets} from '../utils/AssetsProvider.ts'
 import {useManagerVersion} from '../utils/UseManager.ts'
 import type {ProjectLoadStatus} from '../utils/ViewerInstanceManager.ts'
 import {displayHubPath, useHubClient} from '../hubClient.tsx'
+import {BranchTag} from '../components/WelcomeDialogProjectsTab.tsx'
 
 export function WorktreesSectionComp() {
-    const {projects, currentProjectPath, starting, refresh, openProject} = useHubClient()
+    const {projects, error, currentProjectPath, starting, refresh, openProject} = useHubClient()
 
     useEffect(() => {
         void refresh()
@@ -15,13 +16,14 @@ export function WorktreesSectionComp() {
     const repo = projects?.repos.find(({worktrees}) => worktrees.some(({path}) => path === currentProjectPath))
     if (!repo) return null
     return <ProjectSection label="Worktrees" count={repo.worktrees.length}>
+        {error && <Callout intent="danger" compact={true}>{error.message}</Callout>}
         {repo.worktrees.map((worktree) => <button
             type="button"
             className="kite3d-worktree-row"
             key={worktree.path}
             onClick={() => void openProject(worktree.path, worktree.url)}>
             <Icon icon="git-branch" size={14}/>
-            <span className="hub-branch-tag">{worktree.branch || worktree.name}</span>
+            <BranchTag branch={worktree.branch} head={worktree.head}/>
             {worktree.path === currentProjectPath && <span className="hub-this-tab-tag">this tab</span>}
             {worktree.running && <span className="kite3d-status-chip">Running</span>}
             {starting.has(worktree.path) && <span className="hub-starting"><Spinner size={12}/> starting</span>}
