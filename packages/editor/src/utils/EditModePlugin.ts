@@ -27,10 +27,15 @@ import {editorCameraController} from "./three/EditorCameraController.ts";
 import {LightMaterialOverrider} from "./three/LightMaterialOverrider.ts";
 import {isExternalObject} from "./projectUtils.ts";
 
+export const wasdMovementSpeedStorageKey = 'kite3d.editor.wasdMovementSpeed'
+const minWASDMovementSpeed = 0.0625
+const maxWASDMovementSpeed = 64
+
 // just for edit mode settings and basic stuff, dont put project running state here.
 @uiFolderContainer('Edit Mode', {expanded: true})
 export class EditModePlugin extends AViewerPluginSync<{
     enableChanged: object
+    speedChanged: {speed: number}
 } & AViewerPluginEventMap>{
     public static readonly PluginType = 'EditModePlugin';
 
@@ -130,6 +135,16 @@ export class EditModePlugin extends AViewerPluginSync<{
         this.cameraOrtho.autoAspect = true
         super.onAdded(viewer);
 
+        try {
+            const storedSpeed = Number(localStorage.getItem(wasdMovementSpeedStorageKey))
+            if (Number.isFinite(storedSpeed) && storedSpeed > 0) {
+                this.wasdMovementSpeed = Math.max(minWASDMovementSpeed, Math.min(maxWASDMovementSpeed, storedSpeed))
+            }
+        } catch {
+            // Storage is optional. Camera movement still works when it is unavailable.
+        }
+        this._wasdPreferenceLoaded = true
+
         // this.grid.material.color.set(0xff0000)
 
         // console.log(this.grid)
@@ -189,10 +204,27 @@ export class EditModePlugin extends AViewerPluginSync<{
     @serialize()
     enableWASDMovement = true
 
-    @onChange('setDirty')
-    @uiNumber()
-    @serialize()
+    private _wasdPreferenceLoaded = false
+
+    @uiNumber(undefined, (plugin: EditModePlugin) => ({
+        onChange: () => plugin.setWASDMovementSpeed(plugin.wasdMovementSpeed),
+    }))
     wasdMovementSpeed = 1
+
+    private setWASDMovementSpeed(value: number) {
+        const speed = Number.isFinite(value)
+            ? Math.max(minWASDMovementSpeed, Math.min(maxWASDMovementSpeed, value))
+            : 1
+        this.wasdMovementSpeed = speed
+        this.setDirty()
+        if (!this._wasdPreferenceLoaded) return
+        try {
+            localStorage.setItem(wasdMovementSpeedStorageKey, String(speed))
+        } catch {
+            // Storage is optional. The current editor session keeps the speed.
+        }
+        this.dispatchEvent({type: 'speedChanged', speed})
+    }
 
     // @onChange('setDirty')
     @uiNumber()
@@ -220,6 +252,14 @@ export class EditModePlugin extends AViewerPluginSync<{
         onDown?: (event: KeyboardEvent)=>void,
         onUp?: (event: KeyboardEvent)=>void,
     }[] = [
+        {
+            keys: ['[', ']'],
+            onDown: (event: KeyboardEvent) => {
+                if (!this._viewer?.renderEnabled) return
+                event.preventDefault()
+                this.setWASDMovementSpeed(this.wasdMovementSpeed * (event.key === ']' ? 2 : 0.5))
+            }
+        },
         // delete object
         {
             keys: ['Backspace', 'Delete'],
