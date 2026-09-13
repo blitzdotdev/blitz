@@ -63,6 +63,10 @@ npx kite3d publish    # live at https://<slug>.app.blitz.dev/
 
 Run `npx kite3d` with no argument for the full list.
 
+### Prerelease channel
+
+Use `npx kite3d@next init my-game` or `npx kite3d@next upgrade` to try the next version before it ships. The `latest` channel stays stable.
+
 ## Packages
 
 | Package | What it is |

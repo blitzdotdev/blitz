@@ -14,6 +14,10 @@ const publishOrder = ['engine', 'editor', 'kite3d']
 const lockstepPackages = new Set(['@kite3d/engine', '@kite3d/editor', 'kite3d'])
 const isLockstepPackage = name => lockstepPackages.has(name)
 
+export function publishTag(version) {
+    return version.includes('-') ? 'next' : null
+}
+
 function run(command, args, {environment = process.env, capture = false, allowFailure = false} = {}) {
     try {
         return execFileSync(command, args, {
@@ -41,8 +45,11 @@ export function publishPackage({name, version, workspace, dryRun, environment, c
         return false
     }
 
+    const tag = publishTag(version)
     const arguments_ = ['publish', '--workspace', workspace, '--access', 'public']
+    if (tag) arguments_.push('--tag', tag)
     if (dryRun) arguments_.push('--dry-run')
+    logger(`${dryRun ? 'Dry-running' : 'Publishing'} ${packageSpec}: npm ${arguments_.join(' ')}`)
     commandRunner('npm', arguments_, {environment})
     return true
 }
@@ -171,10 +178,9 @@ async function release() {
         }
 
         const registered = !dryRun || register
-        if (registered) {
-            await registerRuntime()
-            await uploadAgentsMd()
-        }
+        if (registered) await registerRuntime()
+        if (publishTag(version)) console.log(`Skipping agents guide upload for prerelease ${version}.`)
+        else if (registered) await uploadAgentsMd()
         finishTag(version, branch, dryRun, registered)
     } finally {
         await npm.cleanup()

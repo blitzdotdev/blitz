@@ -12,15 +12,16 @@ const publishableManifests = [
 ]
 const lockstepPackages = new Set(['@kite3d/engine', '@kite3d/editor', 'kite3d'])
 const dependencySections = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
-const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+const stableVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+const explicitVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[A-Za-z][0-9A-Za-z-]*\.(0|[1-9]\d*))?$/
 
 export function computeVersion(currentVersion, requestedVersion) {
-    const match = semverPattern.exec(currentVersion)
+    const match = stableVersionPattern.exec(currentVersion)
     if (!match) throw new Error(`Root package version is not a stable semantic version: ${currentVersion}`)
 
-    if (semverPattern.test(requestedVersion)) return requestedVersion
+    if (explicitVersionPattern.test(requestedVersion)) return requestedVersion
     if (!['patch', 'minor', 'major'].includes(requestedVersion)) {
-        throw new Error('Version must be patch, minor, major, or an explicit x.y.z version.')
+        throw new Error('Version must be patch, minor, major, or an explicit x.y.z or x.y.z-word.n version.')
     }
 
     let [, major, minor, patch] = match.map(Number)
@@ -109,7 +110,7 @@ function parseArguments(arguments_) {
     const allowDirty = arguments_.includes('--allow-dirty')
     const positional = arguments_.filter(argument => argument !== '--allow-dirty')
     if (positional.length !== 1) {
-        throw new Error('Usage: node scripts/set-version.mjs <patch|minor|major|x.y.z> [--allow-dirty]')
+        throw new Error('Usage: node scripts/set-version.mjs <patch|minor|major|x.y.z|x.y.z-word.n> [--allow-dirty]')
     }
     return {allowDirty, requestedVersion: positional[0]}
 }

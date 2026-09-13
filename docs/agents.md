@@ -25,6 +25,8 @@ Run `npx kite3d archive` to write `<project-name>-source.zip`. The archive uses 
 
 Upgrade the project with `npx kite3d upgrade`. Upgrade targets the invoked CLI's exact version even when the project pins an older CLI. It applies every migration the invoked version knows, rewrites both version fields, runs `npm install --ignore-scripts`, validates the scene, and records a `kite3d-upgrade` journal entry.
 
+- Use `npx kite3d@next init my-game` or `npx kite3d@next upgrade` to try the next version before it ships. The `latest` channel stays stable.
+
 `npx kite3d skills` lists the invoked CLI's bundled skills and absolute, readable `SKILL.md` paths. It works outside a project and does not install or execute a skill; pass `--json` for structured output.
 
 Source code to grep after `npm install`:
