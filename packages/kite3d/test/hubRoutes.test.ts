@@ -5,7 +5,7 @@ import {resolve} from 'node:path'
 import {promisify} from 'node:util'
 import {afterEach, describe, expect, it} from 'vitest'
 import {initProject, runDev} from '../src/commands.ts'
-import {readDevelopmentServer, stopDevelopmentServer} from '../src/hubRoutes.ts'
+import {processIsAlive, readDevelopmentServer, stopDevelopmentServer} from '../src/hubRoutes.ts'
 import {kite3dHomeDirectory, readProjectIndex} from '../src/projectIndex.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 
@@ -122,6 +122,95 @@ describe('hub routes on a development server', () => {
     })
 })
 
+describe('starting pinned development servers', () => {
+    it('starts and stops a pinned CLI that only accepts dev --no-open', async () => {
+        const fixture = await hubFixture('plain-arguments')
+        const project = await fakeCliProject(fixture.parent, 'plain pinned project', `
+const fs = require('node:fs')
+const path = require('node:path')
+const args = process.argv.slice(2)
+if (args.length !== 2 || args[0] !== 'dev' || args[1] !== '--no-open') {
+    console.error('unsupported arguments: ' + args.join(' '))
+    process.exit(1)
+}
+const directory = path.join(process.cwd(), '.kite3d')
+fs.mkdirSync(directory, {recursive: true})
+const token = 'fake-token'
+fs.writeFileSync(path.join(directory, 'dev.json'), JSON.stringify({
+    pid: process.pid,
+    port: 43210,
+    url: 'http://127.0.0.1:43210/?t=' + token,
+    token,
+    started_at: new Date().toISOString(),
+}))
+process.on('SIGTERM', () => process.exit(0))
+setInterval(() => {}, 1000)
+`)
+
+        const start = await post(fixture.base, fixture.headers, '/api/hub/projects/start', {path: project})
+
+        expect(start.response.status).toBe(200)
+        expect(start.body).toEqual({url: 'http://127.0.0.1:43210/?t=fake-token'})
+        const state = await readDevelopmentServer(project)
+        expect(state).not.toBeNull()
+
+        const stop = await post(fixture.base, fixture.headers, '/api/hub/projects/stop', {path: project})
+        expect(stop.response.status).toBe(200)
+        expect(stop.body).toEqual({stopped: true})
+        expect(processIsAlive(state!.pid)).toBe(false)
+    })
+
+    it('returns the pinned CLI failure from the log', async () => {
+        const fixture = await hubFixture('failed-start')
+        const project = await fakeCliProject(fixture.parent, 'broken pinned project', `
+console.error('fake pinned CLI could not start')
+process.exit(1)
+`)
+
+        const start = await post(fixture.base, fixture.headers, '/api/hub/projects/start', {path: project})
+
+        expect(start.response.status).toBe(502)
+        expect(start.body).toEqual({error: {
+            code: 'start_failed',
+            message: `Could not start the development server for ${project}: "fake pinned CLI could not start"`,
+        }})
+    })
+
+    it('returns the last log line when the pinned CLI times out', async () => {
+        const fixture = await hubFixture('timed-out-start')
+        const project = await fakeCliProject(fixture.parent, 'hanging pinned project', `
+const fs = require('node:fs')
+const path = require('node:path')
+if (process.argv.includes('--detach')) {
+    console.error('unknown option --detach')
+    process.exit(1)
+}
+const directory = path.join(process.cwd(), '.kite3d')
+fs.mkdirSync(directory, {recursive: true})
+fs.writeFileSync(path.join(directory, 'fake.pid'), String(process.pid))
+console.error('fake pinned CLI stayed alive without dev.json')
+process.on('SIGTERM', () => process.exit(0))
+setInterval(() => {}, 1000)
+`)
+        const previousTimeout = process.env.KITE3D_DEV_START_TIMEOUT_MS
+        process.env.KITE3D_DEV_START_TIMEOUT_MS = '250'
+        cleanup.push(async () => {
+            if (previousTimeout === undefined) delete process.env.KITE3D_DEV_START_TIMEOUT_MS
+            else process.env.KITE3D_DEV_START_TIMEOUT_MS = previousTimeout
+        })
+
+        const start = await post(fixture.base, fixture.headers, '/api/hub/projects/start', {path: project})
+
+        expect(start.response.status).toBe(502)
+        expect(start.body).toEqual({error: {
+            code: 'start_failed',
+            message: `Could not start the development server for ${project}: "fake pinned CLI stayed alive without dev.json"`,
+        }})
+        const pid = Number(await readFile(resolve(project, '.kite3d/fake.pid'), 'utf8'))
+        expect(processIsAlive(pid)).toBe(false)
+    })
+})
+
 interface HubProjects {
     active: Array<{path: string, name: string, branch: string | null, url: string}>
     repos: Array<{name: string, root: string, worktrees: Array<{
@@ -157,4 +246,31 @@ async function writeKite3dProject(path: string, name: string): Promise<void> {
         devDependencies: {kite3d: KITE3D_VERSION},
     })}\n`)
     await writeFile(resolve(path, 'assets/main.scene.gltf'), '{}\n')
+}
+
+async function hubFixture(name: string): Promise<{
+    parent: string
+    base: string
+    headers: Record<string, string>
+}> {
+    const parent = await mkdtemp(resolve(homedir(), `kite3d hub ${name} `))
+    cleanup.push(() => rm(parent, {recursive: true, force: true}))
+    const host = resolve(parent, 'hub host')
+    await initProject(host, {git: false})
+    const server = await runDev({projectRoot: host, port: 0, noOpen: true})
+    cleanup.push(() => server.close())
+    return {
+        parent,
+        base: `http://127.0.0.1:${server.port}`,
+        headers: {'X-Kite3D-Token': server.token},
+    }
+}
+
+async function fakeCliProject(parent: string, name: string, source: string): Promise<string> {
+    const project = resolve(parent, name)
+    await writeKite3dProject(project, name.replaceAll(' ', '-'))
+    const cli = resolve(project, 'node_modules/kite3d/dist/cli.js')
+    await mkdir(resolve(cli, '..'), {recursive: true})
+    await writeFile(cli, source.trimStart())
+    return project
 }
