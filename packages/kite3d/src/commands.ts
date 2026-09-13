@@ -18,6 +18,8 @@ import {checkProject} from './check.ts'
 import {gitRepositoryRoot, gitTracksProject, initializeGitRepository} from './git.ts'
 import {assertLegacyEngineIsHoisted, migrateLegacyProject} from './legacy.ts'
 import {screenshotProject, type ScreenshotOptions, type ScreenshotResult} from './screenshot.ts'
+import {processIsAlive, readDevelopmentServer, startDetachedDevelopmentServer, stopDevelopmentServer} from './hubRoutes.ts'
+import {registerProject} from './projectIndex.ts'
 
 const commandRequire = createRequire(import.meta.url)
 
@@ -98,6 +100,7 @@ export async function initProject(directory = '.', options: {git?: boolean} = {}
         await writeFile(destination, contents)
     }
     if (shouldInitializeGit) await initializeGitRepository(target)
+    await registerProject(target)
     return target
 }
 
@@ -174,20 +177,87 @@ export async function runDev(options: {
         console.warn(`[kite3d] A development server is already running for this project (pid ${existing.pid}, port ${existing.port}).`)
         throw new Error('Use kite3d open to open it, or pass --force to start another server.')
     }
-    const backendUrl = resolveBackendUrl(options.backendUrl)
-    const server = await createDevServer({
-        projectRoot,
-        port: options.port,
-        strictPort: options.strictPort,
-        backendUrl,
-        publish: async (publishOptions, emit) => publishFromDisk(projectRoot, {
-            ...publishOptions,
+    const releaseStartupLock = await acquireDevelopmentStartupLock(projectRoot)
+    let server: DevServer | undefined
+    try {
+        const concurrent = await devStatusFromDisk(projectRoot)
+        if (concurrent && !options.force) {
+            console.warn(`[kite3d] A development server is already running for this project (pid ${concurrent.pid}, port ${concurrent.port}).`)
+            throw new Error('Use kite3d open to open it, or pass --force to start another server.')
+        }
+        const backendUrl = resolveBackendUrl(options.backendUrl)
+        server = await createDevServer({
+            projectRoot,
+            port: options.port,
+            strictPort: options.strictPort,
             backendUrl,
-        }, emit),
-        pull: async () => pullFromDisk(projectRoot),
-    })
-    if (!options.noOpen) await openBrowser(server.url)
-    return server
+            publish: async (publishOptions, emit) => publishFromDisk(projectRoot, {
+                ...publishOptions,
+                backendUrl,
+            }, emit),
+            pull: async () => pullFromDisk(projectRoot),
+        })
+        await registerProject(projectRoot)
+        if (!options.noOpen) await openBrowser(server.url)
+        return server
+    } catch (error) {
+        await server?.close()
+        throw error
+    } finally {
+        await releaseStartupLock()
+    }
+}
+
+export function runDetachedDev(options: {
+    projectRoot?: string
+    cliPath?: string
+    port?: number
+    force?: boolean
+} = {}) {
+    return startDetachedDevelopmentServer(
+        resolve(options.projectRoot || process.cwd()),
+        resolve(options.cliPath || process.argv[1]),
+        {port: options.port, force: options.force},
+    )
+}
+
+export function stopDev(projectRoot = process.cwd()): Promise<boolean> {
+    return stopDevelopmentServer(resolve(projectRoot))
+}
+
+async function acquireDevelopmentStartupLock(projectRoot: string): Promise<() => Promise<void>> {
+    const directory = resolve(projectRoot, '.kite3d')
+    const path = resolve(directory, 'dev-start.lock')
+    const owner = {pid: process.pid, created_at: new Date().toISOString(), id: randomUUID()}
+    await mkdir(directory, {recursive: true})
+    for (let attempt = 0; attempt < 1_200; attempt += 1) {
+        try {
+            const handle = await open(path, 'wx', 0o600)
+            try {
+                await handle.writeFile(`${JSON.stringify(owner)}\n`, 'utf8')
+            } finally {
+                await handle.close()
+            }
+            return async () => {
+                try {
+                    const current = JSON.parse(await readFile(path, 'utf8')) as {id?: unknown}
+                    if (current.id === owner.id) await unlink(path)
+                } catch { /* already released or replaced */ }
+            }
+        } catch (error) {
+            if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+            let current: {pid?: unknown, created_at?: unknown} = {}
+            try { current = JSON.parse(await readFile(path, 'utf8')) as typeof current } catch { /* replace below */ }
+            const createdAt = typeof current.created_at === 'string' ? Date.parse(current.created_at) : Number.NaN
+            if (typeof current.pid !== 'number' || !Number.isInteger(current.pid) || !processIsAlive(current.pid)
+                || !Number.isFinite(createdAt) || Date.now() - createdAt > 60_000) {
+                await unlink(path).catch(() => undefined)
+                continue
+            }
+            await new Promise((resolveWait) => setTimeout(resolveWait, 50))
+        }
+    }
+    throw new Error(`Timed out waiting to start the development server for ${projectRoot}.`)
 }
 
 export async function publishFromDisk(
@@ -290,18 +360,9 @@ export async function statusFromDisk(projectRoot = process.cwd()): Promise<Publi
 }
 
 export async function devStatusFromDisk(projectRoot = process.cwd()): Promise<PublicDevServer | undefined> {
-    let state: {pid?: unknown, port?: unknown, url?: unknown, started_at?: unknown}
-    try {
-        state = JSON.parse(await readFile(resolve(projectRoot, '.kite3d/dev.json'), 'utf8')) as typeof state
-    } catch {
-        return undefined
-    }
-    if (!Number.isInteger(state.pid) || (state.pid as number) <= 0
-        || !Number.isInteger(state.port) || (state.port as number) < 1
-        || typeof state.url !== 'string' || typeof state.started_at !== 'string'
-        || !processIsAlive(state.pid as number)) return undefined
-    const started = Date.parse(state.started_at)
-    if (!Number.isFinite(started)) return undefined
+    const state = await readDevelopmentServer(resolve(projectRoot))
+    if (!state) return undefined
+    const started = Date.parse(state.startedAt)
     let publicUrl: string
     try {
         const url = new URL(state.url)
@@ -311,8 +372,8 @@ export async function devStatusFromDisk(projectRoot = process.cwd()): Promise<Pu
         return undefined
     }
     return {
-        pid: state.pid as number,
-        port: state.port as number,
+        pid: state.pid,
+        port: state.port,
         age: formatAge(Math.max(0, Date.now() - started)),
         url: publicUrl,
     }
@@ -446,15 +507,6 @@ async function acquirePublishLock(root: string): Promise<() => Promise<void>> {
     throw new Error('Could not acquire .kite3d/publish.lock after replacing a stale lock.')
 }
 
-function processIsAlive(pid: number): boolean {
-    try {
-        process.kill(pid, 0)
-        return true
-    } catch (error) {
-        return error instanceof Error && 'code' in error && error.code === 'EPERM'
-    }
-}
-
 function formatAge(milliseconds: number): string {
     const seconds = Math.floor(milliseconds / 1_000)
     if (seconds < 60) return `${seconds}s`
@@ -462,13 +514,6 @@ function formatAge(milliseconds: number): string {
     if (minutes < 60) return `${minutes}m ${seconds % 60}s`
     const hours = Math.floor(minutes / 60)
     return `${hours}h ${minutes % 60}m`
-}
-
-export async function openCurrentProject(projectRoot = process.cwd()): Promise<string> {
-    const state = JSON.parse(await readFile(resolve(projectRoot, '.kite3d/dev.json'), 'utf8')) as {url?: unknown}
-    if (typeof state.url !== 'string') throw new Error('.kite3d/dev.json does not contain a dev URL')
-    await openBrowser(state.url)
-    return state.url
 }
 
 export function screenshotFromDisk(
