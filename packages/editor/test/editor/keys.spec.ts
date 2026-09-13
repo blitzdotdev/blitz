@@ -99,6 +99,7 @@ test('isolates the captured hierarchy node subtree from its context menu', async
     await openEditor(page)
 
     await page.locator('.bp5-tree-node-label', {hasText: 'Isolate_Group'}).click({button: 'right'})
+    await expect(page.getByText('Isolate', {exact: true}), 'the hierarchy menu should include Isolate').toBeVisible()
     await page.getByText('Isolate', {exact: true}).click()
     expect(await objectVisibility(page), 'the hierarchy Isolate action should keep only that node subtree visible').toEqual({
         Mesh_A: false,
