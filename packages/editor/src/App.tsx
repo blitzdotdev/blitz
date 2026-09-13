@@ -1,5 +1,5 @@
-import {useMemo, useState} from 'react'
-import {BlueprintProvider} from '@blueprintjs/core'
+import {useEffect, useMemo, useState} from 'react'
+import {BlueprintProvider, Button, Navbar} from '@blueprintjs/core'
 import {
     AppToasterOverlay,
     DialogComponent,
@@ -17,6 +17,8 @@ import {DevServerProjectBridge} from './adapters/DevServerProjectBridge.tsx'
 import {QueryClientProvider} from '@tanstack/react-query'
 import {queryClient} from './tsdb/client.ts'
 import {LibraryDropDialog} from './components/LibraryDropDialog.tsx'
+import {HubClientProvider} from './hubClient.tsx'
+import {WelcomeScreenDialog} from './components/WelcomeScreenDialog.tsx'
 
 export default function App() {
     const sourceResult = useMemo(() => {
@@ -26,6 +28,14 @@ export default function App() {
             return {error: error instanceof Error ? error.message : String(error)}
         }
     }, [])
+    const [serverMode, setServerMode] = useState<'loading' | 'hub' | 'project' | 'error'>('loading')
+
+    useEffect(() => {
+        if (!sourceResult.source) return
+        void sourceResult.source.state().then((state) => {
+            setServerMode(state.hub === true ? 'hub' : 'project')
+        }).catch(() => setServerMode('error'))
+    }, [sourceResult])
 
     if (!sourceResult.source) {
         return <main className="no-project" role="alert">
@@ -34,20 +44,43 @@ export default function App() {
         </main>
     }
 
+    if (serverMode === 'loading') return null
+    if (serverMode === 'error') return <main className="no-project" role="alert">
+        This Kite3D editor link is no longer authorized. Run <code>kite3d open</code> again.
+    </main>
+
     const source = sourceResult.source
+    if (serverMode === 'hub') return <QueryClientProvider client={queryClient}>
+        <BlueprintProvider>
+        <VisualStyleProvider>
+            <DialogProvider>
+                <ProjectProvider>
+                    <HubClientProvider>
+                        <HubEditorApp/>
+                    </HubClientProvider>
+                </ProjectProvider>
+                <DialogComponent/>
+                <AppToasterOverlay/>
+            </DialogProvider>
+        </VisualStyleProvider>
+        </BlueprintProvider>
+    </QueryClientProvider>
+
     return <QueryClientProvider client={queryClient}>
         <BlueprintProvider>
         <VisualStyleProvider>
             <DialogProvider>
                 <ManagerProvider source={source}>
                     <ProjectProvider>
-                        <DevServerProjectBridge>
-                            <AssetsProvider>
-                                <ContextMenuProvider>
-                                    <EditorApp source={source}/>
-                                </ContextMenuProvider>
-                            </AssetsProvider>
-                        </DevServerProjectBridge>
+                        <HubClientProvider>
+                            <DevServerProjectBridge>
+                                <AssetsProvider>
+                                    <ContextMenuProvider>
+                                        <EditorApp source={source}/>
+                                    </ContextMenuProvider>
+                                </AssetsProvider>
+                            </DevServerProjectBridge>
+                        </HubClientProvider>
                     </ProjectProvider>
                 </ManagerProvider>
             </DialogProvider>
@@ -56,11 +89,27 @@ export default function App() {
     </QueryClientProvider>
 }
 
+function HubEditorApp() {
+    return <>
+        <Navbar>
+            <Navbar.Group>
+                <img className="main-nav-logo" src="/logo.svg" alt=""/>
+                <Navbar.Heading>Kite 3D</Navbar.Heading>
+            </Navbar.Group>
+            <Navbar.Group align="right">
+                <Button aria-label="Settings" icon="cog" size="small" variant="minimal"/>
+            </Navbar.Group>
+        </Navbar>
+        <WelcomeScreenDialog hubMode={true}/>
+    </>
+}
+
 function EditorApp({source}: {source: DevServerSource}) {
     const manager = useManagerVersion()
     const [publishDialogOpen, setPublishDialogOpen] = useState(false)
     return <>
         <ThreeEditorComponent onOpenGame={() => setPublishDialogOpen(true)}/>
+        <WelcomeScreenDialog hubMode={false}/>
         <PublishDialog
             isOpen={publishDialogOpen}
             name={manager.project?.name || 'Kite3D game'}
