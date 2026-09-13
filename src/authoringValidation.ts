@@ -18,7 +18,6 @@ import {
 
 export type AuthoringFailureCode =
     | 'NO_VISIBLE_AUTHORED_CONTENT'
-    | 'GENERATOR_PREVIEW_MISSING'
     | 'RUNTIME_OBJECT_AFTER_STOP'
     | 'MISSING_AUTHORING_SOURCE'
     | 'RUNTIME_SOURCE_DRIFT'
@@ -45,7 +44,6 @@ export interface AuthoringQualityReport {
         visibleAuthoredContent: boolean
         selectableAuthoredContent: boolean
         relationshipsValid: boolean
-        generatorPreviews: boolean
         cameraUseful: boolean
     }
     metrics: {
@@ -53,8 +51,6 @@ export interface AuthoringQualityReport {
         renderableCount: number
         visibleRenderableCount: number
         selectableCount: number
-        generatorCount: number
-        generatorPreviewCount: number
         cameraFramedRenderableCount: number
         cameraInsideRenderableCount: number
     }
@@ -99,7 +95,7 @@ interface SourceRecord {
     metadata: AuthoringMetadata
 }
 
-/** Validate the stopped authoring hierarchy, its sources, previews, and saved camera. */
+/** Validate the stopped authoring hierarchy, its sources, and saved camera. */
 export function authoringQualityReport(viewer: ViewerLike): AuthoringQualityReport {
     const scene = viewer.scene as SceneLike
     if (!scene?.modelRoot) throw new Error('Authoring validation requires viewer.scene.modelRoot')
@@ -107,9 +103,6 @@ export function authoringQualityReport(viewer: ViewerLike): AuthoringQualityRepo
 
     const issues: AuthoringValidationIssue[] = []
     const sources = collectSources(scene.modelRoot)
-    const generators: SourceRecord[] = []
-    const previews: SourceRecord[] = []
-    const boundedPreviewSourceIds = new Set<string>()
     const visibleBounds: Array<{object: IObject3D, bounds: Box3}> = []
     let authoredObjectCount = 0
     let renderableCount = 0
@@ -119,9 +112,6 @@ export function authoringQualityReport(viewer: ViewerLike): AuthoringQualityRepo
     scene.modelRoot.traverse((object) => {
         if (object === scene.modelRoot) return
         authoredObjectCount += 1
-        const metadata = getAuthoringMetadata(object)
-        if (metadata?.role === 'generator' && !metadata.sourceId) generators.push({object, metadata})
-        if (metadata?.role === 'generator' && metadata.sourceId) previews.push({object, metadata})
         if (!isRenderable(object)) return
         renderableCount += 1
         if (!isEffectivelyVisible(object, scene.modelRoot)) return
@@ -130,34 +120,11 @@ export function authoringQualityReport(viewer: ViewerLike): AuthoringQualityRepo
         const bounds = new Box3().setFromObject(object)
         if (!bounds.isEmpty() && finiteVector(bounds.min) && finiteVector(bounds.max)) {
             visibleBounds.push({object, bounds})
-            if (metadata?.role === 'generator' && metadata.sourceId) boundedPreviewSourceIds.add(metadata.sourceId)
         }
     })
-
-    for (const preview of previews) {
-        const source = sources.get(preview.metadata.sourceId || '')
-        if (!source || source.metadata.role !== 'generator') {
-            pushIssue(issues, {
-                code: 'MISSING_AUTHORING_SOURCE',
-                severity: 'error',
-                message: `Generator output source "${preview.metadata.sourceId || '(missing)'}" is not present beneath modelRoot.`,
-                object: objectEvidence(preview.object),
-            })
-        }
-    }
-    for (const generator of generators) {
-        if (!boundedPreviewSourceIds.has(generator.metadata.id)) {
-            pushIssue(issues, {
-                code: 'GENERATOR_PREVIEW_MISSING',
-                severity: 'error',
-                message: 'An authored generator needs a bounded stopped-mode preview.',
-                object: objectEvidence(generator.object),
-            })
-        }
-    }
     issues.push(...runtimeRelationshipIssues(scene, sources))
 
-    const emptyScene = authoredObjectCount === 0 && generators.length === 0
+    const emptyScene = authoredObjectCount === 0
     if (visibleRenderableCount === 0 || selectableCount === 0) {
         issues.push({
             code: 'NO_VISIBLE_AUTHORED_CONTENT',
@@ -178,7 +145,6 @@ export function authoringQualityReport(viewer: ViewerLike): AuthoringQualityRepo
     const errors = issues.filter(({severity}) => severity === 'error')
     const relationshipsValid = !errors.some(({code}) =>
         code === 'MISSING_AUTHORING_SOURCE' || code === 'RUNTIME_SOURCE_DRIFT')
-    const generatorPreviews = !errors.some(({code}) => code === 'GENERATOR_PREVIEW_MISSING')
     const ok = errors.length === 0
     return {
         ok,
@@ -189,7 +155,6 @@ export function authoringQualityReport(viewer: ViewerLike): AuthoringQualityRepo
             visibleAuthoredContent: visibleRenderableCount > 0,
             selectableAuthoredContent: selectableCount > 0,
             relationshipsValid,
-            generatorPreviews,
             cameraUseful: cameraResult.useful,
         },
         metrics: {
@@ -197,8 +162,6 @@ export function authoringQualityReport(viewer: ViewerLike): AuthoringQualityRepo
             renderableCount,
             visibleRenderableCount,
             selectableCount,
-            generatorCount: generators.length,
-            generatorPreviewCount: boundedPreviewSourceIds.size,
             cameraFramedRenderableCount: cameraResult.framed,
             cameraInsideRenderableCount: cameraResult.inside,
         },
@@ -415,7 +378,7 @@ function runtimeRelationshipIssues(scene: SceneLike, sources: Map<string, Source
             return
         }
         const runtime = getRuntimeObjectMetadata(object)
-        if (!runtime || runtime.kind === 'effect' || source.metadata.role === 'generator') return
+        if (!runtime || runtime.kind === 'effect') return
         const overrides = new Set<RuntimeMutableProperty>(runtime.overrides || [])
         if (JSON.stringify(runtimeSignature(source.object, overrides)) !== JSON.stringify(runtimeSignature(object, overrides))) {
             pushIssue(issues, {

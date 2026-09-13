@@ -18,7 +18,6 @@ import {
 import {MeshoptDecoder} from 'meshoptimizer'
 import {registerScripts} from '../scripts.ts'
 import {HtmlUiComponent} from '../plugins/HtmlUiComponent.ts'
-import {GeneratorComponent} from '../plugins/GeneratorComponent.ts'
 import {CannonPhysicsPlugin} from '../plugins/cannon/CannonPhysicsPlugin.ts'
 import {
     installGameHooks,
@@ -73,7 +72,7 @@ export function createGame(options: CreateGameOptions): Promise<CreatedGame> {
     return createProjectGame(options, true)
 }
 
-/** Load the saved project and generator previews without starting components, physics, the timeline, or main.js. */
+/** Load the saved project without starting components, physics, the timeline, or main.js. */
 export function createStoppedGame(options: CreateGameOptions): Promise<CreatedGame> {
     return createProjectGame(options, false)
 }
@@ -137,8 +136,6 @@ async function createProjectGame({
         viewer.timeline.endTime = 0
         gameHooks = installGameHooks()
         entityComponents.addComponentType(HtmlUiComponent)
-        entityComponents.addComponentType(GeneratorComponent)
-        GeneratorComponent.configureViewer(viewer, {base: baseUrl, onError: reportError})
 
         // Three's LoadingManager delegates through this importer hook. It covers
         // glTF buffers/textures and nested imports without patching global fetch.
@@ -158,7 +155,6 @@ async function createProjectGame({
         }
         await nestedAssets.loadObjectDependencies(loadedScene as IObject3D)
         await nestedAssets.waitForPending()
-        await GeneratorComponent.waitForViewer(viewer)
 
         if (start) {
             viewer.timeline.reset()

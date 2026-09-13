@@ -3,7 +3,7 @@ import type {IObject3D} from 'threepipe'
 export const KITE3D_AUTHORING_METADATA_KEY = 'kite3dAuthoring'
 export const KITE3D_RUNTIME_METADATA_KEY = 'kite3dRuntime'
 
-export type AuthoringRole = 'direct' | 'template' | 'generator'
+export type AuthoringRole = 'direct' | 'template'
 
 export interface AuthoringMetadata {
     role: AuthoringRole
@@ -40,7 +40,7 @@ interface TrackedRuntimeObject {
     scene?: RuntimeScene
 }
 
-const authoringRoles = new Set<AuthoringRole>(['direct', 'template', 'generator'])
+const authoringRoles = new Set<AuthoringRole>(['direct', 'template'])
 const trackedRuntimeObjects = new Map<IObject3D, TrackedRuntimeObject>()
 
 /** Store a validated, serializable authored identity on an object. */
@@ -123,7 +123,7 @@ export class RuntimeObjectOwner {
     cloneFrom<T extends IObject3D>(source: T, parent: IObject3D | undefined = this.runtimeParent, options: RuntimeCloneOptions = {}): T {
         const sourceMetadata = getAuthoringMetadata(source)
         if (!sourceMetadata || sourceMetadata.sourceId) {
-            throw new Error('Runtime clones require a direct, template, or generator source with a stable authored id')
+            throw new Error('Runtime clones require a direct or template source with a stable authored id')
         }
         if (!parent) throw new Error('Runtime clones require a parent or an attached runtime root')
         const scene = findTrackedScene(parent) || findRuntimeScene(source) || findRuntimeScene(parent)
