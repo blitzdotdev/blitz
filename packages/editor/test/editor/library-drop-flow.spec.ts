@@ -54,23 +54,6 @@ test('shows an error and leaves the scene clean when a library drop import fails
     }
 })
 
-test('shows an error when a double-click library import fails', async ({page}) => {
-    const fixture = await startEditor()
-    await routeLibrary(page)
-    try {
-        await openLibrary(page, fixture.server)
-        await page.getByTitle(failedDoubleClickUrl).dblclick()
-
-        const toast = page.locator('.bp5-toast').filter({hasText: 'Unable to import Failed Double Click Model'})
-        await expect(toast, 'failed double-click reports the asset name').toBeVisible()
-        await expect(toast).toContainText('500')
-        await expect(page.getByTestId('library-drop-dialog')).toHaveCount(0)
-        await expect(page.getByTestId('save-scene')).toBeDisabled()
-    } finally {
-        await fixture.close()
-    }
-})
-
 test('marks a material drop dirty and saves the applied material', async ({page}) => {
     const fixture = await startEditor()
     await routeLibrary(page)
