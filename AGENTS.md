@@ -1,0 +1,10 @@
+- Build before typechecking in a fresh worktree: `npm run build`, then `npm run typecheck`.
+- Run package tests with `npm test -w <package>`. Never run vitest from the repo root with `--root`.
+- Do not add a test unless a human saw the behaviour flake during manual testing or a user reported the bug. Proactive tests are banned.
+- Name what every test guards in a comment above it: the report or the manual observation.
+- Prove a change with a manual headless walkthrough and screenshots that show the change, viewed and compared before the PR.
+- Keep the test suites to the critical few. They must stay small.
+- Keep `docs/agents.md` byte for byte equal to `packages/kite3d/template/AGENTS.md`.
+- Do not use em dashes in any file.
+- Use Conventional Commits.
+- Land every branch on main as one squash commit.

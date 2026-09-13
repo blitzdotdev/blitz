@@ -52,6 +52,7 @@ test.afterAll(async () => {
     }
 })
 
+// Guards the owner's report: saving deleted objects hidden in the hierarchy.
 test('Save Scene keeps a hierarchy-hidden mesh across reloads', async ({page}) => {
     const scenePath = resolve(root, 'assets/main.scene.gltf')
     await page.goto(server.url)

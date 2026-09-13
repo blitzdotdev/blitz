@@ -1,8 +1,0 @@
-{
-  "name": "corrupt-scene-gate",
-  "version": "1.0.0",
-  "private": true,
-  "mainScene": "assets/corrupt.scene.gltf",
-  "dependencies": {},
-  "kite3d": {"plugins": [], "imports": {}, "scripts": [], "viewer": {"msaa": false, "tonemap": false}}
-}
