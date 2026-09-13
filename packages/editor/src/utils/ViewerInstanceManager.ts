@@ -718,7 +718,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         try {
             const blob = await Promise.race([capture, render.then(() => undefined)])
             if (!blob) throw new Error('The editor did not produce a screenshot.')
-            return blob
+            return await compositeScreenshot(viewer.canvas)
         } finally {
             finished = true
             viewer.renderManager.frameWaitTime = document.hidden ? Number.POSITIVE_INFINITY : frameWaitTime
@@ -1430,6 +1430,41 @@ function normalizeProjectPath(path: string) {
 async function hashBytes(bytes: Uint8Array): Promise<string> {
     const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource)
     return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
+}
+
+async function compositeScreenshot(source: HTMLCanvasElement): Promise<Blob> {
+    const canvas = document.createElement('canvas')
+    canvas.width = source.width
+    canvas.height = source.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('The editor could not create a screenshot canvas.')
+    const viewport = source.closest<HTMLElement>('.editorCanvasContainer') || source.parentElement
+    const app = source.closest<HTMLElement>('.editorSplitContainer')
+    const viewportBackground = viewport ? getComputedStyle(viewport).backgroundColor : ''
+    const appBackground = app ? getComputedStyle(app).backgroundColor : ''
+    context.fillStyle = isTransparent(viewportBackground) ? appBackground : viewportBackground
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(source, 0, 0, canvas.width, canvas.height)
+    return await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+            if (blob) resolve(blob)
+            else reject(new Error('The editor did not produce a screenshot.'))
+        }, 'image/png')
+    })
+}
+
+function isTransparent(color: string): boolean {
+    return !color || color === 'transparent' || color === 'rgba(0, 0, 0, 0)'
+}
+
+function versionedPath(path: string, sha256?: string, reloadRevision?: string) {
+    const [withoutFragment, fragment = ''] = path.split('#', 2)
+    const [pathname, query = ''] = withoutFragment.split('?', 2)
+    const parameters = new URLSearchParams(query)
+    if (sha256) parameters.set('v', sha256)
+    if (reloadRevision) parameters.set('r', reloadRevision)
+    const suffix = parameters.size ? `?${parameters}` : ''
+    return `${pathname}${suffix}${fragment ? `#${fragment}` : ''}`
 }
 
 function uniqueImportPath(name: string, entries: ProjectFileEntry[]) {

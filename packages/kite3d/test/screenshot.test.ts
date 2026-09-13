@@ -36,6 +36,7 @@ describe('kite3d screenshot', () => {
         const canvasSize = await page.evaluate<{width: number, height: number}>(
             '({width: window.viewer.canvas.width, height: window.viewer.canvas.height})',
         )
+        await page.evaluate("document.querySelector('.editorCanvasContainer').style.backgroundColor = '#102030'")
 
         const visible = await runScreenshot(root, '--name', 'connected')
         expect(visible.code, 'kite3d screenshot should exit successfully').toBe(0)
@@ -43,11 +44,21 @@ describe('kite3d screenshot', () => {
         const visiblePath = visible.stdout.trim()
         expect(visible.stdout.trimEnd().split('\n')).toHaveLength(1)
         expect(isAbsolute(visiblePath)).toBe(true)
-        expect(pngSize(await readFile(visiblePath))).toEqual(canvasSize)
+        const visibleBytes = await readFile(visiblePath)
+        expect(pngSize(visibleBytes)).toEqual(canvasSize)
+        expect(visibleBytes.byteLength).toBeGreaterThan(1_000)
         expect(await realpath(resolve(root, '.kite3d/screenshots'))).toBe(resolve(await realpath(root), '.kite3d/screenshots'))
         expect(relative(resolve(await realpath(root), '.kite3d/screenshots'), visiblePath)).toMatch(
             /^\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d-\d{3}Z-connected\.png$/,
         )
+
+        await page.evaluate("document.querySelector('.editorCanvasContainer').style.backgroundColor = '#405060'")
+        const recolored = await runScreenshot(root, '--name', 'connected-recolored')
+        expect(recolored.code, 'recolored editor screenshot should exit successfully').toBe(0)
+        expect(recolored.stderr).toBe('')
+        const recoloredBytes = await readFile(recolored.stdout.trim())
+        expect(pngSize(recoloredBytes)).toEqual(canvasSize)
+        expect(recoloredBytes.equals(visibleBytes)).toBe(false)
 
         await page.evaluate(`(() => {
             Object.defineProperty(document, 'hidden', {configurable: true, get: () => true})
