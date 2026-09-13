@@ -31,6 +31,7 @@ import {
     type LibraryDropAssetType,
     type LibraryDropChoice,
 } from './libraryDropChoices.ts'
+import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib'
 
 type DraggedItem = IMaterial | IObject3D | ITexture
 type LibraryEntry = FileManifestEntry | TExternalFile | {path: string, name?: string, assetType?: string, isFSEntry: false}
@@ -204,31 +205,44 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
     }
 
     private draggingEntry: LibraryEntry | null = null
+    private libraryImport: Promise<DraggedItem> | null = null
+    private dropLanded = false
 
     handleDragStart = async (e: React.DragEvent, f: LibraryEntry) => {
-        if(this.draggingEntry) return // already dragging something
+        if(this.libraryImport) return // already dragging something
         this.draggingEntry = f
         draggingSpinner.style.display = 'block'
         e.dataTransfer.setData('text/uri-list', ' ');
         e.dataTransfer!.setDragImage(transparentPixelCanvas, 16, 16);
         // e.preventDefault();
-        let r
+        const libraryImport = this.manager.getAssetFromEntry(f).then((item) => {
+            if (!item) throw new Error('No supported asset was loaded.')
+            return item as DraggedItem
+        })
+        this.libraryImport = libraryImport
+        this.dropLanded = false
+        let loaded = false
         try {
-            r = await this.manager.getAssetFromEntry(f)
+            const item = await libraryImport
+            if (this.libraryImport !== libraryImport) return
+            this.setDraggedItem(item);
+            if (!this.draggedItem) throw new Error('The asset type is not supported by the editor.')
+            loaded = true
         } catch (error) {
-            draggingSpinner.style.display = 'none'
-            this.draggingEntry = null
             console.error(`Unable to import library asset ${f.name || this.fileName(f.path)}`, error)
-            return
+            showLibraryImportError(f, error)
+        } finally {
+            if (this.libraryImport === libraryImport) {
+                draggingSpinner.style.display = 'none'
+                if (!loaded && !this.dropLanded) {
+                    this.libraryImport = null
+                    this.draggingEntry = null
+                }
+            }
         }
-        if(!this.draggingEntry) return // drag was cancelled in the meantime
-        draggingSpinner.style.display = 'none'
-        if(!r) return
         // e.stopPropagation();
         // e.dataTransfer.setDragImage(img, xOffset, yOffset); // optional: set a custom drag image
 
-        // Set the dragged item in the handler
-        this.setDraggedItem(r);
         e.dataTransfer.clearData();
         e.dataTransfer.effectAllowed = 'copy';
         // const path = f.isFSEntry ? assetUrlPrefix+f.path : f.path
@@ -237,7 +251,13 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
     };
 
     handleDragEnd = (e?: React.DragEvent) => {
+        if (this.dropLanded) {
+            e?.dataTransfer.clearData();
+            return
+        }
         draggingSpinner.style.display = 'none'
+        this.libraryImport = null
+        this.dropLanded = false
         this.draggingEntry = null
         this.clearDraggedItem();
         e?.dataTransfer.clearData();
@@ -255,33 +275,50 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         const effect = this.draggedItem === this.draggedItemSrc ? 'move' : 'copy'
         this.lastIntersects = intersects as Array<Intersection<IObject3D>>
         this.dropTarget = intersects[0]?.object as IObject3D || null
-        const res = Boolean(this.draggedItem)
+        const res = Boolean(this.draggedItem || this.libraryImport)
         if (e.dataTransfer) {
             e.dataTransfer.dropEffect = res ? effect : 'none';
         }
 
     }
 
-    private handleDrop(e: DragEvent): void {
+    private async handleDrop(e: DragEvent): Promise<void> {
         if(!this._viewer) return
-        draggingSpinner.style.display = 'none'
-        if(!this.draggedItem) return;
-
         if(e.dataTransfer?.files?.length) return // for dropzone
+        const libraryImport = this.libraryImport
+        if(!this.draggedItem && !libraryImport) return;
 
         e.preventDefault();
-        const intersects = this.getIntersects(e).filter(i=>i.object !== this.draggedItem);
-
-        const mesh = intersects?.[0]?.object as IObject3D;
-        const item = this.draggedItem
+        if (libraryImport) this.dropLanded = true
+        const intersects = this.getIntersects(e)
         const entry = this.draggingEntry
-        const dropPosition = (item as IObject3D).isObject3D
-            ? this.getDroppedObjectWorldPosition(item as IObject3D, intersects as Array<Intersection<IObject3D>>)
-            : undefined
 
-        this.dropLibraryItem(item, entry, mesh || null, dropPosition)
+        try {
+            const imported = this.draggedItem || await libraryImport
+            if (!imported || (libraryImport && (this.libraryImport !== libraryImport || !this.dropLanded))) return
+            if (!this.draggedItem) this.setDraggedItem(imported)
+            const item = this.draggedItem
+            if (!item) return
+            const filteredIntersects = intersects.filter(({object}) => object !== item)
 
-        this.clearDraggedItem(true);
+            const mesh = filteredIntersects[0]?.object as IObject3D;
+            const dropPosition = (item as IObject3D).isObject3D
+                ? this.getDroppedObjectWorldPosition(item as IObject3D, filteredIntersects as Array<Intersection<IObject3D>>)
+                : undefined
+
+            this.dropLibraryItem(item, entry, mesh || null, dropPosition)
+
+            this.clearDraggedItem(true);
+        } catch {
+            return
+        } finally {
+            if (!libraryImport || (this.libraryImport === libraryImport && this.dropLanded)) {
+                draggingSpinner.style.display = 'none'
+                this.libraryImport = null
+                this.dropLanded = false
+                this.draggingEntry = null
+            }
+        }
     }
 
     private handleDragLeave(): void {
@@ -743,6 +780,18 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         return new Vector2(x, y);
     }
 
+}
+
+export function showLibraryImportError(entry: {path: string, name?: string}, error: unknown) {
+    const name = entry.name || entry.path.split(/[?#]/)[0].split('/').pop() || 'Library asset'
+    const reason = error instanceof Error ? error.message : String(error)
+    AppToaster().show({
+        message: `Unable to import ${name}: ${reason}`,
+        intent: 'danger',
+        icon: 'error',
+        timeout: 5000,
+        isCloseButtonShown: true,
+    })
 }
 
 export function isDraggableDroppableNode(obj: IObject3D){

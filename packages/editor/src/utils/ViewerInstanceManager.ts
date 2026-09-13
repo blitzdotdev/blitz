@@ -1068,18 +1068,31 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             throw error
         }
         const rootPath = assetIdUrl(assetId, files[rootName])
-        const imported = await this.get().assetManager.importer.import(rootPath)
+        const importer = this.get().assetManager.importer
+        const rootDirectory = rootPath.slice(0, rootPath.lastIndexOf('/') + 1)
+        let importError: unknown
+        const captureImportError = (event: {path: string, state: string, error?: unknown}) => {
+            if (event.state === 'error' && event.path.startsWith(rootDirectory)) importError = event.error
+        }
+        importer.addEventListener('importFile', captureImportError)
+        const imported = await importer.import(rootPath).finally(() =>
+            importer.removeEventListener('importFile', captureImportError))
         const loaded = imported.find(Boolean)
-        if (loaded) {
-            loaded.userData ||= {}
-            loaded.userData.rootPath = rootPath
-            loaded.userData.kite3dImportedInstance = true
-            loaded.userData.sProperties = [...assetInstanceProperties]
-            loaded._tpRootPath = rootPath
-            loaded.name = entry.name || sourceName
-            if (loaded.isObject3D) {
-                for (const child of loaded.children) child.userData.excludeFromExport = true
+        if (!loaded) {
+            if (importError instanceof Error) throw importError
+            if (importError && typeof importError === 'object' && 'message' in importError) {
+                throw new Error(String(importError.message))
             }
+            throw new Error(importError ? String(importError) : 'The asset loader returned no result.')
+        }
+        loaded.userData ||= {}
+        loaded.userData.rootPath = rootPath
+        loaded.userData.kite3dImportedInstance = true
+        loaded.userData.sProperties = [...assetInstanceProperties]
+        loaded._tpRootPath = rootPath
+        loaded.name = entry.name || sourceName
+        if (loaded.isObject3D) {
+            for (const child of loaded.children) child.userData.excludeFromExport = true
         }
         this.replaceManifest(await this.source.list())
         return loaded
