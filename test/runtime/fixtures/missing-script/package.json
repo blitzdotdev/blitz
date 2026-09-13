@@ -1,8 +1,0 @@
-{
-  "name": "missing-script-gate",
-  "version": "1.0.0",
-  "private": true,
-  "mainScene": "assets/main.scene.gltf",
-  "dependencies": {},
-  "kite3d": {"plugins": [], "imports": {}, "scripts": ["scripts/not-there.script.js"], "viewer": {"msaa": false, "tonemap": false}}
-}

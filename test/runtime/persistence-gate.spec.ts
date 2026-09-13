@@ -12,6 +12,7 @@ const sourceFiles = [
     'assets/prop.gltf',
 ]
 
+// Guards the core manual workflow: scene edits save, reload, and clean up deterministically.
 test('serializes, reloads, persists edits deterministically, then cleans up after Play and Stop', async ({page}) => {
     test.setTimeout(60_000)
     const roundTripFiles = new Map<string, Buffer>()
