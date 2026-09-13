@@ -9,7 +9,12 @@ import {
     parsePackageJsonSettingsConfig,
     removedGeneratorMessage,
 } from '@kite3d/engine/projectFormat'
-import {createDevServer} from './server.ts'
+import {
+    HeadlessBrowserUnavailableError,
+    runWithHeadlessChromium,
+    runningDevConnection,
+    type DevConnection,
+} from './screenshot.ts'
 
 export interface CheckRow {
     kind: 'project' | 'script' | 'plugin' | 'component'
@@ -240,17 +245,12 @@ interface RuntimeCheckResult {
     outcomes: CheckOutcome[]
 }
 
-interface DevConnection {
-    url: string
-    token: string
-}
-
 async function runRuntimeChecks(root: string): Promise<RuntimeCheckResult> {
     const connection = await runningDevConnection(root)
     if (connection) {
         const editor = await requestEditorCheck(connection)
         if (editor.result) return editor.result
-        return runHeadlessCheck(root, editor.incompatible ? undefined : connection, editor.incompatible)
+        return runHeadlessCheck(root, editor.incompatible ? undefined : connection)
     }
     return runHeadlessCheck(root, connection)
 }
@@ -291,69 +291,25 @@ function incompatibleEditorCheck(): {incompatible: true} {
 async function runHeadlessCheck(
     root: string,
     existing?: DevConnection,
-    preserveDevFile = false,
 ): Promise<RuntimeCheckResult> {
-    let chromium: BrowserLauncher
     try {
-        chromium = (checkRequire('playwright') as {chromium: BrowserLauncher}).chromium
-    } catch {
-        return unavailableOutcomes('Playwright is not installed; browser checks were skipped.')
-    }
-
-    let server: Awaited<ReturnType<typeof createDevServer>> | undefined
-    let browser: BrowserHandle | undefined
-    const devPath = resolve(root, '.kite3d/dev.json')
-    const previousDevFile = preserveDevFile ? await readFile(devPath).catch(() => undefined) : undefined
-    try {
-        let connection = existing
-        if (!connection) {
-            server = await createDevServer({projectRoot: root, port: 0, strictPort: true})
-            connection = {url: server.url, token: server.token}
-        }
-        try {
-            browser = await chromium.launch({headless: true})
-        } catch (error) {
-            if (/executable.*(does not exist|doesn't exist|missing)|browser.*not found|playwright install/i.test(errorMessage(error))) {
-                return unavailableOutcomes('No Playwright browser is installed; browser checks were skipped.')
-            }
-            throw error
-        }
-        const page = await browser.newPage()
-        const url = new URL(connection.url)
-        url.searchParams.set('headless', 'check')
-        url.searchParams.set('frames', '30')
-        await page.goto(url.href, {waitUntil: 'domcontentloaded', timeout: 30_000})
-        await page.waitForFunction('window.__kite3dCheckDone === true', undefined, {timeout: 45_000})
-        const payload = await page.evaluate('window.__kite3dCheckResult')
-        return parseRuntimeCheckResult(payload, 'headless')
+        return await runWithHeadlessChromium(root, {connection: existing}, async (browser, connection) => {
+            const page = await browser.newPage()
+            const url = new URL(connection.url)
+            url.searchParams.set('headless', 'check')
+            url.searchParams.set('frames', '30')
+            await page.goto(url.href, {waitUntil: 'domcontentloaded', timeout: 30_000})
+            await page.waitForFunction('window.__kite3dCheckDone === true', undefined, {timeout: 45_000})
+            const payload = await page.evaluate('window.__kite3dCheckResult')
+            return parseRuntimeCheckResult(payload, 'headless')
+        })
     } catch (error) {
+        if (error instanceof HeadlessBrowserUnavailableError) {
+            return unavailableOutcomes(`${error.message.replace(/\. Run npx playwright install chromium\.$/, '')}; browser checks were skipped. Run npx playwright install chromium.`)
+        }
         const summary = `Headless browser check failed: ${errorMessage(error)}`
         return {mode: 'headless', outcomes: outcomeNames.map((name) => ({name, status: 'fail', summary, codes: []}))}
-    } finally {
-        await browser?.close().catch(() => undefined)
-        await server?.close().catch(() => undefined)
-        if (previousDevFile) await writeFile(devPath, previousDevFile, {mode: 0o600})
     }
-}
-
-async function runningDevConnection(root: string): Promise<DevConnection | undefined> {
-    let value: {url?: unknown, token?: unknown}
-    try {
-        value = JSON.parse(await readFile(resolve(root, '.kite3d/dev.json'), 'utf8')) as typeof value
-    } catch {
-        return undefined
-    }
-    if (typeof value.url !== 'string' || typeof value.token !== 'string') return undefined
-    try {
-        const response = await fetch(new URL('/api/state', value.url), {
-            headers: {'X-Kite3D-Token': value.token},
-            signal: AbortSignal.timeout(1_500),
-        })
-        if (!response.ok) return undefined
-    } catch {
-        return undefined
-    }
-    return {url: value.url, token: value.token}
 }
 
 function parseRuntimeCheckResult(value: unknown, mode: RuntimeCheckResult['mode']): RuntimeCheckResult {
@@ -390,19 +346,6 @@ function formatCheckSummary(result: CheckResult): string {
     const outcomes = result.outcomes.map(({name, status, codes}) =>
         `${name}=${status}${codes.length ? `(${codes.join(',')})` : ''}`).join(' ')
     return `${new Date().toISOString()} [kite3d check] ${outcomes}`
-}
-
-interface BrowserLauncher {
-    launch(options: {headless: boolean}): Promise<BrowserHandle>
-}
-
-interface BrowserHandle {
-    newPage(): Promise<{
-        goto(url: string, options: {waitUntil: 'domcontentloaded', timeout: number}): Promise<unknown>
-        waitForFunction(expression: string, argument: undefined, options: {timeout: number}): Promise<unknown>
-        evaluate(expression: string): Promise<unknown>
-    }>
-    close(): Promise<void>
 }
 
 async function resolveModule(root: string, specifier: string, allowPackage: boolean): Promise<string> {
