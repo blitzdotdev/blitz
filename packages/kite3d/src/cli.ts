@@ -10,6 +10,7 @@ import {
     publishFromDisk,
     pullFromDisk,
     runDev,
+    screenshotFromDisk,
     sourcesInstructions,
     statusFromDisk,
     upgradeProject,
@@ -47,6 +48,7 @@ Commands:
   pull [--force]              Pull the active release
   status                      Show local deploy status
   claim [--no-open]           Open claim pages for local deploys
+  screenshot [options]        Save a PNG of the editor viewport
   check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
   open                        Open the running local editor
@@ -67,6 +69,7 @@ const COMMAND_USAGE: Record<string, string> = {
     pull: 'Usage: kite3d pull [--force]',
     status: 'Usage: kite3d status',
     claim: 'Usage: kite3d claim [--no-open]',
+    screenshot: 'Usage: kite3d screenshot [--name <name>] [--headless] [--full] [--width <px>] [--height <px>] [--json]',
     check: 'Usage: kite3d check',
     journal: 'Usage: kite3d journal [--since <iso>] [-n <count>]',
     open: 'Usage: kite3d open',
@@ -76,7 +79,7 @@ const COMMAND_USAGE: Record<string, string> = {
 }
 
 const PROJECT_ROOT_COMMANDS = new Set([
-    'dev', 'check', 'publish', 'doctor', 'checkpoint', 'restore', 'archive', 'status',
+    'dev', 'check', 'screenshot', 'publish', 'doctor', 'checkpoint', 'restore', 'archive', 'status',
 ])
 
 const [command = 'help', ...args] = process.argv.slice(2)
@@ -234,6 +237,29 @@ try {
             ? JSON.stringify(skills)
             : skills.map(({name, path}) => `${name}\t${path}`).join('\n')
         if (output) console.log(output)
+    } else if (command === 'screenshot') {
+        const parsed = parseArgs(args, {
+            '--name': 'value',
+            '--headless': 'boolean',
+            '--full': 'boolean',
+            '--width': 'value',
+            '--height': 'value',
+            '--json': 'boolean',
+        })
+        const result = await screenshotFromDisk(process.cwd(), {
+            name: valueOption(parsed.values['--name']),
+            headless: parsed.values['--headless'] === true,
+            full: parsed.values['--full'] === true,
+            width: positiveIntegerOption(parsed.values['--width'], '--width'),
+            height: positiveIntegerOption(parsed.values['--height'], '--height'),
+        })
+        console.log(parsed.values['--json'] === true ? JSON.stringify({
+            path: result.path,
+            width: result.width,
+            height: result.height,
+            source: result.source,
+            capturedAt: result.capturedAt,
+        }) : result.path)
     } else if (command === 'check') {
         parseArgs(args, {})
         const result = await checkProject()
@@ -307,6 +333,12 @@ function integerOption(value: string | boolean | undefined, name: string): numbe
     if (raw === undefined) return undefined
     const integer = Number(raw)
     if (!Number.isInteger(integer) || integer < 0) throw new Error(`${name} must be a non-negative integer`)
+    return integer
+}
+
+function positiveIntegerOption(value: string | boolean | undefined, name: string): number | undefined {
+    const integer = integerOption(value, name)
+    if (integer === 0) throw new Error(`${name} must be a positive integer`)
     return integer
 }
 

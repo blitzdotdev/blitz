@@ -213,6 +213,16 @@ export class DevServerSource implements ProjectSource {
         })
     }
 
+    async screenshotResult(id: string, blob: Blob): Promise<void> {
+        const response = await fetch(this.url(`/api/screenshot/${encodeURIComponent(id)}`), {
+            method: 'POST',
+            headers: this.headers({'Content-Type': 'image/png'}),
+            body: blob,
+        })
+        if (response.status === 404) return
+        if (!response.ok) throw new Error(`Cannot return screenshot: ${response.status}`)
+    }
+
     private async json<T>(path: string, init?: RequestInit): Promise<T> {
         const response = await fetch(this.url(path), init || {headers: this.headers()})
         if (!response.ok) {

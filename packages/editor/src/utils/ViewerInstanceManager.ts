@@ -699,6 +699,44 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.changed()
     }
 
+    private async captureScreenshot(): Promise<Blob> {
+        await this.ready
+        if (this.playPromise) await this.playPromise
+        const viewer = this.isPlaying ? this.game?.viewer : this.get()
+        if (!viewer) throw new Error('The active editor viewer is unavailable.')
+        if (viewer.canvas.width < 1 || viewer.canvas.height < 1
+            || viewer.canvas.clientWidth < 1 || viewer.canvas.clientHeight < 1) {
+            throw new Error('The editor canvas has zero size.')
+        }
+
+        let finished = false
+        const frameWaitTime = viewer.renderManager.frameWaitTime
+        const capture = viewer.getScreenshotBlob({mimeType: 'image/png'}).finally(() => {
+            finished = true
+        })
+        const render = this.renderScreenshotOnDemand(viewer, () => finished)
+        try {
+            const blob = await Promise.race([capture, render.then(() => undefined)])
+            if (!blob) throw new Error('The editor did not produce a screenshot.')
+            return blob
+        } finally {
+            finished = true
+            viewer.renderManager.frameWaitTime = document.hidden ? Number.POSITIVE_INFINITY : frameWaitTime
+        }
+    }
+
+    private async renderScreenshotOnDemand(viewer: ThreeViewer, finished: () => boolean): Promise<void> {
+        const deadline = performance.now() + 5_000
+        await Promise.resolve()
+        while (!finished()) {
+            viewer.setDirty()
+            viewer.renderManager.frameWaitTime = 0
+            viewer.renderManager.animationLoop(performance.now())
+            await new Promise<void>((resolveRender) => window.setTimeout(resolveRender, 0))
+            if (performance.now() >= deadline) throw new Error('The editor screenshot render timed out.')
+        }
+    }
+
     async startPlay(canvas: HTMLCanvasElement): Promise<void> {
         this.playCanvas = canvas
         if (this.isPlaying) return
@@ -1215,6 +1253,14 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 await this.source.commandResult?.(event.id, {ok: true, result})
             } catch (error) {
                 await this.source.commandResult?.(event.id, {ok: false, error: errorMessage(error)})
+                await this.reportError(error)
+            }
+            return
+        }
+        if (event.type === 'command' && event.command === 'screenshot' && typeof event.id === 'string') {
+            try {
+                await this.source.screenshotResult(event.id, await this.captureScreenshot())
+            } catch (error) {
                 await this.reportError(error)
             }
             return
