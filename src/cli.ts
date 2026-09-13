@@ -6,13 +6,14 @@ import {
     devStatusFromDisk,
     initProject,
     journalFromDisk,
-    openCurrentProject,
     publishFromDisk,
     pullFromDisk,
+    runDetachedDev,
     runDev,
     screenshotFromDisk,
     sourcesInstructions,
     statusFromDisk,
+    stopDev,
     upgradeProject,
 } from './commands.ts'
 import {checkProject, formatCheckTable} from './check.ts'
@@ -26,6 +27,7 @@ import {assertKite3dProjectRoot, isKite3dProjectRoot} from './project-root.ts'
 import {LEGACY_PROJECT_MESSAGE, legacyProjectMigrationNeeded} from './legacy.ts'
 import {bundledSkills} from './skills.ts'
 import {removedGeneratorMessage} from '@kite3d/engine/projectFormat'
+import {createHubServer, openProjectHub, stopProjectHub} from './hub.ts'
 
 const ROOT_USAGE = `Kite3D ${KITE3D_VERSION} builds browser 3D games with an agent and a local editor.
 Workflow:
@@ -39,7 +41,7 @@ Usage: kite3d <command> [options]
 
 Commands:
   init [dir] [--no-git]       Create a Kite3D project and Git repository
-  dev [--port <port>]         Start the local editor
+  dev [options]               Start or stop the local editor
   doctor [--port <port>]      Check the local development prerequisites
   checkpoint [label]          Commit a project checkpoint
   restore [hash]              Restore files from a checkpoint
@@ -51,7 +53,7 @@ Commands:
   screenshot [options]        Save a PNG of the editor viewport
   check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
-  open                        Open the running local editor
+  open [options]              Open or stop the project launcher
   sources                     Locate installed source
   skills [--json]             List bundled skills and their readable paths
   upgrade                     Upgrade the project to this Kite3D version
@@ -60,7 +62,7 @@ Run kite3d <command> --help for command usage.`
 
 const COMMAND_USAGE: Record<string, string> = {
     init: 'Usage: kite3d init [dir] [--no-git]',
-    dev: 'Usage: kite3d dev [--port <port>] [--no-open] [--force]',
+    dev: 'Usage: kite3d dev [--port <port>] [--no-open] [--force] [--detach | --stop]',
     doctor: 'Usage: kite3d doctor [--port <port>]',
     checkpoint: 'Usage: kite3d checkpoint [label] [--allow-parent-repo]',
     restore: 'Usage: kite3d restore [hash] [--allow-parent-repo]',
@@ -72,7 +74,7 @@ const COMMAND_USAGE: Record<string, string> = {
     screenshot: 'Usage: kite3d screenshot [--name <name>] [--headless] [--full] [--width <px>] [--height <px>] [--json]',
     check: 'Usage: kite3d check',
     journal: 'Usage: kite3d journal [--since <iso>] [-n <count>]',
-    open: 'Usage: kite3d open',
+    open: 'Usage: kite3d open [--no-open] [--stop]',
     sources: 'Usage: kite3d sources',
     skills: 'Usage: kite3d skills [--json]',
     upgrade: 'Usage: kite3d upgrade',
@@ -90,9 +92,10 @@ try {
         || command === 'help' || command === '--help' || command === '-h'
         || command === '--version' || command === '-v'
         || args.includes('--help') || args.includes('-h')
-    if (legacyProject && !allowsLegacyProject) throw new Error(LEGACY_PROJECT_MESSAGE)
+    const commandNeedsNoProject = command === 'open' || command === 'dev' && args.includes('--stop')
+    if (legacyProject && !allowsLegacyProject && !commandNeedsNoProject) throw new Error(LEGACY_PROJECT_MESSAGE)
     if (PROJECT_ROOT_COMMANDS.has(command) && !args.includes('--help') && !args.includes('-h')) {
-        if (!(command === 'doctor' && legacyProject)) await assertKite3dProjectRoot(process.cwd())
+        if (!(command === 'doctor' && legacyProject) && !commandNeedsNoProject) await assertKite3dProjectRoot(process.cwd())
     }
     const skipsVersionRule = command === 'help' || command === '--help' || command === '-h'
         || command === 'doctor' || command === 'upgrade' || command === 'skills'
@@ -157,26 +160,48 @@ try {
         const result = await archiveProject()
         console.log(`Archived ${result.files.length} file(s) to ${result.path}`)
     } else if (command === 'dev') {
-        const parsed = parseArgs(args, {'--port': 'value', '--no-open': 'boolean', '--force': 'boolean'})
-        const port = portOption(parsed.values['--port'])
-        const server = await runDev({
-            port,
-            strictPort: port !== undefined,
-            noOpen: parsed.values['--no-open'] === true,
-            force: parsed.values['--force'] === true,
+        const parsed = parseArgs(args, {
+            '--port': 'value',
+            '--no-open': 'boolean',
+            '--force': 'boolean',
+            '--detach': 'boolean',
+            '--stop': 'boolean',
         })
-        // Install the handlers before the ready lines: on Linux a stdout pipe is
-        // written synchronously, so a reader can react to "Project:" before the
-        // next statement runs, and a signal then kills the process outright.
-        const shutdown = async () => {
-            await server.close()
-            process.exit(0)
+        if (parsed.values['--stop'] === true) {
+            if (Object.keys(parsed.values).some((option) => option !== '--stop')) {
+                throw new Error(`--stop cannot be combined with other options.\n${COMMAND_USAGE.dev}`)
+            }
+            const stopped = await stopDev()
+            console.log(stopped
+                ? `Stopped the development server for ${resolve(process.cwd())}`
+                : `No development server is running for ${resolve(process.cwd())}`)
+        } else if (parsed.values['--detach'] === true) {
+            const server = await runDetachedDev({
+                port: portOption(parsed.values['--port']),
+                force: parsed.values['--force'] === true,
+            })
+            console.log(server.url)
+        } else {
+            const port = portOption(parsed.values['--port'])
+            const server = await runDev({
+                port,
+                strictPort: port !== undefined,
+                noOpen: parsed.values['--no-open'] === true,
+                force: parsed.values['--force'] === true,
+            })
+            // Install the handlers before the ready lines: on Linux a stdout pipe is
+            // written synchronously, so a reader can react to "Project:" before the
+            // next statement runs, and a signal then kills the process outright.
+            const shutdown = async () => {
+                await server.close()
+                process.exit(0)
+            }
+            process.once('SIGINT', shutdown)
+            process.once('SIGTERM', shutdown)
+            console.log(`Kite3D editor: ${server.url} (Kite3D ${KITE3D_VERSION})`)
+            console.log(`Project: ${server.projectRoot}`)
+            console.log('Guide: AGENTS.md in this folder. Verify with npx kite3d check. Publish with npx kite3d publish.')
         }
-        process.once('SIGINT', shutdown)
-        process.once('SIGTERM', shutdown)
-        console.log(`Kite3D editor: ${server.url} (Kite3D ${KITE3D_VERSION})`)
-        console.log(`Project: ${server.projectRoot}`)
-        console.log('Guide: AGENTS.md in this folder. Verify with npx kite3d check. Publish with npx kite3d publish.')
     } else if (command === 'publish') {
         const parsed = parseArgs(args, {
             '--slug': 'value',
@@ -225,8 +250,26 @@ try {
             }
         }
     } else if (command === 'open') {
-        parseArgs(args, {})
-        console.log(await openCurrentProject())
+        const parsed = parseArgs(args, {'--no-open': 'boolean', '--stop': 'boolean'})
+        if (parsed.values['--stop'] === true) {
+            if (parsed.values['--no-open'] === true) {
+                throw new Error(`--stop cannot be combined with --no-open.\n${COMMAND_USAGE.open}`)
+            }
+            console.log(await stopProjectHub()
+                ? 'Stopped the Kite3D launcher.'
+                : 'No Kite3D launcher is running.')
+        } else if (process.env.KITE3D_HUB_SERVER === '1') {
+            const server = await createHubServer()
+            const shutdown = async () => {
+                await server.close()
+                process.exit(0)
+            }
+            process.once('SIGINT', shutdown)
+            process.once('SIGTERM', shutdown)
+            console.log(`Kite3D launcher: ${server.url}`)
+        } else {
+            console.log(await openProjectHub({noOpen: parsed.values['--no-open'] === true}))
+        }
     } else if (command === 'sources') {
         parseArgs(args, {})
         console.log(await sourcesInstructions())

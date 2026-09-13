@@ -13,6 +13,10 @@ Run `kite3d sources` from the project to locate the installed implementation. Re
 
 After editing, run `kite3d check` and inspect `.kite3d/check.json`. Report Playable, Editable, and Persisted results separately and investigate failed checks using the project guide and installed source.
 
+- `kite3d dev --detach` runs the server in the background with its log in `.kite3d/dev.log`.
+- `kite3d dev --stop` stops the background development server.
+- `kite3d open` opens the launcher that lists every known project and every running editor.
+
 Run npx kite3d screenshot to save a PNG of the editor viewport under .kite3d/screenshots/ and print its path. Look at it before and after visual changes. Add --headless when no editor is open.
 
 This entry only directs discovery. Plugin-specific instructions belong with the plugin's implementation and version.
