@@ -106,7 +106,9 @@ export function installLocalServerMiddleware(app: Hono<LocalAppEnv>, token: stri
     })
     const checkToken = async (c: Context<LocalAppEnv>, next: Next): Promise<void | Response> => {
         const queryToken = c.req.method === 'GET' ? c.req.query('t') : undefined
-        if (c.req.header('X-Kite3D-Token') !== token && getCookie(c, 'kite3d-token') !== token && queryToken !== token) {
+        if (c.req.header('X-Kite3D-Token') !== token
+            && getCookie(c, localTokenCookieName(c.req.raw)) !== token
+            && queryToken !== token) {
             return textResponse('Missing or invalid Kite3D token', 401)
         }
         return next()
@@ -135,8 +137,17 @@ export async function serveEditorIndex(
     const response = new Response(await transform(source), {
         headers: {'Content-Type': 'text/html; charset=utf-8'},
     })
-    response.headers.set('Set-Cookie', `kite3d-token=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`)
+    response.headers.set(
+        'Set-Cookie',
+        `${localTokenCookieName(request)}=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/`,
+    )
     return response
+}
+
+function localTokenCookieName(request: Request): string {
+    const url = new URL(request.url)
+    const port = url.port || (url.protocol === 'https:' ? '443' : '80')
+    return `kite3d-token-${port}`
 }
 
 export function serveEditorPath(pathname: string, editorDirectory: string): Promise<Response> {
