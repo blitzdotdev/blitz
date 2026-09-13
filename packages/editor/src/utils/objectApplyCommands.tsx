@@ -56,6 +56,7 @@ export function materialCommand(material: IMaterial, target: IObject3D | IObject
                 } else {
                     object.material = material
                 }
+                object.setDirty?.({change: 'material'})
                 return previous
             })
         },
@@ -64,6 +65,7 @@ export function materialCommand(material: IMaterial, target: IObject3D | IObject
             targets.forEach((object, targetIndex) => {
                 const previous = cmd.lastMaterials[targetIndex]
                 if (previous) object.material = previous
+                object.setDirty?.({change: 'material'})
             })
             cmd.lastMaterials = current
         }
