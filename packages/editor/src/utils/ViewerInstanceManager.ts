@@ -603,7 +603,11 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.savingScene = true
         this.setStatus('Saving scene…')
         try {
-            const serialized = await serializeSceneGltf(this.get(), {scenePath: this.scenePath})
+            const viewer = this.get()
+            const editMode = viewer.getPlugin(EditModePlugin)!
+            const serialized = await editMode.withIsolateVisibilityRestored(
+                () => serializeSceneGltf(viewer, {scenePath: this.scenePath}),
+            )
             await this.writeSerializedScene(serialized)
             this.loadedNeedsSave = false
             await this.writeState()

@@ -1,4 +1,4 @@
-import {useEffect, useState, type FormEvent} from 'react'
+import {useCallback, useEffect, useState, type FormEvent} from 'react'
 import {
     Button,
     Callout,
@@ -21,14 +21,24 @@ import type {EditorCheckResult, ViewerInstanceManager} from '../utils/ViewerInst
 export function Kite3dSaveSceneButton() {
     const manager = useManagerVersion()
     const [saving, setSaving] = useState(false)
-    const save = async () => {
+    const save = useCallback(async () => {
         setSaving(true)
         try {
             await manager.saveScene()
         } finally {
             setSaving(false)
         }
-    }
+    }, [manager])
+
+    useEffect(() => {
+        const keydown = (event: KeyboardEvent) => {
+            if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's') return
+            event.preventDefault()
+            void save()
+        }
+        window.addEventListener('keydown', keydown)
+        return () => window.removeEventListener('keydown', keydown)
+    }, [save])
 
     // AGREED-4: reference Save Scene presentation, backed by DevServerSource.
     return <>

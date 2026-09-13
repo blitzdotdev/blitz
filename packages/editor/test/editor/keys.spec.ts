@@ -67,7 +67,11 @@ test('isolates every picked object and restores visibility without changing the 
     await openEditor(page)
     const scenePath = resolve(root, 'assets/main.scene.gltf')
     const before = await readFile(scenePath)
+    await expect(page.getByRole('button', {name: 'main.scene', exact: true}), 'a freshly loaded scene should have no unsaved marker').toBeVisible()
+    expect(await managerLoadedNeedsSave(page), 'a freshly loaded scene should not need a save').toBe(false)
     await selectObjects(page, ['Mesh_A', 'Mesh_B'])
+    await setManagerLoadedNeedsSave(page, false)
+    await expect(page.getByRole('button', {name: 'main.scene', exact: true}), 'the isolate baseline should be clean').toBeVisible()
 
     await page.keyboard.press('/')
     expect(await objectVisibility(page), 'the / shortcut should hide objects outside the selected set').toEqual({
@@ -77,9 +81,12 @@ test('isolates every picked object and restores visibility without changing the 
         Key_Light: true,
     })
     await expect(page.getByTestId('isolated-chip'), 'isolate should show its viewport chip').toHaveText('ISOLATED')
+    await expect(page.getByRole('button', {name: 'main.scene', exact: true}), 'entering isolate should not add an unsaved marker').toBeVisible()
+    expect(await managerLoadedNeedsSave(page), 'entering isolate should not change manager.loadedNeedsSave').toBe(false)
 
     await clearSelection(page)
     await expect(page.getByTestId('isolated-chip'), 'deselecting should keep isolate active').toBeVisible()
+    await setManagerLoadedNeedsSave(page, false)
     await page.keyboard.press('/')
     expect(await objectVisibility(page), 'exiting isolate should restore every previous visibility value').toEqual({
         Mesh_A: true,
@@ -88,6 +95,8 @@ test('isolates every picked object and restores visibility without changing the 
         Key_Light: true,
     })
     await expect(page.getByTestId('isolated-chip')).toHaveCount(0)
+    await expect(page.getByRole('button', {name: 'main.scene', exact: true}), 'exiting isolate should not add an unsaved marker').toBeVisible()
+    expect(await managerLoadedNeedsSave(page), 'exiting isolate should not change manager.loadedNeedsSave').toBe(false)
     await page.waitForTimeout(250)
     expect(await readFile(scenePath), 'isolate should leave the scene file byte-identical').toEqual(before)
 
@@ -140,6 +149,40 @@ test('exits isolate on Play and ignores edit shortcuts while playing', async ({p
     expect(await page.evaluate(() => localStorage.getItem('kite3d.editor.wasdMovementSpeed')), 'the speed shortcut should be ignored in Play').toBe(storedSpeed)
 })
 
+test('saves pre-isolate visibility and keeps isolate active', async ({page}) => {
+    await openEditor(page)
+    await page.evaluate(() => {
+        const viewer = (window as unknown as {
+            viewer: {
+                scene: {
+                    modelRoot: {
+                        traverse(callback: (object: {
+                            name: string
+                            position: {x: number}
+                            setDirty(event: {change: string, refreshScene: boolean}): void
+                        }) => void): void
+                    }
+                }
+            }
+        }).viewer
+        viewer.scene.modelRoot.traverse(object => {
+            if (object.name !== 'Mesh_A') return
+            object.position.x += 1
+            object.setDirty({change: 'transform', refreshScene: true})
+        })
+    })
+    await expect(page.getByTestId('save-scene')).toBeEnabled()
+    await selectObjects(page, ['Mesh_A'])
+    await page.keyboard.press('/')
+    await page.keyboard.press('Meta+s')
+    await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+    const visibility = await savedObjectVisibility(resolve(root, 'assets/main.scene.gltf'))
+    expect(visibility.Mesh_C, 'saving while isolated should preserve Mesh_C as visible').toBe(true)
+    expect(visibility.Isolate_Group, 'saving while isolated should preserve the group as visible').toBe(true)
+    expect(visibility.Mesh_B ?? false, 'saving while isolated should preserve Mesh_B as hidden').toBe(false)
+    await expect(page.getByTestId('isolated-chip'), 'saving should keep isolate active').toBeVisible()
+})
+
 async function openEditor(page: Page) {
     await page.goto(server.url)
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
@@ -185,6 +228,36 @@ async function objectVisibility(page: Page) {
         })
         return visibility
     })
+}
+
+async function managerLoadedNeedsSave(page: Page) {
+    return page.evaluate(() => {
+        const viewer = (window as unknown as {
+            viewer: {getPlugin(type: string): {manager: {loadedNeedsSave: boolean}} | undefined}
+        }).viewer
+        return viewer.getPlugin('CanvasFileDropHandler')?.manager.loadedNeedsSave
+    })
+}
+
+async function setManagerLoadedNeedsSave(page: Page, value: boolean) {
+    await page.evaluate(needsSave => {
+        const viewer = (window as unknown as {
+            viewer: {getPlugin(type: string): {manager: {loadedNeedsSave: boolean}} | undefined}
+        }).viewer
+        const manager = viewer.getPlugin('CanvasFileDropHandler')?.manager
+        if (!manager) throw new Error('ViewerInstanceManager is unavailable')
+        manager.loadedNeedsSave = needsSave
+    }, value)
+}
+
+async function savedObjectVisibility(path: string) {
+    const document = JSON.parse(await readFile(path, 'utf8')) as {
+        nodes: Array<{name?: string, extensions?: {WEBGI_object3d_extras?: {visible?: boolean}}}>
+    }
+    return Object.fromEntries(document.nodes.map(node => [
+        node.name,
+        node.extensions?.WEBGI_object3d_extras?.visible !== false,
+    ]))
 }
 
 function keysScene() {

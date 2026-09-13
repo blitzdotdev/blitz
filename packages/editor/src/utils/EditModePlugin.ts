@@ -274,6 +274,21 @@ export class EditModePlugin extends AViewerPluginSync<{
         return true
     }
 
+    async withIsolateVisibilityRestored<T>(operation: () => Promise<T>): Promise<T> {
+        if (!this._isolatedVisibility) return operation()
+        const isolatedVisibility = new Map<IObject3D, boolean>()
+        for (const [object, visible] of this._isolatedVisibility) {
+            isolatedVisibility.set(object, object.visible)
+            object.visible = visible
+        }
+        try {
+            return await operation()
+        } finally {
+            for (const [object, visible] of isolatedVisibility) object.visible = visible
+            this._viewer?.setDirty()
+        }
+    }
+
     private isUnderModelRoot(object: IObject3D, root: IObject3D) {
         for (let current: IObject3D | null = object.parent as IObject3D | null; current; current = current.parent as IObject3D | null) {
             if (current === root) return true
