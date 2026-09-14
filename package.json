@@ -36,7 +36,6 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:runtime": "npm run test:runtime -w packages/engine",
     "test:gates": "npm run test:gates -w packages/engine",
-    "test:publish": "npm run test:publish -w packages/kite3d",
     "test:kite3d": "npm test -w packages/kite3d",
     "test:editor": "npm test -w packages/editor",
     "test:scripts": "node --test scripts/*.test.mjs",

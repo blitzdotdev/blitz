@@ -8,8 +8,7 @@ import {
 } from 'uiconfig-blueprint/lib/esm/lib'
 import {ThreeEditorComponent} from './components/ThreeEditorComponent.tsx'
 import {DevServerSource} from './DevServerSource.ts'
-import {PublishDialog} from './PublishDialog.tsx'
-import {ManagerProvider, useManagerVersion} from './utils/UseManager.ts'
+import {ManagerProvider} from './utils/UseManager.ts'
 import {AssetsProvider} from './utils/AssetsProvider.ts'
 import {WelcomeProvider} from './utils/UseWelcome.ts'
 import {ContextMenuProvider} from './components/ContextMenuProvider.tsx'
@@ -74,7 +73,7 @@ export default function App() {
                         <HubClientProvider>
                             <AssetsProvider>
                                 <ContextMenuProvider>
-                                    <EditorApp source={source}/>
+                                    <EditorApp/>
                                 </ContextMenuProvider>
                             </AssetsProvider>
                         </HubClientProvider>
@@ -101,19 +100,10 @@ function HubEditorApp() {
     </>
 }
 
-function EditorApp({source}: {source: DevServerSource}) {
-    const manager = useManagerVersion()
-    const [publishDialogOpen, setPublishDialogOpen] = useState(false)
+function EditorApp() {
     return <>
-        <ThreeEditorComponent onOpenGame={() => setPublishDialogOpen(true)}/>
+        <ThreeEditorComponent/>
         <WelcomeScreenDialog hubMode={false}/>
-        <PublishDialog
-            isOpen={publishDialogOpen}
-            name={manager.loadedProject?.name || 'Kite3D game'}
-            source={source}
-            beforePublish={() => manager.beforePublish()}
-            onClose={() => setPublishDialogOpen(false)}
-        />
         <DialogComponent/>
         <LibraryDropDialog/>
         <AppToasterOverlay/>

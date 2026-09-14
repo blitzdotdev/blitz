@@ -5,9 +5,7 @@
   "mainScene": "assets/main.scene.gltf",
   "main": "./main.js",
   "scripts": {
-    "dev": "kite3d dev",
-    "publish": "kite3d publish",
-    "pull": "kite3d pull"
+    "dev": "kite3d dev"
   },
   "devDependencies": {
     "kite3d": "__KITE3D_VERSION__"

@@ -2,16 +2,12 @@ import {useCallback, useEffect, useState} from 'react'
 import {
     Button,
     Classes,
-    Intent,
     Menu,
     MenuItem,
     Popover,
-    Position,
-    Tooltip,
 } from '@blueprintjs/core'
 import {ThemeSettingsMenuComponent} from 'uiconfig-blueprint/lib/esm/lib'
 import {useManagerVersion} from '../utils/UseManager.ts'
-import {InteractionIconButton} from '../components/InteractionIconButton.tsx'
 
 export function Kite3dSaveSceneButton() {
     const manager = useManagerVersion()
@@ -65,22 +61,6 @@ export function Kite3dSaveSceneButton() {
                     variant="minimal" size="small" text=""/>
         </Popover>
     </>
-}
-
-export function Kite3dOpenGameButton({onOpenGame}: {onOpenGame(): void}) {
-    return <Tooltip
-        content="Open game in a new tab"
-        intent={Intent.PRIMARY}
-        position={Position.BOTTOM}
-        usePortal={true}
-    >
-        <InteractionIconButton
-            aria-label="Open game in a new tab"
-            data-testid="open-game"
-            endIcon="open-application"
-            onClick={onOpenGame}
-        />
-    </Tooltip>
 }
 
 export function Kite3dToolbarHooks() {

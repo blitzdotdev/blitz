@@ -26,13 +26,9 @@ import {getCookie} from 'hono/cookie'
 import {LinearRouter} from 'hono/router/linear-router'
 import {streamSSE, type SSEStreamingApi} from 'hono/streaming'
 import {watch, type FSWatcher} from 'chokidar'
-import {resolveBackendUrl} from './backend.ts'
 import {appendSceneJournal} from './journal.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
-import {readDeploys, writeDeploys} from './deploys.ts'
-import {sanitizeDiagnostic} from './api.ts'
 import {ProjectModuleRewriter} from './module-rewriter.ts'
-import type {PublishProgress} from './types.ts'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 import {DEVELOPMENT_PLUGIN_URL, installedPluginPackages} from './plugins.ts'
 import {pngDimensions, saveScreenshotPng} from './screenshot.ts'
@@ -50,12 +46,6 @@ export interface DevServerOptions {
     port?: number
     strictPort?: boolean
     open?: boolean
-    backendUrl?: string
-    publish?: (
-        options: {slug?: string, name?: string, message?: string},
-        emit: (data: PublishProgress) => void,
-    ) => Promise<{preview_url: string, release_hash: string}>
-    pull?: () => Promise<unknown>
 }
 
 export interface DevServer {
@@ -171,9 +161,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     let mutationQueue = Promise.resolve()
     let watcher: FSWatcher | undefined
     let closing = false
-    let platformToken: string | undefined
-    let publishActive = false
-    const backendUrl = resolveBackendUrl(options.backendUrl)
     const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
 
     for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)
@@ -190,7 +177,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     app.get('/', serveIndex)
     app.get('/index.html', serveIndex)
     app.get('/favicon.ico', () => serveStaticFile(resolve(editorDirectory, 'favicon.ico'), editorDirectory))
-    app.get('/api/import-map', async () => jsonResponse(await readProjectImportMap(projectRoot)))
     app.get('/api/files', async () => jsonResponse(await buildManifest(projectRoot)))
     app.get('/api/directories', async () => jsonResponse({directories: await buildDirectoryManifest(projectRoot)}))
     app.post('/api/directories', async (c) => {
@@ -217,94 +203,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 resolveAbort()
             }))
         })
-    })
-    app.get('/api/slug/:slug', async (c) => proxyBackendJson(
-        `${backendUrl}/api/v1/slugs/${encodeURIComponent(c.req.param('slug'))}`,
-    ))
-    app.get('/api/deploys', async () => {
-        const deploys = await readDeploys(projectDirectory)
-        return jsonResponse({
-            games: Object.entries(deploys.games).map(([slug, entry]) => ({
-                game_id: entry.game_id,
-                slug,
-                preview_url: entry.preview_url,
-                expires_at: entry.expires_at,
-                last_release_hash: entry.last_release_hash,
-                claimed: entry.claimed === true,
-            })),
-            last_publish: deploys.last_publish,
-        })
-    })
-    for (const mode of ['register', 'login'] as const) {
-        app.post(`/api/auth/${mode}`, async (c) => {
-            const body = await readJsonBody(c.req.raw)
-            const backendResponse = await fetch(`${backendUrl}/api/v1/auth/${mode}`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(body),
-            })
-            const payload = await readBackendPayload(backendResponse)
-            if (!backendResponse.ok) return backendJson(backendResponse, payload)
-            if (!isRecord(payload) || typeof payload.token !== 'string') {
-                return jsonResponse({error: {code: 'invalid_backend_response', message: 'The Blitz backend returned an invalid authentication response.'}}, 502)
-            }
-            platformToken = payload.token
-            return jsonResponse({user: payload.user, token: payload.token}, backendResponse.status)
-        })
-    }
-    app.post('/api/auth/google', async (c) => {
-        const body = await readJsonBody(c.req.raw)
-        const credential = typeof body.credential === 'string' ? body.credential : ''
-        const csrfToken = typeof body.g_csrf_token === 'string' ? body.g_csrf_token : ''
-        const selectBy = typeof body.select_by === 'string' ? body.select_by : undefined
-        if (!credential || !csrfToken) {
-            return jsonResponse({error: {code: 'invalid_google_login', message: 'Google credential and CSRF token are required.'}}, 400)
-        }
-        if (getCookie(c, 'g_csrf_token') !== csrfToken) {
-            return jsonResponse({error: {code: 'invalid_google_csrf', message: 'Google CSRF cookie does not match.'}}, 403)
-        }
-
-        const form = new URLSearchParams({credential, g_csrf_token: csrfToken})
-        if (selectBy) form.set('select_by', selectBy)
-        const backendResponse = await fetch(`${backendUrl}/api/v1/table/users/auth/google-login`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                Cookie: `g_csrf_token=${encodeURIComponent(csrfToken)}`,
-            },
-            body: form,
-        })
-        const payload = await readBackendPayload(backendResponse)
-        if (!backendResponse.ok) return backendJson(backendResponse, payload)
-        if (!isRecord(payload) || typeof payload.token !== 'string') {
-            return jsonResponse({error: {code: 'invalid_backend_response', message: 'The Blitz backend returned an invalid authentication response.'}}, 502)
-        }
-        platformToken = payload.token
-        return jsonResponse({user: payload.record, token: payload.token}, backendResponse.status)
-    })
-    app.post('/api/claim', async (c) => {
-        if (!platformToken) return jsonResponse({error: {code: 'authentication_required', message: 'Sign in before claiming a game.'}}, 401)
-        const body = await readJsonBody(c.req.raw)
-        const slug = typeof body.slug === 'string' ? body.slug : ''
-        const deploys = await readDeploys(projectDirectory)
-        const entry = deploys.games[slug]
-        if (!entry) return jsonResponse({error: {code: 'deploy_not_found', message: `No local deploy exists for ${slug}.`}}, 404)
-        const backendResponse = await fetch(`${backendUrl}/api/v1/games/${encodeURIComponent(slug)}/claim`, {
-            method: 'POST',
-            headers: {'Authorization': `Bearer ${platformToken}`, 'Content-Type': 'application/json'},
-            body: JSON.stringify({secret: entry.claim_secret}),
-        })
-        const payload = await readBackendPayload(backendResponse)
-        if (!backendResponse.ok) {
-            const safePayload = JSON.parse(sanitizeDiagnostic(
-                JSON.stringify(payload),
-                [platformToken, entry.deploy_token, entry.claim_secret],
-            )) as unknown
-            return backendJson(backendResponse, safePayload)
-        }
-        deploys.games[slug] = {...entry, claimed: true}
-        await writeDeploys(projectDirectory, deploys)
-        return jsonResponse(payload, backendResponse.status)
     })
     app.post('/api/screenshot', async (c) => {
         const body = await readJsonBody(c.req.raw)
@@ -376,46 +274,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             pending.resolve({ok: false, error: errorMessage(error)})
             throw error
         }
-    })
-    app.post('/api/publish', async (c) => {
-        if (!options.publish) return jsonResponse({error: {code: 'publish_unavailable', message: 'Publish is not configured.'}}, 501)
-        const body = await readJsonBody(c.req.raw)
-        if (publishActive) return jsonResponse({error: {code: 'publish_locked', message: 'Another publish is already running.'}}, 409)
-        publishActive = true
-        return streamSSE(c, async (stream) => {
-            let writes = Promise.resolve()
-            const writeEvent = (event: string, data: unknown) => {
-                writes = writes.then(() => stream.writeSSE({event, data: JSON.stringify(data)})).catch(() => undefined)
-            }
-            try {
-                const result = await runServerMutation(() => options.publish!(
-                    {
-                        slug: typeof body.slug === 'string' ? body.slug : undefined,
-                        name: typeof body.name === 'string' ? body.name : undefined,
-                        message: typeof body.message === 'string' ? body.message : undefined,
-                    },
-                    (data) => {
-                        writeEvent('publish:progress', data)
-                        void broadcast('publish:progress', data)
-                    },
-                ))
-                await writes
-                await stream.writeSSE({event: 'publish:result', data: JSON.stringify(result)})
-            } catch (error) {
-                await writes
-                await stream.writeSSE({event: 'publish:error', data: JSON.stringify({
-                    status: httpErrorStatus(error) ?? 500,
-                    code: httpErrorCode(error) ?? 'publish_failed',
-                    message: sanitizeDiagnostic(error instanceof Error ? error.message : error),
-                })})
-            } finally {
-                publishActive = false
-            }
-        })
-    })
-    app.post('/api/pull', async () => {
-        if (!options.pull) return jsonResponse({error: {code: 'pull_unavailable', message: 'Pull is not configured.'}}, 501)
-        return jsonResponse(await runServerMutation(options.pull))
     })
     mountHubRoutes(app)
     app.get('/kite3d/plugins/*', async (c) => {
@@ -982,24 +840,6 @@ function jsonResponse(body: unknown, status = 200, headers: HeadersInit = {}): R
 
 function missingFileResponse(): Response {
     return jsonResponse({error: {code: 'not_found', message: 'File not found.'}}, 404)
-}
-
-async function proxyBackendJson(url: string, init?: RequestInit): Promise<Response> {
-    const backendResponse = await fetch(url, init)
-    return backendJson(backendResponse, await readBackendPayload(backendResponse))
-}
-
-async function readBackendPayload(response: Response): Promise<unknown> {
-    const text = await response.text()
-    if (!text) return {}
-    try { return JSON.parse(text) as unknown } catch {
-        return {error: {code: `http_${response.status}`, message: text}}
-    }
-}
-
-function backendJson(backendResponse: Response, payload: unknown): Response {
-    const retryAfter = backendResponse.headers.get('Retry-After')
-    return jsonResponse(payload, backendResponse.status, retryAfter ? {'Retry-After': retryAfter} : {})
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

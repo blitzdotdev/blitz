@@ -3,16 +3,13 @@ import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {initProject, publishFromDisk, runDev} from '../../../kite3d/src/commands.ts'
+import {initProject, runDev} from '../../../kite3d/src/commands.ts'
 import {createDevServer, type DevServer} from '../../../kite3d/src/server.ts'
-import {startMockBackend, type MockBackend} from '../../../kite3d/test/mockBackend.ts'
 import {closeFixtureSteps} from './fixtureClose.ts'
 
 let root: string
 
 let server: DevServer
-
-let backend: MockBackend
 
 const googleScriptUrl = 'https://accounts.google.com/gsi/client'
 
@@ -60,15 +57,13 @@ test.beforeAll(async () => {
     await writeFile(resolve(root, 'node_modules/@kite3d/engine/package.json'), await readFile(resolve(engineRoot, 'package.json')))
     await writeFile(resolve(root, 'node_modules/@kite3d/engine/dist/runtime.js'), await readFile(resolve(engineRoot, 'dist/runtime.js')))
     await symlink(resolve(engineRoot, '../../node_modules/threepipe'), resolve(root, 'node_modules/threepipe'))
-    backend = await startMockBackend()
-    server = await runDev({projectRoot: root, port: 0, noOpen: true, backendUrl: backend.url})
+    server = await runDev({projectRoot: root, port: 0, noOpen: true})
 })
 
 test.afterAll(async () => {
     try {
         await closeFixtureSteps([
             {name: 'shared editor dev server', close: () => server.close()},
-            {name: 'shared editor mock backend', close: () => backend.close()},
         ])
     } finally {
         await rm(root, {recursive: true, force: true})
@@ -93,9 +88,9 @@ test.beforeEach(async ({page}) => {
 })
 
 // Guards the owner's report: a dropped GLB was not registered in assets.json.
-test('registers a dropped GLB as an asset and loads it from the published project', async ({page}) => {
+test('registers a dropped GLB as an asset and loads it after reload', async ({page}) => {
     test.setTimeout(90_000)
-    const fixture = await startPublishEditor()
+    const fixture = await startAssetEditor()
     try {
         await page.goto(fixture.server.url)
         await waitForProjectLoaded(page)
@@ -206,25 +201,6 @@ test('registers a dropped GLB as an asset and loads it from the published projec
         await expect(page.getByTestId('save-scene')).toBeDisabled({timeout: 20_000})
         await expect.poll(referenceOnlyScene).toEqual({found: true, children: [], meshNodes: [], meshes: []})
 
-        await page.getByTestId('open-game').click()
-        await expect(page.getByText('Available', {exact: true})).toBeVisible()
-        const popupPromise = page.waitForEvent('popup')
-        await page.getByTestId('create-live-game').click()
-        const popup = await popupPromise
-        const slug = await page.locator('#publish-slug').inputValue()
-        await expect(page.getByTestId('live-url')).toBeVisible({timeout: 30_000})
-        await expect.poll(() => popup.evaluate(() => Boolean((window as unknown as {viewer?: unknown}).viewer)), {
-            timeout: 30_000,
-        }).toBe(true)
-        await expect.poll(() => fixture.backend.requests.some(({method, path}) =>
-            method === 'GET' && path === `/preview/${slug}/assets/imports/gate-model.glb`), {timeout: 30_000}).toBe(true)
-        await expect.poll(() => popup.evaluate(() => {
-            const wrapper = (window as unknown as {
-                viewer?: {scene: {modelRoot: {getObjectByName(name: string): {children: unknown[]} | undefined}}}
-            }).viewer?.scene.modelRoot.getObjectByName('gate-model.glb')
-            return wrapper?.children.length || 0
-        }), {timeout: 30_000}).toBeGreaterThan(0)
-        await popup.close()
     } finally {
         await page.close()
         await fixture.close()
@@ -340,33 +316,25 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
     }
 })
 
-async function startPublishEditor() {
-    const projectRoot = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-publish-'))
+async function startAssetEditor() {
+    const projectRoot = await mkdtemp(resolve(tmpdir(), 'kite3d-editor-assets-'))
     await initProject(projectRoot)
     const engineRoot = fileURLToPath(new URL('../../../engine/', import.meta.url))
     const installedEngine = resolve(projectRoot, 'node_modules/@kite3d/engine')
     await mkdir(resolve(installedEngine, 'dist'), {recursive: true})
     await writeFile(resolve(installedEngine, 'package.json'), await readFile(resolve(engineRoot, 'package.json')))
     await writeFile(resolve(installedEngine, 'dist/runtime.js'), await readFile(resolve(engineRoot, 'dist/runtime.js')))
-    const mockBackend = await startMockBackend()
     const devServer = await createDevServer({
         projectRoot,
         port: 0,
-        backendUrl: mockBackend.url,
-        publish: (publishOptions, emit) => publishFromDisk(projectRoot, {
-            ...publishOptions,
-            backendUrl: mockBackend.url,
-        }, emit),
     })
     return {
         root: projectRoot,
         server: devServer,
-        backend: mockBackend,
         async close() {
             try {
                 await closeFixtureSteps([
-                    {name: 'publish editor dev server', close: () => devServer.close()},
-                    {name: 'publish editor mock backend', close: () => mockBackend.close()},
+                    {name: 'asset editor dev server', close: () => devServer.close()},
                 ])
             } finally {
                 await rm(projectRoot, {recursive: true, force: true})

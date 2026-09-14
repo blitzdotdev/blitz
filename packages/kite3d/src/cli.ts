@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 import {resolve} from 'node:path'
+import {fileURLToPath} from 'node:url'
 import openBrowser from 'open'
 import {
     claimFromDisk,
     devStatusFromDisk,
     initProject,
     journalFromDisk,
-    publishFromDisk,
-    pullFromDisk,
     runDetachedDev,
     runDev,
     screenshotFromDisk,
@@ -18,7 +17,6 @@ import {
 } from './commands.ts'
 import {enforceVersionPin} from './version-pin.ts'
 import {KITE3D_VERSION} from './versions.ts'
-import {sanitizeDiagnostic} from './api.ts'
 import {archiveProject} from './archive.ts'
 import {doctorProject, formatDoctorTable} from './doctor.ts'
 import {gitRepositoryRoot} from './git.ts'
@@ -33,7 +31,7 @@ Workflow:
   npx kite3d init my-game && cd my-game && npm install
   Read AGENTS.md in the project. It is the guide: engine API, scene file, rules.
   npx kite3d dev        keeps the local editor running while you edit
-  npx kite3d publish    prints the live URL
+  npx kite3d publish    points to the bundled publishing procedure
 
 Usage: kite3d <command> [options]
 
@@ -42,8 +40,7 @@ Commands:
   dev [options]               Start or stop the local editor
   doctor [--port <port>]      Check the local development prerequisites
   archive                     Write a sanitized project source ZIP
-  publish [options]           Publish the project
-  pull [--force]              Pull the active release
+  publish                     Print the publishing procedure path
   status                      Show local deploy status
   claim [--no-open]           Open claim pages for local deploys
   screenshot [options]        Save a PNG of the editor viewport
@@ -60,8 +57,7 @@ const COMMAND_USAGE: Record<string, string> = {
     dev: 'Usage: kite3d dev [--port <port>] [--no-open] [--force] [--detach | --stop]',
     doctor: 'Usage: kite3d doctor [--port <port>]',
     archive: 'Usage: kite3d archive',
-    publish: 'Usage: kite3d publish [--slug <slug>] [--name <name>] [--message <message>] [--no-verify]',
-    pull: 'Usage: kite3d pull [--force]',
+    publish: publishMessage(),
     status: 'Usage: kite3d status',
     claim: 'Usage: kite3d claim [--no-open]',
     screenshot: 'Usage: kite3d screenshot [--name <name>] [--headless] [--full] [--width <px>] [--height <px>] [--json]',
@@ -73,14 +69,14 @@ const COMMAND_USAGE: Record<string, string> = {
 }
 
 const PROJECT_ROOT_COMMANDS = new Set([
-    'dev', 'screenshot', 'publish', 'doctor', 'archive', 'status',
+    'dev', 'screenshot', 'doctor', 'archive', 'status',
 ])
 
 const [command = 'help', ...args] = process.argv.slice(2)
 
 try {
     const legacyProject = await legacyProjectMigrationNeeded(process.cwd())
-    const allowsLegacyProject = command === 'upgrade' || command === 'doctor' || command === 'skills'
+    const allowsLegacyProject = command === 'upgrade' || command === 'doctor' || command === 'skills' || command === 'publish'
         || command === 'help' || command === '--help' || command === '-h'
         || command === '--version' || command === '-v'
         || args.includes('--help') || args.includes('-h')
@@ -90,7 +86,7 @@ try {
         if (!(command === 'doctor' && legacyProject) && !commandNeedsNoProject) await assertKite3dProjectRoot(process.cwd())
     }
     const skipsVersionRule = command === 'help' || command === '--help' || command === '-h'
-        || command === 'doctor' || command === 'upgrade' || command === 'skills'
+        || command === 'doctor' || command === 'upgrade' || command === 'skills' || command === 'publish'
         || command === '--version' || command === '-v'
         || args.includes('--help') || args.includes('-h')
     const delegatedExitCode = skipsVersionRule ? undefined : await enforceVersionPin(command, process.argv.slice(2))
@@ -127,7 +123,7 @@ try {
             console.log(`Next: cd ${directory} && npm install && npx kite3d dev`)
             console.log(
                 'Then read AGENTS.md in the project before you write code. '
-                + 'Build, inspect the saved project, then run npx kite3d publish.',
+                + 'Build and inspect the saved project.',
             )
         }
     } else if (command === 'doctor') {
@@ -180,35 +176,11 @@ try {
             process.once('SIGTERM', shutdown)
             console.log(`Kite3D editor: ${server.url} (Kite3D ${KITE3D_VERSION})`)
             console.log(`Project: ${server.projectRoot}`)
-            console.log('Guide: AGENTS.md in this folder. Inspect the saved project, then publish with npx kite3d publish.')
+            console.log('Guide: AGENTS.md in this folder. Inspect the saved project before sharing it.')
         }
     } else if (command === 'publish') {
-        const parsed = parseArgs(args, {
-            '--slug': 'value',
-            '--name': 'value',
-            '--message': 'value',
-            '--no-verify': 'boolean',
-        })
-        const result = await publishFromDisk(process.cwd(), {
-            slug: valueOption(parsed.values['--slug']),
-            name: valueOption(parsed.values['--name']),
-            message: valueOption(parsed.values['--message']),
-            noVerify: parsed.values['--no-verify'] === true,
-        }, (value) => {
-            const progress = value as {phase?: string, done?: number, total?: number, path?: string}
-            console.log(`[${progress.phase}] ${progress.done}/${progress.total}${progress.path ? ` ${progress.path}` : ''}`)
-        })
-        console.log(`Published ${result.release_hash}`)
-        console.log(result.preview_url)
-    } else if (command === 'pull') {
-        const parsed = parseArgs(args, {'--force': 'boolean'})
-        const result = await pullFromDisk(process.cwd(), {force: parsed.values['--force'] === true})
-        if (!result.release_hash) {
-            console.log('There is nothing to pull before the first publish.')
-        } else {
-            for (const path of result.kept) console.log(`${path}: modified locally, kept`)
-            console.log(`Pulled ${result.release_hash}; updated ${result.updated.length} file(s).`)
-        }
+        parseArgs(args, {})
+        console.log(publishMessage())
     } else if (command === 'status') {
         parseArgs(args, {})
         const entries = await statusFromDisk()
@@ -297,8 +269,13 @@ try {
         if (result.next) console.log(`Next: ${result.next}`)
     }
 } catch (error) {
-    console.error(`kite3d: ${sanitizeDiagnostic(error instanceof Error ? error.message : error)}`)
+    console.error(`kite3d: ${error instanceof Error ? error.message : String(error)}`)
     process.exitCode = 1
+}
+
+function publishMessage(): string {
+    const path = fileURLToPath(new URL('../skills/publish/SKILL.md', import.meta.url))
+    return `Publishing is done by you. Read and follow: ${path}`
 }
 
 type OptionKind = 'value' | 'boolean'

@@ -100,7 +100,7 @@ ConfigObjectGenerators.materials = BPMaterialsTreeComponent
 ConfigObjectGenerators.textures = BPTexturesTreeComponent
 ConfigObjectGenerators.tree = BPTreeFolderComponent
 
-export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
+export function ThreeEditorComponent() {
     const [viewer, setViewer] = useState<ThreeViewer | null>(null)
     // const uiConfigRenderer = viewer.getPlugin(BlueprintJsUiPlugin2)!
     const [uiConfigRenderer, setUiConfigRenderer] = useState<BlueprintJsUiPlugin2 | null>(null)
@@ -254,8 +254,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                         <PlayModeButtonGroup
                             key="playmode"
                             onPlay={() => setPlayOverlay(true)}
-                            onStop={() => void stopPlaying()}
-                            onOpenGame={onOpenGame}/>
+                            onStop={() => void stopPlaying()}/>
                         <Navbar.Divider/>
                         <Popover targetProps={{style: {}}}
                                  minimal
@@ -321,7 +320,6 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                                     {!selectedFile && selectedInspectorItems.length > 0 && <EditInspectorComponent
                                         className={'inspector-stack'}
                                     />}
-                                    {!selectedFile && selectedInspectorItems.length > 0 && <DevServerInspectorControls placement="controls"/>}
                                 </>
                             },
                             {

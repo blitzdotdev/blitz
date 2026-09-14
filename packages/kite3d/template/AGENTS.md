@@ -11,7 +11,7 @@ npm install
 npx kite3d dev
 ```
 
-`kite3d dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx kite3d pull`; then run `npx kite3d publish` and report the exact live URL it prints, normally `https://<slug>.app.blitz.dev/`. Run `npx kite3d <command> --help` for command-specific usage.
+`kite3d dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Run `npx kite3d <command> --help` for command-specific usage.
 
 `kite3d init` stamps the running command's exact version into both `devDependencies["kite3d"]` and `kite3d.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, `doctor`, `upgrade`, and `skills` checks the resolved version. `doctor` reports a mismatch as a FAIL row. `upgrade` runs in the invoked CLI so it can apply that version's migrations. Other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
 
@@ -59,9 +59,9 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 
 For camera ownership during Play, `camera.controlsMode = ''` disables built-in controls; set `autoLookAtTarget = true` when driving `target`, or false when driving the quaternion. Save `scene.mainCamera` and the changed camera properties in `start()`, call the gameplay camera's `activateMain()`, then reactivate the saved camera and restore its properties in `stop()`.
 
-The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `open-game`, `project-files`, and `scene-hierarchy`; select them through `page.getByTestId()`.
+The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `project-files`, and `scene-hierarchy`; select them through `page.getByTestId()`.
 
-The token-protected local API is `GET /api/state`, `GET /api/files`, `GET /api/events`, `GET /api/slug/:slug`, `GET /api/import-map`, and `POST /api/publish`.
+The token-protected local API includes `GET /api/state`, `GET /api/files`, and `GET /api/events`.
 
 The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Keep secrets from `.kite3d/deploys.json` and `.kite3d/dev.json` private.
 
@@ -981,13 +981,7 @@ class EnemySystemComponent extends Object3DComponent {
 }
 ```
 
-# Publishing
-
-Run `npx kite3d pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx kite3d pull --force` overwrites them. Stop Play, save, reload the editor page, and inspect the result before publishing.
-
-Create a game with `npx kite3d publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `kite3d.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@kite3d/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.kite3d/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
-
-Publishing omits `package-lock.json`, `.env`, `.env.*`, `*.log`, `.eslintrc*`, `AGENTS.md`, `samples/**`, `tools/**`, and root Markdown files other than `README.md` by default. It publishes a sanitized `package.json` without `devDependencies` or `file:` dependency specs. Add other project-specific glob patterns under `kite3d.publish.exclude` in `package.json`.
+# Deploy records
 
 Run `npx kite3d status` to print the live local dev server and deploy metadata without tokens or secrets. Run `npx kite3d claim` to print each unclaimed deploy's Blitz claim URL and open it in a browser for Google sign-in. Add `--no-open` to print the URLs without launching a browser. Unknown flags fail with a nonzero exit code.
 

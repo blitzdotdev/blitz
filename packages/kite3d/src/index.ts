@@ -1,5 +1,3 @@
-export {Kite3dApi, Kite3dApiError, sanitizeDiagnostic} from './api.ts'
-export type {Kite3dApiOptions, BlobUpload, BlobUploadProgress} from './api.ts'
 export {archiveProject} from './archive.ts'
 export type {ArchiveResult} from './archive.ts'
 export {doctorProject, formatDoctorTable} from './doctor.ts'
@@ -11,7 +9,6 @@ export type {GenerateIndexHtmlOptions} from './indexHtml.ts'
 export {installedPluginEntries, installedPluginPackages, PUBLISHED_PLUGIN_PATH} from './plugins.ts'
 export type {InstalledPluginPackage} from './plugins.ts'
 export {buildManifest, canonicalizeManifest, manifestHash, sha256} from './manifest.ts'
-export {publishProject, pullProject} from './publish.ts'
 export {NodeProjectDirectory} from './node-filesystem.ts'
 export {createDevServer} from './server.ts'
 export type {DevServer, DevServerOptions} from './server.ts'
@@ -24,8 +21,6 @@ export {
     devStatusFromDisk,
     initProject,
     journalFromDisk,
-    publishFromDisk,
-    pullFromDisk,
     runDetachedDev,
     runDev,
     screenshotFromDisk,
@@ -35,7 +30,7 @@ export {
     stopDev,
     upgradeProject,
 } from './commands.ts'
-export type {PublicClaimEntry, PublicDeployEntry, PublicDevServer, PublishFromDiskOptions} from './commands.ts'
+export type {PublicClaimEntry, PublicDeployEntry, PublicDevServer} from './commands.ts'
 export type {ScreenshotOptions, ScreenshotResult} from './screenshot.ts'
 export {branch, repoKey, repoRoot, worktrees} from './gitInfo.ts'
 export type {GitWorktree} from './gitInfo.ts'
@@ -46,7 +41,6 @@ export type {HubServer, HubState} from './hub.ts'
 export {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 export {enforceVersionPin, findPinnedProject} from './version-pin.ts'
 export {gitHead, gitRepositoryRoot} from './git.ts'
-export type {PublishProjectOptions, PullProjectOptions} from './publish.ts'
 export type {
     CreatedAnonymousGame,
     DeployEntry,
@@ -55,9 +49,6 @@ export type {
     ManifestFile,
     ProjectDependency,
     ProjectEntry,
-    PublishProgress,
-    PublishProgressPhase,
-    PublishStatus,
     ReleaseManifest,
     ReleaseRecord,
     RuntimeRecord,

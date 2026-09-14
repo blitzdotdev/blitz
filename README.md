@@ -34,7 +34,6 @@ Or manually install:
 npx kite3d init my-game
 cd my-game && npm install
 npx kite3d dev        # local editor, keeps running while you edit
-npx kite3d publish    # live at https://<slug>.app.blitz.dev/
 ```
 
 ## Features
@@ -51,7 +50,6 @@ npx kite3d publish    # live at https://<slug>.app.blitz.dev/
 |---|---|
 | `kite3d init <dir>` | Create a project and its Git repository |
 | `kite3d dev` | Start the local editor |
-| `kite3d publish` | Publish a release; `kite3d pull` fetches the active one |
 | `kite3d doctor` | Verify the local setup |
 | `kite3d skills` | List bundled skills with absolute `SKILL.md` paths |
 | `kite3d upgrade` | Move a project to the invoked CLI version and apply all migrations it knows, including old `blitz` projects |
