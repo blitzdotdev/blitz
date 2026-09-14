@@ -59,7 +59,7 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 
 For camera ownership during Play, `camera.controlsMode = ''` disables built-in controls; set `autoLookAtTarget = true` when driving `target`, or false when driving the quaternion. Save `scene.mainCamera` and the changed camera properties in `start()`, call the gameplay camera's `activateMain()`, then reactivate the saved camera and restore its properties in `stop()`.
 
-The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `open-game`, `project-files`, `scene-hierarchy`, and `component-types`; select them through `page.getByTestId()`.
+The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `open-game`, `project-files`, and `scene-hierarchy`; select them through `page.getByTestId()`.
 
 The token-protected local API is `GET /api/state`, `GET /api/files`, `GET /api/events`, `GET /api/slug/:slug`, `GET /api/import-map`, and `POST /api/publish`.
 
@@ -72,9 +72,7 @@ The local server owns the project folder. Edit files directly; do not attempt to
 - `kite3d open` opens the launcher that lists every known project and every running editor.
 - Run npx kite3d screenshot to save a PNG of the editor viewport under .kite3d/screenshots/ and print its path. Look at it before and after visual changes. Add --headless when no editor is open.
 
-Read `.kite3d/state.json` and `.kite3d/console.log` for the editor and runtime feedback loop. While Play is active, the editor refreshes `state.json.updatedAt` every 5 seconds and writes its `clientId`. Treat a timestamp more than 15 seconds old as stale. A `pagehide` writes `playState: "stopped"`.
-
-The editor creates `.kite3d/console.log` with a header when Play starts. It records `console.warn`, `console.error`, uncaught window errors, and unhandled promise rejections during Play. It deliberately does not record `console.log`; use the browser console for that level. Log forwarding is rate-limited.
+Read `.kite3d/state.json` for editor health and Play state. While Play is active, the editor refreshes `state.json.updatedAt` every 5 seconds and writes its `clientId`. Treat a timestamp more than 15 seconds old as stale. A `pagehide` writes `playState: "stopped"`.
 
 Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Kite3D-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `kite3d dev`. In `.kite3d/dev.json`, `origin` is the token-free server origin and `url` includes the session query. Keep that token out of logs and reports.
 
@@ -155,7 +153,7 @@ Components live in node extras. The shape is:
 }
 ```
 
-Preserve every extras field you do not own. Preserve unknown glTF extensions too. You may wire a component without the editor UI by writing its `{type, state}` entry under `extras.EntityComponentPlugin`, but its module must also be listed under `kite3d.scripts`. Open the editor after a scripted edit. Read `.kite3d/console.log` for parse and load errors.
+Preserve every extras field you do not own. Preserve unknown glTF extensions too. You may wire a component without the editor UI by writing its `{type, state}` entry under `extras.EntityComponentPlugin`, but its module must also be listed under `kite3d.scripts`. Open the editor after a scripted edit and inspect the visible error alert and browser console for parse and load errors.
 
 For example, list a project component as `{"kite3d":{"scripts":["./scripts/X.script.js"]}}`. In `kite3d.scripts` and `kite3d.plugins`, an entry is a bare module only when it exactly matches a key in `package.json`'s `dependencies`; every other entry is a project file, whether or not it starts with `./`.
 
@@ -373,7 +371,7 @@ The editor canvas occupies only the viewport pane, not the full page. For a DOM 
 - Use `setDirty()` on objects only when transforms actually change
 
 ## Debugging
-- Use `console.log` for verbose debugging in browser dev tools. Use `console.warn` or `console.error` when the message must also reach `.kite3d/console.log` during Play.
+- Use the browser console for debugging output.
 - Access any object by name: `viewer.scene.getObjectByName('PlayerMesh')`
 - Pause the game to inspect state: use the editor's pause button
 - In some cases, it might be better to show logs as HTML text over `this.ctx.viewer.canvas` instead of printing several logs in the console every frame, for the human developer to better see what's happening.

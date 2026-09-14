@@ -1,7 +1,7 @@
 import {Button, Callout, Classes, Menu, MenuDivider, MenuItem, Popover, Spinner} from '@blueprintjs/core'
 import {useEffect, useState, type ReactNode} from 'react'
 import {displayHubPath, useHubClient} from '../hubClient.tsx'
-import {useProject} from '../utils/UseProject.ts'
+import {useWelcome} from '../utils/UseWelcome.ts'
 import {BranchTag} from './WelcomeDialogProjectsTab.tsx'
 
 export function HubProjectPicker({fallbackPath}: {fallbackPath: string}) {
@@ -9,7 +9,7 @@ export function HubProjectPicker({fallbackPath}: {fallbackPath: string}) {
     const {
         projects, error, refreshing, starting, stopping, currentProjectPath, refresh, openProject, stop,
     } = useHubClient()
-    const {setWelcomeOpen, setWelcomeView} = useProject()
+    const {setWelcomeVisible, setWelcomeView} = useWelcome()
 
     useEffect(() => {
         if (open) void refresh()
@@ -18,7 +18,7 @@ export function HubProjectPicker({fallbackPath}: {fallbackPath: string}) {
     const showDialog = (view: 'new' | 'open') => {
         setOpen(false)
         setWelcomeView(view)
-        setWelcomeOpen(true)
+        setWelcomeVisible(true)
     }
     const currentPath = currentProjectPath ? displayHubPath(currentProjectPath) : fallbackPath
     return <Popover

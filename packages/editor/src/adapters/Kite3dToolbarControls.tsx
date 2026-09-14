@@ -85,10 +85,7 @@ export function Kite3dOpenGameButton({onOpenGame}: {onOpenGame(): void}) {
 
 export function Kite3dToolbarHooks() {
     const manager = useManagerVersion()
-    return <>
-        <span className="kite3d-status-hook" aria-live="polite">{manager.status}</span>
-        {manager.error && <div className="kite3d-project-error" role="alert">{manager.error}</div>}
-    </>
+    return manager.error ? <div className="kite3d-project-error" role="alert">{manager.error}</div> : null
 }
 
 export function Kite3dThemeSettingsMenu() {

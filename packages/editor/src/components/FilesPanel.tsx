@@ -56,7 +56,7 @@ export function FilesPanelBreadCrumbs() {
     const manager = useManagerVersion()
     const {currentPath, setCurrentPath} = useAssets()
     const items: BreadcrumbProps[] = [{
-        text: manager.project?.name || 'No Project',
+        text: manager.loadedProject?.name || 'No Project',
         current: currentPath === '/',
         icon: 'root-folder' as const,
         onClick: () => setCurrentPath('/'),
@@ -165,7 +165,7 @@ export function FilesPanelGrid() {
             if (entry) {
                 const selected = {...entry, name: entry.path.split('/').pop() || entry.path, type: 'file' as const, isFSEntry: true as const}
                 setSelectedFiles([selected])
-                manager.selectFile(path)
+                manager.selectFile()
             }
             AppToaster().show({message: `Created ${path}.`, intent: 'success', icon: 'tick', timeout: 2500})
         } catch (error) {
@@ -187,7 +187,7 @@ export function FilesPanelGrid() {
             }
         }],
         ['set-main', async (data: {file: FileManifestEntry}) => {
-            const current = manager.project?.mainScene || manager.scenePath
+            const current = manager.loadedProject?.mainScene || manager.scenePath
             const confirmed = await prompt({
                 title: 'Set main scene',
                 message: current === data.file.path
@@ -214,7 +214,7 @@ export function FilesPanelGrid() {
             return
         }
         setSelectedFiles([file])
-        manager.selectFile(file.path)
+        manager.selectFile()
     }
     const showEmptyMenu = (event: React.MouseEvent<HTMLElement>) => {
         event.preventDefault()
@@ -311,7 +311,7 @@ export function FilesPanelGrid() {
                     style={{left: `${index * 4}px`, top: `${index * 4}px`}}
                     aria-label={file.path} onClick={() => {
                         setSelectedFiles([file])
-                        manager.selectFile(file.path)
+                        manager.selectFile()
                     }}/>) }
     </ButtonGroup></div>
 }

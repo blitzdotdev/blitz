@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test'
+import {expect, test, type Page} from '@playwright/test'
 import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
@@ -98,7 +98,7 @@ test('registers a dropped GLB as an asset and loads it from the published projec
     const fixture = await startPublishEditor()
     try {
         await page.goto(fixture.server.url)
-        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await waitForProjectLoaded(page)
         await page.evaluate(() => {
             const target = window as unknown as {
                 viewer: {assetManager: {importer: {import(path: string, options?: unknown): Promise<unknown>}}}
@@ -122,7 +122,9 @@ test('registers a dropped GLB as an asset and loads it from the published projec
             }, {bytes: [...glb]}),
         })
 
-        await expect(page.getByText('Imported gate-model.glb')).toBeVisible({timeout: 20_000})
+        await expect.poll(async () => JSON.parse(
+            await readFile(resolve(fixture.root, 'assets.json'), 'utf8'),
+        )).toEqual({version: 1, files: {'gate-model': {path: 'assets/imports/gate-model.glb'}}})
         const assets = JSON.parse(await readFile(resolve(fixture.root, 'assets.json'), 'utf8')) as {
             files: Record<string, {path: string}>
         }
@@ -134,22 +136,24 @@ test('registers a dropped GLB as an asset and loads it from the published projec
         await expect(page.getByTestId('scene-hierarchy')).toContainText('gate-model.glb')
 
         await page.getByTestId('save-scene').click()
-        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
-        const expectReferenceOnlyScene = async () => {
+        await expect(page.getByTestId('save-scene')).toBeDisabled({timeout: 20_000})
+        const referenceOnlyScene = async () => {
             const scene = JSON.parse(await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8')) as {
                 nodes: Array<{children?: number[], extras?: {rootPath?: string}, mesh?: number}>
                 meshes?: unknown[]
             }
             const wrapper = scene.nodes.find((node) => node.extras?.rootPath === '/kite3d/@gate-model/f.glb')
-            expect(wrapper).toBeDefined()
-            expect(wrapper?.children || []).toEqual([])
-            expect(scene.nodes.filter((node) => node.mesh !== undefined)).toEqual([])
-            expect(scene.meshes || []).toEqual([])
+            return {
+                found: Boolean(wrapper),
+                children: wrapper?.children || [],
+                meshNodes: scene.nodes.filter((node) => node.mesh !== undefined),
+                meshes: scene.meshes || [],
+            }
         }
-        await expectReferenceOnlyScene()
+        await expect.poll(referenceOnlyScene).toEqual({found: true, children: [], meshNodes: [], meshes: []})
 
         await page.reload()
-        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await waitForProjectLoaded(page)
         const firstReloadMeshCount = await page.evaluate(() => {
             const wrapper = (window as unknown as {
                 viewer: {scene: {modelRoot: {getObjectByName(name: string): {
@@ -164,7 +168,7 @@ test('registers a dropped GLB as an asset and loads it from the published projec
         })
         if (firstReloadMeshCount === 0) {
             await page.reload()
-            await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+            await waitForProjectLoaded(page)
         }
         await expect.poll(() => page.evaluate(() => {
             const wrapper = (window as unknown as {
@@ -199,8 +203,8 @@ test('registers a dropped GLB as an asset and loads it from the published projec
         })
         await expect(page.getByTestId('save-scene')).toBeEnabled()
         await page.getByTestId('save-scene').click()
-        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
-        await expectReferenceOnlyScene()
+        await expect(page.getByTestId('save-scene')).toBeDisabled({timeout: 20_000})
+        await expect.poll(referenceOnlyScene).toEqual({found: true, children: [], meshNodes: [], meshes: []})
 
         await page.getByTestId('open-game').click()
         await expect(page.getByText('Available', {exact: true})).toBeVisible()
@@ -237,7 +241,6 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
     const pageErrors: string[] = []
     const httpErrors: Array<{status: number, url: string}> = []
     const library = await routeMockLibrary(page)
-    await writeFile(resolve(fixture.root, '.kite3d/console.log'), '')
     page.on('request', (request) => {
         if (request.url().startsWith('https://library.example.test/') || request.url().includes('/files/assets/imports/mock-textured/')) {
             libraryRequests.push({method: request.method(), url: request.url()})
@@ -255,7 +258,7 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
     page.on('pageerror', (error) => pageErrors.push(error.message))
     try {
         await page.goto(fixture.server.url)
-        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await waitForProjectLoaded(page)
         await page.getByRole('tab', {name: 'Library'}).click()
         await page.getByRole('tab', {name: '3D Models'}).click()
         const item = page.getByTitle(libraryRootUrl)
@@ -302,18 +305,20 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
         await expect.poll(() => texturedObjectState(page)).toEqual({meshCount: 1, positionCount: 3, textureWidth: 96})
         await expect(page.getByTestId('save-scene')).toBeEnabled()
         await page.getByTestId('save-scene').click()
-        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
-        const savedScene = JSON.parse(await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8')) as {
-            nodes: Array<{extras?: {rootPath?: string}}>
-        }
-        expect(savedScene.nodes.some(({extras}) => extras?.rootPath === '/kite3d/@mock-textured/f.gltf')).toBe(true)
+        await expect(page.getByTestId('save-scene')).toBeDisabled({timeout: 20_000})
+        await expect.poll(async () => {
+            const savedScene = JSON.parse(
+                await readFile(resolve(fixture.root, 'assets/main.scene.gltf'), 'utf8'),
+            ) as {nodes: Array<{extras?: {rootPath?: string}}>}
+            return savedScene.nodes.some(({extras}) => extras?.rootPath === '/kite3d/@mock-textured/f.gltf')
+        }).toBe(true)
 
         await page.reload()
-        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await waitForProjectLoaded(page)
         await expect.poll(() => texturedObjectState(page)).toEqual({meshCount: 1, positionCount: 3, textureWidth: 96})
 
         await page.reload()
-        await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+        await waitForProjectLoaded(page)
         await expect.poll(() => texturedObjectState(page)).toEqual({meshCount: 1, positionCount: 3, textureWidth: 96})
         expect(libraryRequests.map(({method, url, status}) => ({method, path: new URL(url).pathname, status})))
             .toEqual(expect.arrayContaining([
@@ -502,4 +507,12 @@ async function texturedObjectState(page: import('@playwright/test').Page) {
         })
         return {meshCount, positionCount, textureWidth}
     })
+}
+
+async function waitForProjectLoaded(page: Page): Promise<void> {
+    await page.waitForFunction(
+        () => (window as Window & {kite3dProjectLoaded?: boolean}).kite3dProjectLoaded === true,
+        undefined,
+        {timeout: 20_000},
+    )
 }

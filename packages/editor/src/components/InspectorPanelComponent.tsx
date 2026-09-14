@@ -30,7 +30,6 @@ import {useAsyncMemo} from "./UseAsyncMemo.tsx";
 import {iconForSelectionObject} from "../utils/icons.tsx";
 import {refreshTexturePreview} from "../utils/three/refreshTexturePreview.ts";
 import {isGeomEditable, isTexEditable} from "../utils/three/assetEditorChecks.ts";
-import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 import {MaterialInstanceIns, ObjectInspectorUI} from "./ObjectInspectorUI.tsx";
 import {InsSectionItem} from "./InsSectionItem.tsx";
@@ -57,7 +56,7 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     // const picking = viewer?.getPlugin(PickingPlugin)
     // const objectSelUiConfig = useMemo<UiObjectConfig[]|undefined>(()=>object ? picking?.objectSelectionUiConfig(object) : undefined, [object])
     // const objectMatManageUiConfig = useMemo<UiObjectConfig[]|undefined>(()=>object ? picking?.objectMaterialManageUiConfig(object) : undefined, [object])
-    const {project} = useProject()
+    const project = manager.loadedProject
 
     // todo inspector based on select, but this loadAsset will reload the file everytime from scratch, use getAssetFromPath
     // const selectedFileLoaded = useAsyncMemo(async ()=>project && selFile ? manager.loadAsset(selFile, project) : null, [manager, selFile, project])
@@ -72,7 +71,6 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     // let selObjectPath: string | null = null
     if(loadedAssetMain && !(loadedAssetMain as IObject3D).isObject3D){
         selObject = loadedAssetMain as any
-        // selObjectPath = manager.loadedProjectFile?.path || null
     }
 
     // if(object?.userData.tpAssetId) object = null
@@ -186,7 +184,7 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
                 console.error('Asset is not an object3D or material', assetRootPathAsset, assetRootPath1)
                 return
             }
-            const res = await manager.saveProjectAsset(project, manager.loadedProjectFile, assetRootPathAsset as IObject3D|IMaterial, assetRootPath1)
+            const res = await manager.saveProjectAsset(assetRootPathAsset as IObject3D|IMaterial, assetRootPath1)
             const r = showSuccessErrorToast(res ? `Saved ${project.path}${assetRootPath1} successfully` : 'Unknown Error', 'Unable to save asset', res)
             if(r)
                 setNeedsSave(false) // todo get needs save based on object
@@ -194,7 +192,6 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
 
             // if(!isLoadedAsset || !selObject || !selObjectPath || !project) return
             // if(!isMatFile) return // todo other types
-            // const res = await manager.saveProjectAsset(project, manager.loadedProjectFile, selObject as IObject3D|IMaterial, selObjectPath)
             // if(res.error){
             //     // todo apptoaster
             //     return

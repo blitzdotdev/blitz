@@ -423,7 +423,6 @@ async function assertEditorAllowsPublish(root: string): Promise<void> {
     let state: {
         playState?: unknown
         dirty?: unknown
-        sourceDraftDirty?: unknown
         sceneHash?: unknown
         savedSceneHash?: unknown
         updatedAt?: unknown
@@ -445,8 +444,8 @@ async function assertEditorAllowsPublish(root: string): Promise<void> {
     const sceneHashesMatch = typeof state.sceneHash === 'string'
         && typeof state.savedSceneHash === 'string'
         && state.sceneHash === state.savedSceneHash
-    if (state.sourceDraftDirty === true || state.dirty === true && !sceneHashesMatch) {
-        throw Object.assign(new Error('Save the unsaved editor draft before publishing.'), {
+    if (state.dirty === true && !sceneHashesMatch) {
+        throw Object.assign(new Error('Save the unsaved editor scene before publishing.'), {
             status: 409,
             code: 'editor_dirty',
         })

@@ -20,7 +20,6 @@ import {FileComponentProps, FormGroupComponent, InputGroup2} from "uiconfig-blue
 import {FileManifestEntry, SelectedInspectorItem, traverseFiles, useAssets} from "../utils/AssetsProvider.ts";
 import {assetUrlPrefix, settingsKey} from "../utils/project.ts";
 import {iconForSelectionObject, iconForSelectionObjectType} from "../utils/icons.tsx";
-import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 import { typesExts } from "../data/fileTypes.ts";
 
@@ -415,14 +414,14 @@ export const RefSelectionObjectComponentTex: FileComponentProps<ITexture>['Asset
     const uuid = typeof state.value === 'string' && state.value.startsWith('texture://') ? state.value.substring('texture://'.length) : (state.value as ITexture)?.uuid
     const texture = (state.value as ITexture)?.isTexture ? state.value as ITexture : uuid ? viewer.object3dManager.getTextures().find(f=>f.uuid === uuid) : undefined
     // console.log(uuid, texture, state.value, viewer.object3dManager)
-    const {project} = useProject()
+    const project = manager.loadedProject
 
     const loadTexture = async (selected: SelectFileRef|SelectedInspectorItem|null)=>{
         if(!project) return null
         // (selected as SelectFileRef).entry?.isFSEntry ? assetUrlPrefix + (selected as SelectFileRef).entry.path : null
         const entry = (selected as SelectFileRef).entry?.isFSEntry ? (selected as SelectFileRef).entry : null
         // todo use getFromPath to avoid reloading if already in memory
-        const res = await manager.loadAsset(entry, project)
+        const res = await manager.loadAsset(entry)
         if(!res?.isTexture) {
             console.error('RefSelectionObjectComponentTex: loaded object is not a texture', res, selected)
             return null

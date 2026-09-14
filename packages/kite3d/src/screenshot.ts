@@ -73,7 +73,7 @@ export async function screenshotProject(
         url.searchParams.set('headless', 'screenshot')
         await page.goto(url.href, {waitUntil: 'domcontentloaded', timeout: 30_000})
         await page.waitForFunction(
-            "document.querySelector('.kite3d-status-hook')?.textContent === 'Project loaded'",
+            'window.kite3dProjectLoaded === true',
             undefined,
             {timeout: 30_000},
         )

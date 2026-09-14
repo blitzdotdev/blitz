@@ -55,22 +55,19 @@ test.afterAll(async () => {
 test('Save Scene keeps a hierarchy-hidden mesh across reloads', async ({page}) => {
     const scenePath = resolve(root, 'assets/main.scene.gltf')
     await page.goto(server.url)
-    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await waitForProjectLoaded(page)
     let hiddenRow = page.getByRole('button', {name: /Hidden_Wall/})
     await hiddenRow.hover()
     await hiddenRow.locator('.kite3d-hierarchy-status .bp5-icon').click()
     await expect(hiddenRow.locator('.bp5-icon-eye-off')).toBeVisible()
     await page.getByTestId('save-scene').click()
-    await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+    await expect(page.getByTestId('save-scene')).toBeDisabled({timeout: 20_000})
 
-    let saved = JSON.parse(await readFile(scenePath, 'utf8')) as {
-        nodes: Array<{name?: string, extensions?: {WEBGI_object3d_extras?: {visible?: boolean}}}>
-    }
-    const hiddenNode = saved.nodes.find((node) => node.name === 'Hidden_Wall')
-    expect(hiddenNode, 'Save Scene keeps the hidden authored node').toBeDefined()
-    expect(hiddenNode).toMatchObject({extensions: {WEBGI_object3d_extras: {visible: false}}})
+    await expect.poll(() => hiddenWallVisibility(scenePath), {
+        message: 'Save Scene keeps the hidden authored node',
+    }).toBe(false)
     await page.reload()
-    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await waitForProjectLoaded(page)
     hiddenRow = page.getByRole('button', {name: /Hidden_Wall/})
     await hiddenRow.hover()
     await expect(hiddenRow.locator('.bp5-icon-eye-off')).toBeVisible()
@@ -79,13 +76,11 @@ test('Save Scene keeps a hierarchy-hidden mesh across reloads', async ({page}) =
     await hiddenRow.locator('.kite3d-hierarchy-status .bp5-icon').click()
     await expect(hiddenRow.locator('.bp5-icon-eye-open')).toBeVisible()
     await page.getByTestId('save-scene').click()
-    await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
-    saved = JSON.parse(await readFile(scenePath, 'utf8'))
-    expect(saved.nodes.find((node) => node.name === 'Hidden_Wall')?.extensions)
-        .not.toHaveProperty('WEBGI_object3d_extras.visible')
+    await expect(page.getByTestId('save-scene')).toBeDisabled({timeout: 20_000})
+    await expect.poll(() => hiddenWallVisibility(scenePath)).toBeUndefined()
 
     await page.reload()
-    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await waitForProjectLoaded(page)
     hiddenRow = page.getByRole('button', {name: /Hidden_Wall/})
     await hiddenRow.hover()
     await expect(hiddenRow.locator('.bp5-icon-eye-open')).toBeVisible()
@@ -103,4 +98,19 @@ async function visibleMeshCount(page: Page): Promise<number> {
         })
         return count
     })
+}
+
+async function hiddenWallVisibility(scenePath: string): Promise<boolean | undefined> {
+    const saved = JSON.parse(await readFile(scenePath, 'utf8')) as {
+        nodes: Array<{name?: string, extensions?: {WEBGI_object3d_extras?: {visible?: boolean}}}>
+    }
+    return saved.nodes.find((node) => node.name === 'Hidden_Wall')?.extensions?.WEBGI_object3d_extras?.visible
+}
+
+async function waitForProjectLoaded(page: Page): Promise<void> {
+    await page.waitForFunction(
+        () => (window as Window & {kite3dProjectLoaded?: boolean}).kite3dProjectLoaded === true,
+        undefined,
+        {timeout: 20_000},
+    )
 }

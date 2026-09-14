@@ -1,5 +1,4 @@
 import React, {useContext, useEffect, useMemo, useRef, useState} from 'react';
-import {isPackageProject} from '../utils/projectUtils.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {
     BPComponentProps,
@@ -22,11 +21,9 @@ import {MaybeElement} from "@blueprintjs/core/src/common/props";
 import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
 import {BPTreeFolderComponent} from "./BPTreeFolderComponent.tsx";
 import {iconForSelectionObject} from "../utils/icons.tsx";
-import {MemoryTab} from "./MemoryTab.tsx";
 import {objToSelectItemRef, RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
 import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
-import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 import {useAssets} from "../utils/AssetsProvider.ts";
 import {ExternalFilesPanel} from "./ExternalFilesPanel.tsx";
@@ -36,11 +33,6 @@ import {
     ScriptsSectionComp,
     WorktreesSectionComp,
 } from '../adapters/DevServerProjectSettings.tsx';
-import {
-    FileMetadataPanel,
-    SourceEditorPanel,
-} from '../adapters/DevServerSourceEditorPanel.tsx';
-import {isEditableSourceFile} from '../utils/sourceFiles.ts';
 import {DevServerInspectorControls} from '../adapters/DevServerInspectorControls.tsx';
 import {
     Kite3dSaveSceneButton,
@@ -114,14 +106,11 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
     const [uiConfigRenderer, setUiConfigRenderer] = useState<BlueprintJsUiPlugin2 | null>(null)
     const manager = useManager()
     const {selectedFiles, selectedInspectorItems, setSelectedFiles} = useAssets()
-    const { project } = useProject()
+    const project = manager.loadedProject
     const [rightTabId, setRightTabId] = useState<TabId>('inspector')
     const [bottomTabId, setBottomTabId] = useState<TabId>('files')
     const [playOverlay, setPlayOverlay] = useState(false)
     const selectedFile = selectedFiles.length === 1 ? selectedFiles[0] : null
-    const selectedSourceFile = selectedFiles.length === 1 && isEditableSourceFile(selectedFiles[0])
-        ? selectedFiles[0]
-        : null
 
     useEffect(() => {
         if (selectedFiles.length) setRightTabId('inspector')
@@ -157,18 +146,7 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
 
     useEffect(() => {
         // const v = manager.reset(props)
-        let v
-        let pms
-        if (project && isPackageProject(project)){
-            // v = manager.loadProject(project, props) ?? manager.reset(props)
-            v = manager.get()
-            // todo load default scene settings first like empty env etc
-            // pms = projectFile ? manager.loadProjectFile(project, projectFile) : null
-        } else {
-            v = manager.get()
-            // file should only be files saved from this editor with scene settings.
-            // pms = project?.file ? v.load(project.file, {}) : null
-        }
+        const v = manager.get()
         setViewer(v)
 
         // pms?.then((res)=>{
@@ -338,8 +316,6 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                                     flexDirection: "column" as const,
                                 },
                                 content: <>
-                                    <SourceEditorPanel selectedFile={selectedSourceFile}/>
-                                    {selectedFile && !selectedSourceFile && <FileMetadataPanel entry={selectedFile}/>}
                                     {!selectedFile && selectedInspectorItems.length === 0 && <DevServerSceneSummary/>}
                                     {!selectedFile && selectedInspectorItems.length > 0 && <DevServerInspectorControls placement="header"/>}
                                     {!selectedFile && selectedInspectorItems.length > 0 && <EditInspectorComponent
@@ -369,19 +345,6 @@ export function ThreeEditorComponent({onOpenGame}: {onOpenGame(): void}) {
                                 {/*</Card>*/}
                                 </>
                             },
-                            // Memory is available for diagnostics with ?memory=1 or
-                            // localStorage.setItem('kite3d.memoryTab', '1').
-                            ...(memoryTabEnabled() ? [{
-                                title: 'Memory',
-                                key: 'memory',
-                                className: 'kite3d-right-panel-body',
-                                style: {
-                                    position: "relative" as const,
-                                    display: "flex" as const,
-                                    flexDirection: "column" as const,
-                                },
-                                content: <MemoryTab/>
-                            }] : []),
                         ],
                     }}
                 />
@@ -470,26 +433,22 @@ export function EditInspectorComponent({className}: {
     )
 }
 
-function memoryTabEnabled() {
-    return new URLSearchParams(window.location.search).get('memory') === '1'
-        || window.localStorage.getItem('kite3d.memoryTab') === '1'
-}
-
 export function NavProjectFileName(){
-    const { project} = useProject()
     const manager = useManager()
+    const project = manager.loadedProject
 
-    const pkgProject = project && isPackageProject(project)
-    const projectIcon: IconName = pkgProject ? 'folder-close' : 'cubes'
     const fileIcon: IconName|MaybeElement = !!manager.loadedScene ? 'cubes' : !!manager.loadedAssetObj ? iconForSelectionObject(manager.loadedAssetObj) : 'document'
 
     const fileNeedsSave = manager.loadedNeedsSave
     if(!project) return null
     return <>
-        {pkgProject
-            ? <HubProjectPicker fallbackPath={project.path || 'New File'}/>
-            : <Button role="heading" variant="minimal" size="small" icon={projectIcon} text={(typeof project.file === 'string' ? project.file : project.file.name) || 'New File'}/>}
+        <HubProjectPicker fallbackPath={project.path || 'New File'}/>
         {/* AGREED-4: Kite3D scenes are text glTF; present the stem in the same reference slot. */}
-        {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.(?:glb|gltf)$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
+        {manager.loadedFilePath && <Button
+            variant={"minimal"}
+            size={"small"}
+            icon={fileIcon}
+            text={(manager.loadedFilePath.split('/').pop()?.replace(/\.(?:glb|gltf)$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}
+        />}
     </>
 }

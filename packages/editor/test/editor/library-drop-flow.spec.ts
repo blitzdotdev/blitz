@@ -72,17 +72,20 @@ test('marks a material drop dirty and saves the applied material', async ({page}
 
         await expect(page.getByTestId('save-scene'), 'material drop marks the scene as needing save').toBeEnabled()
         await page.getByTestId('save-scene').click()
-        await expect(page.getByText('Scene saved')).toBeVisible({timeout: 20_000})
+        await expect(page.getByTestId('save-scene')).toBeDisabled({timeout: 20_000})
 
-        const saved = JSON.parse(await readFile(fixture.scenePath, 'utf8')) as {
-            nodes: Array<{name?: string, mesh?: number}>
-            meshes: Array<{primitives: Array<{material?: number}>}>
-            materials: Array<{name?: string}>
-        }
-        const target = saved.nodes.find(({name}) => name === 'Material_Target')
-        expect(target?.mesh).toBeDefined()
-        const materialIndex = saved.meshes[target!.mesh!].primitives[0].material
-        expect(saved.materials[materialIndex!].name).toBe('Test Red Material')
+        await expect.poll(async () => {
+            const saved = JSON.parse(await readFile(fixture.scenePath, 'utf8')) as {
+                nodes: Array<{name?: string, mesh?: number}>
+                meshes: Array<{primitives: Array<{material?: number}>}>
+                materials: Array<{name?: string}>
+            }
+            const target = saved.nodes.find(({name}) => name === 'Material_Target')
+            const materialIndex = target?.mesh === undefined
+                ? undefined
+                : saved.meshes[target.mesh].primitives[0].material
+            return materialIndex === undefined ? undefined : saved.materials[materialIndex].name
+        }).toBe('Test Red Material')
     } finally {
         await fixture.close()
     }
@@ -148,7 +151,11 @@ async function routeLibrary(page: Page, options: {slowModel?: boolean} = {}) {
 
 async function openLibrary(page: Page, server: DevServer) {
     await page.goto(server.url)
-    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
+    await page.waitForFunction(
+        () => (window as Window & {kite3dProjectLoaded?: boolean}).kite3dProjectLoaded === true,
+        undefined,
+        {timeout: 20_000},
+    )
     await page.getByRole('tab', {name: 'Library'}).click()
     await page.getByRole('tabpanel', {name: 'Library'}).getByRole('tab', {name: '3D Models'}).click()
 }

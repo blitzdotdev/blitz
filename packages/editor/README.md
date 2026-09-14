@@ -7,7 +7,3 @@ Generator modules can export an optional flat `params` schema to give the Inspec
 ## Notes
 
 If getting error - `"default" is not exported by ... "classnames"` - remove optimizeDeps and commonjs exclude options from vite config and retry.
-
-The right-panel Memory tab is hidden by default. Enable it for diagnostics with
-`?memory=1` in the editor URL or by setting `localStorage["kite3d.memoryTab"]`
-to `"1"`, then reload the editor.

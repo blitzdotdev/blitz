@@ -4,7 +4,6 @@ export interface EditorState {
     projectLoaded: boolean
     playState: 'playing' | 'stopped'
     dirty: boolean
-    sourceDraftDirty: boolean
     sceneHash: string | null
     savedSceneHash: string | null
     selectionNames: string[]

@@ -43,7 +43,7 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 - Play mode calls `createGame({base: '/files/'})`. That collapses the three play paths into one.
 - Echo and conflicts: every editor write carries its client id and the expected hash. An event with the editor's own id is ignored. A `412` on write reloads the file and asks the human. Unsaved edits are never overwritten silently.
 - Scene writes are debounced to transaction ends.
-- The undo journal and the agent mirrors come from the server: it appends `.kite3d/journal.jsonl` with a semantic diff of the scene file on each write, and the editor writes `.kite3d/state.json` and `.kite3d/console.log` through `PUT`.
+- The undo journal and the agent state mirror come from the server: it appends `.kite3d/journal.jsonl` with a semantic diff of the scene file on each write, and the editor writes `.kite3d/state.json` through `PUT`.
 
 ## Versioning
 

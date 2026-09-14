@@ -65,7 +65,7 @@ Extracted from editor utils, runtime parts only:
 | `importMap.ts` | `utils/importMaps.ts` 52 | `dependencyImportMap(deps)` for project-declared extra dependencies; used by the `index.html` generator in `kite3d` and by `kite3d dev` |
 | `defaults.ts` | `data/EmptyProjectSettings.ts` 277 | default project and viewer settings applied when a project omits them |
 | `fileTypes.ts` | `data/fileTypes.ts` 22 | asset extension and MIME map |
-| `paths.ts` | scattered constants | `.kite3d/` layout: `deploys.json`, `journal.jsonl`, `state.json`, `console.log`, `thumbs/`, `backups/`, `running/` |
+| `paths.ts` | scattered constants | `.kite3d/` layout: `deploys.json`, `journal.jsonl`, `state.json`, `thumbs/`, `backups/`, `running/` |
 
 Added later, in the engine because both the editor and the runtime need them:
 
@@ -78,6 +78,6 @@ Not in the engine, and why:
 
 - `AssetTracker.ts`, `assetTrackerUtils.ts`: editor-side asset instance tracking and override UI. The runtime port in `nestedAssets.ts` covers loading.
 - `ScriptUtil.ts` hot reload, `modules.ts`: editor and dev-server concerns.
-- `FetchProxy.ts`, `FileTracker.ts`, `fsImporter.ts`, `fsApi.ts`, `BrowserFileStore.ts`, `AssetsProvider.ts`, `public/fs-sw.js`: deleted in C1 with the File System Access approach.
+- `FetchProxy.ts`, `fsImporter.ts`, `fsApi.ts`, `BrowserFileStore.ts`, `AssetsProvider.ts`, `public/fs-sw.js`: deleted in C1 with the File System Access approach.
 - `projectTemplates.ts`, `AgentsMdTemplate.md`: become the template bundled in `kite3d`.
 - Everything React, Blueprint, and uiconfig-blueprint: the editor.
