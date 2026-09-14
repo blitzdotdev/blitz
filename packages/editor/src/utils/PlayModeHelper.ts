@@ -161,7 +161,7 @@ export class PlayModeHelper extends EventDispatcher<{
             let tempFile = manager._runningSceneFile
             if (!tempFile) {
                 // try to load from disk
-                const file = await resolveFile(filePath, project.path, project.handle)
+                const file = await resolveFile(filePath, project.handle)
                 if (file) tempFile = file as File
             }
             if (!tempFile) {

@@ -1,15 +1,10 @@
 import {PackageDependency} from "./importMaps.ts";
 import {getFileHandle} from "./fsApi.ts";
-import {browserFileStore} from "./BrowserFileStore.ts";
+import {ProjectDirectoryHandle} from "../devserver/handles.ts";
 import {parse, ParseError} from "jsonc-parser";
 
-export const settingsKey = "kite"
+export const settingsKey = "kite3d"
 export const assetUrlPrefix = '/' + settingsKey + '/'
-
-const packageFilePath = 'package.json'
-const iconFilePath = 'icon.svg'
-const assetsDirPath = 'assets/'
-export const mainScenePath = `${assetsDirPath}main.scene.glb`
 
 export interface SavedSceneFile {
     path: string,
@@ -18,7 +13,7 @@ export interface SavedSceneFile {
     lastModified: number
     preview?: File | string
     scene?: File
-    handle?: FileSystemDirectoryHandle
+    handle?: ProjectDirectoryHandle
     // viewerConfig?: File | string | any // todo
 }
 
@@ -116,85 +111,27 @@ export interface ProjectConfigSettingsJSON{
     }
 }
 
-export interface SavedSceneFileMetaStored {
-    path: string,
-    file: string
-    assets?: string,
-    lastModified: number
-    preview?: string
-    handle?: FileSystemDirectoryHandle
-    // viewerConfig?: File | string | any // todo
-}
-
 export interface SavedSceneFileMeta {
     path: string,
     file: string
     assets?: string,
     lastModified: number
     preview?: File | string
-    handle?: FileSystemDirectoryHandle
+    handle?: ProjectDirectoryHandle
     // viewerConfig?: File | string | any // todo
 }
 
-export const STORE_NAME = 'file_data_store'
-export const FILE_META_KEY = 'meta'
-
-export async function resolveFile(value: string | File, path = '', handle?: SavedSceneFileMetaStored['handle']) {
-    if (!path.endsWith('/')) path += '/'
-
+export async function resolveFile(value: string | File, handle?: ProjectDirectoryHandle) {
     let res: any = value
-    if (typeof value === 'string' && value.startsWith(STORE_NAME + ':')) {
-        const path1 = value.slice(STORE_NAME.length + 1).replace(/^\.\//, path)
-        res = await browserFileStore.get(path1)
-    }
-    if (res === value && typeof value === 'string' && handle) {
-        let permission = await handle.queryPermission({mode: 'readwrite'})
-        if (permission !== 'granted') {
-            permission = await handle.requestPermission({mode: 'readwrite'})
-        }
-        if (permission !== 'granted') {
-            console.error('no permission to access the file')
-            alert('no permission to access the file' + value + path)
-        } else {
-            const handles = await getFileHandle(handle, value, false)
-            const file = await handles?.fileHandle?.getFile()
-            if (file) res = file
-        }
+    if (typeof value === 'string' && handle) {
+        const handles = await getFileHandle(handle, value, false)
+        const file = await handles?.fileHandle?.getFile()
+        if (file) res = file
     }
     return res as File | any
 }
 
-export async function createMeta(name: string, handle: FileSystemDirectoryHandle) {
-    const meta1 = {
-        path: name.replace(/\/$/, '').split('/').pop() || '',
-        lastModified: Date.now(),
-        file: packageFilePath,
-        preview: iconFilePath,
-        assets: assetsDirPath,
-        handle,
-    }
-    if(!meta1.path){
-        throw new Error('Invalid project name')
-    }
-    if (!meta1.path.endsWith('/')) meta1.path += '/'
-    await browserFileStore.put(meta1, meta1.path + FILE_META_KEY)
-    return meta1
-}
-
-export async function getMeta(path: string): Promise<SavedSceneFileMetaStored | undefined> {
-    const metaKey = FILE_META_KEY
-    return (await resolveFile(STORE_NAME + ':./' + metaKey, path)) as SavedSceneFileMetaStored | undefined
-}
-
-export async function getMetaWithPreview(path: string): Promise<SavedSceneFileMeta | undefined> {
-    const meta = await getMeta(path)
-    if (!meta) return
-    if (meta.preview) meta.preview = await resolveFile(meta.preview, path, meta.handle)
-    return meta
-}
-
-
-export async function initProjectHandles(meta: SavedSceneFileMeta | SavedSceneFileMetaStored){
+export async function initProjectHandles(meta: SavedSceneFileMeta){
     if(!meta.handle) throw new Error('No handle to check project init')
     const handle = meta.handle
     // @ts-ignore
@@ -237,7 +174,7 @@ export async function initProjectHandles(meta: SavedSceneFileMeta | SavedSceneFi
     }
 }
 
-export async function parsePackageJsonSettings(file: File, project: LoadedProject|SavedSceneFileMeta|SavedSceneFileMetaStored){
+export async function parsePackageJsonSettings(file: File, project: LoadedProject|SavedSceneFileMeta){
     try {
         const text = await file.text()
         const json = parse(text)
@@ -260,7 +197,7 @@ export async function parsePackageJsonSettings(file: File, project: LoadedProjec
         throw new Error('Cannot parse package.json file')
     }
 }
-export async function parsePackageJsonSettingsConfig(json: any, project: LoadedProject|SavedSceneFileMeta|SavedSceneFileMetaStored){
+export async function parsePackageJsonSettingsConfig(json: any, project: LoadedProject|SavedSceneFileMeta){
     const config: ProjectConfigSettingsJSON = json[settingsKey] ?? {}
 
     const dependencies: PackageDependency[] = []

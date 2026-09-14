@@ -1,7 +1,6 @@
 @import 'uiconfig-blueprint/src/renderer';
 @import 'components/tree2';
 @import "components/BPTreeComponent";
-@import "components/WelcomeScreen";
 @import "components/EditorModesButtonGroup";
 @import "components/InteractionControlsButtonGroup";
 
@@ -108,14 +107,6 @@ body{
     filter: invert(0) brightness(1.2);
   }
 }
-.welcome-screen-logo{
-  transition: filter 0.2s ease-in-out;
-  filter: invert(0) brightness(1);
-}
-.welcome-screen-logo:hover{
-  filter: invert(1) brightness(1.2);
-}
-
 .editorCanvasContainer{
   width: 100%;
   height: 100%;

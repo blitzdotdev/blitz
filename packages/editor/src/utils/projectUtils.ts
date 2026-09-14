@@ -1,5 +1,5 @@
 import {IGeometry, IMaterial, IObject3D, ITexture, TypedClass} from "threepipe";
-import {assetUrlPrefix, SavedSceneFile, SavedSceneFileMeta, SavedSceneFileMetaStored, settingsKey} from "./project.ts";
+import {assetUrlPrefix, SavedSceneFile, SavedSceneFileMeta, settingsKey} from "./project.ts";
 import {typesExts} from "../data/fileTypes.ts";
 import {FileManifestEntry} from "./AssetsProvider.ts";
 
@@ -73,7 +73,7 @@ export function logAsset(data: any, obj: IObject3D|IMaterial|ITexture|IGeometry)
     console.log(obj, data)
 }
 
-export function isPackageProject(meta?: SavedSceneFile|SavedSceneFileMeta|SavedSceneFileMetaStored|null){
+export function isPackageProject(meta?: SavedSceneFile|SavedSceneFileMeta|null){
     return meta && (meta.file as string === 'package.json' || (meta.file as any as File)?.name === 'package.json')
 }
 

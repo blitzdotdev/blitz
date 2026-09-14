@@ -12,11 +12,12 @@ import {
     Slider
 } from "@blueprintjs/core";
 import React, {FC, useEffect, useRef, useState} from "react";
-import {useProjectActions} from "../utils/projectActions.tsx";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
 import {MenuItem2, MenuItemAction} from "../utils/ContextMenuUtils.ts";
 import {FileManifestEntry, getFileByPath, manifestEntryToFile, useAssets} from "../utils/AssetsProvider.ts";
+import {ProjectDirectoryHandle, ProjectFileHandle} from "../devserver/handles.ts";
 import {useSaveBeforeClose} from "./UseCloseProject.tsx";
+import {useSaveProjectFile} from "./SaveProjectButton.tsx";
 import {useDialogPrompt, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
 import {
     IObject3D,
@@ -130,7 +131,7 @@ export function FilesPanelGrid({}: {
     const {selectedFiles, setSelectedFiles, currentPath, setCurrentPath, fileManifest, refreshManifest }= useAssets()
 
     const {project} = useProject()
-    const {saveProjectFile} = useProjectActions()
+    const {saveProjectFile} = useSaveProjectFile()
     const manager = useManager()
 
     const {saveBeforeClose} = useSaveBeforeClose()
@@ -183,7 +184,7 @@ export function FilesPanelGrid({}: {
         const parts = path.split('/')
         for(const part of parts){
             const next = items.find(f=>f.path.endsWith(part) && f.type === 'directory')
-            dirHandle = next?.handle as FileSystemDirectoryHandle | undefined
+            dirHandle = next?.handle as ProjectDirectoryHandle | undefined
             if(!next) break
             items = next.children || []
         }
@@ -250,7 +251,7 @@ export function FilesPanelGrid({}: {
         const path = currentPath === '/' ? name : (currentPath + '/' + name)
         content = content ?? new ArrayBuffer(0) // empty file. todo default content based on file type
 
-        await manager.fsHelper.writeFile(project.handle, path, new File([content], name), project.path).catch(e=>{
+        await manager.fsHelper.writeFile(project.handle, path, new File([content], name)).catch(e=>{
             console.error('Error creating file:', e)
         })
         refreshManifest(true).then(r=>{
@@ -703,7 +704,6 @@ export function FilesPanel({}: {
         refreshManifest()
     }, [refreshManifest]) // refreshManifest changes on project change
 
-    // todo use FileSystemObserver also?
     useEffect(() => {
         const onChange = () => {
             if (document.visibilityState === "visible") {
@@ -793,21 +793,21 @@ function useIconUrl(fileEntry: FileManifestEntry | {
 }, fileManifest: FileManifestEntry[]) {
     const iconFile = fileEntry.icon ? null : getFileByPath(thumbPath(fileEntry.path), fileManifest)
     // const iconFileBlob = useMemo(()=>{
-    //     if(!iconFile || (iconFile.handle as FileSystemFileHandle).kind !== 'file') return null
-    //     return (iconFile.handle as FileSystemFileHandle).getFile().catch(e=>{
+    //     if(!iconFile || (iconFile.handle as ProjectFileHandle).kind !== 'file') return null
+    //     return (iconFile.handle as ProjectFileHandle).getFile().catch(e=>{
     //         console.error('Error loading icon file:', e)
     //         return null
     //     })
     // }, [iconFile])
     const [iconUrl, setIconUrl] = useState<string>()
     useEffect(() => {
-        if (!iconFile || (iconFile.handle as FileSystemFileHandle).kind !== 'file') {
+        if (!iconFile || (iconFile.handle as ProjectFileHandle).kind !== 'file') {
             setIconUrl(undefined)
             return
         }
         let cancelled = false
         let url: string | undefined
-        ;(iconFile.handle as FileSystemFileHandle).getFile().then(f => {
+        ;(iconFile.handle as ProjectFileHandle).getFile().then(f => {
             if (cancelled) return
             url = URL.createObjectURL(f)
             setIconUrl(url)

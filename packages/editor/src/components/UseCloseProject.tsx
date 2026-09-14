@@ -1,30 +1,5 @@
 import {useDialogPrompt} from "uiconfig-blueprint/lib/esm/lib";
-import {useProjectActions} from "../utils/projectActions.tsx";
-import {useCallback} from "react";
 import {Button, Intent} from "@blueprintjs/core";
-import {useManager} from "../utils/UseManager.ts";
-
-export function useCloseWithoutSave() {
-    const {prompt} = useDialogPrompt()
-    const {loadProject1} = useProjectActions()
-    const manager = useManager()
-    const closeWithoutSave = useCallback(async () => await prompt({
-        title: 'Close without saving',
-        message: 'Are you sure you want to close the project without saving?',
-        closeButtonText: 'Cancel',
-        submitButtonText: 'Close',
-        value: 'yes',
-        showInput: false,
-    }), [prompt])
-    const closeProject = useCallback(async () => {
-        const res = await closeWithoutSave()
-        if (res) {
-            manager.loadedNeedsSave = false
-            await loadProject1(null)
-        }
-    }, [closeWithoutSave, loadProject1])
-    return {closeProject, closeWithoutSave}
-}
 
 export function useSaveBeforeClose() {
     // const {open, close} = useDialog()

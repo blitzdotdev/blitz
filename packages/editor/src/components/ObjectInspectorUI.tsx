@@ -27,7 +27,6 @@ import {ButtonWithTooltip} from "./ButtonWithTooltip.tsx";
 import {UnkObjComponent} from "./UnkObjComponent.tsx";
 import {SelectedInspectorItem} from "../utils/AssetsProvider.ts";
 import {addProjectScript} from "./AddProjectScript.tsx";
-import {refreshProjectQueryState} from "../utils/refreshProjectQueryState.ts";
 import {ViewerInstanceManager} from "../utils/ViewerInstanceManager.ts";
 
 function filterTopLevelPropUiConfig(obj: IObject3D|IMaterial, sProps: string[], disabledProps: string[]) {

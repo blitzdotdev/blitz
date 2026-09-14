@@ -1,7 +1,6 @@
 import {ExternalPlugin, ExternalScript, LoadedProject, ProjectConfigSettings, resolveFile} from "./project.ts";
 import {Class, EntityComponentPlugin, EventDispatcher, IViewerPlugin, ThreeViewer, TObject3DComponent} from "threepipe";
 import {getFileChanged, loadModule, loadModules, SupPluginModule} from "./modules.ts";
-import {getFileHandle} from "./fsApi.ts";
 
 export interface PluginRef{
     exp: (Class<IViewerPlugin> & IViewerPlugin['constructor'])
@@ -55,7 +54,7 @@ export class ScriptUtil extends EventDispatcher<{
     extScripts: ExternalScript[] = [] // todo make public readonly
 
     _readScript = async (path: string)=>{
-        const file = await resolveFile(path, this.project.path, this.project.handle)
+        const file = await resolveFile(path, this.project.handle)
         if(!file || typeof file === 'string') throw new Error('Failed to load script: ' + path)
         const text = await (file as File).text()
         return text
@@ -168,15 +167,11 @@ export class ScriptUtil extends EventDispatcher<{
             for (let i = 0; i < ps2.length; i++){
                 const path = ps2[i];
                 const mod = mods[i]
-                const pms2 = pms.then(p=>({
-                    module: p.modules[i],
-                    deps: p.deps[i],
-                }))
+                const pms2 = pms.then(p=>p.modules[i])
                 // const plugins = modulePlugins.get(path) || []
-                mod.module = pms2.then(async ({module, deps})=>{
+                mod.module = pms2.then(async (module)=>{
                     if(!module.__tpModuleError) {
                         mod.module = module
-                        await this.observeDeps(deps);
                     }else {
                         // error in module, keep the last loaded module and show error to user
                     }
@@ -252,10 +247,6 @@ export class ScriptUtil extends EventDispatcher<{
 
             }else {
                 console.log('Loading project script: ', path)
-                if(path.startsWith('./') || path.startsWith('.././'))
-                    await this.observeProjectFile(path).catch(e=>{
-                        console.error('Error observing project script file: ', path, e)
-                    })
                 mod = {
                     plugins: [],
                     components: [],
@@ -263,13 +254,12 @@ export class ScriptUtil extends EventDispatcher<{
                     path,
                 }
                 this.scriptModules.set(path, mod)
-                mod.module = loadModule(path, this._readScript).then(async ({module, deps}) => {
+                mod.module = loadModule(path, this._readScript).then(async ({module}) => {
                     if (!module) {
                         throw new Error('Failed to import module: ' + path)
                     }
                     if (mod) {
                         mod.module = module
-                        await this.observeDeps(deps);
                     }
                     return module
                 })
@@ -290,17 +280,6 @@ export class ScriptUtil extends EventDispatcher<{
         if(refLoad) await this.refLoadModule(mod)
 
         return mod
-    }
-
-    private async observeDeps(deps: string[]) {
-        for (const dep of deps) {
-            if (dep.endsWith('.js') || dep.endsWith('.ts') || dep.endsWith('.mjs') || dep.endsWith('.jsx') || dep.endsWith('.tsx') || dep.endsWith('.mts')) {
-                if (dep.startsWith('./') || dep.startsWith('../'))
-                    await this.observeProjectFile(dep).catch(e => {
-                        console.error('Error observing project script file: ', dep, e)
-                    })
-            }
-        }
     }
 
     private async refRemovePlugin(refs: PluginRef[], plugin: PluginRef, path: string) {
@@ -573,40 +552,11 @@ export class ScriptUtil extends EventDispatcher<{
     }
 
 
-    // region file observer
-
-    fsObserver: any | undefined
-
-    // @ts-ignore
-    fsObserverCallback = (records, observer, ...rest)=>{
-
-        for (const record of records) {
-            console.log("Change detected:", record);
-            // const reportContent = `Change observed to ${record.changedHandle.kind} ${record.changedHandle.name}. Type: ${record.type}.`;
-            // sendReport(reportContent); // Some kind of user-defined reporting function
-            this.changedFilesQ.push(record.changedHandle)
-        }
-        // if(paths.length > 0){
-        // this.scriptFilesChanged(paths).catch(e=>{
-        //     console.error('Error handling changed plugin scripts: ', paths, e)
-        // })
-        // }
-        // this.changedFilesQ.push(...paths)
-
-    }
-    async initFsObserver(){
-        // @ts-ignore
-        this.fsObserver = window.FileSystemObserver ? new window.FileSystemObserver(this.fsObserverCallback) : undefined;
-        while (this.fsObserver){
-            await new Promise(res=>setTimeout(res, 2000))
-            await this.refreshChangedFilesQ()
-        }
-    }
-
+    // region changed files
 
     onObserveFileChange: ((path: string, project: LoadedProject)=>void) | null  = null
 
-    changedFilesQ: (FileSystemDirectoryHandle|FileSystemFileHandle|string)[] = []
+    changedFilesQ: string[] = []
     private _refreshingChangedFiles: Promise<void>|null = null
     async refreshChangedFilesQ(){
         if(this.changedFilesQ.length === 0) return
@@ -617,28 +567,8 @@ export class ScriptUtil extends EventDispatcher<{
             await this._refreshingChangedFiles
         }
 
-        const hh = this.changedFilesQ
+        const paths = new Set(this.changedFilesQ)
         this.changedFilesQ = []
-        const processed = new Set<FileSystemDirectoryHandle|FileSystemFileHandle|string>()
-        const paths = new Set<string>()
-        let handles = [...this.observedFiles.keys()]
-        for (const changedHandle of hh) {
-            if(processed.has(changedHandle)) continue
-            processed.add(changedHandle)
-            if(typeof changedHandle === 'string') {
-                paths.add(changedHandle)
-                continue
-            }
-            let handle
-            for (const handle1 of handles) {
-                if(await handle1.isSameEntry(changedHandle)){
-                    handle = handle1
-                    break
-                }
-            }
-            const path = handle ? this.observedFiles.get(handle) : null
-            if(path) paths.add(path)
-        }
 
         const pms = (async ()=>{
             // todo
@@ -663,40 +593,7 @@ export class ScriptUtil extends EventDispatcher<{
         if(this._refreshingChangedFiles === pms) this._refreshingChangedFiles = null
     }
 
-    // todo clear on close project
-    observedFiles = new Map<FileSystemFileHandle|FileSystemDirectoryHandle, string>() // map to path
-    async observeProjectFile(path: string){
-        const project = this._p
-        if(!project?.handle){
-            // throw new Error('No project loaded, cannot observe plugin script')
-            console.error('No project loaded, cannot observe plugin script: ', path)
-            return
-        }
-        if([...this.observedFiles.values()].includes(path)) return // already observed
-        const handles = await getFileHandle(project.handle, path, false)
-        if(!handles.fileHandle || !handles.dirHandle){
-            // throw new Error('No such plugin script file: ' + path)
-            console.error('No such plugin script file: ' + path)
-            return
-        }
-        if([...this.observedFiles.values()].includes(path)) return // already observed
-        this.observedFiles.set(handles.fileHandle, path)
-        try {
-            // const perm = await handles.fileHandle.queryPermission({ mode: 'readwrite' });
-            // if (perm !== 'granted') {
-            //     const newPerm = await handles.fileHandle.requestPermission({ mode: 'readwrite' });
-            //     if (newPerm !== 'granted') {
-            //         console.warn('User denied permission.');
-            //         return;
-            //     }
-            // }
-            this.fsObserver?.observe(handles.fileHandle, {recursive: false})
-        }catch (e) {
-            console.warn(e)
-        }
-    }
-
-    // endregion file observer
+    // endregion changed files
     scriptsRefreshing: Promise<any>|undefined
 
     async onProjectSettingsChange(settings: ProjectConfigSettings, lastSettings: ProjectConfigSettings|null){

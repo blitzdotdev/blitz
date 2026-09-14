@@ -51,17 +51,13 @@ import {
 } from 'threepipe'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {GeometryGeneratorPlugin} from '@threepipe/plugin-geometry-generator'
-import {browserFileStore} from './BrowserFileStore.ts'
+import {createProjectAssetURLModifier} from '@kite3d/engine/projectFormat'
 import {EditorFeatures} from './EditorFeatures.ts'
 import {EditModePlugin} from "./EditModePlugin.ts";
 import {FileManifestEntry, manifestEntryToFile, SelectedInspectorItem} from "./AssetsProvider.ts";
 import {
     AssetsJSONManifest,
     assetUrlPrefix,
-    createMeta,
-    FILE_META_KEY,
-    getMeta,
-    getMetaWithPreview,
     initProjectHandles,
     LoadedProject,
     parseAssetsJSONManifest,
@@ -69,21 +65,17 @@ import {
     resolveFile,
     SavedSceneFile,
     SavedSceneFileMeta,
-    SavedSceneFileMetaStored,
-    settingsKey,
-    STORE_NAME
+    settingsKey
 } from "./project.ts";
-import {AnotherFSHelper, getDirHandle, getFileHandle, queryHandlePerm} from "./fsApi.ts";
-import {FetchProxy} from "./FetchProxy.ts";
+import {ProjectDirectoryHandle} from "../devserver/handles.ts";
+import {AnotherFSHelper, getDirHandle, getFileHandle} from "./fsApi.ts";
 import {AssetTracker, cloneAssetItem, defSPropsMat, defSPropsObj} from "./AssetTracker.ts";
 import {CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
 import {CanvasFileDropHandler} from "./CanvasFileDropHandler.tsx";
-import {FileTracker} from "./FileTracker.ts";
 import {HtmlUiComponent} from "../plugins/HtmlUiComponent.ts";
 import {generatePreview} from "./three/GeneratePreview.ts";
 import {mimeToExt, typesExts} from '../data/fileTypes.ts'
 import {ScriptUtil} from "./ScriptUtil.ts";
-import {refreshProjectQueryState} from "./refreshProjectQueryState.ts";
 import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
 import {queryClient} from "../tsdb/client.ts";
 import {fetchQueryFunc, libAssetEndpoints} from "../tsdb/libAsset.ts";
@@ -110,10 +102,6 @@ export interface ViewerProps {
     tonemap: boolean
 }
 
-export interface BroadcastDataTypes{
-    'file-change': {path: string, project: string, file: File}
-}
-
 export class ViewerInstanceManager extends EventDispatcher<{
     loadedNeedsSaveChange: {},
     loadedProjectFileChange: {},
@@ -121,49 +109,15 @@ export class ViewerInstanceManager extends EventDispatcher<{
 }>{
     private _viewers = new Map<string, ThreeViewer>()
     features = new EditorFeatures(this)
-    fileTracker = new FileTracker()
     scriptUtil = new ScriptUtil()
     playMode = new PlayModeHelper(this)
     editPreview = new EditPreviewHelper(this.features)
     settingsManager = new ProjectSettingsManager(this)
     fsHelper = new AnotherFSHelper()
 
-    static {
-    }
     constructor() {
         super()
-        FetchProxy.Setup(assetUrlPrefix)
-        FetchProxy.Set(this.fetchProjectAsset)
-        this.fsHelper.broadcastMessage = (type, data)=> {
-            const b = {...data, type, editorId: this.editorId}
-            this.receiveBroadcastMessage({data: b})
-            this.fsHelper.broadcastChannel.postMessage(b)
-        }
-        // todo only use broadcast channel if fsobserver is not available
-        this.fsHelper.broadcastChannel.onmessage = this.receiveBroadcastMessage
-        this.fsHelper.broadcastChannel.onmessageerror = (e)=>{
-            console.error('Broadcast message error', e)
-        }
         this.scriptUtil.onObserveFileChange = this.onObserveFileChange
-        this.scriptUtil.initFsObserver()
-    }
-
-    private receiveBroadcastMessage = (e: { data: BroadcastDataTypes[keyof BroadcastDataTypes] & {type: keyof BroadcastDataTypes, editorId: string} })=>{
-        if(!this.loadedProject) return
-        // console.log('Broadcast message received', e)
-        if(e.data.type === 'file-change'){
-            const data = e.data as BroadcastDataTypes['file-change'] & {editorId: string, type: 'file-change'}
-            if(data.project === this.loadedProject.path){
-                const url = data.project + data.path
-                this.fileTracker.updateFile(url, data.file)
-                const ex = this.fileTracker.getFile(url)
-
-                if(this.editorId !== data.editorId){
-                    // todo use the File object from data instead of reading again from disk
-                    this.scriptUtil.changedFilesQ.push(data.path)
-                }
-            }
-        }
     }
 
     get(props?: Partial<ViewerProps>, id = 'default', container?: HTMLElement) {
@@ -346,16 +300,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         viewer.addPluginSync(EditModePlugin)
         viewer.assetManager.importer.cacheImportedAssets = false
 
-        FetchProxy.Set(this.fetchProjectAsset)  // just in case
-
-        // for runtime player
-        // viewer.assetManager.importer.addURLModifier((url)=>{
-        //     if(url.startsWith(assetUrlPrefix)){
-        //         return ''
-        //     }else {
-        //         return url
-        //     }
-        // })
+        viewer.assetManager.importer.addURLModifier(this.resolveAssetUrl)
 
         // todo when an asset file is loaded (right now only materials), watch for file changes and import it again as in inspector
 
@@ -435,53 +380,21 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return this.get(props, id)
     }
 
-    readonly browserStore = browserFileStore
-
     dispose() {
         this._viewers.forEach(this._disposeViewer)
         this._viewers.clear()
-        this.browserStore.dispose()
     }
 
-    // static readonly STORE_NAME = STORE_NAME
-    // static readonly FILE_META_KEY = FILE_META_KEY
-
-    // used for testing
-    static readonly ENABLE_FS_WRITE_API = true
-
-    async isTempFile(path: string) {
-        const meta = await getMeta(path)
-        if (!meta) return false
-        return !meta.handle || typeof meta.file === 'string' && meta.file.startsWith(STORE_NAME + ':')
+    // assetsManifest is replaced on every asset id write, so every lookup goes through the current one
+    private resolveAssetUrl = (url: string) => {
+        const assets = this.loadedProject?.assetsManifest
+        return assets ? createProjectAssetURLModifier(this.filesBase, assets)(url) : url
     }
+    private readonly filesBase = new URL('/files/', location.href)
 
-    // async refreshFile(meta: SavedSceneFile): Promise<SavedSceneFile | undefined> {
-    //     if (!meta) return
-    //     if (meta.file) meta.file = await resolveFile(meta.file, meta.path, meta.handle)
-    //     return meta
-    // }
-
-    async getFileFromMeta(meta: SavedSceneFileMetaStored | SavedSceneFileMeta): Promise<SavedSceneFile | undefined> {
-        if (!meta) return
-        const meta2: SavedSceneFile = {
-            ...meta,
-            file: await resolveFile(meta.file, meta.path, meta.handle),
-            preview: typeof meta.preview === 'string' ? await resolveFile(meta.preview, meta.path, meta.handle) : null,
-        }
-        return meta2
-    }
-    async getLoadedProject(meta: SavedSceneFileMetaStored | SavedSceneFileMeta | null): Promise<LoadedProject | null> {
-        if (!meta) return null
-        if (!meta.handle) return null
-        const handle = meta.handle
-        await queryHandlePerm(handle);
-        return isPackageProject(meta) ?
-            await this.initReadWriteProject(meta) :
-            await this.getFileFromMeta(meta) || null
-    }
     async getLoadedFile(project: LoadedProject, path: string, file?: File): Promise<SavedSceneFile | null> {
         if (!project || !path) return null
-        file = file ?? await resolveFile(path, project.path, project.handle)
+        file = file ?? await resolveFile(path, project.handle)
         if(typeof file !== 'object') {
             if((!file || file === path) && path.endsWith('.scene.glb')){
                 // empty file, handled in loadImport
@@ -501,7 +414,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }
     }
 
-    private async initReadWriteProject(meta: SavedSceneFileMeta | SavedSceneFileMetaStored): Promise<LoadedProject>{
+    async initReadWriteProject(meta: SavedSceneFileMeta): Promise<LoadedProject>{
         const init = await initProjectHandles(meta)
 
         if(!init.package.file){
@@ -537,7 +450,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
                 files: {},
                 version: 1,
             } as AssetsJSONManifest)], 'assets.json', {type: 'application/json', lastModified: Date.now()})
-            const w = await this.fsHelper.writeFile(init.base, 'assets.json', file, meta.path, true).catch(e=>{
+            const w = await this.fsHelper.writeFile(init.base, 'assets.json', file, true).catch(e=>{
                 console.error('ThreeEditor - cannot write default assets.json file', e)
                 return false
             })
@@ -554,7 +467,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
             const assetsJsonText = init.assetsJson.file ? await init.assetsJson.file.text() : ''
             const json = parseAssetsJSONManifest(assetsJsonText)
             m.assetsManifest = json
-            await this.browserStore.put(m, m.path + FILE_META_KEY)
             return m
         }catch (e){
             console.error('ThreeEditor - cannot read package.json file', e)
@@ -597,7 +509,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             fileName,
             {type: 'application/json', lastModified: Date.now()}
         )
-        const saved = await this.fsHelper.writeFile(project.handle, fileName, newFile, project.path).catch(e => {
+        const saved = await this.fsHelper.writeFile(project.handle, fileName, newFile).catch(e => {
             console.error(e)
             return false
         })
@@ -605,28 +517,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
             throw new Error('Failed to save assets manifest file')
         }
         return assetId
-    }
-
-    async createNewProjectMeta(name: string, handle: FileSystemDirectoryHandle) {
-        // store meta in idb
-        const meta1 = await createMeta(name, handle)
-        // if (file !== meta1.file) await this.browserStore.put(file, meta1.path + fileKey)
-        // if (preview !== meta1.preview) await this.browserStore.put(preview, meta1.path + previewKey)
-        const meta2 = await this.initReadWriteProject(meta1)
-        return meta2
-    }
-
-    async listFiles(prefix = '') {
-        const keys = await this.browserStore.getKeys()
-        return keys
-            .filter(k => k.startsWith(prefix) && k.endsWith('/' + FILE_META_KEY))
-            .map(k => k.slice(0, -FILE_META_KEY.length - 1))
-    }
-
-    async listFilesMeta(prefix = '', preview = false): Promise<SavedSceneFileMeta[]> {
-        const keys = await this.listFiles(prefix)
-        const meta = (await Promise.all(keys.map(k => preview ? getMetaWithPreview(k) : getMeta(k)))).filter(v=>!!v)
-        return meta.filter(m => m)
     }
 
     // this should not use this.loadedProject, loadedScene etc
@@ -765,8 +655,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return {file, preview: previewFile, ext}
     }
 
-    async writeAssetFile(project: string, obj: IObject3D|IMaterial, assetId: string, handle: FileSystemDirectoryHandle, assetPath: string, res: {file: File, preview?: string | File}) {
-        const res1 = await this.fsHelper.writeFile(handle, assetPath, res.file, project).catch(e => {
+    async writeAssetFile(obj: IObject3D|IMaterial, assetId: string, handle: ProjectDirectoryHandle, assetPath: string, res: {file: File, preview?: string | File}) {
+        const res1 = await this.fsHelper.writeFile(handle, assetPath, res.file).catch(e => {
             console.error('Failed to save asset file.', e)
             return false
         })
@@ -821,35 +711,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
         this.get().assetManager.tracker.processRawPopulateRefs(obj)
     }
 
-    private async getProjectMeta(project: LoadedProject){
-        const meta = await getMeta(project.path) as LoadedProject|undefined
-        if(!meta?.handle) {
-            return {error: 'No handle found for project, cannot save.'}
-        }
-        if(!meta.assets) {
-            return {error: 'Project does not have an assets folder configured.'}
-        }
-        if(project.assetsManifest){
-            if(!meta.assetsManifest) meta.assetsManifest = project.assetsManifest
-            else {
-                if(meta.assetsManifest.version <= project.assetsManifest.version){
-                    meta.assetsManifest = project.assetsManifest
-                }
-            }
-        }
-        if(typeof project.file === 'object'){
-            // temp hack for type issue in meta browser store.
-            if(typeof meta.file === 'string') meta.file = project.file
-        }
-        return {meta, error: null, handle: meta.handle, assets: meta.assets}
-    }
-
-    // async getProjectFile(project: string, file: string){
-    //     const {meta, ...res} = await this.getProjectMeta(project)
-    //     if(res.error || !meta) throw new Error(res.error || 'Unknown error getting project meta')
-    //     return resolveFile(file, meta.path, meta.handle)
-    // }
-
     resolveAssetIdPath(url: string, project?: LoadedProject|null){
         project = project ?? this.loadedProject
         if(!project || !url) return url
@@ -869,31 +730,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }
         // console.log('Resolved asset url', url, 'to path', filePath)
         return filePath
-    }
-
-    fetchProjectAsset = async (url: string, project?: LoadedProject|null) => {
-        if(!url.startsWith(assetUrlPrefix)) return url
-        project = project ?? this.loadedProject
-        if(!project){
-            console.error('No project loaded, cannot import asset')
-            return url
-        }
-
-        const filePath = this.resolveAssetIdPath(url, project)
-
-        const ex = this.fileTracker.getFile(project.path + filePath)
-        if(ex) {
-            ex.lastUsed = Date.now()
-            // console.log('Returning from stash', project.path + url1, ex)
-            return ex.objectUrl
-        }
-
-        // console.log('not found in stash', project.path + filePath, ex)
-        // const meta = await getMeta(project)
-        const sceneFile = project ? await resolveFile(filePath, project.path, project.handle) : undefined
-        const objectUrl = this.fileTracker.setFile(project.path + filePath, sceneFile)
-        // console.log('add to stash', project.path + filePath, ex)
-        return objectUrl
     }
 
     defaultViewerSettings: ISerializedViewerConfig|null = null
@@ -1052,7 +888,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         const project = this.loadedProject
         if(!project?.handle || !project?.settings) return
 
-        const file: File = await resolveFile('package.json', project.path, project.handle)
+        const file: File = await resolveFile('package.json', project.handle)
         const project2 = await parsePackageJsonSettings(file, project)
         project.file = project2.file
         project.lastModified = project2.lastModified
@@ -1079,7 +915,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }
         if(path === 'assets.json'){
             try {
-                const file: File = await resolveFile(path, project.path, project.handle)
+                const file: File = await resolveFile(path, project.handle)
                 const text = await file.text()
                 const json = parseAssetsJSONManifest(text)
                 project.assetsManifest = json
@@ -1131,8 +967,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
     async loadImport(file: SavedSceneFile | {path: string, file?: File}, project: LoadedProject, isMain = false) {
         const sceneFile: File | undefined = file.file ??
             (file === project ?
-            await resolveFile(project.file, project.path, project.handle) :
-            await resolveFile(file.path, project.path, project.handle))
+            await resolveFile(project.file, project.handle) :
+            await resolveFile(file.path, project.handle))
         await this.scriptUtil.scriptsRefreshing
         const isValidFile = !!sceneFile && !!(sceneFile).name && (sceneFile).name.includes('.')
         if (isValidFile) { // empty files when new scene is created
@@ -1347,7 +1183,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
      * @param file
      * @param force - unload current even if unsaved changes
      */
-    async loadProjectFile(file: SavedSceneFile | null, force = false, unloadingProject = false){
+    async loadProjectFile(file: SavedSceneFile | null, force = false){
         // if(project !== this.loadedProject){
         //     console.error('Project does not match the loaded project, cannot load scene/asset.', file)
         //     return {error: 'Unknown Error loading scene/asset.'}
@@ -1370,8 +1206,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
             if(this.loadedNeedsSave && !force) return {error: 'Current scene/asset has unsaved changes, please save before loading another file.'}
             await this._unloadProjectFile()
         }
-
-        refreshProjectQueryState({project: unloadingProject ? null : project?.path||null, file: file?.path??null})
 
         if(project && !file && !isPackageProject(project)){
             file = project
@@ -1589,11 +1423,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
         if(scene && asset){
             throw new Error('Loaded path cannot be both a scene and an asset.')
         }
-        // get latest meta
-        const {meta, handle, ...rese} = await this.getProjectMeta(project)
-        if (!handle || !meta) return {...rese, error: rese.error || 'Cannot get project directory handle'}
-        // debugger
-        Object.assign(project, meta)
+        const handle = project.handle
+        if (!handle) return {error: 'Cannot get project directory handle'}
 
         this.savingScene = true
 
@@ -1611,11 +1442,11 @@ export class ViewerInstanceManager extends EventDispatcher<{
             if (handles.fileHandle) {
                 // file exists, create a backup
                 const originalFile = await handles.fileHandle.getFile()
-                this.fsHelper.writeFile(handle, backupFilePath, originalFile, project.path).catch(e => {
+                this.fsHelper.writeFile(handle, backupFilePath, originalFile).catch(e => {
                     console.error('Failed to create backup of scene file.', e)
                 })
             }
-            const saved = await this.fsHelper.writeFile(handle, filePath, res.file, project.path).catch(e => {
+            const saved = await this.fsHelper.writeFile(handle, filePath, res.file).catch(e => {
                 console.error(e)
                 return false
             })
@@ -1626,7 +1457,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
             if (res.preview) {
                 if ((res.preview as File).name) {
-                    await this.fsHelper.writeFile(handle, previewFilePath, res.preview as File, project.path).catch(e => {
+                    await this.fsHelper.writeFile(handle, previewFilePath, res.preview as File).catch(e => {
                         console.error('Unable to save scene thumbnail')
                         console.error(e)
                         return false
@@ -1637,9 +1468,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
             }
 
             project.lastModified = Date.now()
-            // @ts-ignore
-            project.lastScene = scene || undefined // todo use this when loading project
-            await this.browserStore.put(project, project.path + FILE_META_KEY)
 
             this.loadedNeedsSave = false
             this.savingScene = false
@@ -1660,10 +1488,9 @@ export class ViewerInstanceManager extends EventDispatcher<{
     async saveNewProjectAsset(project: LoadedProject, scene: SavedSceneFile|null, obj: IObject3D|IMaterial, ext2 = 'asset') {
         if(!canMakeAsset(obj)) return {error: 'Object cannot be saved as asset. Make sure it has geometry and a material.'}
 
-        // get latest meta
-        const {meta, handle, assets, ...rese} = await this.getProjectMeta(project)
-        if (!handle || !meta || !assets) return {...rese, error: rese.error || 'Cannot get project directory handle'}
-        Object.assign(project, meta)
+        const {handle, assets} = project
+        if (!handle) return {error: 'Cannot get project directory handle'}
+        if (!assets) return {error: 'Project does not have an assets folder configured.'}
 
         const dirHandle = await getDirHandle(handle, assets).catch(e=>{
             console.error(e)
@@ -1731,7 +1558,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
         const assetPath = assets + assetName + ext
 
-        const res2 = await this.writeAssetFile(project.path, obj, assetId, handle, assetPath, res)
+        const res2 = await this.writeAssetFile(obj, assetId, handle, assetPath, res)
         if(res2?.error){
             // delete obj.userData.tpAssetId
             return res2
@@ -1847,10 +1674,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
     async saveProjectAsset(project: LoadedProject, scene: SavedSceneFile|null, obj: IObject3D|IMaterial, path: string) {
         if(!canSaveAsset(obj) || !path) return {error: 'Asset cannot be saved, make sure it is a valid asset'}
 
-        // get latest meta
-        const {meta, handle, assets, ...rese} = await this.getProjectMeta(project)
-        if (!handle || !meta || !assets) return {...rese, error: rese.error || 'Cannot get project directory handle'}
-        Object.assign(project, meta)
+        const handle = project.handle
+        if (!handle) return {error: 'Cannot get project directory handle'}
 
         const rootPath = (obj as ImportResult).__rootPath
         if(!rootPath?.startsWith(assetUrlPrefix + '@')){
@@ -1873,7 +1698,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             return res
         }
 
-        const res2 = await this.writeAssetFile(project.path, obj, assetId, handle, path, res)
+        const res2 = await this.writeAssetFile(obj, assetId, handle, path, res)
         if(res2?.error){
             return res2
         }
@@ -1942,7 +1767,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             if (prev) {
                 const blob = await (await fetch(prev)).blob()
                 const f = new File([blob], previewPath, {type: blob.type, lastModified: Date.now()})
-                await this.fsHelper.writeFile(project.handle, previewPath, f, project.path).catch(e => {
+                await this.fsHelper.writeFile(project.handle, previewPath, f).catch(e => {
                     console.error('Error writing texture preview: ', previewPath, e)
                     return false
                 })

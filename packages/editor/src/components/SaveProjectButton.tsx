@@ -1,10 +1,22 @@
 import {useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
-import {Button, Classes, Menu, MenuItem, Popover} from '@blueprintjs/core'
-import {useCloseWithoutSave} from "./UseCloseProject.tsx";
-import {useProjectActions} from "../utils/projectActions.tsx";
-import {useEffect, useState} from "react";
+import {Button} from '@blueprintjs/core'
+import {useCallback, useEffect, useState} from "react";
 import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
+import {showSuccessErrorToast} from "../utils/Toaster.tsx";
+
+export function useSaveProjectFile() {
+    const manager = useManager()
+    const saveProjectFile = useCallback(async ()=>{
+        if(!manager.loadedProjectFile || !manager.loadedProject) return
+        const res = await manager.saveProjectSceneOrAsset(manager.loadedProject, manager.loadedProjectFile).catch(e=>{
+            console.error(e)
+            return {error: 'Unable to save file: ' + (e.message || e.toString())}
+        })
+        return showSuccessErrorToast(`Saved ${manager.loadedProject.path}${manager.loadedProjectFile.path} successfully.`, 'Unable to save file.', res as any)
+    }, [manager])
+    return {saveProjectFile}
+}
 
 export function useFileNeedsSave(){
     const manager = useManager()
@@ -24,9 +36,8 @@ export function useFileNeedsSave(){
 
 export function SaveProjectButton() {
     const {loadingState, updateLoading} = useLoadingState()
-    const {closeProject} = useCloseWithoutSave()
     const {project} = useProject()
-    const {saveProjectFile, loadProject1} = useProjectActions()
+    const {saveProjectFile} = useSaveProjectFile()
     const manager = useManager()
 
     const [fileNeedsSave] = useFileNeedsSave()
@@ -61,24 +72,5 @@ export function SaveProjectButton() {
                     disabled={!fileNeedsSave}
                     onClick={() => updateLoading('save-scene', saveProjectFile())}/>
         }
-        <Popover targetProps={{style: {}}}
-                 minimal
-                 targetTagName={'div'}
-                 content={
-                     <Menu className={Classes.ELEVATION_0}>
-                         <MenuItem
-                             text={'Save and Close'}
-                             // icon={'floppy-disk'}
-                             onClick={() => updateLoading('save-file', saveProjectFile().then(()=>loadProject1(null)))}/>
-                         <MenuItem
-                             text={'Close Project'}
-                             // icon={'floppy-disk'}
-                             onClick={() => updateLoading('save-file', closeProject())}/>
-                     </Menu>
-                 } placement="bottom">
-            <Button icon="caret-down" disabled={loadingState['save-file']}
-                    variant={"minimal"} size={"small"}
-                    text=""/>
-        </Popover>
     </>
 }

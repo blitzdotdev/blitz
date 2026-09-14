@@ -113,7 +113,7 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
         if (save) {
             // patches the latest file from disk
             const file = await this.setSettingsConfig(settings, project)
-            const saved = await this.manager.fsHelper.writeFile(project.handle, project.file.name, file, project.path).catch(e => {
+            const saved = await this.manager.fsHelper.writeFile(project.handle, project.file.name, file).catch(e => {
                 console.error(e)
                 return false
             })

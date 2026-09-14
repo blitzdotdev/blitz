@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@kite3d/engine": "0.19.0-alpha.2",
     "@threepipe/plugin-3d-tiles-renderer": "^0.3.2",
     "@threepipe/plugin-assimpjs": "^0.2.3",
     "@threepipe/plugin-blend-importer": "^0.1.0",
@@ -25,7 +26,6 @@
     "@threepipe/webgi-plugins": "^0.5.10",
     "blueprint-styler": "^5.0.2",
     "classnames": "2.5.1",
-    "idb": "^8.0.0",
     "react": "^18.2.0",
     "react-colorful": "^5.6.1",
     "react-dom": "^18.2.0",
@@ -46,7 +46,6 @@
     "@types/node": "^22.1.0",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
-    "@types/wicg-file-system-access": "^2023.10.5",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",
     "@vitejs/plugin-basic-ssl": "^1.0.2",

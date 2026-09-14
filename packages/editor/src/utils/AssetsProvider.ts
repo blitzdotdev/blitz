@@ -1,4 +1,5 @@
 import {useSafeContext} from "./useSafeContext.ts";
+import {ProjectDirectoryHandle, ProjectFileHandle} from "../devserver/handles.ts";
 import {createContext, createElement, useEffect, useMemo, useState} from "react";
 import {PickingPlugin, SelectionObject, UiObjectConfig} from "threepipe";
 import {IconName} from "@blueprintjs/core";
@@ -16,7 +17,7 @@ export type SelectedInspectorItems = SelectedInspectorItem[]
 export type FileManifestEntry = {
     path: string
     name: string
-    handle: FileSystemFileHandle | FileSystemDirectoryHandle
+    handle: ProjectFileHandle | ProjectDirectoryHandle
     type: 'file' | 'directory'
     children?: FileManifestEntry[]
     isFSEntry: true
@@ -25,12 +26,12 @@ export type FileManifestEntry = {
 
 export async function manifestEntryToFile(f: FileManifestEntry): Promise<File | null>{
     if(f.type === 'directory') return null
-    const file = await (f.handle as FileSystemFileHandle).getFile()
+    const file = await (f.handle as ProjectFileHandle).getFile()
     return file
 }
 
 export async function directoryToManifest(
-    handle: FileSystemDirectoryHandle,
+    handle: ProjectDirectoryHandle,
     basePath: string = '',
     existingManifest?: FileManifestEntry[]
 ): Promise<FileManifestEntry[]> {

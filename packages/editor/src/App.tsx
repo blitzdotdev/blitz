@@ -1,6 +1,5 @@
 import {ThreeEditorComponent} from './components/ThreeEditorComponent.tsx'
 import {AppToasterOverlay, DialogComponent, DialogProvider, VisualStyleProvider} from 'uiconfig-blueprint/lib/esm/lib'
-import {WelcomeScreenDialog} from './components/WelcomeScreenDialog.tsx'
 import {BlueprintProvider} from "@blueprintjs/core";
 import {AssetsProvider} from "./utils/AssetsProvider.ts";
 import {ContextMenuProvider} from "./components/ContextMenuProvider.tsx";
@@ -14,22 +13,23 @@ import {
     useQuery,
 } from '@tanstack/react-query'
 import {queryClient} from "./tsdb/client.ts";
+import {ViewerInstanceManager} from "./utils/ViewerInstanceManager.ts";
+import {LoadedProject} from "./utils/project.ts";
 
 // console.log(InspectorStackComponent, Split)
 
-function App() {
+function App({manager, project}: { manager: ViewerInstanceManager, project: LoadedProject }) {
     return (
         <QueryClientProvider client={queryClient}>
         <BlueprintProvider>
         <VisualStyleProvider>
         <DialogProvider>
-        <ProjectProvider>
-        <ManagerProvider>
+        <ProjectProvider project={project}>
+        <ManagerProvider manager={manager}>
         <AssetsProvider>
         <ContextMenuProvider>
             <>
                 <ThreeEditorComponent />
-                <WelcomeScreenDialog/>
                 <DialogComponent/>
                 <AppToasterOverlay/>
             </>
