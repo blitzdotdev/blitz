@@ -317,45 +317,74 @@ if (state.hub) {
 ```
 
 ```
-browser (packages/editor)                              kite3d dev (packages/kite3d)
-──────────────────────────                              ──────────────────────────
-main.tsx reads ?t=  ───────────── GET /api/state ─────────►  {name, versions}
-manifest.refresh() ──────── GET /api/files, /api/directories ─►  [{path, sha256, ...}], {directories}
-root = DirectoryHandle('')
-manager.loadProject({handle: root, file: 'package.json'})
-  initProjectHandles()            (project.ts:197, unchanged)
-    handle.getFileHandle('package.json').getFile() ── GET /files/package.json ──►  bytes, ETag
-    parse settings                (the engine's parser, section 5)
-  settingsManager.onProjectSettingsChange()   (unchanged)
-    scriptUtil loads plugins and scripts      (section 7)
-  loadImport(main scene, isMain)
-    viewer.load('/files/assets/main.scene.gltf?v=<sha>')   (section 5)
-manager.initialize()  ───────── GET /api/events (SSE) ─────►  ': connected'
+               editor tab                                         kite3d dev
+                    │                                                  │
+ 1  read ?t=        │── GET /api/state ───────────────────────────────►│
+                    │◄─ {name, versions} ──────────────────────────────│
+                    │                                                  │
+ 2  list            │── GET /api/files ───────────────────────────────►│
+                    │◄─ [{path, sha256, size, mtime}] ─────────────────│
+                    │── GET /api/directories ─────────────────────────►│
+                    │◄─ {directories} ─────────────────────────────────│
+                    │                                                  │
+ 3  root = DirectoryHandle('')                                         │
+    loadProject({handle: root, file: 'package.json'})                  │  upstream, unchanged from here
+                    │                                                  │
+ 4  initProjectHandles (project.ts:197)                                │
+    getFileHandle('package.json').getFile()                            │
+                    │── GET /files/package.json ──────────────────────►│
+                    │◄─ bytes, ETag "<sha>" ───────────────────────────│  base[package.json] = sha
+    parse settings with the engine's parser                            │  section 5
+                    │                                                  │
+ 5  settings change: scriptUtil imports the scripts                    │  section 7
+                    │── GET /files/scripts/spin.js?v=<sha> ───────────►│
+                    │◄─ module ────────────────────────────────────────│
+                    │                                                  │
+ 6  loadImport(main scene)                                             │  section 5
+                    │── GET /files/assets/main.scene.gltf?v=<sha> ────►│
+                    │◄─ glTF, then its .bin and textures ──────────────│
+                    │                                                  │
+ 7  initialize      │── GET /api/events ──────────────────────────────►│  SSE, stays open (4.4)
+                    │◄─ : connected ───────────────────────────────────│
 ```
 
 ### 4.4 How a write travels, and how a change comes back
 
 ```
-Save Scene (or New Script, or Make Asset, or a package.json edit)
-  upstream code calls fsHelper.writeFile(handle, path, file)     (fsApi.ts:84, unchanged)
-    handle.getFileHandle(path, {create: true}).write(file)
-        └──► PUT /files/<path>   If-Match: "<sha of last read>"   X-Kite3D-Client: <id>
-               200 or 201 {path, sha256}   this tab's base for <path> becomes the new sha
-               412 {sha256: <current>}     ProjectConflictError ─► read the disk copy ─► "Reload the disk version?"
-                                              yes: base = disk sha, reload, editor copy gone
-                                              no:  nothing written, editor copy kept, ask again on the next save
-
-server: writes .<name>.kite3d-<hex>, renames, hashes, schedules the event (150 ms window)
-        └──► SSE  change {path, sha256, client: <id>}     to every subscriber
-
-each editor tab:
-  event.client == my clientId    ─►  ignore (I wrote it)
-  otherwise                      ─►  manifest.apply(event)
-                                 ─►  scriptUtil.changedFilesQ.push(event.path)      (section 7)
-                                 ─►  path == main scene  ─►  confirm if dirty, then loadImport
+               editor tab                                         kite3d dev
+                    │                                                  │
+ 1  Save: fsHelper.writeFile(handle, path, file)                       │  fsApi.ts:84, upstream, unchanged
+    → handle.write(file)                                               │  the adapter of 4.2
+                    │                                                  │
+ 2                  │── PUT /files/<path> ────────────────────────────►│
+                     If-Match: "<base sha>"                            │  base = what this tab last read or wrote
+                     X-Kite3D-Client: <my id>                          │
+                    │                                                  │
+ 3a match           │◄─ 200 {path, sha256: <new>} ─────────────────────│  temp file, rename, hash; the event follows
+    base[path] = <new>                                                 │
+                    │                                                  │
+ 3b stale           │◄─ 412 {sha256: <disk>} ──────────────────────────│  nothing written
+    ProjectConflictError                                               │
+    read the disk copy, ask "Reload the disk version?"                 │
+      yes: base[path] = <disk>, reload, the edits are gone             │
+      no:  keep the editor copy, nothing saved, ask again next time    │
 ```
 
-The last line is the one new behaviour in this section, and it is a port of what our editor already did: a scene changed on disk by an agent or by Blender reloads, with a confirm when the editor copy is dirty. Upstream's `refreshChangedFilesQ` takes it from there for scripts, `package.json` and `assets.json`, because its queue already accepts a plain path string (`ScriptUtil.ts:610`, the string branch at 629). `FileSystemObserver`, the two-second poll, the `BroadcastChannel` and `FetchProxy` are gone; asset URLs under `/kite3d/` resolve through the engine's `createProjectAssetURLModifier` on the viewer's importer, the same call `createGame` makes.
+The write is one side. The other side is the event every write causes, whoever made it.
+
+```
+ kite3d dev, 150 ms after any write (editor, agent, Blender, shell)
+     └──► SSE  change {path, sha256, client?}   to every tab
+
+ each tab, on the event
+   client is me ............ ignore; my base is already the new sha
+   anyone else ............. listing[path] = sha256   (base[path] untouched)
+       main scene, clean ... reload from disk
+       main scene, dirty ... ask "Changed on disk: reload and discard the editor copy?"
+       script, package.json, assets.json ... changedFilesQ.push(path)   (section 7 takes it from there)
+```
+
+The two main-scene lines are the one new behaviour in this section, and they are a port of what our editor already did: a scene changed on disk by an agent or by Blender reloads, with a confirm when the editor copy is dirty. Upstream's `refreshChangedFilesQ` takes it from there for scripts, `package.json` and `assets.json`, because its queue already accepts a plain path string (`ScriptUtil.ts:610`, the string branch at 629). `FileSystemObserver`, the two-second poll, the `BroadcastChannel` and `FetchProxy` are gone; asset URLs under `/kite3d/` resolve through the engine's `createProjectAssetURLModifier` on the viewer's importer, the same call `createGame` makes.
 
 Lifecycle of the pieces: one `DevServerSource` and one `ProjectManifest` per page, made in `main.tsx`. The SSE subscription opens in `ViewerInstanceManager.initialize()` and closes in `dispose()`. Handles are values, created on demand, and hold no state; the per-path base sha lives in the manifest. Nothing caches `File` objects.
 
