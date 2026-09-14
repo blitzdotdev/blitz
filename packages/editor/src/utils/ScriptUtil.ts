@@ -1,7 +1,6 @@
 import {ExternalPlugin, ExternalScript, LoadedProject, ProjectConfigSettings, resolveFile} from "./project.ts";
 import {Class, EntityComponentPlugin, EventDispatcher, IViewerPlugin, ThreeViewer, TObject3DComponent} from "threepipe";
-import {SupPluginModule} from "./SandboxPlugin.ts";
-import {getFileChanged, loadModule, loadModules} from "./modules.ts";
+import {getFileChanged, loadModule, loadModules, SupPluginModule} from "./modules.ts";
 import {getFileHandle} from "./fsApi.ts";
 
 export interface PluginRef{

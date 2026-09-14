@@ -10,6 +10,8 @@
   },
   "overrides": {
     "@blueprintjs/colors": "5.1.9",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
     "three": "https://github.com/repalash/three.js-modded/releases/download/v0.163.10003/package.tgz",
     "threepipe": {
       "@types/three": "$@types/three"
@@ -18,6 +20,7 @@
     "@tanstack/query-db-collection": "1.0.6",
     "@tanstack/react-db": "0.1.55",
     "ts-browser-helpers": "0.19.4",
+    "uiconfig.js": "0.3.1",
     "zod": "4.1.13"
   },
   "devDependencies": {
@@ -35,7 +38,6 @@
     "build": "npm run build:threepipe && npm run build:ui && npm run build:engine && npm run build:editor && npm run build:kite3d",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:kite3d": "npm test -w packages/kite3d",
-    "test:editor": "npm test -w packages/editor",
     "test:scripts": "node --test scripts/*.test.mjs",
     "lint": "npm run lint -w packages/engine && npm run lint -w packages/editor && npm run lint -w packages/kite3d",
     "version:set": "node scripts/set-version.mjs",

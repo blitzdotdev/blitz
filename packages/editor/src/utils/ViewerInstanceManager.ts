@@ -58,7 +58,6 @@ import {FileManifestEntry, manifestEntryToFile, SelectedInspectorItem} from "./A
 import {
     AssetsJSONManifest,
     assetUrlPrefix,
-    buildProjectBundleCode,
     createMeta,
     FILE_META_KEY,
     getMeta,
@@ -74,16 +73,7 @@ import {
     settingsKey,
     STORE_NAME
 } from "./project.ts";
-import {
-    agentsMdTemplate,
-    defaultIconTemplatePng,
-    defaultIconTemplateSvg,
-    gitignoreTemplate,
-    mainJsTemplate,
-    mcpJsonTemplate,
-    packageJsonTemplate
-} from '../data/projectTemplates.ts'
-import {AnotherFSHelper, getDirHandle, getFileHandle, queryHandlePerm, writeFileHandle} from "./fsApi.ts";
+import {AnotherFSHelper, getDirHandle, getFileHandle, queryHandlePerm} from "./fsApi.ts";
 import {FetchProxy} from "./FetchProxy.ts";
 import {AssetTracker, cloneAssetItem, defSPropsMat, defSPropsObj} from "./AssetTracker.ts";
 import {CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
@@ -91,7 +81,6 @@ import {CanvasFileDropHandler} from "./CanvasFileDropHandler.tsx";
 import {FileTracker} from "./FileTracker.ts";
 import {HtmlUiComponent} from "../plugins/HtmlUiComponent.ts";
 import {generatePreview} from "./three/GeneratePreview.ts";
-import {emptyProjectSettings} from "../data/EmptyProjectSettings.ts";
 import {mimeToExt, typesExts} from '../data/fileTypes.ts'
 import {ScriptUtil} from "./ScriptUtil.ts";
 import {refreshProjectQueryState} from "./refreshProjectQueryState.ts";
@@ -102,7 +91,6 @@ import z from "zod";
 import {PlayModeHelper} from "./PlayModeHelper.ts";
 import {EditPreviewHelper} from "./EditPreviewHelper.ts";
 import {ProjectSettingsManager} from "./ProjectSettingsManager.ts";
-import {initMCPBridge, MCPBridgeClient} from "./ai";
 import {
     backupPath,
     canMakeAsset,
@@ -268,7 +256,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
         KTX2LoadPlugin.SAVE_SOURCE_BLOBS = true // so that embedded ktx files can be exported after import
 
         viewer.addPluginsSync([
-            // SandboxPlugin,
             // LoadingScreenPlugin,
             // AssetExporterPlugin,
             // GLTFDracoExportPlugin,
@@ -458,131 +445,9 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
     // static readonly STORE_NAME = STORE_NAME
     // static readonly FILE_META_KEY = FILE_META_KEY
-    static readonly SAVE_DIR_PICKER_ID = 'threepipe-editor-dir-1'
 
     // used for testing
     static readonly ENABLE_FS_WRITE_API = true
-
-    async saveFileAdHoc(scene: SavedSceneFile, changeName: (n: string, e: string) => Promise<string | null>, props?: {
-        isNewName?: boolean
-        saveTempOnly?: boolean
-    }): Promise<SavedSceneFile | { error?: string, warn?: string }> {
-        const meta = await getMeta(scene.path)
-        let isNewHandle = false
-        let handle = meta?.handle
-        let name = scene.path.replace(/\/$/, '').split('/').pop() || 'scene'
-        let file: File/* | string*/ = scene.file
-        let filePath: string|null = typeof file === 'string' ? file : null
-        const preview = scene.preview
-
-        props = {...props ?? {}}
-
-        if (!props.saveTempOnly && ViewerInstanceManager.ENABLE_FS_WRITE_API) {
-
-            if ((!meta?.handle || props.isNewName) && 'showDirectoryPicker' in window) {
-                const handle1 = await window.showDirectoryPicker({
-                    id: ViewerInstanceManager.SAVE_DIR_PICKER_ID,
-                    mode: 'readwrite',
-                    // startIn: 'documents',
-                    startIn: meta?.handle,
-                }).catch(e => {
-                    console.warn(e)
-                    return undefined
-                })
-                if (handle1) {
-                    handle = handle1
-                    isNewHandle = true
-                }
-            }
-
-            if (handle) {
-                try {
-                    await queryHandlePerm(handle)
-                }catch (e: any){
-                    return {
-                        error: 'no permission to write to the file system, cannot save file', //e?.message || 'Unknown error'
-                    }
-                }
-                const fileFile = typeof file === 'string' ? await fileFromDataUrl(file, name) : file
-                const previewFile = typeof preview === 'string' ? await fileFromDataUrl(preview, name) : preview
-                // console.log(scene)
-                const fileExt = fileFile.name.split('.').pop()!
-                const previewExt = previewFile?.name.split('.').pop()
-
-                // check for overwrite if new handle
-                // complicated loop prompting the user
-                if (isNewHandle || props.isNewName) {
-                    const fileExists = async (f: string) => !!(await handle!.getFileHandle(f).catch((e) => {
-                        if(e.name === "NotFoundError") return null
-                        if(e.name === "TypeMismatchError") return true
-                        throw e
-                    }))
-
-                    let name1: string | null = name
-                    const checkPreview = async () => {
-                        if (!previewFile) return true
-                        if (!await fileExists(name + '.' + previewExt)) {
-                            return true
-                        }
-                        name1 = await changeName(name, previewExt!) // ask for overwrite(returns the same name if yes), or asks for a new name(returns that), or returns null if cancelled on new name stage
-                        return name1 === name;
-                    }
-                    while (true) {
-                        if (!name1) {
-                            return {
-                                warn: 'saving file cancelled'
-                            }
-                        }
-                        name = name1
-                        if (!await fileExists(name + '.' + fileExt)) {
-                            if (await checkPreview()) break
-                            continue
-                        }
-                        name1 = await changeName(name, fileExt) // ask for overwrite(returns the same name if yes), or asks for a new name(returns that), or returns null if cancelled on new name stage
-                        if (name1 === name && await checkPreview()) break
-                    }
-                    name = name1 // not needed actually
-                }
-
-                const fileHandle = await handle.getFileHandle(name + '.' + fileExt, {create: true})
-                const previewHandle = previewFile && await handle.getFileHandle(name + '.' + previewExt!, {create: true})
-                const writer = await fileHandle.createWritable()
-                await writer.write(fileFile)
-                await writer.close()
-                if (previewHandle) {
-                    const writer = await previewHandle.createWritable()
-                    await writer.write(previewFile)
-                    await writer.close()
-                }
-                filePath = name + '.' + fileExt
-                // this is commented so that the preview is always stored in idb, since handles can require permission on reload.
-                // preview = previewFile && (name + '.' + previewExt)
-
-            }
-        }
-
-        const fileKey = typeof file === 'string' ? 'file' : file.name
-        const previewKey = typeof preview === 'string' ? 'preview' : preview?.name || 'preview'
-        const metaKey = FILE_META_KEY
-        const meta1 = {
-            path: name,
-            lastModified: scene.lastModified,
-            file: (typeof filePath === 'string' && filePath.length < 500) ?
-                filePath :
-                (STORE_NAME + ':./' + fileKey),
-            preview: (typeof preview === 'string' && preview.length < 500) ?
-                preview :
-                (STORE_NAME + ':./' + previewKey),
-            handle,
-        } as SavedSceneFileMetaStored
-        if (!meta1.path.endsWith('/')) meta1.path += '/'
-        await this.browserStore.put(meta1, meta1.path + metaKey)
-        if (filePath !== meta1.file) await this.browserStore.put(file, meta1.path + fileKey)
-        if (preview !== meta1.preview) await this.browserStore.put(preview, meta1.path + previewKey)
-
-        this.loadedNeedsSave = false
-        return (await this.getFileFromMeta(meta1)) ?? {error: 'Failed to get saved file'}
-    }
 
     async isTempFile(path: string) {
         const meta = await getMeta(path)
@@ -639,57 +504,10 @@ export class ViewerInstanceManager extends EventDispatcher<{
     private async initReadWriteProject(meta: SavedSceneFileMeta | SavedSceneFileMetaStored): Promise<LoadedProject>{
         const init = await initProjectHandles(meta)
 
-        if(!init.package.handle || !init.package.file){
-            // packageFileHandle = await handle.getFileHandle(meta.file, {create: true}).catch(e=>{
-            //     console.error('ThreeEditor - cannot create package.json file', e)
-            //     return undefined
-            // })
-            // if(!packageFileHandle) throw new Error('No package.json file in project and cannot create one')
-            const defaultPackageJson = {
-                ...packageJsonTemplate,
-                name: meta.path.replace(/\/$/, '').split('/').pop() || packageJsonTemplate.name,
-            }
-            const file = new File([JSON.stringify(defaultPackageJson, null, 2)], 'package.json', {type: 'application/json', lastModified: Date.now()})
-            // @ts-ignore todo fix all types, browser store thing...
-            const filename = typeof meta.file === 'string' ? meta.file : meta.file.name
-            const w = await this.fsHelper.writeFile(init.base, filename, file, meta.path, true).catch(e=>{
-                console.error('ThreeEditor - cannot write default package.json file', e)
-                return false
-            })
-            if(!w) throw new Error('No package.json file in project and cannot create one')
-            init.package.file = file
-        }
         if(!init.package.file){
             throw new Error('No package.json file in project')
         }
 
-        if(typeof meta.preview === 'string') { // todo when is it a File object? is it possible in package.json projects?
-            let iconFileHandle = await init.base.getFileHandle(meta.preview).catch((e) => {
-                // todo handle if there is dir with same name
-                // if(e.name === "NotFoundError") return null
-                // if(e.name === "TypeMismatchError") return true
-                return undefined
-            })
-            if (!iconFileHandle) {
-                iconFileHandle = await init.base.getFileHandle(meta.preview, {create: true}).catch(e=>{
-                    console.error('ThreeEditor - cannot create icon file', e)
-                    return undefined
-                })
-                if(iconFileHandle) {
-                    // const writer = await iconFileHandle.createWritable()
-                    // // write empty png
-                    // await writer.write(Uint8Array.from(defaultIconTemplate, c => c.charCodeAt(0)))
-                    // await writer.close()
-                    const d = meta.preview.endsWith('.svg') ?
-                        defaultIconTemplateSvg :
-                        Uint8Array.from(defaultIconTemplatePng, c => c.charCodeAt(0))
-                    await writeFileHandle(iconFileHandle, d).catch(e=>{
-                        console.error('ThreeEditor - cannot write default icon file', e)
-                        // ignore error
-                    })
-                }
-            }
-        }
         if(meta.assets) {
             const p = meta.assets.replace(/\/$/, '')
             let assetsDirHandle = await init.base.getDirectoryHandle(p).catch((e) => {
@@ -709,26 +527,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }
 
 
-        if(!init.mainJs.handle || !init.mainJs.file){
-            // mainJsHandle = await handle.getFileHandle(meta.file, {create: true}).catch(e=>{
-            //     console.error('ThreeEditor - cannot create main.js file', e)
-            //     return undefined
-            // })
-            // if(!mainJsHandle) throw new Error('No main.js file in project and cannot create one')
-            // const writer = await mainJsHandle.createWritable()
-            // await writer.write(mainJsTemplate)
-            // await writer.close()
-            const file = new File([mainJsTemplate], 'main.js', {type: 'application/javascript', lastModified: Date.now()})
-            const w = await this.fsHelper.writeFile(init.base, 'main.js', file, meta.path, true).catch(e=>{
-                console.error('ThreeEditor - cannot write default main.js file', e)
-                return false
-            })
-            // if(!w) throw new Error('No main.js file in project and cannot create one')
-            if(w) init.mainJs.file = file
-        }
         if(!init.mainJs.file) {
-            // throw new Error('No main.js file in project and cannot create one')
-            console.error('No main.js file in project and cannot create one')
+            console.error('No main.js file in project')
         }
 
         // asset manifest.json
@@ -747,33 +547,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
         if(!init.assetsJson.file) {
             // throw new Error('No assets.json file in project')
             console.error('No assets.json file in project and cannot create one')
-        }
-
-        if(meta.handle && !(await meta.handle.getFileHandle('AGENTS.md').catch(()=>null))){
-            const file = new File([agentsMdTemplate], 'AGENTS.md', {type: 'text/markdown', lastModified: Date.now()})
-            const w = await this.fsHelper.writeFile(init.base, 'AGENTS.md', file, meta.path, true).catch(e=>{
-                console.error('ThreeEditor - cannot write default AGENTS.md file', e)
-                return false
-            })
-            if(!w) console.error('ThreeEditor - cannot create AGENTS.md file')
-        }
-
-        if(meta.handle && !(await meta.handle.getFileHandle('.gitignore').catch(()=>null))){
-            const file = new File([gitignoreTemplate], '.gitignore', {type: 'text/plain', lastModified: Date.now()})
-            const w = await this.fsHelper.writeFile(init.base, '.gitignore', file, meta.path, true).catch(e=>{
-                console.error('ThreeEditor - cannot write default .gitignore file', e)
-                return false
-            })
-            if(!w) console.error('ThreeEditor - cannot create .gitignore file')
-        }
-
-        if(meta.handle && !(await meta.handle.getFileHandle('.mcp.json').catch(()=>null))){
-            const file = new File([JSON.stringify(mcpJsonTemplate, null, 2)], '.mcp.json', {type: 'application/json', lastModified: Date.now()})
-            const w = await this.fsHelper.writeFile(init.base, '.mcp.json', file, meta.path, true).catch(e=>{
-                console.error('ThreeEditor - cannot write default .mcp.json file', e)
-                return false
-            })
-            if(!w) console.error('ThreeEditor - cannot create .mcp.json file')
         }
 
         try {
@@ -832,14 +605,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
             throw new Error('Failed to save assets manifest file')
         }
         return assetId
-    }
-
-    async buildProjectBundleCode(){
-        if(!this.loadedProject?.settings) throw new Error('No loaded project or settings to build main.js')
-        const settings = this.loadedProject?.settings
-        // todo mainjs, baseUrl
-        const code = buildProjectBundleCode(settings)
-        // todo copy asset files, imports files, write code to dist
     }
 
     async createNewProjectMeta(name: string, handle: FileSystemDirectoryHandle) {
@@ -1000,16 +765,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return {file, preview: previewFile, ext}
     }
 
-    async saveSceneAdHoc(name: string, changeName: (n: string, e: string) => Promise<string | null>, props: Parameters<ViewerInstanceManager['saveFileAdHoc']>[2]) {
-        const res = await this.exportScene()
-        if (!res.file) return res
-        return await this.saveFileAdHoc({
-            file: res.file, preview: res.preview,
-            path: name,
-            lastModified: Date.now()
-        }, changeName, props)
-    }
-
     async writeAssetFile(project: string, obj: IObject3D|IMaterial, assetId: string, handle: FileSystemDirectoryHandle, assetPath: string, res: {file: File, preview?: string | File}) {
         const res1 = await this.fsHelper.writeFile(handle, assetPath, res.file, project).catch(e => {
             console.error('Failed to save asset file.', e)
@@ -1143,8 +898,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
     defaultViewerSettings: ISerializedViewerConfig|null = null
     loadedProject: LoadedProject|null = null
-
-    mcpBridge: MCPBridgeClient | undefined
 
     _viewerPluginAdded = (e: any)=>{
         if(!e.plugin || !this.defaultViewerSettings) return
@@ -1289,14 +1042,9 @@ export class ViewerInstanceManager extends EventDispatcher<{
             this.loadedProject = meta
             // this.scriptUtil.project = meta
 
-            // console.time('settings load')
             await this.scriptUtil.loadProjectExtScript({import: "threepipe"})
-            // todo promise?
-            await this.settingsManager.onProjectSettingsChange(emptyProjectSettings, null)
-            // console.timeEnd('settings load')
         }
         this._loadedNeedsSave = false
-        this.mcpBridge = this.loadedProject ? initMCPBridge({manager: this}) : undefined
         return v
     }
 

@@ -13,7 +13,7 @@ import {getOrCall, ThreeViewer, TypedClass, TypeSystem, UiObjectConfig} from 'th
 import {EditorModes, EditorModesButtonGroup, editorModesInspectorConfig} from './EditorModes.tsx'
 import {Alignment, Button, Card, Divider, IconName, Navbar, Panel, PanelStack2, Popover} from '@blueprintjs/core'
 import {BPHierarchyComponent} from './BPHierarchyComponent.tsx'
-import {SaveFileButton, SaveProjectButton, useFileNeedsSave} from './SaveFileButton.tsx'
+import {SaveProjectButton, useFileNeedsSave} from './SaveProjectButton.tsx'
 import {BPTextureFileComponent} from './BPTextureFileComponent.tsx'
 import {BPMaterialsTreeComponent, MaterialHierarchyComponent} from "./BPMaterialsTreeComponent.tsx";
 import {BPTexturesTreeComponent, TextureHierarchyComponent} from "./BPTexturesTreeComponent.tsx";
@@ -27,9 +27,6 @@ import {MaybeElement} from "@blueprintjs/core/src/common/props";
 import {WindowPanesLayout} from "./WindowPanesLayout.tsx";
 import {BPTreeFolderComponent} from "./BPTreeFolderComponent.tsx";
 import {iconForSelectionObject} from "../utils/icons.tsx";
-import {MemoryTab} from "./MemoryTab.tsx";
-import {AIAgentTab} from "./AIAgentTab.tsx";
-import {AIMCPTab} from "./AIMCPTab.tsx";
 import {objToSelectItemRef, RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
 import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
@@ -225,7 +222,7 @@ export function ThreeEditorComponent() {
                     </Navbar.Group>
                     {project && (
                     <Navbar.Group align={Alignment.START}>
-                        {isPackageProject(project) ? <SaveProjectButton/> : <SaveFileButton /> }
+                        <SaveProjectButton/>
                     </Navbar.Group>
                     )}
                     <Navbar.Group align={Alignment.END}>
@@ -302,33 +299,6 @@ export function ThreeEditorComponent() {
                                     <DependenciesSectionComp/>
                                 {/*</Card>*/}
                                 </>
-                            },
-                            {
-                                title: 'Memory',
-                                style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                },
-                                content: <MemoryTab/>
-                            },
-                            // {
-                            //     title: 'AI Agent',
-                            //     style: {
-                            //         position: "relative",
-                            //         display: "flex",
-                            //         flexDirection: "column",
-                            //     },
-                            //     content: <AIAgentTab/>
-                            // },
-                            {
-                                title: 'AI MCP Bridge',
-                                style: {
-                                    position: "relative",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                },
-                                content: <AIMCPTab mcpBridge={manager.mcpBridge}/>
                             },
                         ],
                     }}

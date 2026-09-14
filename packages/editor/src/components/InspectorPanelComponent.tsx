@@ -325,12 +325,6 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
     //     }
     // }, [])
 
-    // useRenderingTrace('test', {
-    //     assetRootPath, assetRootPathCanEdit, isAssetInstance,
-    //     selObject, geometry, material, texture,
-    //     assetRootPathAsset, instanceRootPathAsset,
-    // })
-
     // console.log({material, assetRootPath, assetRootPathAsset, assetRootPathCanEdit})
     // console.log({selObject}, isLoadedAsset, isLoadedAssetMain, object)
     return !selectedInspectorItems ? null : <div style={{

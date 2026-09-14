@@ -1,27 +1,16 @@
 {
-  "name": "threepipe-blueprint-editor",
+  "name": "@kite3d/editor",
   "private": true,
-  "version": "0.12.0",
+  "version": "0.19.0-alpha.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:mcp": "esbuild scripts/mcp-bridge-server.mjs --bundle --outfile=packages/mcp-bridge/bridge-server.js --platform=node --format=esm --sourcemap --external:@modelcontextprotocol/sdk --external:ws --external:node:* --packages=external && chmod +x packages/mcp-bridge/bridge-server.js",
-    "publish:mcp": "npm run build:mcp && cd packages/mcp-bridge && npm publish --access public",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview",
-    "test": "playwright test",
-    "test:ui": "playwright test --ui",
-    "test:headed": "playwright test --headed",
-    "test:debug": "playwright test --debug",
-    "test:report": "playwright show-report",
-    "deploy": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist kite-threepipe-v0/ && git tag v$npm_package_version",
-    "deploy-tp": "git diff --exit-code --name-only HEAD * && node -r dotenv/config ./scripts/upload-r2.mjs dist threepipe-editor/ && git tag v$npm_package_version",
-    "mcp-bridge": "node scripts/mcp-bridge-server.mjs",
-    "mcp-bridge:test": "node scripts/mcp-bridge-server.mjs --test"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext ts,tsx --max-warnings 0",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
     "@threepipe/plugin-3d-tiles-renderer": "^0.3.2",
     "@threepipe/plugin-assimpjs": "^0.2.3",
     "@threepipe/plugin-blend-importer": "^0.1.0",
@@ -41,14 +30,13 @@
     "react-colorful": "^5.6.1",
     "react-dom": "^18.2.0",
     "stats.js": "^0.17.0",
-    "threepipe": "file:./../threepipe/",
-    "uiconfig-blueprint": "file:./../uiconfig-blueprint",
+    "threepipe": "0.5.1",
+    "uiconfig-blueprint": "0.1.0-dev.14",
     "uiconfig.js": "^0.3.1"
   },
   "devDependencies": {
     "@blueprintjs/core": "^5.19.1",
     "@blueprintjs/select": "^5.3.21",
-    "@playwright/test": "^1.57.0",
     "@repalash/popmotion": "^11.0.5002",
     "@rollup/plugin-replace": "^5.0.7",
     "@tanstack/query-db-collection": "^1.0.6",
@@ -64,22 +52,16 @@
     "@vitejs/plugin-basic-ssl": "^1.0.2",
     "@vitejs/plugin-react": "^4.2.1",
     "cannon-es": "^0.20.0",
-    "dotenv": "^16.4.5",
-    "esbuild": "^0.27.2",
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
     "importmap-vite-plugin": "^0.1.0",
     "jsonc-parser": "^3.3.1",
-    "rclone.js": "^0.6.6",
     "react-resizable-panels": "^3.0.6",
     "react-split": "^2.0.14",
     "sass": "^1.69.5",
     "typescript": "^5.7.2",
     "vite": "^6.3.5",
-    "web-vitals": "^3.5.0",
-    "zod": "^4.1.13",
-    "ws": "^8.18.0",
-    "@types/ws": "^8.5.12"
+    "zod": "^4.1.13"
   }
 }

@@ -14,9 +14,10 @@ function run(script, args, cwd) {
 
 await rm(outputDirectory, {recursive: true, force: true})
 run(resolve(repositoryDirectory, 'node_modules/typescript/bin/tsc'), ['-p', './src'], uiDirectory)
+// sass-compile takes its load paths from the cwd package and its parent, so it runs from the package
 run(resolve(repositoryDirectory, 'node_modules/@blueprintjs/node-build-scripts/sass-compile.mjs'), [
     resolve(uiDirectory, 'src'),
     '--output',
     resolve(outputDirectory, 'css'),
-], repositoryDirectory)
+], uiDirectory)
 run(resolve(uiDirectory, 'scripts/fix-css-imports.mjs'), [], uiDirectory)

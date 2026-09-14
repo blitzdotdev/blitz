@@ -1,6 +1,11 @@
-import {SupPluginModule} from "./SandboxPlugin.ts";
 import {ImportMapsManager} from "./importMaps.ts";
 import {FsImporter} from "./fsImporter.ts";
+
+// a project module after import: the plugin path it declares, or the error that stopped it
+export interface SupPluginModule{
+    __tpPluginPath?: string
+    __tpModuleError?: any
+}
 
 export interface JsFileParsed {
     code: string,

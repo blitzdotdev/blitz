@@ -56,7 +56,6 @@ export class EditModePlugin extends AViewerPluginSync<{
     @onChange('setDirty')
     cameraMode: CameraType = 'perspective'
 
-    // grid = new Mesh(new PlaneGeometry(), new GridMaterial())
     grid = new GridHelper(100, 100, 0x62793a, 0x4e4f4f)
 
     lightOverrider = new LightMaterialOverrider()

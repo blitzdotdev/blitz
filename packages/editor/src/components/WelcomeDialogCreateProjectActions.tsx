@@ -2,7 +2,6 @@ import {Alignment, Button, Colors, Icon} from '@blueprintjs/core'
 import {useDialogPrompt, useLoadingState} from 'uiconfig-blueprint/lib/esm/lib'
 import {useProjectActions} from '../utils/projectActions.tsx'
 import {useCallback} from 'react'
-import {useSaveFile} from "./UseSaveFile.tsx";
 import {getMeta} from "../utils/project.ts";
 import {ThreeViewer} from "threepipe";
 import {useProject} from "../utils/UseProject.ts";
@@ -160,7 +159,6 @@ export function useProjectFolderActions(){
 export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment, minimal?: boolean, outlined?: boolean}) {
     const {loadingState, updateLoading} = useLoadingState()
     const {setWelcomeOpen} = useProject()
-    const {saveFile} = useSaveFile()
     const {openProject} = useProjectActions()
     const {createProjectFolder, openProjectFolder} = useProjectFolderActions()
     const {prompt} = useDialogPrompt()
@@ -195,10 +193,9 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
             // conflict
             newName = await resolveNameConflict(newName)
         }
-        // await saveFile({name: newName, isNewName: true, saveTempOnly: false, closeProject: false})
         refreshProjectQueryState({project: newName, file: null, model: url}, true)
         // setWelcomeOpen(false)
-    }, [saveFile, manager, fileUrlPrompt])
+    }, [manager, fileUrlPrompt])
 
     return <>
         <Button
@@ -208,7 +205,6 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
                 variant={props.minimal ? "minimal" : props.outlined ? "outlined" : "solid"} alignText={props.alignText}
                 loading={loadingState['create-project']}
                 onClick={() => updateLoading('create-project', createProjectFolder())}
-                // onClick={() => setProject('Untitled')} // todo choose between this and saveFile
         />
         <Button icon={<Icon color={Colors.GREEN4} icon={'folder-open'}/>}
                 text={'Open Project'}
@@ -232,7 +228,6 @@ export function WelcomeDialogCreateProjectActions(props: {alignText?: Alignment,
             alignText={props.alignText}
             loading={loadingState['create-new']}
             onClick={() => updateLoading('create-new', setWelcomeOpen(false ))}
-            // onClick={() => setProject('Untitled')} // todo choose between this and saveFile
         />
         <Button icon={<Icon color={Colors.GOLD3} icon={'link'}/>}
                 text={'Import from URL'}

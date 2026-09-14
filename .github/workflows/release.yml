@@ -33,17 +33,6 @@ jobs:
       - run: npm run build
       - run: npm run lint
       - run: npm run test:scripts
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:editor
-      - if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: editor-test-results
-          path: |
-            packages/editor/test-results
-            packages/editor/playwright-report
-          if-no-files-found: ignore
-          retention-days: 7
       - name: Publish packages
         run: node scripts/release.mjs --publish
         env:

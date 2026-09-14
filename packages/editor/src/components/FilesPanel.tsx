@@ -16,7 +16,7 @@ import {useProjectActions} from "../utils/projectActions.tsx";
 import {useObjContextMenu} from "./UseObjContextMenu.tsx";
 import {MenuItem2, MenuItemAction} from "../utils/ContextMenuUtils.ts";
 import {FileManifestEntry, getFileByPath, manifestEntryToFile, useAssets} from "../utils/AssetsProvider.ts";
-import {useSaveBeforeClose} from "./UseSaveFile.tsx";
+import {useSaveBeforeClose} from "./UseCloseProject.tsx";
 import {useDialogPrompt, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
 import {
     IObject3D,
