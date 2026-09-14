@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto'
 import {mkdtemp, mkdir, open, readFile, rm, stat, utimes, writeFile} from 'node:fs/promises'
 import {request} from 'node:http'
 import {createConnection} from 'node:net'
@@ -142,6 +143,42 @@ it('reports a new manifest hash after a same size rewrite that keeps the modific
         expect((await stat(target)).mtimeMs).toBe(pinnedSeconds * 1_000)
         expect(await manifestHash(server, headers, 'main.js')).not.toBe(firstHash)
     })
+
+// Guards the owner's report: /api/files walked the tree on every Play. It now
+// answers from memory, so a file the editor never touched has to reach the
+// manifest through a watcher event or it is invisible until the server restarts.
+it('lists an externally added file and forgets an externally deleted one', async () => {
+        const {server, root, headers} = await startServer()
+        const target = resolve(root, 'extra.js')
+        expect(await manifestPaths(server, headers)).not.toContain('extra.js')
+
+        await waitForEvent(server, headers, 'extra.js', () => writeFile(target, 'export const extra = 1\n'))
+        expect(await manifestPaths(server, headers)).toContain('extra.js')
+        expect(await manifestHash(server, headers, 'extra.js')).toBe(
+            createHash('sha256').update('export const extra = 1\n').digest('hex'),
+        )
+
+        await waitForEvent(server, headers, 'extra.js', () => rm(target))
+        expect(await manifestPaths(server, headers)).not.toContain('extra.js')
+    })
+
+async function waitForEvent(
+    server: DevServer,
+    headers: Record<string, string>,
+    path: string,
+    act: () => Promise<unknown>,
+): Promise<void> {
+    const controller = new AbortController()
+    const response = await fetch(`${base(server)}/api/events`, {headers, signal: controller.signal})
+    const event = readEvent(response, controller, path)
+    await act()
+    await event
+}
+
+async function manifestPaths(server: DevServer, headers: Record<string, string>): Promise<string[]> {
+    const entries = await (await fetch(`${base(server)}/api/files`, {headers})).json() as ManifestEntry[]
+    return entries.map(({path}) => path)
+}
 
 async function manifestHash(server: DevServer, headers: Record<string, string>, path: string): Promise<string> {
     const entries = await (await fetch(`${base(server)}/api/files`, {headers})).json() as ManifestEntry[]

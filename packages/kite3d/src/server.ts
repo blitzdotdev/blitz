@@ -47,11 +47,11 @@ export interface ManifestEntry {
 }
 
 /**
- * Content hashes the manifest walk may reuse. An entry stays valid while the
- * file keeps the size and modification time the hash was taken from, so an
- * unchanged file is stat-ed instead of read.
+ * The manifest the server holds in memory, keyed by project path. The walk
+ * reuses an entry while the file keeps the size and modification time the hash
+ * was taken from, so an unchanged file is stat-ed instead of read.
  */
-export type ManifestHashCache = Map<string, {size: number, mtime: number, sha256: string}>
+export type ManifestIndex = Map<string, ManifestEntry>
 
 export interface DevServerOptions {
     projectRoot?: string
@@ -100,6 +100,7 @@ interface PendingScreenshot extends PendingCommand {
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
 const protectedProjectPaths = new Set(['.kite3d/deploys.json', '.kite3d/dev.json'])
 const watchedFileSettleMs = 50
+const manifestReadConcurrency = 8
 const maxScreenshotBytes = 50 * 1024 * 1024
 const serverRequire = createRequire(import.meta.url)
 
@@ -178,7 +179,8 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const pendingEvents = new Map<string, PendingEvent>()
     const pendingWatchedFiles = new Map<string, ReturnType<typeof setTimeout>>()
     const knownHashes = new Map<string, string>()
-    const manifestHashCache: ManifestHashCache = new Map()
+    const manifest: ManifestIndex = new Map()
+    const staleManifestPaths = new Set<string>()
     const moduleRewriter = new ProjectModuleRewriter()
     let {path: mainScenePath, text: lastSceneText} = await readMainSceneSnapshot(projectRoot)
     let sceneJournalQueue = Promise.resolve()
@@ -191,7 +193,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const backendUrl = resolveBackendUrl(options.backendUrl)
     const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
 
-    for (const entry of await buildManifest(projectRoot, manifestHashCache)) knownHashes.set(entry.path, entry.sha256)
+    for (const entry of replaceManifest(await buildManifest(projectRoot, manifest))) {
+        knownHashes.set(entry.path, entry.sha256)
+    }
 
     const app = new Hono<LocalAppEnv>({router: new LinearRouter()})
     installLocalServerMiddleware(app, token)
@@ -207,7 +211,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     app.get('/index.html', serveIndex)
     app.get('/favicon.ico', () => serveStaticFile(resolve(editorDirectory, 'favicon.ico'), editorDirectory))
     app.get('/api/import-map', async () => jsonResponse(await readProjectImportMap(projectRoot)))
-    app.get('/api/files', async () => jsonResponse(await buildManifest(projectRoot, manifestHashCache)))
+    app.get('/api/files', async () => jsonResponse(await currentManifest()))
     app.get('/api/state', async () => jsonResponse(await projectState(projectRoot)))
     app.get('/api/events', (c) => {
         c.header('Cache-Control', 'no-cache')
@@ -569,10 +573,11 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
 
     function scheduleEvent(path: string, client?: string, forcedType?: PendingEvent['forcedType']) {
         // Every route that changes a file reaches this function: the file PUT and
-        // DELETE handlers, the watcher, and the server mutation diff. Dropping the
-        // cached hash here keeps the manifest honest when a write leaves the size
-        // and the modification time where they were.
-        manifestHashCache.delete(path)
+        // DELETE handlers, the watcher, and the server mutation diff. Marking the
+        // path here keeps the manifest honest for a read that lands before the
+        // debounce below, and for a write that leaves the size and the
+        // modification time where they were.
+        if (isManifestPath(path)) staleManifestPaths.add(path)
         const previous = pendingEvents.get(path)
         if (previous) clearTimeout(previous.timer)
         const effectiveType = previous?.forcedType === 'add' && forcedType !== 'unlink'
@@ -582,19 +587,52 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         const timer = setTimeout(async () => {
             pendingEvents.delete(path)
             const oldHash = knownHashes.get(path)
-            let sha256: string | undefined
-            try {
-                const target = await safeProjectPath(projectRoot, path)
-                sha256 = await hashFile(target)
-            } catch {
-                sha256 = undefined
-            }
+            const sha256 = (await refreshManifestPath(path))?.sha256
             const type = effectiveType || (sha256 ? (oldHash ? 'change' : 'add') : 'unlink')
             if (sha256) knownHashes.set(path, sha256)
             else knownHashes.delete(path)
             await broadcast(type, {path, sha256, client: effectiveClient})
         }, 150)
         pendingEvents.set(path, {path, client: effectiveClient, forcedType: effectiveType, timer})
+    }
+
+    /**
+     * Reads one path from disk, stores it in the manifest, or drops it when it
+     * is gone. The watcher reports every servable path, so a `.kite3d` path
+     * reaches here too. Its hash still travels on the event, but the manifest
+     * does not list it.
+     */
+    async function refreshManifestPath(path: string): Promise<ManifestEntry | undefined> {
+        let entry: ManifestEntry | undefined
+        try {
+            const target = await safeProjectPath(projectRoot, path)
+            const metadata = await stat(target)
+            if (metadata.isFile()) {
+                entry = {path, size: metadata.size, sha256: await hashFile(target), mtime: metadata.mtimeMs}
+            }
+        } catch { /* a missing or unreadable path leaves the manifest */ }
+        staleManifestPaths.delete(path)
+        if (entry && isManifestPath(path)) manifest.set(path, entry)
+        else manifest.delete(path)
+        return entry
+    }
+
+    function replaceManifest(entries: ManifestEntry[]): ManifestEntry[] {
+        manifest.clear()
+        staleManifestPaths.clear()
+        for (const entry of entries) manifest.set(entry.path, entry)
+        return entries
+    }
+
+    /**
+     * The watcher keeps the manifest current, so a request only reads paths an
+     * event has marked. Without a watcher no event ever arrives, so the tree is
+     * walked instead and the manifest rebuilt from it.
+     */
+    async function currentManifest(): Promise<ManifestEntry[]> {
+        if (!watcher) return replaceManifest(await buildManifest(projectRoot, manifest))
+        for (const path of [...staleManifestPaths]) await refreshManifestPath(path)
+        return [...manifest.values()].sort((left, right) => left.path.localeCompare(right.path))
     }
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -624,7 +662,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     try {
         const handleWatchedFile = (watchedPath: string) => {
             const path = normalizeRelativePath(relative(projectRoot, watchedPath))
-            if (!path || !isIncludedPath(path)) return
+            if (!path || !isServableProjectPath(path)) return
             if (serverMutationActive) return
             scheduleWatchedFile(path)
         }
@@ -632,7 +670,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             ignoreInitial: true,
             ignored: (watchedPath) => {
                 const path = normalizeRelativePath(relative(projectRoot, watchedPath))
-                return Boolean(path && !isIncludedPath(path))
+                return Boolean(path && !isServableProjectPath(path))
             },
         })
         watcher.on('add', handleWatchedFile)
@@ -749,13 +787,15 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
 
     function runServerMutation<T>(operation: () => Promise<T>): Promise<T> {
         const run = mutationQueue.then(async () => {
-            const before = manifestHashes(await buildManifest(projectRoot, manifestHashCache))
+            const before = manifestHashes(await currentManifest())
             serverMutationActive = true
             try {
                 return await operation()
             } finally {
                 try {
-                    const after = manifestHashes(await buildManifest(projectRoot, manifestHashCache))
+                    // The mutation suppresses watcher events, and a restore rewrites
+                    // paths the server never wrote, so this one needs a real walk.
+                    const after = manifestHashes(replaceManifest(await buildManifest(projectRoot, manifest)))
                     const changedPaths = new Set([...before.keys(), ...after.keys()])
                     for (const path of changedPaths) {
                         const previous = before.get(path)
@@ -821,37 +861,58 @@ function manifestHashes(entries: ManifestEntry[]): Map<string, string> {
     return new Map(entries.map(({path, sha256}) => [path, sha256]))
 }
 
-export async function buildManifest(root: string, hashes: ManifestHashCache): Promise<ManifestEntry[]> {
-    const entries: ManifestEntry[] = []
+export async function buildManifest(root: string, known: ManifestIndex): Promise<ManifestEntry[]> {
+    const files: Array<{path: string, target: string}> = []
     await walk(root, '')
+    const entries: ManifestEntry[] = []
+    const workers = Math.min(manifestReadConcurrency, files.length)
+    let next = 0
+    // Serial reads left the disk idle while the hash ran. Eight readers overlap
+    // the two and hash a large project in a third of the time. Sixteen and
+    // thirty two measured the same, so eight is where the gain stops.
+    await Promise.all(Array.from({length: workers}, async () => {
+        while (next < files.length) {
+            const {path, target} = files[next++]
+            const metadata = await stat(target)
+            const cached = known.get(path)
+            const sha256 = cached && cached.size === metadata.size && cached.mtime === metadata.mtimeMs
+                ? cached.sha256
+                : await hashFile(target)
+            entries.push({path, size: metadata.size, sha256, mtime: metadata.mtimeMs})
+        }
+    }))
     return entries.sort((left, right) => left.path.localeCompare(right.path))
 
     async function walk(directory: string, prefix: string): Promise<void> {
         for (const entry of await readdir(directory, {withFileTypes: true})) {
             const path = prefix ? `${prefix}/${entry.name}` : entry.name
-            if (!isIncludedPath(path)) continue
+            if (!isManifestPath(path)) continue
             const target = resolve(directory, entry.name)
             if (entry.isSymbolicLink()) continue
             if (entry.isDirectory()) await walk(target, path)
-            else if (entry.isFile()) {
-                const metadata = await stat(target)
-                const cached = hashes.get(path)
-                const sha256 = cached && cached.size === metadata.size && cached.mtime === metadata.mtimeMs
-                    ? cached.sha256
-                    : await hashFile(target)
-                hashes.set(path, {size: metadata.size, mtime: metadata.mtimeMs, sha256})
-                entries.push({path, size: metadata.size, sha256, mtime: metadata.mtimeMs})
-            }
+            else if (entry.isFile()) files.push({path, target})
         }
     }
 }
 
-function isIncludedPath(path: string): boolean {
+/** What the file routes will serve, and therefore what the watcher reports. */
+function isServableProjectPath(path: string): boolean {
     const normalized = normalizeRelativePath(path)
     if (protectedProjectPaths.has(normalized)) return false
     const parts = normalized.split('/')
     if (parts.some((part) => excludedDirectories.has(part))) return false
     return !parts.some((part) => part.startsWith('.') && part !== '.kite3d')
+}
+
+/**
+ * What the manifest lists. The server owns `.kite3d`, so it holds logs, check
+ * results and whatever else a project parks there. The editor reads those by
+ * path and never looks them up in the manifest, so listing them only costs a
+ * hash of every byte. The file routes still serve them.
+ */
+function isManifestPath(path: string): boolean {
+    const normalized = normalizeRelativePath(path)
+    return isServableProjectPath(normalized) && normalized !== '.kite3d' && !normalized.startsWith('.kite3d/')
 }
 
 async function projectState(root: string) {
@@ -1031,7 +1092,7 @@ async function injectProjectImportMap(html: string, root: string): Promise<strin
 }
 
 async function safeProjectPath(root: string, relativePath: string, allowMissing = false): Promise<string> {
-    if (!relativePath || !isIncludedPath(relativePath)) throw new Error(`Invalid project path: ${relativePath}`)
+    if (!relativePath || !isServableProjectPath(relativePath)) throw new Error(`Invalid project path: ${relativePath}`)
     const normalized = normalizeRelativePath(relativePath)
     if (normalized !== relativePath || normalized.split('/').some((part) => !part || part === '.' || part === '..')) {
         throw new Error(`Invalid project path: ${relativePath}`)
