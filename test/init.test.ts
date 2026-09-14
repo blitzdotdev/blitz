@@ -40,7 +40,7 @@ describe('initProject', () => {
         expect(instructions).toContain('Pointer lock requires a focused browser window')
         expect(instructions).toContain('node_modules/@kite3d/engine/dist/runtime.js')
         expect(instructions).toContain('Treat a timestamp more than 15 seconds old as stale')
-        expect(instructions).toContain('It records `console.warn`, `console.error`')
+        expect(instructions).toContain('Read `.kite3d/state.json` for editor health and Play state')
         expect(instructions).toContain('Authenticated read endpoints are `GET /api/state`, `GET /api/files`')
         expect(instructions).toContain('every key inside `extras.EntityComponentPlugin` stable')
         expect(instructions).toContain('wire a component without the editor UI')
