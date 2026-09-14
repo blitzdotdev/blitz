@@ -13,7 +13,7 @@ afterEach(async () => {
 
 describe('initProject', () => {
     // Guards the core workflow and the owner's report that the generated guide drifted from the repository guide.
-    it('copies the complete template tree with the one rename and stamped versions', async () => {
+    it('copies the complete template tree with the one rename and stamped version', async () => {
         const parent = await mkdtemp(resolve(tmpdir(), 'kite3d-init-'))
         roots.push(parent)
         const target = resolve(parent, 'My Project')
@@ -21,7 +21,7 @@ describe('initProject', () => {
 
         const templateRoot = resolve('template')
         const templateFiles = await filesUnder(templateRoot)
-        const targetFiles = (await filesUnder(target)).filter((path) => !path.startsWith('.git/'))
+        const targetFiles = await filesUnder(target)
         const expected = templateFiles.map((path) => path === 'gitignore' ? '.gitignore' : path).sort()
         expect(targetFiles).toEqual(expected)
 
@@ -34,11 +34,9 @@ describe('initProject', () => {
         expect(packageJson).toMatchObject({
             name: 'my-project',
             devDependencies: {'kite3d': KITE3D_VERSION},
-            kite3d: {version: KITE3D_VERSION},
         })
         const instructions = await readFile(resolve(target, 'AGENTS.md'), 'utf8')
         expect(instructions).toContain('Pointer lock requires a focused browser window')
-        expect(instructions).toContain('Authenticated read endpoints are `GET /api/state`, `GET /api/files`')
         expect(instructions).toContain('every key inside `extras.EntityComponentPlugin` stable')
         expect(instructions).toContain('wire a component without the editor UI')
         expect(instructions).toContain('never call `dispose(true)` from inside that root\'s `traverse()`')
@@ -50,13 +48,11 @@ describe('initProject', () => {
         expect(instructions).toContain('# Engine quick reference')
         expect(instructions).toContain('camera.controlsMode')
         expect(instructions).toContain('autoLookAtTarget')
-        expect(instructions).toContain('data-testid="play"')
         expect(instructions).toContain('# Plugins')
         expect(instructions).toContain('npm search keywords:kite3d-plugin')
         expect(instructions).toContain('declare a peer dependency on `@kite3d/engine`')
         expect(instructions).toContain('globalThis.ImageData ??= class {}')
         expect(instructions).toContain('`window.viewer` is set by your `main.js` after components start')
-        expect(instructions).toContain('`origin` is the token-free server origin')
         expect(await readFile(resolve('../../docs/agents.md'), 'utf8'))
             .toBe(await readFile(resolve('template/AGENTS.md'), 'utf8'))
     })

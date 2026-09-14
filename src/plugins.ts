@@ -1,3 +1,5 @@
+import {readFile, stat} from 'node:fs/promises'
+import {resolve, sep} from 'node:path'
 import type {InstalledPluginImport} from '@kite3d/engine/importMap'
 import {projectPluginNames} from '@kite3d/engine/importMap'
 
@@ -5,24 +7,39 @@ export const DEVELOPMENT_PLUGIN_URL = '/kite3d/plugins/'
 
 export interface InstalledPluginPackage extends InstalledPluginImport {
     version: string
-    directory: FileSystemDirectoryHandle
+    directory: string
 }
 
 export async function installedPluginPackages(
-    dirHandle: FileSystemDirectoryHandle,
+    projectRoot: string,
     packageJson: Record<string, unknown>,
     rootUrl: string,
 ): Promise<InstalledPluginPackage[]> {
     const packages: InstalledPluginPackage[] = []
     for (const specifier of projectPluginNames(packageJson)) {
-        const directory = await packageDirectory(dirHandle, specifier)
-        const packageFile = await directory.getFileHandle('package.json')
-        const manifest = JSON.parse(await (await packageFile.getFile()).text()) as Record<string, unknown>
+        assertPackageName(specifier)
+        const directory = resolve(projectRoot, 'node_modules', ...specifier.split('/'))
+        const expectedRoot = resolve(projectRoot, 'node_modules')
+        if (!directory.startsWith(`${expectedRoot}${sep}`)) throw new Error(`Invalid plugin package name: ${specifier}`)
+        let manifest: Record<string, unknown>
+        try {
+            manifest = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8')) as Record<string, unknown>
+        } catch (error) {
+            if (isMissing(error)) throw new Error(`Plugin ${specifier} is not installed; run npm install.`)
+            throw error
+        }
         if (manifest.name !== specifier) {
             throw new Error(`Installed plugin ${specifier} has package name ${String(manifest.name)}.`)
         }
         const entry = packageEntry(manifest)
-        await fileAt(directory, entry)
+        try {
+            if (!(await stat(resolve(directory, entry))).isFile()) {
+                throw new Error(`Plugin package entry is not a file: ${entry}`)
+            }
+        } catch (error) {
+            if (isMissing(error)) throw new Error(`Plugin package entry is missing: ${entry}`)
+            throw error
+        }
         packages.push({
             specifier,
             entry,
@@ -35,8 +52,7 @@ export async function installedPluginPackages(
 }
 
 function packageEntry(manifest: Record<string, unknown>): string {
-    const exported = exportTarget(manifest.exports)
-    const selected = exported
+    const selected = exportTarget(manifest.exports)
         || (typeof manifest.module === 'string' ? manifest.module : undefined)
         || (typeof manifest.main === 'string' ? manifest.main : undefined)
         || './index.js'
@@ -66,23 +82,7 @@ function exportTarget(value: unknown): string | undefined {
     return undefined
 }
 
-async function packageDirectory(
-    project: FileSystemDirectoryHandle,
-    specifier: string,
-): Promise<FileSystemDirectoryHandle> {
-    const parts = packageNameParts(specifier)
-    let directory: FileSystemDirectoryHandle
-    try {
-        directory = await project.getDirectoryHandle('node_modules')
-        for (const part of parts) directory = await directory.getDirectoryHandle(part)
-    } catch (error) {
-        if (isNotFoundError(error)) throw new Error(`Plugin ${specifier} is not installed; run npm install.`)
-        throw error
-    }
-    return directory
-}
-
-function packageNameParts(specifier: string): string[] {
+function assertPackageName(specifier: string): void {
     const parts = specifier.split('/')
     const valid = parts.length === 1
         ? /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(parts[0])
@@ -90,27 +90,12 @@ function packageNameParts(specifier: string): string[] {
             && /^@[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(parts[0])
             && /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(parts[1])
     if (!valid) throw new Error(`Invalid plugin package name: ${specifier}`)
-    return parts
-}
-
-async function fileAt(directory: FileSystemDirectoryHandle, path: string): Promise<File> {
-    const parts = path.split('/')
-    let current = directory
-    try {
-        for (const part of parts.slice(0, -1)) current = await current.getDirectoryHandle(part)
-        return await (await current.getFileHandle(parts.at(-1)!)).getFile()
-    } catch (error) {
-        if (isNotFoundError(error)) throw new Error(`Plugin package entry is missing: ${path}`)
-        throw error
-    }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function isNotFoundError(error: unknown): boolean {
-    return error instanceof DOMException
-        ? error.name === 'NotFoundError'
-        : error instanceof Error && error.name === 'NotFoundError'
+function isMissing(error: unknown): boolean {
+    return error instanceof Error && 'code' in error && error.code === 'ENOENT'
 }

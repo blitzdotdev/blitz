@@ -110,7 +110,6 @@ async function temporaryProject(name: string): Promise<string> {
         main: './main.js',
         mainScene: 'assets/main.scene.gltf',
         devDependencies: {kite3d: KITE3D_VERSION},
-        kite3d: {version: KITE3D_VERSION},
     })}\n`)
     await writeFile(resolve(root, 'assets.json'), '{"files":{},"version":1}\n')
     await writeFile(resolve(root, 'main.js'), 'export async function main({viewer}) { window.viewer = viewer }\n')
