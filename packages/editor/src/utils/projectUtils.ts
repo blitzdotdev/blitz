@@ -32,9 +32,7 @@ export const assetUrlPrefix = '/kite3d/'
 
 export const canMakeAsset = (object: IObject3D | IMaterial) =>
     Boolean((object as IObject3D).isObject3D || (object as IMaterial).isMaterial)
-    // AGREED-4: a dropped DevServerSource asset is already registered, but its
-    // scene instance occupies the same presentation state as a local import.
-    && (!object.userData?.rootPath || object.userData?.kite3dImportedInstance === true)
+    && !object.userData?.rootPath
 
 export const canSaveAsset = (object: IObject3D | IMaterial) =>
     typeof object.userData?.rootPath === 'string' && object.userData.rootPath.startsWith('/kite3d/@')

@@ -1091,6 +1091,57 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         return object
     }
 
+    async saveNewProjectAsset(
+        _project: EditorProject,
+        _scene: LoadedProjectFile | null,
+        object: IObject3D | IMaterial,
+    ): Promise<{path?: string, result?: IObject3D | IMaterial, error?: string}> {
+        try {
+            if (object.userData?.rootPath) return {error: 'This object is already an asset instance.'}
+            const isObject = Boolean((object as IObject3D).isObject3D)
+            const isMaterial = Boolean((object as IMaterial).isMaterial)
+            if (!isObject && !isMaterial) return {error: 'Only objects and materials can become assets.'}
+            const extension = isObject ? 'glb' : 'mat'
+            const stem = safeFileStem(object.name || (isObject ? 'object' : 'material'))
+            const path = uniqueProjectAssetPath(`assets/${stem}.asset.${extension}`, this.manifest)
+            const exported = await this.get().assetManager.exporter.exportObject(object as IObject3D, {
+                exportExt: extension,
+                viewerConfig: false,
+            })
+            if (!exported) return {error: `Unable to export ${object.name || 'asset'}.`}
+            const written = await this.source.write(path, new Uint8Array(await exported.arrayBuffer()), '*')
+            this.hashes.set(path, written.sha256)
+            const assetId = await this.registerAsset(path)
+            const rootPath = assetIdUrl(assetId, path)
+            const result = cloneAssetItem(object, rootPath) as IObject3D | IMaterial
+            result.userData ||= {}
+            result.userData.rootPath = rootPath
+            if (isObject) {
+                const source = object as IObject3D
+                const instance = result as IObject3D
+                const parent = source.parent
+                const index = parent?.children.indexOf(source) ?? -1
+                instance.userData.sProperties = [...assetInstanceProperties]
+                for (const child of instance.children) child.userData.excludeFromExport = true
+                if (parent) {
+                    source.removeFromParent()
+                    parent.add(instance)
+                    if (index >= 0) {
+                        parent.children.splice(parent.children.indexOf(instance), 1)
+                        parent.children.splice(index, 0, instance)
+                    }
+                }
+                this.get().getPlugin(PickingPlugin)?.setSelectedObject(instance, false)
+            }
+            this.loadedNeedsSave = true
+            this.replaceManifest(await this.source.list())
+            this.setStatus(`Created ${path}`)
+            return {path, result}
+        } catch (error) {
+            return {error: errorMessage(error)}
+        }
+    }
+
     async setMainScene(path: string): Promise<void> {
         if (!/\.scene\.gltf$/i.test(path)) throw new Error('The main scene must be a .scene.gltf file.')
         const packageFile = await this.source.read('package.json')
@@ -1628,6 +1679,21 @@ function emptyGlbBytes(): Uint8Array {
     bytes.fill(0x20, 20)
     bytes.set(json, 20)
     return bytes
+}
+
+function safeFileStem(value: string): string {
+    return value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'asset'
+}
+
+function uniqueProjectAssetPath(path: string, entries: ProjectFileEntry[]): string {
+    const used = new Set(entries.map((entry) => entry.path))
+    if (!used.has(path)) return path
+    const extensionIndex = path.indexOf('.asset.')
+    const stem = extensionIndex >= 0 ? path.slice(0, extensionIndex) : path
+    const extension = extensionIndex >= 0 ? path.slice(extensionIndex) : ''
+    let suffix = 1
+    while (used.has(`${stem}-${suffix}${extension}`)) suffix += 1
+    return `${stem}-${suffix}${extension}`
 }
 
 async function hashBytes(bytes: Uint8Array): Promise<string> {
