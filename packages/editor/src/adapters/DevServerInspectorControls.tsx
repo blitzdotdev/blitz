@@ -2,7 +2,7 @@ import {useEffect, useState} from 'react'
 import {PickingPlugin, type IObject3D} from 'threepipe'
 import {useManagerVersion} from '../utils/UseManager.ts'
 
-export function DevServerInspectorControls({placement}: {placement: 'header' | 'controls'}) {
+export function DevServerInspectorControls() {
     const manager = useManagerVersion()
     const picking = manager.get().getPlugin(PickingPlugin)
     const [, refresh] = useState(0)
@@ -18,8 +18,7 @@ export function DevServerInspectorControls({placement}: {placement: 'header' | '
         ? selected as IObject3D
         : undefined
     if (!object) return null
-    if (placement === 'header') return <SelectionHeader object={object}/>
-    return null
+    return <SelectionHeader object={object}/>
 }
 
 function SelectionHeader({object}: {object: IObject3D}) {

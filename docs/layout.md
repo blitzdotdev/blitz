@@ -18,7 +18,7 @@ kite3d/
     engine/                    @kite3d/engine     runtime, project format, scripting API, game plugins
     editor/                    @kite3d/editor     the editor app
       uiconfig-blueprint/      editor-only vendored upstream source; resolved by editor aliases, not published
-    kite3d/                    kite3d               bin `kite3d`: init, dev, publish, pull, open; the local server
+    kite3d/                    kite3d               bin `kite3d`: project tools, bundled agent skills, and the local server
       template/                                     files written by `kite3d init`; shipped inside the CLI
     threepipe/                 vendored upstream subtree; drop once a build against npm threepipe passes
 ```
@@ -63,9 +63,7 @@ Extracted from editor utils, runtime parts only:
 |---|---|---|
 | `scripts.ts` | `ScriptUtil.ts` 470-574 and the copy inside `createGame.ts` | `registerScripts(viewer, modules)`: the export walk that registers component types and plugins. The editor and the runtime call the same function. Hot reload stays in the editor. |
 | `importMap.ts` | `utils/importMaps.ts` 52 | `dependencyImportMap(deps)` for project-declared extra dependencies; used by the `index.html` generator in `kite3d` and by `kite3d dev` |
-| `defaults.ts` | `data/EmptyProjectSettings.ts` 277 | default project and viewer settings applied when a project omits them |
 | `fileTypes.ts` | `data/fileTypes.ts` 22 | asset extension and MIME map |
-| `paths.ts` | scattered constants | `.kite3d/` layout: `deploys.json`, `journal.jsonl`, `state.json`, `console.log`, `thumbs/`, `backups/`, `running/` |
 
 Added later, in the engine because both the editor and the runtime need them:
 
@@ -78,6 +76,6 @@ Not in the engine, and why:
 
 - `AssetTracker.ts`, `assetTrackerUtils.ts`: editor-side asset instance tracking and override UI. The runtime port in `nestedAssets.ts` covers loading.
 - `ScriptUtil.ts` hot reload, `modules.ts`: editor and dev-server concerns.
-- `FetchProxy.ts`, `FileTracker.ts`, `fsImporter.ts`, `fsApi.ts`, `BrowserFileStore.ts`, `AssetsProvider.ts`, `public/fs-sw.js`: deleted in C1 with the File System Access approach.
+- `FetchProxy.ts`, `fsImporter.ts`, `fsApi.ts`, `BrowserFileStore.ts`, `AssetsProvider.ts`, `public/fs-sw.js`: deleted in C1 with the File System Access approach.
 - `projectTemplates.ts`, `AgentsMdTemplate.md`: become the template bundled in `kite3d`.
 - Everything React, Blueprint, and uiconfig-blueprint: the editor.

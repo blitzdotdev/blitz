@@ -29,9 +29,7 @@ import {
 } from 'threepipe'
 import {
     CannonPhysicsPlugin,
-    authoringQualityReport,
     createGame,
-    findRemovedGeneratorNodes,
     HtmlUiComponent,
     isDependencyModuleSpecifier,
     assetUrlPrefix,
@@ -39,33 +37,24 @@ import {
     parseAssetsJSONManifest,
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
-    persistenceReport,
     registerScripts,
-    removedGeneratorMessage,
-    RUNTIME_VERSION,
     RuntimeNestedAssetLoader,
-    semanticSceneSnapshot,
     serializeSceneGltf,
     validateSceneSource,
-    type AuthoringValidationIssue,
     type AssetsJSONManifest,
     type CreatedGame,
     type ExternalPlugin,
     type ProjectConfigSettings,
     type ProjectPackageJSON,
-    type RuntimeCleanupReport,
     type SerializedSceneGltf,
 } from '@kite3d/engine'
-import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib'
 import {GeometryGeneratorPlugin} from '@threepipe/plugin-geometry-generator'
 import {DevServerSource} from '../DevServerSource.ts'
 import {ProjectConflictError, type ProjectEvent, type ProjectFileEntry} from '../ProjectSource.ts'
 import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {EditModePlugin} from './EditModePlugin.ts'
 import {EditorFeatures} from './EditorFeatures.ts'
-import {FileTracker} from './FileTracker.ts'
 import {DevServerAssetTracker} from '../adapters/DevServerAssetTracker.ts'
-import {writeEditorState, type EditorState} from './editorState.ts'
 import {CanvasFileDropHandler} from './CanvasFileDropHandler.tsx'
 import {cloneAssetItem} from './AssetTracker.ts'
 
@@ -74,7 +63,11 @@ const encode = (text: string) => new TextEncoder().encode(text)
 const assetInstanceProperties = ['visible', 'name', 'position', 'quaternion', 'scale']
 const stoppedEditorFrameIntervalMs = 1000 / 15
 
-export interface EditorProject {
+/**
+ * Describes the project currently loaded by the editor.
+ * Editor panels read it to display project identity and configuration.
+ */
+export interface LoadedProject {
     name: string
     path: string
     file: string
@@ -83,137 +76,159 @@ export interface EditorProject {
     config: ProjectConfigSettings
 }
 
-export interface LoadedProjectFile {
-    path: string
-}
-
 interface ServerState {
     name: string
-    versions: Record<string, string>
 }
 
-interface ManagerEventMap {
-    stateChange: object
-    loadedNeedsSaveChange: object
-    projectFileChange: {
-        path: string
-        sha256?: string
-        changeType: ProjectEvent['type']
-    }
-}
-
-export interface EditorCheckOutcome {
-    name: 'Playable' | 'Editable' | 'Persisted'
-    status: 'pass' | 'fail'
-    summary: string
-    codes: string[]
-    durationMs?: number
-    report?: unknown
-}
-
-export interface EditorCheckResult {
-    ok: boolean
-    mode: 'editor'
-    checkedAt: string
-    outcomes: EditorCheckOutcome[]
-}
-
-export interface EditorCheckpoint {
-    hash: string
-    label?: string
-}
-
+/**
+ * Reports whether a configured module loaded and why it did not.
+ * Project settings rows read it to render module status.
+ */
 export interface ProjectLoadStatus {
     kind: 'loaded' | 'resolved' | 'error' | 'disabled'
     text: string
 }
 
 type ModuleExports = Record<string, unknown>
+/**
+ * Lists the file kinds the project browser can create.
+ * Creation menus pass these values to the manager.
+ */
 export type ProjectEntryKind = 'scene' | 'asset' | 'physical-material' | 'unlit-material'
     | 'plugin' | 'script' | 'json' | 'folder'
 
-/** Owns the persistent edit viewer and the disposable published-game viewer. */
-export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
+/** Owns the persistent edit viewer and the disposable play viewer. */
+export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}> {
+    /**
+     * Provides authenticated project file and server operations.
+     * Manager workflows use it as their persistence boundary.
+     */
     readonly source: DevServerSource
+    /**
+     * Tracks the latest content hash for each known project file.
+     * Save and reload paths read it for conflict-safe writes.
+     */
     readonly hashes = new Map<string, string>()
     /** Reference feature controller, backed by Kite3D's persistent edit viewer. */
     readonly features = new EditorFeatures(this)
-    /** AGREED-4: expose DevServerSource blobs through the reference Memory surface. */
-    readonly fileTracker = new FileTracker()
-
+    /**
+     * Holds the persistent authoring viewer when it has been created.
+     * Viewport and inspector components read it through `get()`.
+     */
     viewer?: ThreeViewer
+    /**
+     * Holds the disposable game used while Play is active.
+     * Play controls and screenshot capture read its viewer.
+     */
     game?: CreatedGame
-    project?: EditorProject
+    /**
+     * Contains parsed metadata for the active project.
+     * Project and module panels read its settings.
+     */
+    loadedProject: LoadedProject | null = null
+    /**
+     * Lists files currently exposed by the project server.
+     * File browsers and import naming logic read it.
+     */
     manifest: ProjectFileEntry[] = []
+    /**
+     * Lists project directories, including empty ones.
+     * The file browser reads it to build its tree.
+     */
     directoryManifest: string[] = []
+    /**
+     * Maps stable asset identifiers to project files.
+     * Importers and asset panels read it to resolve asset URLs.
+     */
     assetsManifest: AssetsJSONManifest = {version: 1, files: {}}
-    sceneText = ''
+    /**
+     * Identifies the scene currently open for editing.
+     * Save and scene summary surfaces read it.
+     */
     scenePath = 'assets/main.scene.gltf'
-    removedGeneratorNodes: Array<{nodeIndex: number, nodeName: string}> = []
-    componentTypes: string[] = []
+    /**
+     * Reports load state for each configured project script.
+     * Project settings rows read these entries.
+     */
     scriptLoadStatuses = new Map<string, ProjectLoadStatus>()
+    /**
+     * Reports load state for each configured project plugin.
+     * Project settings rows read these entries.
+     */
     pluginLoadStatuses = new Map<string, ProjectLoadStatus>()
-    status = 'Loading project…'
+    /**
+     * Contains the latest project error and stack when available.
+     * Toolbar hooks render it for the user.
+     */
     error?: string
+    /**
+     * Indicates that project metadata and the scene finished loading.
+     * State persistence and editor surfaces read it.
+     */
     projectLoaded = false
+    /**
+     * Indicates that the disposable game is running.
+     * Play controls, state writes, and screenshots read it.
+     */
     isPlaying = false
-    isStartingPlay = false
-    isChecking = false
-    checkResult?: EditorCheckResult
-    lastCheckpoint?: EditorCheckpoint
-    welcomeOpen = false
-    loadedProject: EditorProject | null = null
-    loadedProjectFile: LoadedProjectFile | null = null
+    /**
+     * Exposes the file open on the editing surface.
+     * Inspector and asset components read it.
+     */
+    loadedFilePath: string | null = null
+    /**
+     * Holds the path when the open file is a scene.
+     * Save controls and editor layout read it.
+     */
     loadedScene: string | null = null
+    /**
+     * Holds the object or material opened outside a scene.
+     * Asset inspector and save actions read it.
+     */
     loadedAssetObj: IObject3D | IMaterial | null = null
+    /**
+     * Holds the URL of the file currently displayed.
+     * Asset reference controls read it for context.
+     */
     loadedPath: string | null = null
-    selectedFilePath: string | null = null
-
+    // Tracks whether the current authoring surface differs from its saved file.
     private _loadedNeedsSave = false
-    private _sourceDraftDirty = false
-    private savedSceneHash: string | null = null
+    // Deduplicates concurrent initialization requests.
     private initializing?: Promise<void>
+    // Deduplicates concurrent Play startup requests.
     private playPromise?: Promise<void>
-    private checkPromise?: Promise<EditorCheckResult>
-    private readyResolve!: () => void
-    private readyReject!: (error: unknown) => void
-    private readonly ready = new Promise<void>((resolve, reject) => {
-        this.readyResolve = resolve
-        this.readyReject = reject
-    })
+    // Removes the active project-event subscription during disposal.
     private unsubscribe?: () => void
-    private heartbeat?: ReturnType<typeof setInterval>
+    // Identifies the viewer currently governed by the idle frame cap.
     private idleFrameViewer?: ThreeViewer
+    // Records whether the edit viewer rendered work in the current frame.
     private editViewerUpdatedThisFrame = false
+    // Holds the overlay canvas supplied by the Play controls.
     private playCanvas?: HTMLCanvasElement
+    // Rewrites nested project asset URLs for the active manifest.
     private assetUrlModifier?: (url: string) => string
+    // Loads and disposes nested asset dependencies for the edit viewer.
     private nestedAssets?: RuntimeNestedAssetLoader
+    // Suppresses dirty tracking while scene loading mutates the viewer.
     private loadingScene = false
+    // Suppresses dirty tracking while scene serialization writes files.
     private savingScene = false
-    private consoleErrorTimes: number[] = []
-    private runtimeErrorCount = 0
+    // Produces unique revisions for hot-reloaded module graphs.
     private moduleReloadSequence = 0
+    // Carries the current hot-reload revision into project imports.
     private moduleRevision?: string
-    private readonly reportedRemovedGenerators = new Set<string>()
-    private consoleWriteQueue: Promise<void> = Promise.resolve()
-    private stateWriteQueue: Promise<void> = Promise.resolve()
-    private originalConsoleError?: typeof console.error
-    private originalConsoleWarn?: typeof console.warn
-    private editorVersion = RUNTIME_VERSION
+    // Forwards uncaught window errors into project feedback.
     private readonly onWindowError = (event: ErrorEvent) => {
         if (isBenignResizeObserverError(event.message)) return
-        void this.reportError(event.error || event.message)
+        this.reportError(event.error || event.message)
     }
-    private readonly onUnhandledRejection = (event: PromiseRejectionEvent) => void this.reportError(event.reason)
-    private readonly onPageHide = () => {
-        this.isPlaying = false
-        this.isStartingPlay = false
-        this.stopHeartbeat()
-        void this.writeState()
-    }
+    // Forwards unhandled promise rejections into project feedback.
+    private readonly onUnhandledRejection = (event: PromiseRejectionEvent) => this.reportError(event.reason)
+    // Resets per-frame edit viewer activity tracking.
     private readonly onEditViewerPreFrame = () => {
         this.editViewerUpdatedThisFrame = false
     }
+    // Marks active edit frames and wakes the capped viewer when needed.
     private readonly onEditViewerUpdate = () => {
         this.editViewerUpdatedThisFrame = true
         if (this.idleFrameViewer) {
@@ -222,12 +237,14 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 : 0
         }
     }
+    // Applies the idle frame interval after each edit viewer frame.
     private readonly onEditViewerPostFrame = () => {
         if (!this.idleFrameViewer) return
         this.idleFrameViewer.renderManager.frameWaitTime = document.hidden
             ? Number.POSITIVE_INFINITY
             : this.editViewerUpdatedThisFrame ? 0 : stoppedEditorFrameIntervalMs
     }
+    // Suspends hidden rendering and wakes the viewer when visible again.
     private readonly onVisibilityChange = () => {
         if (!this.idleFrameViewer) return
         if (document.hidden) {
@@ -238,73 +255,86 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.idleFrameViewer.setDirty()
     }
 
+    /**
+     * Creates a manager backed by one development server source.
+     * The editor bootstrap constructs it and providers expose it to panels.
+     */
     constructor(source: DevServerSource) {
         super()
         this.source = source
     }
 
+    /**
+     * Reports whether the open scene or asset needs saving.
+     * Save controls and close guards read it.
+     */
     get loadedNeedsSave() {
         return this._loadedNeedsSave
     }
 
+    /** Reports whether Play startup is in progress. */
+    get isStartingPlay() {
+        return Boolean(this.playPromise)
+    }
+
+    /**
+     * Updates the save-needed state and notifies editor consumers.
+     * Scene and asset mutation paths write it.
+     */
     set loadedNeedsSave(value: boolean) {
         if (this._loadedNeedsSave === value) return
         this._loadedNeedsSave = value
-        this.dispatchEvent({type: 'loadedNeedsSaveChange'})
         this.changed()
-        if (this.projectLoaded) void this.writeState()
     }
 
-    get sourceDraftDirty() {
-        return this._sourceDraftDirty
-    }
-
-    setSourceDraftDirty(value: boolean) {
-        if (this._sourceDraftDirty === value) return
-        this._sourceDraftDirty = value
-        this.changed()
-        if (this.projectLoaded) void this.writeState()
-    }
-
-    selectFile(path: string) {
-        this.selectedFilePath = path
+    /**
+     * Selects a project file and clears any object selection.
+     * File browser interactions call it.
+     */
+    selectFile() {
         this.get().getPlugin(PickingPlugin)?.setSelectedObject(null)
         this.changed()
     }
 
+    /**
+     * Returns the persistent authoring viewer, creating it on first use.
+     * Editor components call it whenever they need the active viewer.
+     */
     get(): ThreeViewer {
         if (!this.viewer) this.viewer = this.createEditViewer()
         return this.viewer
     }
 
+    /**
+     * Loads the project and installs server and browser listeners once.
+     * Editor bootstrap calls it before rendering project surfaces.
+     */
     initialize(): Promise<void> {
         if (this.initializing) return this.initializing
-        this.initializing = this.loadProject().then(() => {
-            this.readyResolve()
-        }).catch(async (error) => {
-            this.readyReject(error)
-            await this.reportError(error)
+        this.initializing = this.loadProject().catch((error) => {
+            this.reportError(error)
             throw error
         })
         this.unsubscribe = this.source.events((event) => {
             void this.onProjectEvent(event).catch((error) => this.reportError(error))
         })
         this.installErrorForwarding()
-        window.addEventListener('pagehide', this.onPageHide)
         return this.initializing
     }
 
+    /**
+     * Reloads project metadata, manifests, modules, and the main scene.
+     * Initialization and project-reload flows call it.
+     */
     async loadProject(): Promise<void> {
-        this.setStatus('Loading project…')
-        const [serverState, entries, packageFile, lastCheckpoint, directories] = await Promise.all([
+        Object.assign(window, {kite3dProjectLoaded: false})
+        const [serverState, entries, packageFile, directories] = await Promise.all([
             this.source.state() as unknown as Promise<ServerState>,
             this.source.list(),
             this.source.read('package.json'),
-            this.source.latestCheckpoint(),
             this.source.listDirectories(),
         ])
         this.directoryManifest = directories
-        this.lastCheckpoint = lastCheckpoint
         const assetsFile = entries.some(({path}) => path === 'assets.json')
             ? await this.source.read('assets.json')
             : undefined
@@ -321,18 +351,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.assetsManifest = assetsManifest
         const scenePath = packageJson.mainScene
         const scene = await this.source.read(scenePath)
-        const sceneText = decode(scene.bytes)
-        validateSceneSource(scenePath, sceneText)
+        const sceneSource = decode(scene.bytes)
+        validateSceneSource(scenePath, sceneSource)
         this.hashes.set(scenePath, scene.sha256)
-        const memoryPath = scenePath.replace(/\.gltf$/, '.glb')
-        this.fileTracker.updateFile(memoryPath, new File(
-            [scene.bytes as BlobPart],
-            memoryPath.split('/').pop() || memoryPath,
-            {type: 'model/gltf+json'},
-        ))
-
-        this.editorVersion = serverState.versions.editor || RUNTIME_VERSION
-        this.project = {
+        this.loadedProject = {
             name: serverState.name,
             path: '/',
             file: 'package.json',
@@ -340,24 +362,18 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             packageJson,
             config,
         }
-        this.loadedProject = this.project
-        this.loadedProjectFile = {path: scenePath}
+        this.loadedFilePath = scenePath
         this.loadedScene = scenePath
         this.loadedPath = this.source.fileUrl(scenePath)
         this.scenePath = scenePath
-        this.sceneText = sceneText
-        this.removedGeneratorNodes = findRemovedGeneratorNodes(sceneText)
-
         await this.prepareEditViewer(config, assetsManifest)
-        await this.loadEditScene(sceneText)
+        await this.loadEditScene()
         // AGREED-4: attach the reference registry after the project scene is
         // loaded so the scene itself remains a blob, not a reusable asset.
         this.get().assetManager.tracker = new DevServerAssetTracker()
         this.projectLoaded = true
         this.loadedNeedsSave = false
-        this.setStatus('Project loaded')
-        await this.writeState()
-        this.startHeartbeat()
+        Object.assign(window, {kite3dProjectLoaded: true})
     }
 
     private createEditViewer(): ThreeViewer {
@@ -433,7 +449,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         viewer.timeline.endTime = 0
         viewer.scene.addEventListener('sceneUpdate', this.onEditSceneUpdate)
         this.attachIdleFrameCap(viewer)
-        this.nestedAssets = new RuntimeNestedAssetLoader(viewer, (error) => void this.reportError(error))
+        this.nestedAssets = new RuntimeNestedAssetLoader(viewer, (error) => this.reportError(error))
         ;(window as Window & {viewer?: ThreeViewer}).viewer = viewer
         return viewer
     }
@@ -498,7 +514,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 statuses.set(key, {kind: 'resolved', text: 'Resolved'})
             } catch (error) {
                 statuses.set(key, await this.moduleErrorStatus(error, definition.import))
-                await this.reportError(error)
+                this.reportError(error)
             }
         }
         this.changed()
@@ -518,27 +534,23 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 statuses.set(definition.import, {kind: 'loaded', text: 'Loaded'})
             } catch (error) {
                 statuses.set(definition.import, await this.moduleErrorStatus(error, definition.import))
-                await this.reportError(error)
+                this.reportError(error)
             }
         }
         try {
-            const registered = await registerScripts(this.get(), modules)
-            this.componentTypes = [
-                ...registered.components.map(({value}) => value.ComponentType),
-                ...registered.plugins.map(({value}) => (value as unknown as {PluginType: string}).PluginType),
-            ].filter((value, index, values) => values.indexOf(value) === index).sort()
+            await registerScripts(this.get(), modules)
         } catch (error) {
             const status = projectModuleErrorStatus(error)
             for (const [path, current] of statuses) {
                 if (current.kind === 'loaded') statuses.set(path, status)
             }
-            await this.reportError(error)
+            this.reportError(error)
         }
         this.changed()
     }
 
     private async moduleErrorStatus(error: unknown, path: string): Promise<ProjectLoadStatus> {
-        if (this.project && !isDependencyModuleSpecifier(path, this.project.packageJson)) {
+        if (this.loadedProject && !isDependencyModuleSpecifier(path, this.loadedProject.packageJson)) {
             try {
                 const source = decode((await this.source.read(normalizeProjectPath(path))).bytes)
                 return projectModuleErrorStatus(error, path, source)
@@ -548,7 +560,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     private importProjectModule(path: string, moduleRevision = this.moduleRevision): Promise<ModuleExports> {
-        if (this.project && isDependencyModuleSpecifier(path, this.project.packageJson)) {
+        if (this.loadedProject && isDependencyModuleSpecifier(path, this.loadedProject.packageJson)) {
             return import(/* @vite-ignore */ path) as Promise<ModuleExports>
         }
         const normalized = normalizeProjectPath(path)
@@ -557,7 +569,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         ) as Promise<ModuleExports>
     }
 
-    private async loadEditScene(sceneText: string) {
+    private async loadEditScene() {
         const viewer = this.get()
         this.loadingScene = true
         try {
@@ -570,14 +582,11 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             if (!loaded?.isObject3D) throw new Error(`The main scene did not load as an Object3D: ${this.scenePath}`)
             await this.nestedAssets?.loadObjectDependencies(loaded as IObject3D)
             await this.nestedAssets?.waitForPending()
-            this.sceneText = sceneText
-            this.removedGeneratorNodes = findRemovedGeneratorNodes(sceneText)
-            await this.reportRemovedGenerators()
             this.error = undefined
             const editMode = viewer.getPlugin(EditModePlugin)
-            const savedCamera = this.project?.config.viewer.camera ? viewer.scene.defaultCamera : undefined
+            const savedCamera = this.loadedProject?.config.viewer.camera ? viewer.scene.defaultCamera : undefined
             if (editMode && savedCamera) {
-                editMode.cameraMode = this.project?.config.viewer.camera?.type === 'orthographic'
+                editMode.cameraMode = this.loadedProject?.config.viewer.camera?.type === 'orthographic'
                     ? 'orthographic'
                     : 'perspective'
                 const editCamera = editMode.cameraMode === 'orthographic'
@@ -590,7 +599,6 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             } else {
                 editMode?.fitView()
             }
-            this.savedSceneHash = await hashBytes((await serializeSceneGltf(viewer, {scenePath: this.scenePath})).gltf)
             // AGREED-4: DevServerSource reloads may finish with renderer updates queued for the next frame.
             // Keep the load guard raised until those updates settle so a disk reload is not reported as an edit.
             await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
@@ -601,6 +609,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
+    // Marks authored scene mutations dirty outside load and save windows.
     private onEditSceneUpdate = (event: {object?: IObject3D}) => {
         if (!this.loadingScene && !this.savingScene && event.object) {
             this.loadedNeedsSave = true
@@ -608,10 +617,13 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.changed()
     }
 
+    /**
+     * Persists the open scene when authored state has changed.
+     * Save controls and Play startup call it.
+     */
     async saveScene(): Promise<boolean> {
         if (!this.projectLoaded || !this.loadedScene || !this.loadedNeedsSave) return true
         this.savingScene = true
-        this.setStatus('Saving scene…')
         try {
             const viewer = this.get()
             const editMode = viewer.getPlugin(EditModePlugin)!
@@ -620,12 +632,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             )
             await this.writeSerializedScene(serialized)
             this.loadedNeedsSave = false
-            await this.writeState()
-            this.setStatus('Scene saved')
             return true
         } catch (error) {
             if (!(error instanceof ProjectConflictError)) {
-                await this.reportError(error)
+                this.reportError(error)
                 return false
             }
             const disk = await this.source.read(this.scenePath)
@@ -633,58 +643,11 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 this.hashes.set(this.scenePath, disk.sha256)
                 const text = decode(disk.bytes)
                 validateSceneSource(this.scenePath, text)
-                await this.loadEditScene(text)
-                this.setStatus('Reloaded scene from disk')
-            } else {
-                this.setStatus('Kept unsaved editor scene')
+                await this.loadEditScene()
             }
             return false
         } finally {
             this.savingScene = false
-        }
-    }
-
-    async createCheckpoint(label?: string): Promise<EditorCheckpoint | undefined> {
-        if (!this.source.checkpoint) throw new Error('Project checkpoints are unavailable.')
-        if (!await this.saveScene()) return undefined
-        this.setStatus('Creating checkpoint…')
-        try {
-            const result = await this.source.checkpoint(label)
-            this.lastCheckpoint = result
-            this.setStatus(`Checkpoint ${result.hash}`)
-            AppToaster().show({
-                message: `Checkpoint ${result.hash}${result.label ? ` ${result.label}` : ''} created.`,
-                intent: 'success',
-                icon: 'git-commit',
-                timeout: 3000,
-            })
-            return result
-        } catch (error) {
-            await this.reportError(error)
-            return undefined
-        }
-    }
-
-    async restoreLastCheckpoint(discardUnsavedChanges = false): Promise<{hash: string} | undefined> {
-        if (!this.source.restore) throw new Error('Project restore is unavailable.')
-        if (this.loadedNeedsSave && !discardUnsavedChanges
-            && !window.confirm('Restore the last checkpoint and discard unsaved scene edits?')) return undefined
-        if (this.isPlaying || this.isStartingPlay) await this.stopPlay()
-        this.loadedNeedsSave = false
-        this.setStatus('Restoring checkpoint…')
-        try {
-            const result = await this.source.restore(this.lastCheckpoint?.hash)
-            this.setStatus(`Restored checkpoint ${result.hash}`)
-            AppToaster().show({
-                message: `Restored checkpoint ${result.hash}.`,
-                intent: 'success',
-                icon: 'history',
-                timeout: 3000,
-            })
-            return result
-        } catch (error) {
-            await this.reportError(error)
-            return undefined
         }
     }
 
@@ -707,15 +670,12 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.hashes.get(this.scenePath) || '*',
         )
         this.hashes.set(this.scenePath, result.sha256)
-        this.savedSceneHash = await hashBytes(serialized.gltf)
-        this.sceneText = decode(serialized.gltf)
-        this.removedGeneratorNodes = findRemovedGeneratorNodes(this.sceneText)
         this.manifest = await this.source.list()
         this.changed()
     }
 
     private async captureScreenshot(): Promise<Blob> {
-        await this.ready
+        await this.initializing
         if (this.playPromise) await this.playPromise
         const viewer = this.isPlaying ? this.game?.viewer : this.get()
         if (!viewer) throw new Error('The active editor viewer is unavailable.')
@@ -752,6 +712,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
+    /**
+     * Starts the project game on the supplied overlay canvas.
+     * Play controls call it and wait for startup to settle.
+     */
     async startPlay(canvas: HTMLCanvasElement): Promise<void> {
         this.playCanvas = canvas
         this.get().getPlugin(EditModePlugin)?.exitIsolate()
@@ -767,207 +731,41 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     private async createPlayGame() {
-        this.isStartingPlay = true
         this.changed()
         try {
-            await this.ready
+            await this.initializing
             if (this.loadedNeedsSave && !await this.saveScene()) return
             if (!this.playCanvas) return
             this.game?.dispose()
             this.game = undefined
-            this.setStatus('Starting game…')
-            await this.appendConsoleLine(`# Kite3D play log started ${new Date().toISOString()}; levels: console.warn, console.error, uncaught errors`, false)
-            const entries = await this.source.list()
-            const fileRevisions = Object.fromEntries(entries.map(({path, sha256}) => [path, sha256]))
             this.get().renderEnabled = false
             this.game = await createGame({
                 base: new URL('/files/', location.origin).href,
                 canvas: this.playCanvas,
-                fileRevisions,
-                moduleRevision: this.moduleRevision,
-                onError: (error) => void this.reportError(error),
+                onError: (error) => this.reportError(error),
             })
             this.isPlaying = true
-            this.startHeartbeat()
-            this.setStatus('Playing')
-            await this.writeState()
         } catch (error) {
             this.get().renderEnabled = true
-            await this.reportError(error)
-            await this.writeState(errorMessage(error))
+            this.reportError(error)
         } finally {
-            this.isStartingPlay = false
             this.changed()
         }
     }
 
-    async stopPlay(): Promise<RuntimeCleanupReport | undefined> {
-        const cleanup = this.game?.dispose()
+    /**
+     * Disposes the running game and restores the authoring viewer.
+     * Stop controls and reload flows call it.
+     */
+    async stopPlay(): Promise<void> {
+        this.game?.dispose()
         this.game = undefined
         this.isPlaying = false
-        this.isStartingPlay = false
         this.playCanvas = undefined
         if (this.viewer) {
             this.viewer.renderEnabled = true
             this.viewer.setDirty()
         }
-        this.setStatus('Stopped')
-        await this.writeState()
-        if (cleanup && !cleanup.ok) await this.reportCleanupFailure(cleanup)
-        return cleanup
-    }
-
-    async runCheck(): Promise<EditorCheckResult> {
-        if (this.checkPromise) return this.checkPromise
-        const task = this.performCheck()
-        this.checkPromise = task
-        this.isChecking = true
-        this.setStatus('Checking game…')
-        this.changed()
-        try {
-            return await task
-        } finally {
-            this.isChecking = false
-            if (this.checkPromise === task) this.checkPromise = undefined
-            this.changed()
-        }
-    }
-
-    private async performCheck(): Promise<EditorCheckResult> {
-        await this.ready
-        if (this.isPlaying || this.isStartingPlay) await this.stopPlay()
-        const before = semanticSceneSnapshot(this.get())
-        const saved = await this.saveScene()
-        const editableStarted = performance.now()
-        const editable = authoringQualityReport(this.get())
-        const editableOutcome: EditorCheckOutcome = {
-            name: 'Editable',
-            status: editable.ok ? 'pass' : 'fail',
-            summary: editable.summary,
-            codes: issueCodes(editable.issues),
-            durationMs: Math.round((performance.now() - editableStarted) * 10) / 10,
-            report: editable,
-        }
-
-        const canvas = document.createElement('canvas')
-        canvas.width = 640
-        canvas.height = 360
-        canvas.style.position = 'fixed'
-        canvas.style.left = '-10000px'
-        document.body.append(canvas)
-        const playStarted = performance.now()
-        const errorStart = this.runtimeErrorCount
-        let playableOutcome: EditorCheckOutcome
-        try {
-            await this.startPlay(canvas)
-            if (!this.game) throw new Error('The game did not start.')
-            await waitForViewerFrames(this.game.viewer, 30)
-            const projectValidation = await this.game.runGameValidation()
-            const relationships = authoringQualityReport(this.game.viewer).issues.filter(({code}) =>
-                code === 'MISSING_AUTHORING_SOURCE' || code === 'RUNTIME_SOURCE_DRIFT')
-            const cleanup = await this.stopPlay()
-            const cleanupIssues = cleanup?.issues.filter(({severity}) => severity === 'error') || []
-            const runtimeErrors = this.runtimeErrorCount - errorStart
-            const playable = runtimeErrors === 0 && projectValidation.ok && relationships.length === 0 && cleanupIssues.length === 0
-            const reasons = [
-                runtimeErrors ? `${runtimeErrors} runtime error(s).` : '',
-                !projectValidation.ok ? projectValidation.summary : '',
-                relationships.length ? `${relationships.length} runtime source issue(s).` : '',
-                cleanupIssues.length ? `${cleanupIssues.length} cleanup issue(s).` : '',
-            ].filter(Boolean)
-            playableOutcome = {
-                name: 'Playable',
-                status: playable ? 'pass' : 'fail',
-                summary: playable ? 'The game booted and ran 30 frames without errors.' : reasons.join(' '),
-                codes: issueCodes([...relationships, ...cleanupIssues]),
-                durationMs: Math.round((performance.now() - playStarted) * 10) / 10,
-                report: {projectValidation, cleanup, runtimeErrors, relationships},
-            }
-        } catch (error) {
-            await this.stopPlay()
-            playableOutcome = {
-                name: 'Playable',
-                status: 'fail',
-                summary: `The game did not complete its play check: ${errorMessage(error)}`,
-                codes: [],
-                durationMs: Math.round((performance.now() - playStarted) * 10) / 10,
-            }
-        } finally {
-            canvas.remove()
-        }
-
-        const persistenceStarted = performance.now()
-        let persistedOutcome: EditorCheckOutcome
-        if (!saved) {
-            persistedOutcome = {
-                name: 'Persisted', status: 'fail', summary: 'The scene could not be saved before reload.', codes: [],
-            }
-        } else {
-            try {
-                const disk = await this.source.read(this.scenePath)
-                const text = decode(disk.bytes)
-                validateSceneSource(this.scenePath, text)
-                this.hashes.set(this.scenePath, disk.sha256)
-                await this.loadEditScene(text)
-                const persisted = persistenceReport(before, semanticSceneSnapshot(this.get()))
-                persistedOutcome = {
-                    name: 'Persisted',
-                    status: persisted.ok ? 'pass' : 'fail',
-                    summary: persisted.summary,
-                    codes: issueCodes(persisted.issues),
-                    durationMs: Math.round((performance.now() - persistenceStarted) * 10) / 10,
-                    report: persisted,
-                }
-            } catch (error) {
-                persistedOutcome = {
-                    name: 'Persisted', status: 'fail', summary: `Save/Reload failed: ${errorMessage(error)}`, codes: [],
-                }
-            }
-        }
-
-        const outcomes = [playableOutcome, editableOutcome, persistedOutcome]
-        const result: EditorCheckResult = {
-            ok: outcomes.every(({status}) => status === 'pass'),
-            mode: 'editor',
-            checkedAt: new Date().toISOString(),
-            outcomes,
-        }
-        await this.writeCheckResult(result)
-        await this.appendConsoleLine(`[kite3d check] ${outcomes.map(({name, status, codes}) =>
-            `${name}=${status}${codes.length ? `(${codes.join(',')})` : ''}`).join(' ')}`)
-        this.checkResult = result
-        this.setStatus(result.ok ? 'Check passed' : 'Check failed')
-        AppToaster().show({
-            message: result.ok ? 'Playable, Editable, and Persisted checks passed.' : 'Kite3D check failed. See the result cards and .kite3d/check.json.',
-            intent: result.ok ? 'success' : 'danger',
-            icon: result.ok ? 'tick' : 'error',
-            timeout: 4000,
-            isCloseButtonShown: true,
-        })
-        return result
-    }
-
-    private async writeCheckResult(result: EditorCheckResult): Promise<void> {
-        const path = '.kite3d/check.json'
-        let ifMatch: string | '*' = this.hashes.get(path) || '*'
-        try {
-            const current = await this.source.read(path)
-            ifMatch = current.sha256
-        } catch { /* first check */ }
-        const written = await this.source.write(path, encode(`${JSON.stringify(result, null, 2)}\n`), ifMatch)
-        this.hashes.set(path, written.sha256)
-    }
-
-    private async reportCleanupFailure(report: RuntimeCleanupReport): Promise<void> {
-        const codes = issueCodes(report.issues)
-        await this.appendConsoleLine(`[kite3d stop] runtime cleanup failed: ${codes.join(', ')}`)
-        AppToaster().show({
-            message: `Runtime cleanup failed: ${codes.join(', ')}`,
-            intent: 'danger',
-            icon: 'error',
-            timeout: 5000,
-            isCloseButtonShown: true,
-        })
     }
 
     private async restartPlay() {
@@ -979,6 +777,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         await this.startPlay(canvas)
     }
 
+    /**
+     * Stores dropped files and imports supported objects into the scene.
+     * File-drop surfaces call it with browser File objects.
+     */
     async importFiles(files: Iterable<File>) {
         for (const file of files) {
             const path = uniqueImportPath(file.name, this.manifest)
@@ -1012,11 +814,14 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
                 delete (loaded as IObject3D & {__rootPath?: string}).__rootPath
             }
             this.loadedNeedsSave = true
-            this.setStatus(`Imported ${file.name}`)
         }
         this.replaceManifest(await this.source.list())
     }
 
+    /**
+     * Creates a project folder or starter file of the requested kind.
+     * Project browser creation menus call it.
+     */
     async createProjectEntry(path: string, kind: ProjectEntryKind): Promise<void> {
         if (kind === 'folder') {
             await this.source.createDirectory(path)
@@ -1031,6 +836,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.replaceManifest(await this.source.list())
     }
 
+    /**
+     * Opens a scene, object, or material file on the editing surface.
+     * Project file interactions call it.
+     */
     async openProjectFile(path: string): Promise<void> {
         if (path === this.scenePath && this.loadedScene) return
         if (this.isPlaying || this.isStartingPlay) await this.stopPlay()
@@ -1040,12 +849,11 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             validateSceneSource(path, text)
             this.scenePath = path
             this.hashes.set(path, scene.sha256)
-            this.loadedProjectFile = {path}
+            this.loadedFilePath = path
             this.loadedScene = path
             this.loadedAssetObj = null
             this.loadedPath = this.source.fileUrl(path, scene.sha256)
-            await this.loadEditScene(text)
-            this.setStatus(`Opened ${path}`)
+            await this.loadEditScene()
             return
         }
         if (!/\.(?:glb|gltf|mat)$/i.test(path)) throw new Error('Only scenes and 3D assets can be opened.')
@@ -1062,16 +870,19 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             clearSceneObjects: true,
             disposeSceneObjects: true,
         })
-        this.loadedProjectFile = {path}
+        this.loadedFilePath = path
         this.loadedScene = null
         this.loadedAssetObj = asset as IObject3D | IMaterial
         this.loadedPath = this.assetPathUrl(path)
         this.loadedNeedsSave = false
         viewer.getPlugin(PickingPlugin)?.setSelectedObject(asset as IObject3D | IMaterial, false)
-        this.setStatus(`Opened ${path}`)
         this.changed()
     }
 
+    /**
+     * Adds a registered project object asset to the open scene or object.
+     * Asset browser import actions call it.
+     */
     async importProjectAsset(path: string): Promise<IObject3D> {
         const loadedObject = this.loadedAssetObj as IObject3D | null
         if (!this.loadedScene && !loadedObject?.isObject3D) throw new Error('Open a scene or object asset before importing.')
@@ -1088,15 +899,18 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         else this.get().scene.addObject(object)
         this.get().getPlugin(PickingPlugin)?.setSelectedObject(object, false)
         this.loadedNeedsSave = true
-        this.setStatus(`Imported ${path}`)
         return object
     }
 
-    async saveNewProjectAsset(
-        _project: EditorProject,
-        _scene: LoadedProjectFile | null,
-        object: IObject3D | IMaterial,
-    ): Promise<{path?: string, result?: IObject3D | IMaterial, error?: string}> {
+    /**
+     * Exports an authored object or material as a new project asset.
+     * Reference asset controls call it and consume the returned replacement.
+     */
+    async saveNewProjectAsset(object: IObject3D | IMaterial): Promise<{
+        path?: string
+        result?: IObject3D | IMaterial
+        error?: string
+    }> {
         try {
             if (object.userData?.rootPath) return {error: 'This object is already an asset instance.'}
             const isObject = Boolean((object as IObject3D).isObject3D)
@@ -1136,16 +950,17 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             }
             this.loadedNeedsSave = true
             this.replaceManifest(await this.source.list())
-            this.setStatus(`Created ${path}`)
             return {path, result}
         } catch (error) {
             return {error: errorMessage(error)}
         }
     }
 
+    /**
+     * Writes an edited object or material back to its project asset file.
+     * Asset inspector save actions call it.
+     */
     async saveProjectAsset(
-        _project: unknown,
-        _scene: unknown,
         object: IObject3D | IMaterial,
         path: string,
     ): Promise<{error: string | null}> {
@@ -1163,13 +978,16 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.hashes.set(path, written.sha256)
             this.replaceManifest(await this.source.list())
             if (object === this.loadedAssetObj) this.loadedNeedsSave = false
-            this.setStatus(`Saved ${path}`)
             return {error: null}
         } catch (error) {
             return {error: errorMessage(error)}
         }
     }
 
+    /**
+     * Reloads an asset from disk with a fresh cache revision.
+     * Asset editor controls call it after external changes.
+     */
     async reloadProjectAsset(path: string): Promise<IObject3D | IMaterial> {
         const file = await this.source.read(path)
         this.hashes.set(path, file.sha256)
@@ -1178,12 +996,15 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         const asset = imported.find((item) => item?.isObject3D || item?.isMaterial)
         if (!asset) throw new Error(`Unable to reload ${path}.`)
         this.get().getPlugin(PickingPlugin)?.setSelectedObject(asset as IObject3D | IMaterial, false)
-        if (this.loadedProjectFile?.path === path) this.loadedAssetObj = asset as IObject3D | IMaterial
-        this.setStatus(`Reloaded ${path}`)
+        if (this.loadedFilePath === path) this.loadedAssetObj = asset as IObject3D | IMaterial
         this.changed()
         return asset as IObject3D | IMaterial
     }
 
+    /**
+     * Updates package metadata and opens the selected main scene.
+     * Project scene controls call it.
+     */
     async setMainScene(path: string): Promise<void> {
         if (!/\.scene\.gltf$/i.test(path)) throw new Error('The main scene must be a .scene.gltf file.')
         const packageFile = await this.source.read('package.json')
@@ -1195,9 +1016,9 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             packageFile.sha256,
         )
         this.hashes.set('package.json', written.sha256)
-        if (this.project) {
-            this.project.mainScene = path
-            this.project.packageJson = packageJson
+        if (this.loadedProject) {
+            this.loadedProject.mainScene = path
+            this.loadedProject.packageJson = packageJson
         }
         await this.openProjectFile(path)
         this.changed()
@@ -1210,6 +1031,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         return assetIdUrl(registered[0], `f.${extension}`)
     }
 
+    /**
+     * Refreshes file and directory manifests from the server.
+     * Project browser actions call it after filesystem changes.
+     */
     async refreshProjectFiles(): Promise<void> {
         const [files, directories] = await Promise.all([
             this.source.list(),
@@ -1261,6 +1086,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         return assetId
     }
 
+    /**
+     * Registers an imported item and assigns its stable project asset URL.
+     * Drop and asset-tracker adapters call it after imports.
+     */
     async registerProjectAssetItem(path: string, item: IObject3D | IMaterial | ITexture): Promise<void> {
         const rootPath = assetIdUrl(await this.registerAsset(path), path)
         item.userData ||= {}
@@ -1277,6 +1106,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
+    /**
+     * Downloads a remote asset and imports it as a project file.
+     * URL import controls call it.
+     */
     async importUrl(url: string) {
         const response = await fetch(url)
         if (!response.ok) throw new Error(`Unable to import ${url}: ${response.status}`)
@@ -1284,7 +1117,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         await this.importFiles([new File([await response.blob()], name)])
     }
 
-    /** AGREED-4: reference asset pickers delegate reads to the dev-server URL space. */
+    /**
+     * Resolves a file or library entry to an imported asset.
+     * Reference asset pickers call it for preview and insertion.
+     */
     async getAssetFromEntry(entry: {path: string, name?: string, libFileId?: string, isFSEntry?: boolean}) {
         if (entry.libFileId) return this.importLibraryAsset(entry)
         return this.getAssetFromPath(entry.isFSEntry ? this.assetPathUrl(entry.path) : entry.path)
@@ -1345,6 +1181,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         return loaded
     }
 
+    /**
+     * Imports the first supported asset found at a project or remote URL.
+     * Asset pickers and editor open flows call it.
+     */
     async getAssetFromPath(path: string) {
         const normalized = path.startsWith('/kite3d/') || /^https?:\/\//.test(path) ? path : this.source.fileUrl(path)
         const importer = this.get().assetManager.importer
@@ -1365,64 +1205,60 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         return undefined
     }
 
+    /**
+     * Converts a stable asset identifier into its project file path.
+     * Asset labels and inspector controls call it for display.
+     */
     resolveAssetIdPath(path?: string | null) {
         if (!path) return path ?? null
         const id = path.replace(/^@/, '').split('/', 1)[0]
         return this.assetsManifest.files[id]?.path || path
     }
 
+    /**
+     * Loads an optional asset entry for reference editor callbacks.
+     * Asset selector components call it.
+     */
     async loadAsset(entry?: {path: string} | null) {
         return entry ? this.getAssetFromEntry(entry) : null
     }
 
+    /**
+     * Removes an asset item from the in-memory tracker.
+     * Reference asset lifecycle callbacks call it.
+     */
     unloadAsset(asset: Parameters<DevServerAssetTracker['removeAssetItem']>[0]) {
         this.get().assetManager.tracker.removeAssetItem(asset)
     }
 
-    setWelcomeOpen(open: boolean) {
-        this.welcomeOpen = open
-        this.changed()
-    }
-
+    /**
+     * Downloads a viewport snapshot through the viewer plugin.
+     * Editor export controls call it.
+     */
     async snapshot() {
-        await this.get().getPlugin(CanvasSnapshotPlugin)?.downloadSnapshot(`${this.project?.name || 'kite3d'}-snapshot.png`, {
+        await this.get().getPlugin(CanvasSnapshotPlugin)?.downloadSnapshot(`${this.loadedProject?.name || 'kite3d'}-snapshot.png`, {
             waitForProgressive: false,
         })
     }
 
+    /**
+     * Downloads the open scene as serialized glTF.
+     * Editor export controls call it.
+     */
     async exportGltf() {
-        if (this.sourceDraftDirty) {
-            AppToaster().show({
-                message: 'Save the open source draft before exporting.',
-                intent: 'warning',
-                icon: 'warning-sign',
-                timeout: 4000,
-                isCloseButtonShown: true,
-            })
-            return
-        }
         const serialized = await serializeSceneGltf(this.get(), {scenePath: this.scenePath})
         downloadBlob(new Blob([serialized.gltf as BlobPart], {type: 'model/gltf+json'}), this.scenePath.split('/').pop() || 'scene.gltf')
     }
 
-    async beforePublish(): Promise<boolean> {
-        if (this.sourceDraftDirty) {
-            await this.writeState()
-            throw new Error('Save the unsaved source draft before publishing.')
-        }
-        return this.saveScene()
-    }
-
-    async sourceFileSaved(path: string, sha256: string) {
-        await this.applyProjectFileChange(path, sha256, false)
-        this.restoreSelectedFile(path)
-    }
-
+    /**
+     * Lists script and plugin files absent from package configuration.
+     * Project settings read it to offer module registration.
+     */
     unlistedScripts(): ProjectFileEntry[] {
         const listed = new Set([
-            ...(this.project?.config.scripts || []).map(({import: path}) => normalizeProjectPath(path)),
-            ...(this.project?.config.plugins || []).filter(({import: path}) =>
-                !this.project || !isDependencyModuleSpecifier(path, this.project.packageJson))
+            ...(this.loadedProject?.config.scripts || []).map(({import: path}) => normalizeProjectPath(path)),
+            ...(this.loadedProject?.config.plugins || []).filter(({import: path}) =>
+                !this.loadedProject || !isDependencyModuleSpecifier(path, this.loadedProject.packageJson))
                 .map(({import: path}) => normalizeProjectPath(path)),
         ])
         return this.manifest.filter(({path}) =>
@@ -1432,116 +1268,27 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         )
     }
 
-    async writeState(error?: string) {
-        const write = this.stateWriteQueue.then(async () => {
-            const savedSceneHash = this.savedSceneHash
-            const sceneHash = this.projectLoaded && this.viewer && this.loadedNeedsSave
-                ? await hashBytes((await serializeSceneGltf(this.viewer, {scenePath: this.scenePath})).gltf)
-                : savedSceneHash
-            const sceneDirty = this.loadedNeedsSave && sceneHash !== savedSceneHash
-            const state: EditorState = {
-                editorVersion: this.editorVersion,
-                engineVersion: RUNTIME_VERSION,
-                projectLoaded: this.projectLoaded,
-                playState: this.isPlaying ? 'playing' : 'stopped',
-                dirty: sceneDirty || this.sourceDraftDirty,
-                sourceDraftDirty: this.sourceDraftDirty,
-                sceneHash,
-                savedSceneHash,
-                selectionNames: selectedNames(this.viewer),
-                lastLoadError: error || this.error || null,
-                updatedAt: new Date().toISOString(),
-                clientId: this.source.clientId,
-            }
-            try {
-                const sha256 = await writeEditorState(
-                    this.source,
-                    state,
-                    this.hashes.get('.kite3d/state.json') || '*',
-                )
-                this.hashes.set('.kite3d/state.json', sha256)
-            } catch (caught) {
-                if (!(caught instanceof ProjectConflictError)) throw caught
-            }
-        })
-        this.stateWriteQueue = write.catch(() => undefined)
-        return this.stateWriteQueue
-    }
-
-    async reportError(error: unknown) {
-        if (this.isPlaying || this.isStartingPlay) this.runtimeErrorCount += 1
+    /**
+     * Reports an error to the UI.
+     * Browser, runtime, module, and import error handlers call it.
+     */
+    reportError(error: unknown) {
         const message = error instanceof Error ? `${error.message}\n${error.stack || ''}` : String(error)
         this.error = message
-        this.setStatus('Project error')
-        await this.appendConsoleError(message)
-    }
-
-    private appendConsoleError(message: string): Promise<void> {
-        const now = Date.now()
-        this.consoleErrorTimes = this.consoleErrorTimes.filter((time) => now - time < 10_000)
-        if (this.consoleErrorTimes.length >= 20) return Promise.resolve()
-        this.consoleErrorTimes.push(now)
-        return this.appendConsoleLine(message)
-    }
-
-    private appendConsoleLine(message: string, timestamp = true): Promise<void> {
-        const write = this.consoleWriteQueue.then(async () => {
-            let previous = ''
-            let ifMatch: string | '*' = this.hashes.get('.kite3d/console.log') || '*'
-            try {
-                const current = await this.source.read('.kite3d/console.log')
-                previous = decode(current.bytes)
-                ifMatch = current.sha256
-            } catch { /* first log entry */ }
-            const line = timestamp ? `${new Date().toISOString()} ${message}` : message
-            const next = `${previous}${line}\n`.slice(-200_000)
-            try {
-                const result = await this.source.write('.kite3d/console.log', encode(next), ifMatch)
-                this.hashes.set('.kite3d/console.log', result.sha256)
-            } catch (error) {
-                if (!(error instanceof ProjectConflictError)) throw error
-            }
-        })
-        this.consoleWriteQueue = write.catch(() => undefined)
-        return this.consoleWriteQueue
+        this.changed()
     }
 
     private installErrorForwarding() {
         window.addEventListener('error', this.onWindowError)
         window.addEventListener('unhandledrejection', this.onUnhandledRejection)
-        this.originalConsoleError = console.error
-        this.originalConsoleWarn = console.warn
-        console.error = (...values: unknown[]) => {
-            this.originalConsoleError?.(...values)
-            if (this.isPlaying || this.isStartingPlay) {
-                this.runtimeErrorCount += 1
-                void this.appendConsoleError(`[console.error] ${values.map(formatConsoleValue).join(' ')}`)
-            }
-        }
-        console.warn = (...values: unknown[]) => {
-            this.originalConsoleWarn?.(...values)
-            if (this.isPlaying || this.isStartingPlay) {
-                void this.appendConsoleError(`[console.warn] ${values.map(formatConsoleValue).join(' ')}`)
-            }
-        }
     }
 
     private async onProjectEvent(event: ProjectEvent) {
-        if (event.type === 'command' && event.command === 'check' && typeof event.id === 'string') {
-            try {
-                const result = await this.runCheck()
-                await this.source.commandResult?.(event.id, {ok: true, result})
-            } catch (error) {
-                await this.source.commandResult?.(event.id, {ok: false, error: errorMessage(error)})
-                await this.reportError(error)
-            }
-            return
-        }
         if (event.type === 'command' && event.command === 'screenshot' && typeof event.id === 'string') {
             try {
                 await this.source.screenshotResult(event.id, await this.captureScreenshot())
             } catch (error) {
-                await this.reportError(error)
+                this.reportError(error)
             }
             return
         }
@@ -1549,32 +1296,19 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         if (event.client === this.source.clientId || !event.path) return
         if (event.sha256 && this.hashes.get(event.path) === event.sha256) return
 
-        this.dispatchEvent({
-            type: 'projectFileChange',
-            path: event.path,
-            sha256: event.sha256,
-            changeType: event.type,
-        })
-        await this.applyProjectFileChange(event.path, event.sha256, true)
-        this.restoreSelectedFile(event.path)
+        await this.applyExternalFileChange(event.path, event.sha256)
     }
 
-    private restoreSelectedFile(path: string) {
-        if (this.selectedFilePath === path) this.get().getPlugin(PickingPlugin)?.setSelectedObject(null)
-    }
-
-    private async applyProjectFileChange(path: string, eventHash: string | undefined, external: boolean) {
+    private async applyExternalFileChange(path: string, eventHash: string | undefined) {
         if (path === this.scenePath) {
-            if (external && this.loadedNeedsSave && !window.confirm('Changed on disk: reload and discard the editor copy?')) {
-                this.setStatus('Kept unsaved editor scene')
+            if (this.loadedNeedsSave && !window.confirm('Changed on disk: reload and discard the editor copy?')) {
                 return
             }
             const disk = await this.source.read(this.scenePath)
             const text = decode(disk.bytes)
             validateSceneSource(this.scenePath, text)
             this.hashes.set(this.scenePath, disk.sha256)
-            await this.loadEditScene(text)
-            this.setStatus('Scene reloaded from disk')
+            await this.loadEditScene()
             this.replaceManifest(await this.source.list())
             return
         }
@@ -1595,9 +1329,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         if (isJavaScript) {
             const moduleRevision = String(++this.moduleReloadSequence)
             this.moduleRevision = moduleRevision
-            await this.registerProjectScripts(this.project!.config, moduleRevision)
+            await this.registerProjectScripts(this.loadedProject!.config, moduleRevision)
             if (this.isPlaying) await this.restartPlay()
-            this.setStatus(`${path} reloaded`)
         }
         this.changed()
     }
@@ -1626,52 +1359,18 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.changed()
     }
 
-    private async reportRemovedGenerators() {
-        const names = new Set(this.removedGeneratorNodes.map(({nodeName}) => nodeName))
-        this.get().scene.modelRoot.traverse((object) => {
-            if (!names.has(object.name)) return
-            Object.defineProperty(object.userData, 'kite3dRemovedGenerator', {
-                configurable: true,
-                enumerable: false,
-                value: true,
-            })
-        })
-        for (const {nodeIndex, nodeName} of this.removedGeneratorNodes) {
-            const key = `${nodeIndex}:${nodeName}`
-            if (this.reportedRemovedGenerators.has(key)) continue
-            this.reportedRemovedGenerators.add(key)
-            const message = removedGeneratorMessage(nodeName)
-            console.warn(message)
-            await this.appendConsoleLine(message)
-        }
-    }
-
-    private setStatus(status: string) {
-        this.status = status
-        this.changed()
-    }
-
     private changed() {
         this.dispatchEvent({type: 'stateChange'})
     }
 
-    private startHeartbeat() {
-        this.stopHeartbeat()
-        this.heartbeat = setInterval(() => void this.writeState(), 5_000)
-    }
-
-    private stopHeartbeat() {
-        if (!this.heartbeat) return
-        clearInterval(this.heartbeat)
-        this.heartbeat = undefined
-    }
-
+    /**
+     * Releases viewers, listeners, and timers.
+     * Editor teardown calls it when replacing the manager.
+     */
     dispose() {
         this.unsubscribe?.()
-        this.stopHeartbeat()
         window.removeEventListener('error', this.onWindowError)
         window.removeEventListener('unhandledrejection', this.onUnhandledRejection)
-        window.removeEventListener('pagehide', this.onPageHide)
         this.game?.dispose()
         if (this.viewer) {
             this.detachIdleFrameCap()
@@ -1681,9 +1380,8 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
             this.viewer.dispose()
             this.viewer.container.remove()
         }
-        if (this.originalConsoleError) console.error = this.originalConsoleError
-        if (this.originalConsoleWarn) console.warn = this.originalConsoleWarn
-        delete (window as Window & {viewer?: ThreeViewer}).viewer
+        delete (window as Window & {viewer?: ThreeViewer, kite3dProjectLoaded?: boolean}).viewer
+        delete (window as Window & {viewer?: ThreeViewer, kite3dProjectLoaded?: boolean}).kite3dProjectLoaded
     }
 }
 
@@ -1766,11 +1464,6 @@ function uniqueProjectAssetPath(path: string, entries: ProjectFileEntry[]): stri
     let suffix = 1
     while (used.has(`${stem}-${suffix}${extension}`)) suffix += 1
     return `${stem}-${suffix}${extension}`
-}
-
-async function hashBytes(bytes: Uint8Array): Promise<string> {
-    const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource)
-    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
 }
 
 async function compositeScreenshot(source: HTMLCanvasElement): Promise<Blob> {
@@ -1910,19 +1603,6 @@ function safeFileName(name: string): string {
     return name.replace(/[^a-zA-Z0-9._-]+/g, '-') || 'file.bin'
 }
 
-function selectedNames(viewer?: ThreeViewer): string[] {
-    const selected = viewer?.getPlugin(PickingPlugin)?.getSelectedObject()
-    if (!selected) return []
-    const values = Array.isArray(selected) ? selected : [selected]
-    return values.map((value) => value.name || value.uuid)
-}
-
-function formatConsoleValue(value: unknown): string {
-    if (value instanceof Error) return `${value.message}\n${value.stack || ''}`
-    if (typeof value === 'string') return value
-    try { return JSON.stringify(value) } catch { return String(value) }
-}
-
 function errorMessage(error: unknown) {
     return error instanceof Error ? error.message : String(error)
 }
@@ -1962,30 +1642,4 @@ function downloadBlob(blob: Blob, filename: string) {
     anchor.download = filename
     anchor.click()
     setTimeout(() => URL.revokeObjectURL(url), 0)
-}
-
-function issueCodes(issues: AuthoringValidationIssue[]): string[] {
-    return [...new Set(issues.map(({code}) => code))]
-}
-
-function waitForViewerFrames(viewer: ThreeViewer, target: number): Promise<void> {
-    return new Promise((resolveFrames, reject) => {
-        let frames = 0
-        const timeout = window.setTimeout(() => {
-            viewer.removeEventListener('preFrame', onFrame)
-            reject(new Error(`The game did not render ${target} frames within 10 seconds.`))
-        }, 10_000)
-        const onFrame = () => {
-            frames += 1
-            if (frames < target) {
-                viewer.setDirty()
-                return
-            }
-            window.clearTimeout(timeout)
-            viewer.removeEventListener('preFrame', onFrame)
-            resolveFrames()
-        }
-        viewer.addEventListener('preFrame', onFrame)
-        viewer.setDirty()
-    })
 }

@@ -1,13 +1,10 @@
 #!/usr/bin/env node
 
 import {execFileSync} from 'node:child_process'
-import {copyFile, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
+import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {dirname, join, resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
-
-import {registerRuntime} from './register-runtime.mjs'
-import {uploadAgentsMd} from './upload-agents-md.mjs'
 
 const repositoryDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const publishOrder = ['engine', 'editor', 'kite3d']
@@ -55,7 +52,7 @@ export function publishPackage({name, version, workspace, dryRun, environment, c
 }
 
 function parseArguments(arguments_) {
-    const knownArguments = new Set(['--dry-run', '--publish', '--register'])
+    const knownArguments = new Set(['--dry-run', '--publish'])
     const unknown = arguments_.filter(argument => !knownArguments.has(argument))
     if (unknown.length) throw new Error(`Unknown argument: ${unknown.join(', ')}`)
     if (arguments_.includes('--dry-run') && arguments_.includes('--publish')) {
@@ -65,7 +62,7 @@ function parseArguments(arguments_) {
     const publish = arguments_.includes('--publish')
     const dryRun = arguments_.includes('--dry-run') || (!process.env.CI && !publish)
     if (!dryRun && !publish) throw new Error('CI releases must explicitly pass --dry-run or --publish.')
-    return {dryRun, register: arguments_.includes('--register')}
+    return {dryRun}
 }
 
 async function readJson(path) {
@@ -132,10 +129,10 @@ async function createNpmEnvironment() {
     }
 }
 
-function finishTag(version, branch, dryRun, registered) {
+function finishTag(version, branch, dryRun) {
     const tag = `v${version}`
     if (dryRun) {
-        console.log(`Dry run complete; ${registered ? 'performed backend uploads by request but' : 'skipped backend uploads and'} tag ${tag}.`)
+        console.log(`Dry run complete; skipped tag ${tag}.`)
         console.log(`After a real release, push with: git push origin ${branch ? `${branch} ` : ''}${tag}`)
         return
     }
@@ -149,11 +146,7 @@ function finishTag(version, branch, dryRun, registered) {
 }
 
 async function release() {
-    const {dryRun, register} = parseArguments(process.argv.slice(2))
-    await copyFile(
-        resolve(repositoryDirectory, 'packages/kite3d/template/AGENTS.md'),
-        resolve(repositoryDirectory, 'docs/agents.md'),
-    )
+    const {dryRun} = parseArguments(process.argv.slice(2))
     const version = await validateLockstepVersion()
     const branch = verifyGitState(version, dryRun)
     const npm = await createNpmEnvironment()
@@ -164,7 +157,6 @@ async function release() {
         run('npm', ['run', 'typecheck'], {environment: npm.environment})
         run('npm', ['run', 'lint'], {environment: npm.environment})
         run('npm', ['run', 'test:kite3d'], {environment: npm.environment})
-        run('npm', ['run', 'test:runtime'], {environment: npm.environment})
 
         for (const name of publishOrder) {
             const manifest = await readJson(`packages/${name}/package.json`)
@@ -177,11 +169,7 @@ async function release() {
             })
         }
 
-        const registered = !dryRun || register
-        if (registered) await registerRuntime()
-        if (publishTag(version)) console.log(`Skipping agents guide upload for prerelease ${version}.`)
-        else if (registered) await uploadAgentsMd()
-        finishTag(version, branch, dryRun, registered)
+        finishTag(version, branch, dryRun)
     } finally {
         await npm.cleanup()
     }

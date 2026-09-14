@@ -67,11 +67,11 @@ describe('editor token cookie isolation', () => {
             }
         })
         await pageA.goto(serverA.url, navigationOptions)
-        await waitForStatus(pageA, 'Project loaded')
+        await waitForProjectLoaded(pageA)
 
         const pageB = await context.newPage()
         await pageB.goto(serverB.url, navigationOptions)
-        await waitForStatus(pageB, 'Project loaded')
+        await waitForProjectLoaded(pageB)
         expect((await context.cookies()).map(({name}) => name)).toEqual(expect.arrayContaining([
             `kite3d-token-${serverA.port}`,
             `kite3d-token-${serverB.port}`,
@@ -85,7 +85,6 @@ describe('editor token cookie isolation', () => {
         }, {timeout: 10_000})
         await writeScene(rootA, true)
         expect((await sceneReload).status()).toBe(200)
-        await waitForStatus(pageA, 'Scene reloaded from disk')
 
         const sceneAfterPageReload = pageA.waitForResponse((response) => {
             const url = new URL(response.url())
@@ -95,7 +94,7 @@ describe('editor token cookie isolation', () => {
         }, {timeout: 10_000})
         await pageA.reload(navigationOptions)
         expect((await sceneAfterPageReload).status()).toBe(200)
-        await waitForStatus(pageA, 'Project loaded')
+        await waitForProjectLoaded(pageA)
         expect(unauthorized).toEqual([])
     })
 })
@@ -111,7 +110,6 @@ async function temporaryProject(name: string): Promise<string> {
         main: './main.js',
         mainScene: 'assets/main.scene.gltf',
         devDependencies: {kite3d: KITE3D_VERSION},
-        kite3d: {version: KITE3D_VERSION},
     })}\n`)
     await writeFile(resolve(root, 'assets.json'), '{"files":{},"version":1}\n')
     await writeFile(resolve(root, 'main.js'), 'export async function main({viewer}) { window.viewer = viewer }\n')
@@ -134,9 +132,9 @@ async function writeScene(root: string, reloaded: boolean): Promise<void> {
     })}\n`)
 }
 
-function waitForStatus(page: PageHandle, status: string): Promise<unknown> {
+function waitForProjectLoaded(page: PageHandle): Promise<unknown> {
     return page.waitForFunction(
-        `document.querySelector('.kite3d-status-hook')?.textContent === ${JSON.stringify(status)}`,
+        'window.kite3dProjectLoaded === true',
         undefined,
         {timeout: 30_000},
     )

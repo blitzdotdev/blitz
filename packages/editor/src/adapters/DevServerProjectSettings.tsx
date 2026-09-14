@@ -1,6 +1,5 @@
-import {Button, Callout, Icon, Spinner} from '@blueprintjs/core'
+import {Callout, Icon, Spinner} from '@blueprintjs/core'
 import {useEffect} from 'react'
-import {useAssets} from '../utils/AssetsProvider.ts'
 import {useManagerVersion} from '../utils/UseManager.ts'
 import type {ProjectLoadStatus} from '../utils/ViewerInstanceManager.ts'
 import {displayHubPath, useHubClient} from '../hubClient.tsx'
@@ -34,8 +33,8 @@ export function WorktreesSectionComp() {
 
 export function ScriptsSectionComp() {
     const manager = useManagerVersion()
-    const scripts = manager.project?.config.scripts || []
-    return <ProjectSection label="Scripts" count={scripts.length} action={<OpenPackageJsonButton/>}>
+    const scripts = manager.loadedProject?.config.scripts || []
+    return <ProjectSection label="Scripts" count={scripts.length}>
         {scripts.length === 0 && <EmptyRow text="No scripts configured"/>}
         {scripts.map(({import: path, active}) => <ProjectRow
             detail={path}
@@ -49,8 +48,8 @@ export function ScriptsSectionComp() {
 
 export function PluginsSectionComp() {
     const manager = useManagerVersion()
-    const plugins = manager.project?.config.plugins || []
-    const dependencies = manager.project?.config.dependencies || []
+    const plugins = manager.loadedProject?.config.plugins || []
+    const dependencies = manager.loadedProject?.config.dependencies || []
     return <ProjectSection label="Plugins" count={plugins.length}>
         {plugins.length === 0 && <EmptyRow text="No plugins configured"/>}
         {plugins.map((plugin, index) => {
@@ -72,8 +71,8 @@ export function PluginsSectionComp() {
 
 export function DependenciesSectionComp() {
     const manager = useManagerVersion()
-    const dependencies = manager.project?.config.dependencies || []
-    const rawDevDependencies = manager.project?.packageJson.devDependencies
+    const dependencies = manager.loadedProject?.config.dependencies || []
+    const rawDevDependencies = manager.loadedProject?.packageJson.devDependencies
     const devDependencies = rawDevDependencies && typeof rawDevDependencies === 'object' && !Array.isArray(rawDevDependencies)
         ? Object.entries(rawDevDependencies).flatMap(([key, version]) => (
             typeof version === 'string' ? [{key, version}] : []
@@ -99,14 +98,10 @@ export function DependenciesSectionComp() {
                 kind: exactVersion(dependency.version) ? 'loaded' : 'disabled',
                 text: exactVersion(dependency.version) ? 'Pinned' : 'Range',
             }}/>) }
-        <ul className="kite3d-semantic-hook" data-testid="component-types">
-            {manager.componentTypes.map((type) => <li key={type}>{type}</li>)}
-        </ul>
     </ProjectSection>
 }
 
-function ProjectSection({action, children, count, label}: {
-    action?: React.ReactNode
+function ProjectSection({children, count, label}: {
     children: React.ReactNode
     count: number
     label: string
@@ -114,7 +109,6 @@ function ProjectSection({action, children, count, label}: {
     return <section className="kite3d-panel-section kite3d-project-section">
         <header className="kite3d-section-header">
             <h3>{label} <span>{count}</span></h3>
-            {action}
         </header>
         <div className="kite3d-project-list">{children}</div>
     </section>
@@ -145,17 +139,6 @@ function ProjectRow({detail, name, note, status}: {
 
 function EmptyRow({text}: {text: string}) {
     return <div className="kite3d-project-empty">{text}</div>
-}
-
-function OpenPackageJsonButton() {
-    const manager = useManagerVersion()
-    const {fileManifest, setSelectedFiles} = useAssets()
-    const packageFile = fileManifest.find(({path}) => path === 'package.json')
-    if (!packageFile) return null
-    return <Button minimal={true} onClick={() => {
-        setSelectedFiles([packageFile])
-        manager.selectFile(packageFile.path)
-    }} text="Open package.json"/>
 }
 
 function scriptName(path: string) {

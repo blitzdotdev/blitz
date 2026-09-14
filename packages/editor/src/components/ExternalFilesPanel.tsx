@@ -21,7 +21,6 @@ export type TExternalFile = {
 }
 
 export function ExternalFilesPanel({}: {}) {
-    // const {project} = useProject()
     const manager = useManager()
 
     const files: TExternalFile[] = libAssetTypes.map(p => ({...p, children: []}))

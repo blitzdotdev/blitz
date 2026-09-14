@@ -11,23 +11,13 @@ npm install
 npx kite3d dev
 ```
 
-`kite3d dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Before publishing, run `npx kite3d pull`; then run `npx kite3d publish` and report the exact live URL it prints, normally `https://<slug>.app.blitz.dev/`. Run `npx kite3d <command> --help` for command-specific usage.
+`kite3d dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Run `npx kite3d <command> --help` for command-specific usage.
 
-`kite3d init` stamps the running command's exact version into both `devDependencies["kite3d"]` and `kite3d.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, `doctor`, `upgrade`, and `skills` checks the resolved version. `doctor` reports a mismatch as a FAIL row. `upgrade` runs in the invoked CLI so it can apply that version's migrations. Other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
-
-`kite3d init` also initializes a Git repository and commits the generated template. Inside a parent repository it creates a project repository unless that parent already tracks a file below the project directory. Use `kite3d init --no-git` only when Git is deliberately managed elsewhere. The command always prints which Git decision it made.
-
-Run `npx kite3d doctor` to check Node, the project version pin, installed Kite3D package versions, the development port or live project server, backend and runtime registration, Playwright Chromium, and Git. It warns when the detected repository root is not the project root. Fix every FAIL row before relying on the affected workflow.
-
-Create a recoverable point before agent work with `npx kite3d checkpoint "before agent work"`. It commits all project files, including the saved scene, and prints the short Git hash. Restore files without rewriting history with `npx kite3d restore <hash>`, or omit the hash to restore the latest Kite3D checkpoint. Both commands refuse a parent repository unless `--allow-parent-repo` is supplied. Restore is refused while publish holds its lock. The editor exposes the same actions as Checkpoint beside Check and Restore last checkpoint under Settings.
-
-Run `npx kite3d archive` to write `<project-name>-source.zip`. The archive uses the publish exclusion rules, omits `node_modules`, `.kite3d`, and `.git`, and includes `KITE3D-PROJECT.txt` with the creation date, Git commit, and installed Kite3D package versions.
-
-Upgrade the project with `npx kite3d upgrade`. Upgrade targets the invoked CLI's exact version even when the project pins an older CLI. It applies every migration the invoked version knows, rewrites both version fields, runs `npm install --ignore-scripts`, validates the scene, and records a `kite3d-upgrade` journal entry.
-
-- Use `npx kite3d@next init my-game` or `npx kite3d@next upgrade` to try the next version before it ships. The `latest` channel stays stable.
+`kite3d init` records the running command's exact version in `devDependencies["kite3d"]`.
 
 `npx kite3d skills` lists the invoked CLI's bundled skills and absolute, readable `SKILL.md` paths. It works outside a project and does not install or execute a skill; pass `--json` for structured output.
+
+`npx kite3d publish` prints the path to the bundled publishing procedure. Read and follow that skill to publish a saved project.
 
 Source code to grep after `npm install`:
 
@@ -47,13 +37,8 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 
 # Engine quick reference
 
-- `createGame` and `createStoppedGame`: boot Play mode or an authoring-only stopped scene; `@kite3d/engine/src/runtime/createGame.ts`.
-- `setAuthoringMetadata`, `getAuthoringMetadata`, and `AuthoringRole`: tag and read stable `direct` or `template` sources; `@kite3d/engine/src/authoring.ts`.
-- `RuntimeObjectOwner`: own Play-only roots, clones, effects, and cleanup; `@kite3d/engine/src/authoring.ts`.
-- `registerGameValidation`: register a gameplay assertion consumed by `kite3d check`; `@kite3d/engine/src/authoringValidation.ts`.
-- `publishGameTelemetry`: replace `window.kite3dGame.telemetry` with an immutable test snapshot; `@kite3d/engine/src/authoringValidation.ts`.
-- `authoringQualityReport`, `runtimeCleanupReport`, `semanticSceneSnapshot`, and `persistenceReport`: implement the three check outcomes; `@kite3d/engine/src/authoringValidation.ts`.
-- `serializeSceneGltf` and `serializeSceneGltfDocument`: write deterministic text glTF and external resources; `@kite3d/engine/src/sceneSerialization.ts`.
+- `createGame`: boot Play mode; `@kite3d/engine/src/runtime/createGame.ts`.
+- `serializeSceneGltf`: write deterministic text glTF and external resources; `@kite3d/engine/src/sceneSerialization.ts`.
 - `HtmlUiComponent`: attach world, screen, or viewport-positioned HTML to an object; `@kite3d/engine/src/plugins/HtmlUiComponent.ts`.
 - `CannonPhysicsPlugin`, `Cannon3DBodyComponent`, and `Cannon3DShapeComponent`: physics plugin and body components; `@kite3d/engine/src/plugins/cannon/`.
 - `Mesh2`: supported mesh class; `threepipe/src/core/object/Mesh2.ts`.
@@ -62,61 +47,23 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 - `UnlitLineMaterial`: unlit line material; `threepipe/src/core/material/UnlitLineMaterial.ts`.
 - `LineMaterial2`: configurable line material; `threepipe/src/core/material/LineMaterial2.ts`.
 
-Validation and telemetry belong in `main.js`:
-
-```js
-import {publishGameTelemetry, registerGameValidation} from '@kite3d/engine'
-
-export function main({viewer}) {
-  publishGameTelemetry({state: 'ready'})
-  registerGameValidation(() => ({
-    status: viewer.scene.modelRoot.getObjectByName('Player') ? 'pass' : 'fail',
-    summary: 'Player exists.',
-  }))
-}
-```
-
 For camera ownership during Play, `camera.controlsMode = ''` disables built-in controls; set `autoLookAtTarget = true` when driving `target`, or false when driving the quaternion. Save `scene.mainCamera` and the changed camera properties in `start()`, call the gameplay camera's `activateMain()`, then reactivate the saved camera and restore its properties in `stop()`.
 
-The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `check-game`, `check-results`, `checkpoint-game`, `restore-checkpoint`, `open-game`, `project-files`, `scene-hierarchy`, and `component-types`; select them through `page.getByTestId()`.
-
-The token-protected local API is `GET /api/state`, `GET /api/files`, `GET /api/events`, `GET /api/slug/:slug`, `GET /api/import-map`, `POST /api/check`, and `POST /api/publish`.
-
-Editable is measured from the stopped scene using authored visibility and selectability, source relationships, plus the saved camera; camera containment uses a small epsilon so a point on a mesh face is outside. Persisted serializes that stopped scene, reloads the serialized files, and compares supported semantics with node names in drift paths when available.
-
-The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Keep secrets from `.kite3d/deploys.json` and `.kite3d/dev.json` private.
+The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions.
 
 # Local feedback and health
 
-- `kite3d dev --detach` runs the server in the background with its log in `.kite3d/dev.log`.
-- `kite3d dev --stop` stops the background development server.
-- `kite3d open` opens the launcher that lists every known project and every running editor.
 - Run npx kite3d screenshot to save a PNG of the editor viewport under .kite3d/screenshots/ and print its path. Look at it before and after visual changes. Add --headless when no editor is open.
 
-Read `.kite3d/state.json` and `.kite3d/console.log` for the editor and runtime feedback loop. While Play is active, the editor refreshes `state.json.updatedAt` every 5 seconds and writes its `clientId`. Treat a timestamp more than 15 seconds old as stale. A `pagehide` writes `playState: "stopped"`.
-
-The editor creates `.kite3d/console.log` with a header when Play starts. It records `console.warn`, `console.error`, uncaught window errors, and unhandled promise rejections during Play. It deliberately does not record `console.log`; use the browser console for that level. Log forwarding is rate-limited.
-
-Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Kite3D-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `kite3d dev`. In `.kite3d/dev.json`, `origin` is the token-free server origin and `url` includes the session query. Keep that token out of logs and reports.
+The URL printed by `kite3d dev` includes a private session token. Keep it out of logs and reports.
 
 # Authored versus runtime game content
 
-Every meaningful system must have a useful stopped-mode representation under `viewer.scene.modelRoot`: direct named objects, or a selectable `template` copied for Play. Tag stable sources with `setAuthoringMetadata`.
+Every meaningful system must have a useful stopped-mode representation under `viewer.scene.modelRoot`: direct named objects, or a selectable template copied for Play.
 
-Keep runtime roots outside `modelRoot` through `RuntimeObjectOwner`. Treat `start()` as repeatable and `stop()`/`destroy()` as mandatory: remove listeners, timers, DOM, physics state, effects, and every runtime root. Never delete or mutate the authored template.
+Keep Play-only roots outside `modelRoot`. Treat `start()` as repeatable and `stop()`/`destroy()` as mandatory: remove listeners, timers, DOM, physics state, effects, and every Play-only root. Never delete or mutate the authored template.
 
-```js
-start() {
-  this.stop()
-  const source = this.ctx.viewer.scene.modelRoot.getObjectByName('Enemy Template')
-  this.runtime = new RuntimeObjectOwner('enemy-spawner')
-  const root = this.runtime.attachRuntimeRoot(new Group(), this.ctx.viewer.scene, source)
-  this.runtime.cloneFrom(source, root, {position: [4, 0, 0]})
-}
-stop() { this.runtime?.cleanup(); this.runtime = undefined }
-```
-
-Keep Play state out of the saved scene. The saved camera must frame authored content and stay outside solid geometry on every load, including reloads of an existing scene. Before calling a change done, Stop, run `npx kite3d check`, and read `.kite3d/check.json`; Playable, Editable, and Persisted are separate outcomes.
+Keep Play state out of the saved scene. The saved camera must frame authored content and stay outside solid geometry on every load, including reloads of an existing scene. Before calling a change done: Stop, save, reload the editor page, and look.
 
 # The scene file
 
@@ -176,7 +123,7 @@ Components live in node extras. The shape is:
 }
 ```
 
-Preserve every extras field you do not own. Preserve unknown glTF extensions too. You may wire a component without the editor UI by writing its `{type, state}` entry under `extras.EntityComponentPlugin`, but its module must also be listed under `kite3d.scripts`. Open the editor after a scripted edit. Read `.kite3d/console.log` for parse and load errors.
+Preserve every extras field you do not own. Preserve unknown glTF extensions too. You may wire a component without the editor UI by writing its `{type, state}` entry under `extras.EntityComponentPlugin`, but its module must also be listed under `kite3d.scripts`. Open the editor after a scripted edit and inspect the visible error alert and browser console for parse and load errors.
 
 For example, list a project component as `{"kite3d":{"scripts":["./scripts/X.script.js"]}}`. In `kite3d.scripts` and `kite3d.plugins`, an entry is a bare module only when it exactly matches a key in `package.json`'s `dependencies`; every other entry is a project file, whether or not it starts with `./`.
 
@@ -190,18 +137,6 @@ For example, list a project component as `{"kite3d":{"scripts":["./scripts/X.scr
 - Do not merge or instance meshes in the files for speed. Speed work belongs at Play, in `main.js` or a component, and never changes the files.
 - Put placement scripts and layout data under `scene/`. Nothing under `assets/` or `scene/` runs in the game. Runtime code lives in `scripts/` and `lib/`.
 - Register each asset in `assets.json`, for example `{"version": 1, "files": {"crate": {"path": "assets/models/props/crate/f.gltf"}}}`. Place it in the editor, or with a script that writes the node extras the editor writes on a drop: `rootPath` of `/kite3d/@crate/f.gltf` and `sProperties` for the saved transform.
-
-# Human edits
-
-The local server appends every scene write to `.kite3d/journal.jsonl`. Read it before changing a scene that a human edited. Use `npx kite3d journal -n 10` or `npx kite3d journal --since 2026-09-09T10:00:00Z`.
-
-Each line has `{ts, client, summary}`. `summary` contains node additions, removals, and renames. It also contains transform, component, and material changes.
-
-```json
-{"ts":"2026-09-09T18:42:10.000Z","client":"52fa...","summary":{"nodesAdded":[{"name":"Player","uuid":"a1"}],"nodesRemoved":[],"nodesRenamed":[],"transforms":[{"node":{"name":"Player","uuid":"a1"},"property":"position","old":[0,0,0],"new":[1,0,0]}],"components":[],"materials":[]}}
-```
-
-Editor writes use the editor client id. API writes use `X-Kite3D-Client`. Watcher-detected writes use `external`. Server mutations use the engine export `KITE3D_SERVER_CLIENT_ID`, whose value is `kite3d-server`.
 
 - The game is using Kite3D game engine built on top of threepipe and three.js.
 - The scene path is declared by `mainScene` in `package.json`. Keep the main scene as text glTF.
@@ -394,7 +329,7 @@ The editor canvas occupies only the viewport pane, not the full page. For a DOM 
 - Use `setDirty()` on objects only when transforms actually change
 
 ## Debugging
-- Use `console.log` for verbose debugging in browser dev tools. Use `console.warn` or `console.error` when the message must also reach `.kite3d/console.log` during Play.
+- Use the browser console for debugging output.
 - Access any object by name: `viewer.scene.getObjectByName('PlayerMesh')`
 - Pause the game to inspect state: use the editor's pause button
 - In some cases, it might be better to show logs as HTML text over `this.ctx.viewer.canvas` instead of printing several logs in the console every frame, for the human developer to better see what's happening.
@@ -1003,16 +938,6 @@ class EnemySystemComponent extends Object3DComponent {
   }
 }
 ```
-
-# Publishing
-
-Run `npx kite3d pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx kite3d pull --force` overwrites them. Then run `npx kite3d check`. It imports configured scripts in Node, resolves plugins, verifies scene component types, prints the project validation below Playable on pass or fail, and writes `.kite3d/check.json`; any failure exits 1. `kite3d publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
-
-Create a game with `npx kite3d publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `kite3d.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@kite3d/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.kite3d/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
-
-Publishing omits `package-lock.json`, `.env`, `.env.*`, `*.log`, `.eslintrc*`, `AGENTS.md`, `samples/**`, `tools/**`, and root Markdown files other than `README.md` by default. It publishes a sanitized `package.json` without `devDependencies` or `file:` dependency specs. Add other project-specific glob patterns under `kite3d.publish.exclude` in `package.json`.
-
-Run `npx kite3d status` to print the live local dev server and deploy metadata without tokens or secrets. Run `npx kite3d claim` to print each unclaimed deploy's Blitz claim URL and open it in a browser for Google sign-in. Add `--no-open` to print the URLs without launching a browser. Unknown flags fail with a nonzero exit code.
 
 # Limits
 

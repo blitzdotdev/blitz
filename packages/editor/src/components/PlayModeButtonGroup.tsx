@@ -2,13 +2,11 @@ import {FC} from "react";
 import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
 import {useManagerVersion} from "../utils/UseManager.ts";
-import {Kite3dCheckButton, Kite3dOpenGameButton} from "../adapters/Kite3dToolbarControls.tsx";
 
 export const PlayModeButtonGroup: FC<{
     onPlay(): void
     onStop(): void
-    onOpenGame(): void
-}> = ({onPlay, onStop, onOpenGame}) => {
+}> = ({onPlay, onStop}) => {
     const manager = useManagerVersion()
     const isPlaying = manager.isPlaying || manager.isStartingPlay
     const isPausedRunning = false
@@ -67,8 +65,6 @@ export const PlayModeButtonGroup: FC<{
 
                     );
                 })}
-                <Kite3dOpenGameButton onOpenGame={onOpenGame}/>
-                <Kite3dCheckButton/>
             </ButtonGroup>
         </div>
     )

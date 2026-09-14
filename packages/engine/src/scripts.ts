@@ -2,12 +2,12 @@ import {Class, EntityComponentPlugin, IViewerPlugin, ThreeViewer, TObject3DCompo
 
 export type ScriptModule = Record<string, unknown>
 
-export interface WalkedScriptExports {
+interface WalkedScriptExports {
     plugins: Array<{name: string, value: Class<IViewerPlugin>}>
     components: Array<{name: string, value: TObject3DComponent}>
 }
 
-export function walkScriptExports(module: ScriptModule): WalkedScriptExports {
+function walkScriptExports(module: ScriptModule): WalkedScriptExports {
     const plugins: WalkedScriptExports['plugins'] = []
     const components: WalkedScriptExports['components'] = []
     for (const [name, value] of Object.entries(module)) {

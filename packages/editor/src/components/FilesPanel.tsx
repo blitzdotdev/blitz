@@ -56,7 +56,7 @@ export function FilesPanelBreadCrumbs() {
     const manager = useManagerVersion()
     const {currentPath, setCurrentPath} = useAssets()
     const items: BreadcrumbProps[] = [{
-        text: manager.project?.name || 'No Project',
+        text: manager.loadedProject?.name || 'No Project',
         current: currentPath === '/',
         icon: 'root-folder' as const,
         onClick: () => setCurrentPath('/'),
@@ -89,7 +89,7 @@ export function FilesPanelGrid() {
     const {currentPath, setCurrentPath, fileManifest, selectedFiles, setSelectedFiles} = useAssets()
     const prefix = currentPath === '/' ? '' : `${currentPath.replace(/^\//, '').replace(/\/$/, '')}/`
     const entries = new Map<string, FileManifestEntry | {name: string, path: string, type: 'directory'}>()
-    for (const file of fileManifest.filter(({path}) => !isPrivateKite3dFile(path) && !path.startsWith('.') && !isTemplateSample(path))) {
+    for (const file of fileManifest.filter(({path}) => !path.startsWith('.') && !isTemplateSample(path))) {
         if (!file.path.startsWith(prefix)) continue
         const relative = file.path.slice(prefix.length)
         const [name, ...rest] = relative.split('/')
@@ -165,7 +165,7 @@ export function FilesPanelGrid() {
             if (entry) {
                 const selected = {...entry, name: entry.path.split('/').pop() || entry.path, type: 'file' as const, isFSEntry: true as const}
                 setSelectedFiles([selected])
-                manager.selectFile(path)
+                manager.selectFile()
             }
             AppToaster().show({message: `Created ${path}.`, intent: 'success', icon: 'tick', timeout: 2500})
         } catch (error) {
@@ -187,7 +187,7 @@ export function FilesPanelGrid() {
             }
         }],
         ['set-main', async (data: {file: FileManifestEntry}) => {
-            const current = manager.project?.mainScene || manager.scenePath
+            const current = manager.loadedProject?.mainScene || manager.scenePath
             const confirmed = await prompt({
                 title: 'Set main scene',
                 message: current === data.file.path
@@ -214,7 +214,7 @@ export function FilesPanelGrid() {
             return
         }
         setSelectedFiles([file])
-        manager.selectFile(file.path)
+        manager.selectFile()
     }
     const showEmptyMenu = (event: React.MouseEvent<HTMLElement>) => {
         event.preventDefault()
@@ -306,12 +306,12 @@ export function FilesPanelGrid() {
                 }
             }}/>
         })}
-        {fileManifest.filter(({path}) => path.includes('/') && !isPrivateKite3dFile(path)).map((file, index) =>
+        {fileManifest.filter(({path}) => path.includes('/')).map((file, index) =>
             <button key={`semantic-${file.path}`} type="button" className="kite3d-semantic-hook"
                     style={{left: `${index * 4}px`, top: `${index * 4}px`}}
                     aria-label={file.path} onClick={() => {
                         setSelectedFiles([file])
-                        manager.selectFile(file.path)
+                        manager.selectFile()
                     }}/>) }
     </ButtonGroup></div>
 }
@@ -436,10 +436,6 @@ function fileIcon(path: string): IconName {
     if (/\.(js|mjs|cjs|ts|tsx|jsx)$/i.test(name)) return 'code'
     if (/\.jsonc?$/i.test(name)) return 'document-code'
     return 'document'
-}
-
-function isPrivateKite3dFile(path: string): boolean {
-    return path === '.kite3d/deploys.json' || path === '.kite3d/dev.json'
 }
 
 /** AGREED-4: bundled runnable examples are source fixtures, not project assets. */

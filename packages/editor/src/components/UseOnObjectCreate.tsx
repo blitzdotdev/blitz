@@ -1,14 +1,11 @@
 // @ts-nocheck -- reference object-create hook is retained for presentation compatibility.
-import {useListenProperty} from "./UseListenProperty.tsx";
 import {IObject3D, UndoManagerPlugin} from "threepipe";
 import {AppToaster} from "uiconfig-blueprint/lib/esm/lib";
 import {useManager} from "../utils/UseManager.ts";
 
 export function useOnObjectCreate() {
     const manager = useManager()
-    // this is needed to rerender react
-    const loadedProjectFile = useListenProperty(manager, 'loadedProjectFile', 'loadedProjectFileChange')
-    const onObjectCreate = ((manager.loadedAssetObj as IObject3D)?.isObject3D || manager.loadedScene || !loadedProjectFile) ? (obj: IObject3D, root?: IObject3D) => {
+    const onObjectCreate = ((manager.loadedAssetObj as IObject3D)?.isObject3D || manager.loadedScene || !manager.loadedFilePath) ? (obj: IObject3D, root?: IObject3D) => {
         const viewer = manager.get()
         const scene = viewer.scene
         if (!scene || !obj) return undefined
@@ -45,7 +42,7 @@ export function useOnObjectCreate() {
                     isCloseButtonShown: true,
                 });
             }
-        } else if (manager.loadedScene || !loadedProjectFile) {
+        } else if (manager.loadedScene || !manager.loadedFilePath) {
             if (root && root !== scene.modelRoot)
                 parent = root
             else

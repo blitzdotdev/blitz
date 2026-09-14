@@ -10,64 +10,6 @@ html{
   height: 100vh;
 }
 
-.kite-source-editor {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    min-width: 0;
-    min-height: 0;
-    background: #182026;
-}
-.kite-source-placeholder {
-    display: grid;
-    flex: 1;
-    place-items: center;
-    color: #8a9ba8;
-    font-size: 12px;
-}
-
-.kite-source-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 38px;
-    padding: 5px 8px;
-    border-bottom: 1px solid #394b59;
-    flex-wrap: wrap;
-}
-
-.kite-source-toolbar strong {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.kite-source-status {
-    margin-left: auto;
-    color: #8a9ba8;
-    font-size: 11px;
-}
-
-.kite-source-editor .bp5-callout {
-    margin: 6px 8px 0;
-}
-
-.kite-source-textarea {
-    flex: 1;
-    min-height: 0;
-    resize: none;
-    border: 0;
-    outline: 0;
-    padding: 12px;
-    background: #10161a;
-    color: #f5f8fa;
-    font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    tab-size: 2;
-}
-
 .kite-export-panel {
   display: flex;
   flex: 1;
@@ -756,41 +698,11 @@ body{
   width: 1px;
 }
 
-.kite3d-checkpoint-menu-popover form,
-.kite3d-restore-menu-popover > div {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  width: 260px;
-}
-
-.kite3d-checkpoint-menu-popover .bp5-button,
-.kite3d-restore-menu-popover .bp5-button {
-  align-self: flex-end;
-}
-
-.kite3d-restore-menu-popover p {
-  margin: 0;
-}
-
-.kite3d-restore-menu-popover code {
-  color: inherit;
-}
-
 .kite3d-reference-add-row {
   align-items: center;
   display: flex;
   justify-content: space-between;
   padding: 2px 8px;
-}
-
-.kite3d-status-hook {
-  height: 1px;
-  opacity: 0;
-  overflow: hidden;
-  position: absolute;
-  width: 1px;
 }
 
 .kite3d-project-error {
@@ -848,248 +760,18 @@ body{
   line-height: inherit;
 }
 
-.kite3d-check-badge {
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--pt-app-background-color);
-  height: 7px;
-  position: absolute;
-  right: 4px;
-  top: 4px;
-  width: 7px;
-}
-
-.kite3d-check-badge-success,
-.kite3d-check-status-success {
-  background: var(--pt-intent-success);
-}
-
-.kite3d-check-badge-danger,
-.kite3d-check-status-danger {
-  background: var(--pt-intent-danger);
-}
-
-.kite3d-check-popover {
-  padding: 10px 12px;
-  width: 320px;
-}
-
-.kite3d-check-header {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.kite3d-check-header h6 {
-  margin: 0;
-}
-
-.kite3d-check-header > span,
-.kite3d-check-summary,
-.kite3d-check-codes {
-  color: var(--pt-text-color-muted);
-  font-size: 12px;
-}
-
-.kite3d-check-outcome {
-  align-items: start;
-  display: grid;
-  gap: 2px 8px;
-  grid-template-columns: 8px 72px 1fr;
-  padding: 4px 0;
-}
-
-.kite3d-check-status {
-  border-radius: 50%;
-  height: 8px;
-  margin-top: 5px;
-  width: 8px;
-}
-
-.kite3d-check-outcome strong {
-  font-weight: 500;
-}
-
-.kite3d-check-codes {
-  grid-column: 3;
-}
-
-.source-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  inset: 0;
-  min-height: 0;
-  position: absolute;
-}
-
-.source-editor-toolbar {
-  align-items: center;
-  display: flex;
-  gap: 6px;
-}
-
-.source-editor-toolbar strong {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.source-editor-status {
-  color: var(--pt-text-color-muted);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.source-editor-input {
-  background: #1c2127;
-  border: 1px solid var(--pt-divider-black);
-  border-radius: 2px;
-  display: flex;
-  flex: 1;
-  min-height: 160px;
-  overflow: hidden;
-}
-
-.source-code-editor {
-  flex: 1;
-  height: 100%;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.source-editor-loading {
-  align-items: center;
-  display: flex;
-  flex: 1;
-  justify-content: center;
-}
-
-.source-code-editor .cm-editor {
-  background: #1c2127;
-  color: #f6f7f9;
-  height: 100%;
-}
-
-.source-code-editor .cm-editor.cm-focused {
-  outline: 1px solid #4c90f0;
-  outline-offset: -1px;
-}
-
-.source-code-editor .cm-scroller {
-  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  overflow: auto;
-}
-
-.source-code-editor .cm-content {
-  caret-color: #4c90f0;
-  padding: 8px 0;
-}
-
-.source-code-editor .cm-line {
-  padding: 0 8px;
-}
-
-.source-code-editor .cm-gutters {
-  background: #1c2127;
-  border-right: 1px solid rgb(171 179 191 / 20%);
-  color: #abb3bf;
-}
-
-.source-code-editor .cm-gutterElement {
-  padding: 0 7px 0 6px;
-}
-
-.source-code-editor .cm-activeLine,
-.source-code-editor .cm-activeLineGutter {
-  background: rgb(76 144 240 / 10%);
-}
-
-.source-code-editor .cm-selectionBackground,
-.source-code-editor .cm-content ::selection {
-  background: rgb(76 144 240 / 35%) !important;
-}
-
-.source-code-editor .cm-cursor {
-  border-left-color: #4c90f0;
-}
-
-.source-code-editor .cm-matchingBracket {
-  background: rgb(76 144 240 / 20%);
-  outline: 1px solid rgb(76 144 240 / 55%);
-}
-
-.source-code-editor .tok-keyword,
-.source-code-editor .tok-operatorKeyword {
-  color: #c997c7;
-}
-
-.source-code-editor .tok-string,
-.source-code-editor .tok-regexp,
-.source-code-editor .tok-link {
-  color: #b6c98f;
-}
-
-.source-code-editor .tok-number,
-.source-code-editor .tok-bool,
-.source-code-editor .tok-null {
-  color: #d9a66c;
-}
-
-.source-code-editor .tok-propertyName,
-.source-code-editor .tok-function,
-.source-code-editor .tok-labelName {
-  color: #82b6ff;
-}
-
-.source-code-editor .tok-typeName,
-.source-code-editor .tok-className,
-.source-code-editor .tok-heading {
-  color: #e6c780;
-}
-
-.source-code-editor .tok-comment,
-.source-code-editor .tok-meta {
-  color: #abb3bf;
-  font-style: italic;
-}
-
-.source-code-editor .tok-invalid {
-  color: #f54949;
-}
-
-.source-editor-placeholder,
 .no-project {
   align-items: center;
   display: flex;
   justify-content: center;
 }
 
-.source-editor-placeholder {
-  gap: 8px;
-  min-height: 120px;
-}
-
 .no-project {
   height: 100%;
 }
 
-.no-project-detail,
-.file-metadata dt {
+.no-project-detail {
   color: var(--pt-text-color-muted);
-}
-
-.file-metadata dl {
-  display: grid;
-  gap: 6px 12px;
-  grid-template-columns: auto 1fr;
-}
-
-.file-metadata dd {
-  margin: 0;
 }
 
 // Right panel redesign. The active Blueprint tab panel is the only vertical

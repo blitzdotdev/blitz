@@ -7,7 +7,7 @@ use npx kite3d and build me an FPS shooting practice game
 Never print the deploy token or claim secret from .kite3d/deploys.json.
 ```
 
-The CLI output carries the loop from project creation through reading `AGENTS.md`, running the editor, checking the game, and publishing it.
+The CLI output carries the loop from project creation through reading `AGENTS.md`, running the editor, and inspecting the game. Bundled skills describe agent-owned procedures such as releasing it.
 
 Outside a project, `npx kite3d` runs Kite3D.js, an unrelated package with the same bare name. Use `npx kite3d` for init. Inside a project, `npx kite3d` runs the local Kite3D command.
 
@@ -29,10 +29,8 @@ npm install --no-save --ignore-scripts --install-links --cache /tmp/kite3d-npm-c
 
 What to expect today:
 
-- The editor URL opens in your browser and shows the project in the upstream editor layout, with Play, Check, Checkpoint, and Open game at the top right. Script saves by the agent hot-reload, including modules they import. The scene is a deterministic text glTF at `assets/main.scene.gltf` with an external `.bin`; the agent edits it with scripts, and generated content lives under Generator nodes.
-- `npx kite3d check` is the required step before publish. It resolves scripts, plugins, and generators, then reports Playable, Editable, and Persisted, headless or through the open editor. Results go to `.kite3d/check.json` and `.kite3d/console.log`. Publish repeats the check unless `--no-check` is supplied, refuses while the editor is playing or has an unsaved draft, and verifies every public asset after release.
-- The live URL is `https://<slug>.app.blitz.dev/`, valid for 12 hours unless claimed. Claim from the editor's Open game dialog or with `npx kite3d claim`.
-- The legacy workers.dev path form `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/` still works for unclaimed test games.
-- You can open the project in the editor while the agent works, edit the scene or a script in the Inspector, and save. The agent's next `npx kite3d publish` includes your edits, because both work on the same folder. Run `npx kite3d checkpoint` before handing the folder to an agent and `npx kite3d restore` to undo its work.
-- `npx kite3d doctor` checks Node, the version pin, installed packages, a free port, the backend, the runtime registry, and Playwright. `npx kite3d status` shows the running dev server.
+- The editor URL opens in your browser and shows the project in the upstream editor layout, with Play and Save Scene in the toolbar. Script saves by the agent hot-reload, including modules they import. The scene is a deterministic text glTF at `assets/main.scene.gltf` with an external `.bin`; the agent edits it with scripts, and generated content lives under Generator nodes.
+- Before releasing, stop Play, save, reload the editor page, and inspect the result. Follow the bundled release skill and verify every public asset after activation.
+- The live URL is `https://<slug>.app.blitz.dev/`, valid for 12 hours unless claimed. The private deploy record contains the claim URL.
+- You can open the project in the editor while the agent works, edit the scene or a script in the Inspector, and save. Both work on the same folder.
 - The store at `https://blitz.dev/` lists claimed games only.

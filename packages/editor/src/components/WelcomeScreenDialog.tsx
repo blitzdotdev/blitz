@@ -3,7 +3,7 @@ import React, {useEffect} from 'react'
 import type {IconName} from '@blueprintjs/icons'
 import type {MaybeElement} from '@blueprintjs/core/src/common/props'
 import {WelcomeDialogProjectsTab} from './WelcomeDialogProjectsTab.tsx'
-import {useProject} from '../utils/UseProject.ts'
+import {useWelcome} from '../utils/UseWelcome.ts'
 import {useHubClient} from '../hubClient.tsx'
 
 const tabs = {
@@ -42,9 +42,9 @@ export function WelcomeSidebarListButton(props: {
 
 export function WelcomeScreenDialog({hubMode}: {hubMode: boolean}) {
     const [currentTab, setCurrentTab] = React.useState<keyof typeof tabs>('projects')
-    const {welcomeOpen, setWelcomeOpen, setWelcomeView} = useProject()
+    const {welcomeVisible, setWelcomeVisible, setWelcomeView} = useWelcome()
     const {refresh} = useHubClient()
-    const open = hubMode || welcomeOpen
+    const open = hubMode || welcomeVisible
 
     useEffect(() => {
         if (!open) return
@@ -55,7 +55,7 @@ export function WelcomeScreenDialog({hubMode}: {hubMode: boolean}) {
     if (!open) return null
     const close = () => {
         if (hubMode) return
-        setWelcomeOpen(false)
+        setWelcomeVisible(false)
         setWelcomeView('projects')
     }
     return <Overlay2

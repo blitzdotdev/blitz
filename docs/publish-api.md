@@ -351,7 +351,7 @@ Request:
 }
 ```
 
-`base_release` is optional. Send the release hash you last pulled. If it is not the current active release, the server returns `409 release_moved` with `error.active_release`. Pull that release before publishing again. A malformed value returns `400 invalid_base_release`. `metadata` is optional. When `metadata.description` is present, it must be a string of at most 500 characters and is copied to the game.
+`base_release` is optional. Send the last release hash recorded for the deployment. If it is not the current active release, the server returns `409 release_moved` with `error.active_release`. Inspect that active release and reconcile the Git working tree before trying again. A malformed value returns `400 invalid_base_release`. `metadata` is optional. When `metadata.description` is present, it must be a string of at most 500 characters and is copied to the game.
 
 Paths are relative. They cannot contain empty, `.`, or `..` segments, backslashes, or NUL bytes. A path is at most 512 characters. A release has 1-2,000 files. `message` is optional and at most 500 characters. All blobs must exist and their R2 sizes must match. The default active-manifest quota is 500 MiB. Reused blob bytes count once per path in the manifest.
 

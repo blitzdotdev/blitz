@@ -10,7 +10,6 @@ import {
 } from "threepipe";
 import {PanelActions} from "@blueprintjs/core/lib/esnext/components/panel-stack2/panelTypes";
 import {useManager} from "../utils/UseManager.ts";
-import {useProject} from "../utils/UseProject.ts";
 import React, {FC, useEffect, useMemo, useState} from "react";
 import {isExternalObject, isPackageProject, SelectFileRef} from "../utils/projectUtils.ts";
 import {ContextMenuItemsProps, useContextMenu} from "./ContextMenuProvider.tsx";
@@ -91,7 +90,7 @@ export function ObjectInspectorUI({
 } & PanelActions) {
 
     const manager = useManager()
-    const {project} = useProject()
+    const project = manager.loadedProject
 
     // for reacting to changes in object, because we are accessing object.material etc
     const [objectChangeId, setObjectChangeId] = useState(0)

@@ -31,8 +31,6 @@ module.exports = {
       'src/utils/AssetTracker.ts',
       'src/utils/CanvasFileDropHandler.tsx',
       'src/utils/EditorFeatures.ts',
-      'src/utils/PlayModeHelper.ts',
-      'src/utils/ProjectSettingsManager.ts',
       'src/utils/ScriptUtil.ts',
       'src/utils/UseMakeAsset.ts',
       'src/utils/icons.tsx',

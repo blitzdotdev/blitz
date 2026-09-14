@@ -11,7 +11,7 @@ export interface ProjectReadResult {
 }
 
 export interface ProjectEvent {
-    type: 'change' | 'add' | 'unlink' | 'publish:progress' | 'command'
+    type: 'change' | 'add' | 'unlink' | 'command'
     path?: string
     sha256?: string
     client?: string
@@ -27,10 +27,6 @@ export interface ProjectSource {
     listDirectories(): Promise<string[]>
     createDirectory(path: string): Promise<void>
     events(listener: (event: ProjectEvent) => void): () => void
-    checkpoint?(label?: string): Promise<{hash: string, label?: string}>
-    latestCheckpoint?(): Promise<{hash: string, label?: string} | undefined>
-    restore?(hash?: string): Promise<{hash: string}>
-    commandResult?(id: string, result: Record<string, unknown>): Promise<void>
 }
 
 export class ProjectConflictError extends Error {

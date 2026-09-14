@@ -1,4 +1,4 @@
-import {mkdtemp, mkdir, open, readFile, rm, writeFile} from 'node:fs/promises'
+import {mkdtemp, mkdir, rm, writeFile} from 'node:fs/promises'
 import {request} from 'node:http'
 import {createConnection} from 'node:net'
 import {tmpdir} from 'node:os'
@@ -85,36 +85,6 @@ it('rejects bad tokens, non-local Host headers, traversal, and symlinks', async 
         const event = await eventPromise
         expect(event).toMatchObject({type: 'change', data: {path: relativeScenePath}})
         expect(event.data.client).toBeUndefined()
-        const journal = await readJournalLines(resolve(root, '.kite3d/journal.jsonl'))
-        expect(journal.filter(({client}) => client === 'editor-atomic-scene')).toHaveLength(4)
-        expect(journal.some((entry) => entry.client === 'external' &&
-            JSON.stringify(entry).includes('External save'))).toBe(true)
-    })
-
-// Guards the owner's report: split scene saves were journaled before the write settled.
-it('settles split external scene writes before journaling', async () => {
-        const {root} = await startServer()
-        const scenePath = resolve(root, 'assets/main.scene.gltf')
-        const journalPath = resolve(root, '.kite3d/journal.jsonl')
-        const scene = JSON.stringify({
-            asset: {version: '2.0'},
-            nodes: [{name: 'Authored triangle', mesh: 0}, {name: 'Agent node'}],
-        })
-        const handle = await open(scenePath, 'w')
-        await new Promise((resolveWait) => setTimeout(resolveWait, 300))
-        await handle.writeFile(scene)
-        await handle.close()
-
-        await expect.poll(async () => (await readJournalLines(journalPath)).some((entry) =>
-            entry.client === 'external' && JSON.stringify(entry).includes('Agent node'),
-        ), {timeout: 3_000}).toBe(true)
-        await new Promise((resolveWait) => setTimeout(resolveWait, 300))
-        const externalEntries = (await readJournalLines(journalPath)).filter(({client}) => client === 'external')
-        expect.soft(externalEntries).toHaveLength(1)
-        expect.soft(externalEntries[0]).toMatchObject({
-            summary: {nodesAdded: [{name: 'Agent node'}]},
-        })
-        expect.soft(externalEntries.some(journalEntryHasErrors)).toBe(false)
     })
 
 async function temporaryProject(): Promise<string> {
@@ -124,7 +94,6 @@ async function temporaryProject(): Promise<string> {
         name: 'server-test',
         mainScene: 'assets/main.scene.gltf',
         devDependencies: {'kite3d': KITE3D_VERSION},
-        kite3d: {version: KITE3D_VERSION},
     })}\n`)
     await writeFile(resolve(root, 'assets.json'), '{"files":{},"version":1}\n')
     await writeFile(resolve(root, 'main.js'), 'export async function main() {}\n')
@@ -145,19 +114,7 @@ async function temporaryProject(): Promise<string> {
     return root
 }
 
-async function readJournalLines(path: string): Promise<Array<Record<string, unknown>>> {
-    try {
-        return (await readFile(path, 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>)
-    } catch {
-        return []
-    }
-}
-
-function journalEntryHasErrors(entry: Record<string, unknown>): boolean {
-    return typeof entry.summary === 'object' && entry.summary !== null && 'errors' in entry.summary
-}
-
-async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull' | 'backendUrl'> = {}) {
+async function startServer(options: DevServerOptions = {}) {
     const root = await temporaryProject()
     const server = await createDevServer({
         projectRoot: root,

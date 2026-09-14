@@ -1,11 +1,11 @@
 import {Button, Callout, H4, Icon, InputGroup, Spinner} from '@blueprintjs/core'
 import {useEffect, useRef, useState} from 'react'
 import {displayHubPath, type HubFolderListing, type HubWorktree, useHubClient} from '../hubClient.tsx'
-import {useProject} from '../utils/UseProject.ts'
+import {useWelcome} from '../utils/UseWelcome.ts'
 import {WelcomeDialogCreateProjectActions} from './WelcomeDialogCreateProjectActions.tsx'
 
 export function WelcomeDialogProjectsTab() {
-    const {welcomeView, setWelcomeView} = useProject()
+    const {welcomeView, setWelcomeView} = useWelcome()
     if (welcomeView === 'open') return <FolderProjectView mode="open" onCancel={() => setWelcomeView('projects')}/>
     if (welcomeView === 'new') return <FolderProjectView mode="new" onCancel={() => setWelcomeView('projects')}/>
     return <ProjectLists

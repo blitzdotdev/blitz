@@ -20,7 +20,7 @@ Open, Apache-2.0 to match threepipe and uiconfig-blueprint:
 |---|---|---|
 | `@kite3d/engine` | the runtime: `createGame`, project format, loaders, scripting API, game plugins such as physics, HTML UI, and later the `Generator` component. Depends on `threepipe`. | `dist/`, `src/`, source maps |
 | `@kite3d/editor` | the editor app. React and its nested uiconfig-blueprint source. Built to static files that `kite3d dev` serves. | `dist/`, `src/`, source maps |
-| `kite3d` | the `kite3d` command: `init`, `dev`, `publish`, `pull`, `open`. Depends on engine and editor. | `dist/`, `src/`, `template/` |
+| `kite3d` | the `kite3d` command, local server, and bundled agent skills. Depends on engine and editor. | `dist/`, `src/`, `skills/`, `template/` |
 
 The new-project files live in `packages/kite3d/template/` and ship inside the `kite3d` tarball.
 
@@ -40,9 +40,7 @@ node_modules/threepipe/src            engine core, glTF, plugins
 node_modules/uiconfig-blueprint/src   editor UI kit
 ```
 
-If the published `threepipe` tarball lacks `src/`, `kite3d sources` fetches the tagged upstream source into `.kite3d/upstream/` for grepping.
-
-The devDependency is the version pin. `npx kite3d` runs the local bin at that version. `kite3d.version` in package.json is not needed.
+Published packages include their source so agents can inspect the installed implementation.
 
 ## Repository
 
