@@ -1,9 +1,7 @@
 import type {InstalledPluginImport} from '@kite3d/engine/importMap'
 import {projectPluginNames} from '@kite3d/engine/importMap'
-import type {ProjectEntry} from './types.ts'
 
 export const DEVELOPMENT_PLUGIN_URL = '/kite3d/plugins/'
-export const PUBLISHED_PLUGIN_PATH = '_blitz/plugins'
 
 export interface InstalledPluginPackage extends InstalledPluginImport {
     version: string
@@ -34,14 +32,6 @@ export async function installedPluginPackages(
         })
     }
     return packages
-}
-
-export async function installedPluginEntries(packages: InstalledPluginPackage[]): Promise<ProjectEntry[]> {
-    const entries: ProjectEntry[] = []
-    for (const plugin of packages) {
-        await walkPackage(plugin.directory, `${PUBLISHED_PLUGIN_PATH}/${plugin.specifier}`, entries)
-    }
-    return entries.sort((left, right) => left.path.localeCompare(right.path))
 }
 
 function packageEntry(manifest: Record<string, unknown>): string {
@@ -112,19 +102,6 @@ async function fileAt(directory: FileSystemDirectoryHandle, path: string): Promi
     } catch (error) {
         if (isNotFoundError(error)) throw new Error(`Plugin package entry is missing: ${path}`)
         throw error
-    }
-}
-
-async function walkPackage(
-    directory: FileSystemDirectoryHandle,
-    prefix: string,
-    entries: ProjectEntry[],
-): Promise<void> {
-    for await (const handle of directory.values()) {
-        if (handle.name === 'node_modules') continue
-        const path = `${prefix}/${handle.name}`
-        if (handle.kind === 'directory') await walkPackage(handle, path, entries)
-        else entries.push({path, file: await handle.getFile()})
     }
 }
 

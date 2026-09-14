@@ -135,28 +135,28 @@ FIRST_HASH=$(jq -r .release_hash "$FIRST_FILE")
 unlink "$FIRST_FILE"
 log "release-1: 201 release_hash=$FIRST_HASH"
 
-GAME_PULL_FILE=$(mktemp)
-GAME_PULL_STATUS=$(curl -sS -o "$GAME_PULL_FILE" -w '%{http_code}' \
+GAME_FETCH_FILE=$(mktemp)
+GAME_FETCH_STATUS=$(curl -sS -o "$GAME_FETCH_FILE" -w '%{http_code}' \
   "$BACKEND_URL/api/v1/games/$SLUG" -H "Authorization: Bearer $DEPLOY_TOKEN")
-test "$GAME_PULL_STATUS" = '200'
-test "$(jq -r .game.id "$GAME_PULL_FILE")" = "$GAME_ID"
-unlink "$GAME_PULL_FILE"
-RELEASE_PULL_FILE=$(mktemp)
-RELEASE_PULL_STATUS=$(curl -sS -o "$RELEASE_PULL_FILE" -w '%{http_code}' \
+test "$GAME_FETCH_STATUS" = '200'
+test "$(jq -r .game.id "$GAME_FETCH_FILE")" = "$GAME_ID"
+unlink "$GAME_FETCH_FILE"
+RELEASE_FETCH_FILE=$(mktemp)
+RELEASE_FETCH_STATUS=$(curl -sS -o "$RELEASE_FETCH_FILE" -w '%{http_code}' \
   "$BACKEND_URL/api/v1/games/$SLUG/releases/$FIRST_HASH" \
   -H "Authorization: Bearer $DEPLOY_TOKEN")
-test "$RELEASE_PULL_STATUS" = '200'
-test "$(jq -r .active "$RELEASE_PULL_FILE")" = 'true'
-INDEX_HASH=$(jq -r '.files["index.html"].sha256' "$RELEASE_PULL_FILE")
-unlink "$RELEASE_PULL_FILE"
-INDEX_PULL_FILE=$(mktemp)
-INDEX_PULL_STATUS=$(curl -sS -o "$INDEX_PULL_FILE" -w '%{http_code}' \
+test "$RELEASE_FETCH_STATUS" = '200'
+test "$(jq -r .active "$RELEASE_FETCH_FILE")" = 'true'
+INDEX_HASH=$(jq -r '.files["index.html"].sha256' "$RELEASE_FETCH_FILE")
+unlink "$RELEASE_FETCH_FILE"
+INDEX_FETCH_FILE=$(mktemp)
+INDEX_FETCH_STATUS=$(curl -sS -o "$INDEX_FETCH_FILE" -w '%{http_code}' \
   "$BACKEND_URL/api/v1/games/$SLUG/blobs/$INDEX_HASH" \
   -H "Authorization: Bearer $DEPLOY_TOKEN")
-test "$INDEX_PULL_STATUS" = '200'
-test "$(shasum -a 256 "$INDEX_PULL_FILE" | awk '{print $1}')" = "$INDEX_HASH"
-unlink "$INDEX_PULL_FILE"
-log 'pull: game-by-slug=200 release=200 blob=200 active=true'
+test "$INDEX_FETCH_STATUS" = '200'
+test "$(shasum -a 256 "$INDEX_FETCH_FILE" | awk '{print $1}')" = "$INDEX_HASH"
+unlink "$INDEX_FETCH_FILE"
+log 'fetch: game-by-slug=200 release=200 blob=200 active=true'
 
 (
   cd "$REPO_ROOT"

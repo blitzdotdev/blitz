@@ -10,7 +10,6 @@ import {readDeploys, writeDeploys} from './deploys.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {createDevServer, type DevServer} from './server.ts'
 import type {DeploysFile} from './types.ts'
-import {appendJournalEntry, readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
 import {KITE3D_VERSION} from './versions.ts'
 import {gitRepositoryRoot, gitTracksProject, initializeGitRepository} from './git.ts'
 import {assertLegacyEngineIsHoisted, migrateLegacyProject} from './legacy.ts'
@@ -145,7 +144,6 @@ export async function upgradeProject(
     const sceneText = await readFile(resolve(root, mainScene), 'utf8')
     runtime.tools.validateSceneSource(mainScene, sceneText)
     const removedGeneratorNodes = runtime.tools.findRemovedGeneratorNodes(sceneText).map(({nodeName}) => nodeName)
-    await appendJournalEntry(root, 'kite3d-upgrade', {upgrade: {from, to}})
     return legacySpecifier && await legacyPackageInstalled(root)
         ? {from, to, changes, removedGeneratorNodes, next: 'npm install'}
         : {from, to, changes, removedGeneratorNodes}
@@ -277,7 +275,7 @@ export async function devStatusFromDisk(projectRoot = process.cwd()): Promise<Pu
 export async function claimFromDisk(projectRoot = process.cwd()): Promise<PublicClaimEntry[]> {
     const directory = new NodeProjectDirectory(projectRoot).asHandle()
     const deploys = await readDeploys(directory)
-    if (!Object.keys(deploys.games).length) throw new Error('No deploy exists yet. Run kite3d publish first.')
+    if (!Object.keys(deploys.games).length) throw new Error('No deploy exists yet. Complete the bundled release procedure first.')
     await reconcileClaimedDeploys(directory, deploys)
     const backendUrl = resolveBackendUrl()
     return Object.entries(deploys.games).flatMap(([slug, entry]) => entry.claimed ? [] : [{
@@ -328,13 +326,6 @@ export function screenshotFromDisk(
     options: ScreenshotOptions = {},
 ): Promise<ScreenshotResult> {
     return screenshotProject(projectRoot, options)
-}
-
-export async function journalFromDisk(
-    projectRoot = process.cwd(),
-    options: ReadJournalOptions = {},
-): Promise<JournalEntry[]> {
-    return readJournal(resolve(projectRoot), options)
 }
 
 export async function sourcesInstructions(projectRoot = process.cwd()): Promise<string> {

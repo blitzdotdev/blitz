@@ -20,13 +20,11 @@ import {fileURLToPath} from 'node:url'
 import {serve, type HttpBindings} from '@hono/node-server'
 import {mimeTypeForPath} from '@kite3d/engine/fileTypes'
 import {dependencyImportMap, projectDependencies} from '@kite3d/engine/importMap'
-import {KITE3D_SERVER_CLIENT_ID} from '@kite3d/engine/paths'
 import {Hono, type Context, type Next} from 'hono'
 import {getCookie} from 'hono/cookie'
 import {LinearRouter} from 'hono/router/linear-router'
 import {streamSSE, type SSEStreamingApi} from 'hono/streaming'
 import {watch, type FSWatcher} from 'chokidar'
-import {appendSceneJournal} from './journal.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
 import {ProjectModuleRewriter} from './module-rewriter.ts'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
@@ -155,10 +153,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const pendingWatchedFiles = new Map<string, ReturnType<typeof setTimeout>>()
     const knownHashes = new Map<string, string>()
     const moduleRewriter = new ProjectModuleRewriter()
-    let {path: mainScenePath, text: lastSceneText} = await readMainSceneSnapshot(projectRoot)
-    let sceneJournalQueue = Promise.resolve()
-    let serverMutationActive = false
-    let mutationQueue = Promise.resolve()
     let watcher: FSWatcher | undefined
     let closing = false
     const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
@@ -306,7 +300,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         const filePath = await safeProjectPath(projectRoot, relativePath, true)
         const existed = await fileExists(filePath)
         const currentHash = existed ? await hashFile(filePath) : undefined
-        const beforeSceneText = relativePath === mainScenePath && existed ? await readFile(filePath, 'utf8') : undefined
         const ifMatch = c.req.header('If-Match')
         if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
             return jsonResponse({error: {code: 'precondition_failed', message: 'The file changed on disk.'}, sha256: currentHash}, 412)
@@ -325,15 +318,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             else knownHashes.delete(relativePath)
             await unlink(temporary).catch(() => undefined)
             throw error
-        }
-        if (relativePath === mainScenePath) {
-            const afterSceneText = await readFile(filePath, 'utf8')
-            const client = c.get('clientId') || 'external'
-            await recordSceneWrite(beforeSceneText, afterSceneText, client)
-        } else if (relativePath === 'package.json') {
-            const snapshot = await readMainSceneSnapshot(projectRoot)
-            mainScenePath = snapshot.path
-            lastSceneText = snapshot.text
         }
         scheduleEvent(relativePath, c.get('clientId'), existed ? 'change' : 'add')
         return jsonResponse({path: relativePath, sha256}, existed ? 200 : 201)
@@ -422,7 +406,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         const handleWatchedFile = (watchedPath: string) => {
             const path = normalizeRelativePath(relative(projectRoot, watchedPath))
             if (!path || !isIncludedPath(path)) return
-            if (serverMutationActive) return
             scheduleWatchedFile(path)
         }
         watcher = watch(projectRoot, {
@@ -495,27 +478,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     async function processWatchedFile(path: string): Promise<void> {
         try {
             const target = await safeProjectPath(projectRoot, path)
-            let metadata = await lstat(target)
+            const metadata = await lstat(target)
             if (!metadata.isFile()) return
-            let current = path === mainScenePath ? await readFile(target, 'utf8') : undefined
-            if (metadata.size === 0 || (current !== undefined && !isJsonText(current))) {
-                await new Promise((resolveWait) => setTimeout(resolveWait, watchedFileSettleMs))
-                metadata = await lstat(target)
-                if (!metadata.isFile()) return
-                if (path === mainScenePath) current = await readFile(target, 'utf8')
-            }
             if (await hashFile(target) === knownHashes.get(path)) return
-            if (path === mainScenePath) {
-                if (current === undefined || !isJsonText(current)) {
-                    if (!closing) scheduleEvent(path)
-                    return
-                }
-                await recordSceneWrite(lastSceneText, current, 'external', true)
-            } else if (path === 'package.json') {
-                const snapshot = await readMainSceneSnapshot(projectRoot)
-                mainScenePath = snapshot.path
-                lastSceneText = snapshot.text
-            }
         } catch (error) {
             // A missing path is an unlink only when it was previously a file in
             // the manifest. Recursive watchers also report removed directories.
@@ -524,51 +489,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         if (!closing) scheduleEvent(path)
     }
 
-    function recordSceneWrite(
-        before: string | undefined,
-        after: string,
-        client: string,
-        deduplicate = false,
-    ): Promise<void> {
-        const task = sceneJournalQueue.then(async () => {
-            if (deduplicate && after === lastSceneText) return
-            await appendSceneJournal(projectRoot, deduplicate ? lastSceneText : before, after, client)
-            lastSceneText = after
-        })
-        sceneJournalQueue = task.catch(() => undefined)
-        return task
-    }
-
-    function runServerMutation<T>(operation: () => Promise<T>): Promise<T> {
-        const run = mutationQueue.then(async () => {
-            const before = manifestHashes(await buildManifest(projectRoot))
-            serverMutationActive = true
-            try {
-                return await operation()
-            } finally {
-                try {
-                    const after = manifestHashes(await buildManifest(projectRoot))
-                    const changedPaths = new Set([...before.keys(), ...after.keys()])
-                    for (const path of changedPaths) {
-                        const previous = before.get(path)
-                        const current = after.get(path)
-                        if (previous === current) continue
-                        if (current) knownHashes.set(path, current)
-                        else knownHashes.delete(path)
-                        if (path === mainScenePath && current) {
-                            const after = await readFile(resolve(projectRoot, path), 'utf8')
-                            await recordSceneWrite(lastSceneText, after, KITE3D_SERVER_CLIENT_ID, true)
-                        }
-                        scheduleEvent(path, KITE3D_SERVER_CLIENT_ID, current ? (previous ? 'change' : 'add') : 'unlink')
-                    }
-                } finally {
-                    serverMutationActive = false
-                }
-            }
-        })
-        mutationQueue = run.then(() => undefined, () => undefined)
-        return run
-    }
 }
 
 function waitForListening(server: Server): Promise<void> {
@@ -584,33 +504,6 @@ function waitForListening(server: Server): Promise<void> {
 
 function isAddressInUse(error: unknown): boolean {
     return error instanceof Error && 'code' in error && error.code === 'EADDRINUSE'
-}
-
-function isJsonText(value: string): boolean {
-    try {
-        JSON.parse(value)
-        return true
-    } catch {
-        return false
-    }
-}
-
-async function readMainSceneSnapshot(root: string): Promise<{path: string, text?: string}> {
-    let path = 'assets/main.scene.gltf'
-    try {
-        const packageJson = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as {mainScene?: unknown}
-        if (typeof packageJson.mainScene === 'string') path = normalizeRelativePath(packageJson.mainScene)
-    } catch { /* use the default path */ }
-    try {
-        const scenePath = await safeProjectPath(root, path)
-        return {path, text: await readFile(scenePath, 'utf8')}
-    } catch {
-        return {path}
-    }
-}
-
-function manifestHashes(entries: ManifestEntry[]): Map<string, string> {
-    return new Map(entries.map(({path, sha256}) => [path, sha256]))
 }
 
 export async function buildManifest(root: string): Promise<ManifestEntry[]> {
