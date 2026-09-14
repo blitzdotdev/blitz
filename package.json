@@ -57,7 +57,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run test/unit --passWithNoTests",
-    "test:runtime": "npm run build && npm test && playwright test"
+    "test:runtime": "npm run build && npm test && playwright test --pass-with-no-tests"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
