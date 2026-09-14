@@ -4,7 +4,6 @@ import {strToU8, zipSync} from 'fflate'
 import {walkProject} from './filesystem.ts'
 import {gitHead} from './git.ts'
 import {NodeProjectDirectory} from './node-filesystem.ts'
-import {publishExcludes} from './publish.ts'
 
 const KITE3D_PACKAGES = ['kite3d', 'editor', 'engine'] as const
 
@@ -24,9 +23,8 @@ export async function archiveProject(
         : basename(root)
     const archiveName = `${safeArchiveName(projectName)}-source.zip`
     const archivePath = resolve(root, archiveName)
-    const entries = (await walkProject(new NodeProjectDirectory(root).asHandle(), {
-        exclude: publishExcludes(packageJson),
-    })).filter(({path}) => path !== archiveName)
+    const entries = (await walkProject(new NodeProjectDirectory(root).asHandle()))
+        .filter(({path}) => path !== archiveName)
     const files: Record<string, Uint8Array> = {}
     for (const entry of entries) files[entry.path] = new Uint8Array(await entry.file.arrayBuffer())
     files['KITE3D-PROJECT.txt'] = strToU8(await provenance(root, projectName, options.now || new Date()))

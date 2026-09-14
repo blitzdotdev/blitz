@@ -54,8 +54,6 @@ describe('initProject', () => {
         expect(instructions).toContain('camera.controlsMode')
         expect(instructions).toContain('autoLookAtTarget')
         expect(instructions).toContain('data-testid="play"')
-        expect(instructions).toContain('GET /api/import-map')
-        expect(instructions).toContain('POST /api/publish')
         expect(instructions).toContain('# Plugins')
         expect(instructions).toContain('npm search keywords:kite3d-plugin')
         expect(instructions).toContain('declare a peer dependency on `@kite3d/engine`')

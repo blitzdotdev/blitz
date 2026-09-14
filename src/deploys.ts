@@ -1,5 +1,5 @@
 import {readProjectFile, writeProjectFile} from './filesystem.ts'
-import type {DeployEntry, DeploysFile, PublishStatus} from './types.ts'
+import type {DeployEntry, DeploysFile} from './types.ts'
 
 export const DEPLOYS_PATH = '.kite3d/deploys.json'
 
@@ -20,10 +20,7 @@ export async function readDeploys(dirHandle: FileSystemDirectoryHandle): Promise
         if (!isDeployEntry(entry)) throw new Error(`${DEPLOYS_PATH} has an invalid entry for ${slug}.`)
         games[slug] = {...entry}
     }
-    if (value.last_publish !== undefined && !isPublishStatus(value.last_publish)) {
-        throw new Error(`${DEPLOYS_PATH} has an invalid last_publish value.`)
-    }
-    return {games, ...(value.last_publish ? {last_publish: {...value.last_publish}} : {})}
+    return {games}
 }
 
 export async function writeDeploys(
@@ -46,17 +43,6 @@ function isDeployEntry(value: unknown): value is DeployEntry {
         && (value.claim_url === undefined || typeof value.claim_url === 'string')
         && (value.last_release_hash === undefined || typeof value.last_release_hash === 'string')
         && (value.claimed === undefined || typeof value.claimed === 'boolean')
-}
-
-function isPublishStatus(value: unknown): value is PublishStatus {
-    if (!isRecord(value)) return false
-    return typeof value.slug === 'string'
-        && ['publishing', 'succeeded', 'failed'].includes(String(value.status))
-        && typeof value.updated_at === 'string'
-        && (value.release_hash === undefined || typeof value.release_hash === 'string')
-        && (value.error === undefined || typeof value.error === 'string')
-        && (value.error_status === undefined || typeof value.error_status === 'number')
-        && (value.error_code === undefined || typeof value.error_code === 'string')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

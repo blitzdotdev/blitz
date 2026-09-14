@@ -157,7 +157,7 @@ function journalEntryHasErrors(entry: Record<string, unknown>): boolean {
     return typeof entry.summary === 'object' && entry.summary !== null && 'errors' in entry.summary
 }
 
-async function startServer(options: Pick<DevServerOptions, 'publish' | 'pull' | 'backendUrl'> = {}) {
+async function startServer(options: DevServerOptions = {}) {
     const root = await temporaryProject()
     const server = await createDevServer({
         projectRoot: root,

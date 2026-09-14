@@ -37,33 +37,12 @@ export interface DeployEntry {
 
 export interface DeploysFile {
     games: Record<string, DeployEntry>
-    last_publish?: PublishStatus
-}
-
-export interface PublishStatus {
-    slug: string
-    status: 'publishing' | 'succeeded' | 'failed'
-    updated_at: string
-    release_hash?: string
-    error?: string
-    error_status?: number
-    error_code?: string
 }
 
 export interface ProjectDependency {
     key: string
     version: string
     url?: string
-}
-
-export type PublishProgressPhase = 'creating' | 'walking' | 'hashing' | 'uploading' | 'releasing' | 'verifying' | 'complete'
-
-export interface PublishProgress {
-    phase: PublishProgressPhase
-    done: number
-    total: number
-    path?: string
-    preview_url?: string
 }
 
 export interface CreatedAnonymousGame extends DeployEntry {
