@@ -1190,7 +1190,26 @@ body{
   .bp5-panel-stack2-view > div > .bp5-button-group > .folder-trigger-text {
     font-size: 11px !important;
     letter-spacing: 0.08em;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     text-transform: uppercase !important;
+    white-space: nowrap;
+  }
+
+  .inspector-section-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .folder-head-card > .folder-trigger-text .bp5-button-text,
+  .folder-head-card-minimal > .folder-trigger-text .bp5-button-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .bp5-form-group.bp5-inline {

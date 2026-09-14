@@ -299,22 +299,33 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
 
     }
 
+    const fileName = (path: string) => path.split('/').pop() || path
     let title = ''
+    let hoverTitle = ''
     let icon: IconName|MaybeElement = 'cog'
     if(selFile?.path) {
         title = selFile.path
+        hoverTitle = title
         icon = 'document'
     }
-    else if(inspectingScene) title = 'Global Settings'
+    else if(inspectingScene) {
+        title = 'Global Settings'
+        hoverTitle = title
+    }
     else if(assetRootPathAsset && assetRootPath1) {
         const editing = assetRootPathCanEdit ? 'Editing: ' : ''
-        title = editing + assetRootPath1 + (selObject !== assetRootPathAsset ? ' ⮕ ' + selObject!.name : '')
+        const selection = selObject !== assetRootPathAsset ? ' ⮕ ' + selObject!.name : ''
+        title = editing + fileName(assetRootPath1) + selection
+        hoverTitle = editing + assetRootPath1 + selection
         icon = iconForSelectionObject(assetRootPathAsset)
     }else if(isAssetInstance){
-        title = 'Instance: ' + instanceRootPath.replace(assetUrlPrefix, '')
+        const instancePath = manager.resolveAssetIdPath(instanceRootPath.replace(assetUrlPrefix, ''))
+        title = 'Instance: ' + fileName(instancePath)
+        hoverTitle = 'Instance: ' + instancePath
         icon = iconForSelectionObject(selObject)
     }else if(instanceRootPath){
-        title = 'Instance: ' + instanceRootPath
+        title = 'Instance: ' + fileName(instanceRootPath)
+        hoverTitle = 'Instance: ' + instanceRootPath
         icon = iconForSelectionObject(selObject)
     }
 
@@ -351,12 +362,7 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
         {/*    })}</div>*/}
         {/*</>}*/}
         {(title || buttons.length > 0) && <InsSectionHeader
-            style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-            }}
-            title={title} icon={icon}>
+            title={title} hoverTitle={hoverTitle} icon={icon}>
             {...buttons}
         </InsSectionHeader>}
         {/*{!!selObject?.uiConfig && (isLoadedAssetMain) && !object && <>*/}
