@@ -18,7 +18,7 @@ kite3d/
     engine/                    @kite3d/engine     runtime, project format, scripting API, game plugins
     editor/                    @kite3d/editor     the editor app
       uiconfig-blueprint/      editor-only vendored upstream source; resolved by editor aliases, not published
-    kite3d/                    kite3d               bin `kite3d`: init, dev, publish, pull, open; the local server
+    kite3d/                    kite3d               bin `kite3d`: project tools, bundled agent skills, and the local server
       template/                                     files written by `kite3d init`; shipped inside the CLI
     threepipe/                 vendored upstream subtree; drop once a build against npm threepipe passes
 ```
@@ -65,7 +65,7 @@ Extracted from editor utils, runtime parts only:
 | `importMap.ts` | `utils/importMaps.ts` 52 | `dependencyImportMap(deps)` for project-declared extra dependencies; used by the `index.html` generator in `kite3d` and by `kite3d dev` |
 | `defaults.ts` | `data/EmptyProjectSettings.ts` 277 | default project and viewer settings applied when a project omits them |
 | `fileTypes.ts` | `data/fileTypes.ts` 22 | asset extension and MIME map |
-| `paths.ts` | scattered constants | `.kite3d/` layout: `deploys.json`, `journal.jsonl`, `state.json`, `thumbs/`, `backups/`, `running/` |
+| `paths.ts` | scattered constants | `.kite3d/` layout: `deploys.json`, `thumbs/`, `backups/`, `running/` |
 
 Added later, in the engine because both the editor and the runtime need them:
 

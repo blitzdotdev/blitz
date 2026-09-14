@@ -1,6 +1,6 @@
 # kite3d
 
-The Kite3D command creates, develops, checks, and publishes browser 3D games.
+The Kite3D command creates, develops, and checks browser 3D games. It also points agents to bundled procedures for tasks such as releasing a game.
 
 ```sh
 npx kite3d init my-game

@@ -66,7 +66,7 @@ Use `npx kite3d@next init my-game` or `npx kite3d@next upgrade` to try the next 
 
 | Package | What it is |
 |---|---|
-| [`kite3d`](packages/kite3d) | The `kite3d` command: local server, screenshots, publish |
+| [`kite3d`](packages/kite3d) | The `kite3d` command: local server, screenshots, and bundled agent skills |
 | [`@kite3d/engine`](packages/engine) | UI-free runtime, project format, scripting helpers, game plugins |
 | [`@kite3d/editor`](packages/editor) | The React editor served by `kite3d dev` |
 | [`packages/kite3d/template`](packages/kite3d/template) | Starter files bundled in `kite3d` and copied by `kite3d init` |

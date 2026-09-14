@@ -316,7 +316,7 @@ export function ThreeEditorComponent() {
                                 },
                                 content: <>
                                     {!selectedFile && selectedInspectorItems.length === 0 && <DevServerSceneSummary/>}
-                                    {!selectedFile && selectedInspectorItems.length > 0 && <DevServerInspectorControls placement="header"/>}
+                                    {!selectedFile && selectedInspectorItems.length > 0 && <DevServerInspectorControls/>}
                                     {!selectedFile && selectedInspectorItems.length > 0 && <EditInspectorComponent
                                         className={'inspector-stack'}
                                     />}

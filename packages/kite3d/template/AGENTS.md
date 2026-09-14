@@ -21,7 +21,7 @@ Run `npx kite3d doctor` to check Node, the project version pin, installed Kite3D
 
 Run `npx kite3d archive` to write `<project-name>-source.zip`. The archive uses the publish exclusion rules, omits `node_modules`, `.kite3d`, and `.git`, and includes `KITE3D-PROJECT.txt` with the creation date, Git commit, and installed Kite3D package versions.
 
-Upgrade the project with `npx kite3d upgrade`. Upgrade targets the invoked CLI's exact version even when the project pins an older CLI. It applies every migration the invoked version knows, rewrites both version fields, runs `npm install --ignore-scripts`, validates the scene, and records a `kite3d-upgrade` journal entry.
+Upgrade the project with `npx kite3d upgrade`. Upgrade targets the invoked CLI's exact version even when the project pins an older CLI. It applies every migration the invoked version knows, rewrites both version fields, runs `npm install --ignore-scripts`, and validates the scene.
 
 - Use `npx kite3d@next init my-game` or `npx kite3d@next upgrade` to try the next version before it ships. The `latest` channel stays stable.
 
@@ -71,8 +71,6 @@ The local server owns the project folder. Edit files directly; do not attempt to
 - `kite3d dev --stop` stops the background development server.
 - `kite3d open` opens the launcher that lists every known project and every running editor.
 - Run npx kite3d screenshot to save a PNG of the editor viewport under .kite3d/screenshots/ and print its path. Look at it before and after visual changes. Add --headless when no editor is open.
-
-Read `.kite3d/state.json` for editor health and Play state. While Play is active, the editor refreshes `state.json.updatedAt` every 5 seconds and writes its `clientId`. Treat a timestamp more than 15 seconds old as stale. A `pagehide` writes `playState: "stopped"`.
 
 Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Kite3D-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `kite3d dev`. In `.kite3d/dev.json`, `origin` is the token-free server origin and `url` includes the session query. Keep that token out of logs and reports.
 
@@ -167,18 +165,6 @@ For example, list a project component as `{"kite3d":{"scripts":["./scripts/X.scr
 - Do not merge or instance meshes in the files for speed. Speed work belongs at Play, in `main.js` or a component, and never changes the files.
 - Put placement scripts and layout data under `scene/`. Nothing under `assets/` or `scene/` runs in the game. Runtime code lives in `scripts/` and `lib/`.
 - Register each asset in `assets.json`, for example `{"version": 1, "files": {"crate": {"path": "assets/models/props/crate/f.gltf"}}}`. Place it in the editor, or with a script that writes the node extras the editor writes on a drop: `rootPath` of `/kite3d/@crate/f.gltf` and `sProperties` for the saved transform.
-
-# Human edits
-
-The local server appends every scene write to `.kite3d/journal.jsonl`. Read it before changing a scene that a human edited. Use `npx kite3d journal -n 10` or `npx kite3d journal --since 2026-09-09T10:00:00Z`.
-
-Each line has `{ts, client, summary}`. `summary` contains node additions, removals, and renames. It also contains transform, component, and material changes.
-
-```json
-{"ts":"2026-09-09T18:42:10.000Z","client":"52fa...","summary":{"nodesAdded":[{"name":"Player","uuid":"a1"}],"nodesRemoved":[],"nodesRenamed":[],"transforms":[{"node":{"name":"Player","uuid":"a1"},"property":"position","old":[0,0,0],"new":[1,0,0]}],"components":[],"materials":[]}}
-```
-
-Editor writes use the editor client id. API writes use `X-Kite3D-Client`. Watcher-detected writes use `external`. Server mutations use the engine export `KITE3D_SERVER_CLIENT_ID`, whose value is `kite3d-server`.
 
 - The game is using Kite3D game engine built on top of threepipe and three.js.
 - The scene path is declared by `mainScene` in `package.json`. Keep the main scene as text glTF.

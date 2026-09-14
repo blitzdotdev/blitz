@@ -6,7 +6,6 @@ import {
     claimFromDisk,
     devStatusFromDisk,
     initProject,
-    journalFromDisk,
     runDetachedDev,
     runDev,
     screenshotFromDisk,
@@ -44,7 +43,6 @@ Commands:
   status                      Show local deploy status
   claim [--no-open]           Open claim pages for local deploys
   screenshot [options]        Save a PNG of the editor viewport
-  journal [options]           Read the edit journal
   open [options]              Open or stop the project launcher
   sources                     Locate installed source
   skills [--json]             List bundled skills and their readable paths
@@ -61,7 +59,6 @@ const COMMAND_USAGE: Record<string, string> = {
     status: 'Usage: kite3d status',
     claim: 'Usage: kite3d claim [--no-open]',
     screenshot: 'Usage: kite3d screenshot [--name <name>] [--headless] [--full] [--width <px>] [--height <px>] [--json]',
-    journal: 'Usage: kite3d journal [--since <iso>] [-n <count>]',
     open: 'Usage: kite3d open [--no-open] [--stop]',
     sources: 'Usage: kite3d sources',
     skills: 'Usage: kite3d skills [--json]',
@@ -186,7 +183,7 @@ try {
         const entries = await statusFromDisk()
         const dev = await devStatusFromDisk()
         if (dev) console.log(`Dev server: pid ${dev.pid}, port ${dev.port}, age ${dev.age}, ${dev.url}`)
-        if (!entries.length) console.log('No deploys. Run kite3d publish first.')
+        if (!entries.length) console.log('No deploys.')
         for (const entry of entries) console.log(JSON.stringify({...entry, time_left: timeLeft(entry)}))
     } else if (command === 'claim') {
         const parsed = parseArgs(args, {'--no-open': 'boolean'})
@@ -253,13 +250,6 @@ try {
             source: result.source,
             capturedAt: result.capturedAt,
         }) : result.path)
-    } else if (command === 'journal') {
-        const parsed = parseArgs(args, {'--since': 'value', '-n': 'value'})
-        const entries = await journalFromDisk(process.cwd(), {
-            since: valueOption(parsed.values['--since']),
-            limit: integerOption(parsed.values['-n'], '-n'),
-        })
-        for (const entry of entries) console.log(JSON.stringify(entry))
     } else if (command === 'upgrade') {
         parseArgs(args, {})
         const result = await upgradeProject(process.cwd())

@@ -28,7 +28,7 @@ The editor runs only from `kite3d dev` on localhost. There is no hosted editor.
 ## Data
 
 - New columns: `games.listed INTEGER NOT NULL DEFAULT 1`, `games.description TEXT`. Description comes from `package.json` at publish.
-- Thumbnail: a release file named `thumbnail.png`, served by the gateway. `kite3d publish` copies the editor's main scene thumbnail from `.kite3d/thumbs/` into the release when present, else `icon.svg` from the template. The card falls back to a placeholder.
+- Thumbnail: a release file named `thumbnail.png`, served by the gateway. The card falls back to a placeholder.
 - Author: the owner's username.
 - Ordering: by the active release's `created_at`.
 

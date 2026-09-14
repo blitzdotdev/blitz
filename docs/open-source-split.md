@@ -20,7 +20,7 @@ Open, Apache-2.0 to match threepipe and uiconfig-blueprint:
 |---|---|---|
 | `@kite3d/engine` | the runtime: `createGame`, project format, loaders, scripting API, game plugins such as physics, HTML UI, and later the `Generator` component. Depends on `threepipe`. | `dist/`, `src/`, source maps |
 | `@kite3d/editor` | the editor app. React and its nested uiconfig-blueprint source. Built to static files that `kite3d dev` serves. | `dist/`, `src/`, source maps |
-| `kite3d` | the `kite3d` command: `init`, `dev`, `publish`, `pull`, `open`. Depends on engine and editor. | `dist/`, `src/`, `template/` |
+| `kite3d` | the `kite3d` command, local server, and bundled agent skills. Depends on engine and editor. | `dist/`, `src/`, `skills/`, `template/` |
 
 The new-project files live in `packages/kite3d/template/` and ship inside the `kite3d` tarball.
 

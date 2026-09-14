@@ -210,7 +210,7 @@ test('registers a dropped GLB as an asset and loads it after reload', async ({pa
 // Guards the owner's library drop reports: downloads failed or saved incomplete model resources.
 test('persists a dropped library glTF with its buffer and texture', async ({page}) => {
     test.setTimeout(90_000)
-    const fixture = await startPublishEditor()
+    const fixture = await startAssetEditor()
     const libraryRootUrl = 'https://library.example.test/assets/mock-textured/mock-textured.gltf'
     const libraryRequests: Array<{method: string, url: string, status?: number}> = []
     const consoleErrors: string[] = []

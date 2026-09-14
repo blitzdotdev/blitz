@@ -38,7 +38,6 @@ import {
     parsePackageJSON,
     parsePackageJsonSettingsConfig,
     registerScripts,
-    RUNTIME_VERSION,
     RuntimeNestedAssetLoader,
     serializeSceneGltf,
     validateSceneSource,
@@ -56,7 +55,6 @@ import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {EditModePlugin} from './EditModePlugin.ts'
 import {EditorFeatures} from './EditorFeatures.ts'
 import {DevServerAssetTracker} from '../adapters/DevServerAssetTracker.ts'
-import {writeEditorState, type EditorState} from './editorState.ts'
 import {CanvasFileDropHandler} from './CanvasFileDropHandler.tsx'
 import {cloneAssetItem} from './AssetTracker.ts'
 
@@ -80,7 +78,6 @@ export interface LoadedProject {
 
 interface ServerState {
     name: string
-    versions: Record<string, string>
 }
 
 /**
@@ -100,7 +97,7 @@ type ModuleExports = Record<string, unknown>
 export type ProjectEntryKind = 'scene' | 'asset' | 'physical-material' | 'unlit-material'
     | 'plugin' | 'script' | 'json' | 'folder'
 
-/** Owns the persistent edit viewer and the disposable published-game viewer. */
+/** Owns the persistent edit viewer and the disposable play viewer. */
 export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}> {
     /**
      * Provides authenticated project file and server operations.
@@ -196,16 +193,12 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
     loadedPath: string | null = null
     // Tracks whether the current authoring surface differs from its saved file.
     private _loadedNeedsSave = false
-    // Stores the semantic hash of the last scene written or loaded from disk.
-    private savedSceneHash: string | null = null
     // Deduplicates concurrent initialization requests.
     private initializing?: Promise<void>
     // Deduplicates concurrent Play startup requests.
     private playPromise?: Promise<void>
     // Removes the active project-event subscription during disposal.
     private unsubscribe?: () => void
-    // Holds the editor-state heartbeat timer.
-    private heartbeat?: ReturnType<typeof setInterval>
     // Identifies the viewer currently governed by the idle frame cap.
     private idleFrameViewer?: ThreeViewer
     // Records whether the edit viewer rendered work in the current frame.
@@ -224,10 +217,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
     private moduleReloadSequence = 0
     // Carries the current hot-reload revision into project imports.
     private moduleRevision?: string
-    // Serializes writes to the editor state file.
-    private stateWriteQueue: Promise<void> = Promise.resolve()
-    // Records the editor runtime version reported in state files.
-    private editorVersion = RUNTIME_VERSION
     // Forwards uncaught window errors into project feedback.
     private readonly onWindowError = (event: ErrorEvent) => {
         if (isBenignResizeObserverError(event.message)) return
@@ -235,12 +224,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
     }
     // Forwards unhandled promise rejections into project feedback.
     private readonly onUnhandledRejection = (event: PromiseRejectionEvent) => this.reportError(event.reason)
-    // Stops activity and writes state before the page is hidden.
-    private readonly onPageHide = () => {
-        this.isPlaying = false
-        this.stopHeartbeat()
-        void this.writeState()
-    }
     // Resets per-frame edit viewer activity tracking.
     private readonly onEditViewerPreFrame = () => {
         this.editViewerUpdatedThisFrame = false
@@ -302,7 +285,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
         if (this._loadedNeedsSave === value) return
         this._loadedNeedsSave = value
         this.changed()
-        if (this.projectLoaded) void this.writeState()
     }
 
     /**
@@ -337,7 +319,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
             void this.onProjectEvent(event).catch((error) => this.reportError(error))
         })
         this.installErrorForwarding()
-        window.addEventListener('pagehide', this.onPageHide)
         return this.initializing
     }
 
@@ -373,7 +354,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
         const sceneSource = decode(scene.bytes)
         validateSceneSource(scenePath, sceneSource)
         this.hashes.set(scenePath, scene.sha256)
-        this.editorVersion = serverState.versions.editor || RUNTIME_VERSION
         this.loadedProject = {
             name: serverState.name,
             path: '/',
@@ -394,8 +374,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
         this.projectLoaded = true
         this.loadedNeedsSave = false
         Object.assign(window, {kite3dProjectLoaded: true})
-        await this.writeState()
-        this.startHeartbeat()
     }
 
     private createEditViewer(): ThreeViewer {
@@ -621,7 +599,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
             } else {
                 editMode?.fitView()
             }
-            this.savedSceneHash = await hashBytes((await serializeSceneGltf(viewer, {scenePath: this.scenePath})).gltf)
             // AGREED-4: DevServerSource reloads may finish with renderer updates queued for the next frame.
             // Keep the load guard raised until those updates settle so a disk reload is not reported as an edit.
             await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
@@ -642,7 +619,7 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
 
     /**
      * Persists the open scene when authored state has changed.
-     * Save controls, Play startup, and publish preparation call it.
+     * Save controls and Play startup call it.
      */
     async saveScene(): Promise<boolean> {
         if (!this.projectLoaded || !this.loadedScene || !this.loadedNeedsSave) return true
@@ -655,7 +632,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
             )
             await this.writeSerializedScene(serialized)
             this.loadedNeedsSave = false
-            await this.writeState()
             return true
         } catch (error) {
             if (!(error instanceof ProjectConflictError)) {
@@ -694,7 +670,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
             this.hashes.get(this.scenePath) || '*',
         )
         this.hashes.set(this.scenePath, result.sha256)
-        this.savedSceneHash = await hashBytes(serialized.gltf)
         this.manifest = await this.source.list()
         this.changed()
     }
@@ -774,12 +749,9 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
                 onError: (error) => this.reportError(error),
             })
             this.isPlaying = true
-            this.startHeartbeat()
-            await this.writeState()
         } catch (error) {
             this.get().renderEnabled = true
             this.reportError(error)
-            await this.writeState(errorMessage(error))
         } finally {
             this.changed()
         }
@@ -798,7 +770,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
             this.viewer.renderEnabled = true
             this.viewer.setDirty()
         }
-        await this.writeState()
     }
 
     private async restartPlay() {
@@ -1284,14 +1255,6 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
     }
 
     /**
-     * Persists pending scene edits.
-     * The publish dialog calls it before sending a release request.
-     */
-    async beforePublish(): Promise<boolean> {
-        return this.saveScene()
-    }
-
-    /**
      * Lists script and plugin files absent from package configuration.
      * Project settings read it to offer module registration.
      */
@@ -1310,46 +1273,7 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
     }
 
     /**
-     * Persists editor health, play state, selection, and dirty hashes.
-     * Heartbeats and lifecycle transitions call it.
-     */
-    async writeState(error?: string) {
-        const write = this.stateWriteQueue.then(async () => {
-            const savedSceneHash = this.savedSceneHash
-            const sceneHash = this.projectLoaded && this.viewer && this.loadedNeedsSave
-                ? await hashBytes((await serializeSceneGltf(this.viewer, {scenePath: this.scenePath})).gltf)
-                : savedSceneHash
-            const sceneDirty = this.loadedNeedsSave && sceneHash !== savedSceneHash
-            const state: EditorState = {
-                editorVersion: this.editorVersion,
-                engineVersion: RUNTIME_VERSION,
-                projectLoaded: this.projectLoaded,
-                playState: this.isPlaying ? 'playing' : 'stopped',
-                dirty: sceneDirty,
-                sceneHash,
-                savedSceneHash,
-                selectionNames: selectedNames(this.viewer),
-                lastLoadError: error || this.error || null,
-                updatedAt: new Date().toISOString(),
-                clientId: this.source.clientId,
-            }
-            try {
-                const sha256 = await writeEditorState(
-                    this.source,
-                    state,
-                    this.hashes.get('.kite3d/state.json') || '*',
-                )
-                this.hashes.set('.kite3d/state.json', sha256)
-            } catch (caught) {
-                if (!(caught instanceof ProjectConflictError)) throw caught
-            }
-        })
-        this.stateWriteQueue = write.catch(() => undefined)
-        return this.stateWriteQueue
-    }
-
-    /**
-     * Publishes an error to the UI.
+     * Reports an error to the UI.
      * Browser, runtime, module, and import error handlers call it.
      */
     reportError(error: unknown) {
@@ -1443,27 +1367,14 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
         this.dispatchEvent({type: 'stateChange'})
     }
 
-    private startHeartbeat() {
-        this.stopHeartbeat()
-        this.heartbeat = setInterval(() => void this.writeState(), 5_000)
-    }
-
-    private stopHeartbeat() {
-        if (!this.heartbeat) return
-        clearInterval(this.heartbeat)
-        this.heartbeat = undefined
-    }
-
     /**
      * Releases viewers, listeners, and timers.
      * Editor teardown calls it when replacing the manager.
      */
     dispose() {
         this.unsubscribe?.()
-        this.stopHeartbeat()
         window.removeEventListener('error', this.onWindowError)
         window.removeEventListener('unhandledrejection', this.onUnhandledRejection)
-        window.removeEventListener('pagehide', this.onPageHide)
         this.game?.dispose()
         if (this.viewer) {
             this.detachIdleFrameCap()
@@ -1557,11 +1468,6 @@ function uniqueProjectAssetPath(path: string, entries: ProjectFileEntry[]): stri
     let suffix = 1
     while (used.has(`${stem}-${suffix}${extension}`)) suffix += 1
     return `${stem}-${suffix}${extension}`
-}
-
-async function hashBytes(bytes: Uint8Array): Promise<string> {
-    const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource)
-    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('')
 }
 
 async function compositeScreenshot(source: HTMLCanvasElement): Promise<Blob> {
@@ -1699,13 +1605,6 @@ function safeLibraryResourcePath(uri: string, index: number): string {
 
 function safeFileName(name: string): string {
     return name.replace(/[^a-zA-Z0-9._-]+/g, '-') || 'file.bin'
-}
-
-function selectedNames(viewer?: ThreeViewer): string[] {
-    const selected = viewer?.getPlugin(PickingPlugin)?.getSelectedObject()
-    if (!selected) return []
-    const values = Array.isArray(selected) ? selected : [selected]
-    return values.map((value) => value.name || value.uuid)
 }
 
 function errorMessage(error: unknown) {
