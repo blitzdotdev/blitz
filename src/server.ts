@@ -200,6 +200,19 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     app.get('/favicon.ico', () => serveStaticFile(resolve(editorDirectory, 'favicon.ico'), editorDirectory))
     app.get('/api/import-map', async () => jsonResponse(await readProjectImportMap(projectRoot)))
     app.get('/api/files', async () => jsonResponse(await buildManifest(projectRoot)))
+    app.get('/api/directories', async () => jsonResponse({directories: await buildDirectoryManifest(projectRoot)}))
+    app.post('/api/directories', async (c) => {
+        const body = await readJsonBody(c.req.raw)
+        if (typeof body.path !== 'string') {
+            return jsonResponse({error: {code: 'invalid_path', message: 'A directory path is required.'}}, 400)
+        }
+        const directoryPath = await safeProjectPath(projectRoot, body.path, true)
+        if (await fileExists(directoryPath)) {
+            return jsonResponse({error: {code: 'already_exists', message: 'A file or directory with that name already exists.'}}, 409)
+        }
+        await mkdir(directoryPath)
+        return jsonResponse({path: body.path}, 201)
+    })
     app.get('/api/state', async () => jsonResponse(await projectState(projectRoot)))
     app.get('/api/events', (c) => {
         c.header('Cache-Control', 'no-cache')
@@ -824,6 +837,22 @@ export async function buildManifest(root: string): Promise<ManifestEntry[]> {
                 const metadata = await stat(target)
                 entries.push({path, size: metadata.size, sha256: await hashFile(target), mtime: metadata.mtimeMs})
             }
+        }
+    }
+}
+
+async function buildDirectoryManifest(root: string): Promise<string[]> {
+    const directories: string[] = []
+    await walk(root, '')
+    return directories.sort((left, right) => left.localeCompare(right))
+
+    async function walk(directory: string, prefix: string): Promise<void> {
+        for (const entry of await readdir(directory, {withFileTypes: true})) {
+            if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+            const path = prefix ? `${prefix}/${entry.name}` : entry.name
+            if (!isIncludedPath(path)) continue
+            directories.push(path)
+            await walk(resolve(directory, entry.name), path)
         }
     }
 }
