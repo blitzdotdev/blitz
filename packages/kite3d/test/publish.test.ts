@@ -25,7 +25,7 @@ it('persists a redacted failed result after release verification fails', async (
         backends.push(backend)
 
         await expect(publishFromDisk(root, {
-            slug: 'status-game', backendUrl: backend.url, noCheck: true,
+            slug: 'status-game', backendUrl: backend.url,
         })).rejects.toThrow('Published file verification failed')
 
         const deploys = await readDeploys(new NodeProjectDirectory(root).asHandle())

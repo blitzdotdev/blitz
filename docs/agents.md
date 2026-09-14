@@ -19,8 +19,6 @@ npx kite3d dev
 
 Run `npx kite3d doctor` to check Node, the project version pin, installed Kite3D package versions, the development port or live project server, backend and runtime registration, Playwright Chromium, and Git. It warns when the detected repository root is not the project root. Fix every FAIL row before relying on the affected workflow.
 
-Create a recoverable point before agent work with `npx kite3d checkpoint "before agent work"`. It commits all project files, including the saved scene, and prints the short Git hash. Restore files without rewriting history with `npx kite3d restore <hash>`, or omit the hash to restore the latest Kite3D checkpoint. Both commands refuse a parent repository unless `--allow-parent-repo` is supplied. Restore is refused while publish holds its lock. The editor exposes the same actions as Checkpoint beside Check and Restore last checkpoint under Settings.
-
 Run `npx kite3d archive` to write `<project-name>-source.zip`. The archive uses the publish exclusion rules, omits `node_modules`, `.kite3d`, and `.git`, and includes `KITE3D-PROJECT.txt` with the creation date, Git commit, and installed Kite3D package versions.
 
 Upgrade the project with `npx kite3d upgrade`. Upgrade targets the invoked CLI's exact version even when the project pins an older CLI. It applies every migration the invoked version knows, rewrites both version fields, runs `npm install --ignore-scripts`, validates the scene, and records a `kite3d-upgrade` journal entry.
@@ -47,12 +45,9 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 
 # Engine quick reference
 
-- `createGame` and `createStoppedGame`: boot Play mode or an authoring-only stopped scene; `@kite3d/engine/src/runtime/createGame.ts`.
+- `createGame`: boot Play mode; `@kite3d/engine/src/runtime/createGame.ts`.
 - `setAuthoringMetadata`, `getAuthoringMetadata`, and `AuthoringRole`: tag and read stable `direct` or `template` sources; `@kite3d/engine/src/authoring.ts`.
 - `RuntimeObjectOwner`: own Play-only roots, clones, effects, and cleanup; `@kite3d/engine/src/authoring.ts`.
-- `registerGameValidation`: register a gameplay assertion consumed by `kite3d check`; `@kite3d/engine/src/authoringValidation.ts`.
-- `publishGameTelemetry`: replace `window.kite3dGame.telemetry` with an immutable test snapshot; `@kite3d/engine/src/authoringValidation.ts`.
-- `authoringQualityReport`, `runtimeCleanupReport`, `semanticSceneSnapshot`, and `persistenceReport`: implement the three check outcomes; `@kite3d/engine/src/authoringValidation.ts`.
 - `serializeSceneGltf` and `serializeSceneGltfDocument`: write deterministic text glTF and external resources; `@kite3d/engine/src/sceneSerialization.ts`.
 - `HtmlUiComponent`: attach world, screen, or viewport-positioned HTML to an object; `@kite3d/engine/src/plugins/HtmlUiComponent.ts`.
 - `CannonPhysicsPlugin`, `Cannon3DBodyComponent`, and `Cannon3DShapeComponent`: physics plugin and body components; `@kite3d/engine/src/plugins/cannon/`.
@@ -62,27 +57,11 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 - `UnlitLineMaterial`: unlit line material; `threepipe/src/core/material/UnlitLineMaterial.ts`.
 - `LineMaterial2`: configurable line material; `threepipe/src/core/material/LineMaterial2.ts`.
 
-Validation and telemetry belong in `main.js`:
-
-```js
-import {publishGameTelemetry, registerGameValidation} from '@kite3d/engine'
-
-export function main({viewer}) {
-  publishGameTelemetry({state: 'ready'})
-  registerGameValidation(() => ({
-    status: viewer.scene.modelRoot.getObjectByName('Player') ? 'pass' : 'fail',
-    summary: 'Player exists.',
-  }))
-}
-```
-
 For camera ownership during Play, `camera.controlsMode = ''` disables built-in controls; set `autoLookAtTarget = true` when driving `target`, or false when driving the quaternion. Save `scene.mainCamera` and the changed camera properties in `start()`, call the gameplay camera's `activateMain()`, then reactivate the saved camera and restore its properties in `stop()`.
 
-The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `check-game`, `check-results`, `checkpoint-game`, `restore-checkpoint`, `open-game`, `project-files`, `scene-hierarchy`, and `component-types`; select them through `page.getByTestId()`.
+The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `open-game`, `project-files`, `scene-hierarchy`, and `component-types`; select them through `page.getByTestId()`.
 
-The token-protected local API is `GET /api/state`, `GET /api/files`, `GET /api/events`, `GET /api/slug/:slug`, `GET /api/import-map`, `POST /api/check`, and `POST /api/publish`.
-
-Editable is measured from the stopped scene using authored visibility and selectability, source relationships, plus the saved camera; camera containment uses a small epsilon so a point on a mesh face is outside. Persisted serializes that stopped scene, reloads the serialized files, and compares supported semantics with node names in drift paths when available.
+The token-protected local API is `GET /api/state`, `GET /api/files`, `GET /api/events`, `GET /api/slug/:slug`, `GET /api/import-map`, and `POST /api/publish`.
 
 The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Keep secrets from `.kite3d/deploys.json` and `.kite3d/dev.json` private.
 
@@ -116,7 +95,7 @@ start() {
 stop() { this.runtime?.cleanup(); this.runtime = undefined }
 ```
 
-Keep Play state out of the saved scene. The saved camera must frame authored content and stay outside solid geometry on every load, including reloads of an existing scene. Before calling a change done, Stop, run `npx kite3d check`, and read `.kite3d/check.json`; Playable, Editable, and Persisted are separate outcomes.
+Keep Play state out of the saved scene. The saved camera must frame authored content and stay outside solid geometry on every load, including reloads of an existing scene. Before calling a change done: Stop, save, reload the editor page, and look.
 
 # The scene file
 
@@ -1006,7 +985,7 @@ class EnemySystemComponent extends Object3DComponent {
 
 # Publishing
 
-Run `npx kite3d pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx kite3d pull --force` overwrites them. Then run `npx kite3d check`. It imports configured scripts in Node, resolves plugins, verifies scene component types, prints the project validation below Playable on pass or fail, and writes `.kite3d/check.json`; any failure exits 1. `kite3d publish` runs the same check first and stops on failure. Use `--no-check` only when you have deliberately verified the project another way.
+Run `npx kite3d pull` before every update and resolve any local and remote difference. Before the first publish it prints that there is nothing to pull and exits successfully. Pull keeps files changed since the last release and prints `modified locally, kept`; `npx kite3d pull --force` overwrites them. Stop Play, save, reload the editor page, and inspect the result before publishing.
 
 Create a game with `npx kite3d publish --slug my-game --name "My Game" --message "initial release"`. The first name defaults to `kite3d.name`, then `name`. Later publishes reuse the saved deploy entry and live name unless `--name` is given. The command hashes the project and its installed `node_modules/@kite3d/engine/dist/runtime.js`, uploads missing blobs, creates a release, records it in `.kite3d/deploys.json`, and prints the live URL. It sends `package.json.description` as the release description. A runtime registry mismatch is a warning unless the backend enables strict registration. Publishing requires network access and a reachable Blitz cloud API.
 

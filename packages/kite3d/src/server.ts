@@ -34,7 +34,6 @@ import {sanitizeDiagnostic} from './api.ts'
 import {ProjectModuleRewriter} from './module-rewriter.ts'
 import type {PublishProgress} from './types.ts'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
-import {checkpointProject, latestCheckpointProject, restoreProject} from './git.ts'
 import {DEVELOPMENT_PLUGIN_URL, installedPluginPackages} from './plugins.ts'
 import {pngDimensions, saveScreenshotPng} from './screenshot.ts'
 import {mountHubRoutes} from './hubRoutes.ts'
@@ -75,18 +74,16 @@ interface PendingEvent {
     timer: ReturnType<typeof setTimeout>
 }
 
-interface CommandResult {
+interface ScreenshotResult {
     ok: boolean
+    code?: string
     error?: string
     [key: string]: unknown
 }
 
-interface PendingCommand {
-    resolve: (result: CommandResult) => void
+interface PendingScreenshot {
+    resolve: (result: ScreenshotResult) => void
     timer: ReturnType<typeof setTimeout>
-}
-
-interface PendingScreenshot extends PendingCommand {
     name: string
 }
 
@@ -127,13 +124,10 @@ export async function serveEditorIndex(
     token: string,
     editorDirectory: string,
     transform: (source: string) => string | Promise<string> = (source) => source,
-    headlessSource?: string,
 ): Promise<Response> {
     const url = new URL(request.url)
     if (url.searchParams.get('t') !== token) return textResponse('Missing or invalid Kite3D token', 401)
-    const source = url.searchParams.get('headless') === 'check' && headlessSource !== undefined
-        ? headlessSource
-        : await readFile(resolve(editorDirectory, 'index.html'), 'utf8')
+    const source = await readFile(resolve(editorDirectory, 'index.html'), 'utf8')
     const response = new Response(await transform(source), {
         headers: {'Content-Type': 'text/html; charset=utf-8'},
     })
@@ -166,7 +160,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const token = randomBytes(24).toString('base64url')
     const editorDirectory = await resolveEditorDirectory()
     const clients = new Map<SSEStreamingApi, string | undefined>()
-    const pendingCommands = new Map<string, PendingCommand>()
     const pendingScreenshots = new Map<string, PendingScreenshot>()
     const pendingEvents = new Map<string, PendingEvent>()
     const pendingWatchedFiles = new Map<string, ReturnType<typeof setTimeout>>()
@@ -193,7 +186,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         token,
         editorDirectory,
         (source) => injectProjectImportMap(source, projectRoot),
-        headlessCheckHtml(),
     )
     app.get('/', serveIndex)
     app.get('/index.html', serveIndex)
@@ -314,23 +306,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         await writeDeploys(projectDirectory, deploys)
         return jsonResponse(payload, backendResponse.status)
     })
-    app.post('/api/check', async () => {
-        if (![...clients.values()].some(Boolean)) {
-            return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected.'}}, 409)
-        }
-        const id = randomBytes(16).toString('hex')
-        const result = await new Promise<CommandResult>((resolveCommand) => {
-            const timer = setTimeout(() => {
-                pendingCommands.delete(id)
-                resolveCommand({ok: false, error: 'The connected editor did not finish the check within 60 seconds.'})
-            }, 60_000)
-            pendingCommands.set(id, {resolve: resolveCommand, timer})
-            void broadcast('command', {id, command: 'check'})
-        })
-        return result.ok
-            ? jsonResponse(result)
-            : jsonResponse({error: {code: 'check_failed', message: result.error || 'Check failed.'}, ...result}, 409)
-    })
     app.post('/api/screenshot', async (c) => {
         const body = await readJsonBody(c.req.raw)
         if (body.name !== undefined && typeof body.name !== 'string') {
@@ -340,7 +315,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected.'}}, 409)
         }
         const id = randomBytes(16).toString('hex')
-        const result = await new Promise<CommandResult>((resolveScreenshot) => {
+        const result = await new Promise<ScreenshotResult>((resolveScreenshot) => {
             const timer = setTimeout(() => {
                 pendingScreenshots.delete(id)
                 resolveScreenshot({
@@ -401,42 +376,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             pending.resolve({ok: false, error: errorMessage(error)})
             throw error
         }
-    })
-    app.get('/api/checkpoint', async () => jsonResponse({
-        checkpoint: await latestCheckpointProject(projectRoot),
-    }))
-    app.post('/api/checkpoint', async (c) => {
-        const body = await readJsonBody(c.req.raw)
-        if (body.label !== undefined && typeof body.label !== 'string') {
-            return jsonResponse({error: {code: 'invalid_label', message: 'label must be a string.'}}, 400)
-        }
-        return jsonResponse(await checkpointProject(projectRoot, typeof body.label === 'string' ? body.label : undefined))
-    })
-    app.post('/api/restore', async (c) => {
-        const body = await readJsonBody(c.req.raw)
-        if (body.hash !== undefined && typeof body.hash !== 'string') {
-            return jsonResponse({error: {code: 'invalid_hash', message: 'hash must be a string.'}}, 400)
-        }
-        if (publishActive || await fileExists(resolve(projectRoot, '.kite3d/publish.lock'))) {
-            return jsonResponse({
-                error: {code: 'publish_locked', message: 'Cannot restore while a publish is in progress.'},
-            }, 409)
-        }
-        return jsonResponse(await runServerMutation(() => restoreProject(
-            projectRoot,
-            typeof body.hash === 'string' ? body.hash : undefined,
-        )))
-    })
-    app.post('/api/commands/:id', async (c) => {
-        const id = c.req.param('id')
-        if (!/^[a-f\d]+$/.test(id)) return jsonResponse({error: {code: 'command_not_found', message: 'Command is no longer pending.'}}, 404)
-        const pending = pendingCommands.get(id)
-        if (!pending) return jsonResponse({error: {code: 'command_not_found', message: 'Command is no longer pending.'}}, 404)
-        const body = await readJsonBody(c.req.raw) as CommandResult
-        clearTimeout(pending.timer)
-        pendingCommands.delete(id)
-        pending.resolve({...body, ok: body.ok === true})
-        return jsonResponse({accepted: true}, 202)
     })
     app.post('/api/publish', async (c) => {
         if (!options.publish) return jsonResponse({error: {code: 'publish_unavailable', message: 'Publish is not configured.'}}, 501)
@@ -670,11 +609,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             for (const client of eventClients) client.abort()
             await Promise.all(eventClients.map((client) => client.close()))
             clients.clear()
-            for (const command of pendingCommands.values()) {
-                clearTimeout(command.timer)
-                command.resolve({ok: false, error: 'The development server closed before the command finished.'})
-            }
-            pendingCommands.clear()
             for (const screenshot of pendingScreenshots.values()) {
                 clearTimeout(screenshot.timer)
                 screenshot.resolve({ok: false, error: 'The development server closed before the screenshot finished.'})
@@ -889,147 +823,6 @@ async function readProjectPackageJson(root: string): Promise<Record<string, unkn
 function safePluginFilePath(path: string): boolean {
     return Boolean(path) && !path.startsWith('/') && !path.includes('\\')
         && path.split('/').every((part) => Boolean(part) && part !== '.' && part !== '..')
-}
-
-function headlessCheckHtml(): string {
-    return `<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Kite3D check</title></head>
-<body><canvas id="stopped" width="640" height="360"></canvas><canvas id="playable" width="640" height="360"></canvas><canvas id="second" width="640" height="360"></canvas>
-<script type="module">
-import {
-    authoringQualityReport,
-    createGame,
-    createStoppedGame,
-    persistenceReport,
-    semanticSceneSnapshot,
-    serializeSceneGltf,
-} from '@kite3d/engine'
-
-const started = performance.now()
-const errors = []
-const message = value => value instanceof Error ? value.message : String(value)
-const consoleError = console.error.bind(console)
-console.error = (...values) => {
-    consoleError(...values)
-    errors.push(values.map(message).join(' '))
-}
-addEventListener('error', event => errors.push(message(event.error || event.message)))
-addEventListener('unhandledrejection', event => errors.push(message(event.reason)))
-
-const codes = issues => [...new Set(issues.map(issue => issue.code))]
-const runFrames = (viewer, target) => new Promise((resolve, reject) => {
-    let frames = 0
-    const timeout = setTimeout(() => {
-        viewer.removeEventListener('preFrame', onFrame)
-        reject(new Error('The game did not render ' + target + ' frames within 10 seconds.'))
-    }, 10000)
-    const onFrame = () => {
-        frames += 1
-        if (frames < target) {
-            viewer.setDirty()
-            return
-        }
-        clearTimeout(timeout)
-        viewer.removeEventListener('preFrame', onFrame)
-        resolve()
-    }
-    viewer.addEventListener('preFrame', onFrame)
-    viewer.setDirty()
-})
-
-try {
-    const base = new URL('/files/', location.href).href
-    const stopped = await createStoppedGame({base, canvas: document.getElementById('stopped'), onError: error => errors.push(message(error))})
-    const before = semanticSceneSnapshot(stopped.viewer)
-    const editable = authoringQualityReport(stopped.viewer)
-    let serialized
-    let serializationError
-    try {
-        serialized = await serializeSceneGltf(stopped.viewer, {scenePath: stopped.project.mainScene})
-    } catch (error) {
-        serializationError = message(error)
-    }
-    const stoppedCleanup = stopped.dispose()
-
-    const first = await createGame({base, canvas: document.getElementById('playable'), onError: error => errors.push(message(error))})
-    const relationshipIssues = authoringQualityReport(first.viewer).issues.filter(issue =>
-        issue.code === 'MISSING_AUTHORING_SOURCE' || issue.code === 'RUNTIME_SOURCE_DRIFT')
-    const frameCount = Math.max(1, Number(new URL(location.href).searchParams.get('frames')) || 30)
-    await runFrames(first.viewer, frameCount)
-    const projectValidation = await first.runGameValidation()
-    const cleanup = first.dispose()
-    if (!stoppedCleanup.ok) cleanup.issues.push(...stoppedCleanup.issues)
-
-    let persistence
-    const networkFetch = window.fetch.bind(window)
-    try {
-        const savedFiles = new Map()
-        if (serialized) {
-            savedFiles.set(new URL(stopped.project.mainScene, base).href, serialized.gltf)
-            for (const file of serialized.files) savedFiles.set(new URL(file.path, base).href, file.bytes)
-            window.fetch = (input, init) => {
-                const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href).href
-                const bytes = savedFiles.get(url)
-                return bytes
-                    ? Promise.resolve(new Response(bytes, {headers: {'Content-Type': url.endsWith('.gltf') ? 'model/gltf+json' : 'application/octet-stream'}}))
-                    : networkFetch(input, init)
-            }
-        }
-        const second = await createStoppedGame({base, canvas: document.getElementById('second'), onError: error => errors.push(message(error))})
-        persistence = persistenceReport(before, semanticSceneSnapshot(second.viewer))
-        const secondCleanup = second.dispose()
-        if (!secondCleanup.ok) cleanup.issues.push(...secondCleanup.issues)
-    } catch (error) {
-        persistence = {
-            ok: false,
-            issues: [{code: 'PERSISTENCE_DRIFT', severity: 'error', message: 'Reload failed: ' + message(error)}],
-            summary: 'Reload failed: ' + message(error),
-        }
-    } finally {
-        window.fetch = networkFetch
-    }
-
-    const cleanupErrors = cleanup.issues.filter(issue => issue.severity === 'error')
-    const playableOk = errors.length === 0 && projectValidation.ok && relationshipIssues.length === 0 && cleanupErrors.length === 0
-    const playableReasons = [
-        errors.length ? errors.length + ' runtime error(s).' : '',
-        !projectValidation.ok ? projectValidation.summary : '',
-        relationshipIssues.length ? relationshipIssues.length + ' runtime source issue(s).' : '',
-        cleanupErrors.length ? cleanupErrors.length + ' cleanup issue(s).' : '',
-    ].filter(Boolean)
-    window.__kite3dCheckResult = {
-        ok: playableOk && editable.ok && persistence.ok && !serializationError,
-        mode: 'headless',
-        outcomes: [
-            {
-                name: 'Playable', status: playableOk ? 'pass' : 'fail',
-                summary: playableOk ? 'The game booted and ran ' + frameCount + ' frames without errors.' : playableReasons.join(' '),
-                codes: codes([...relationshipIssues, ...cleanupErrors]), durationMs: Math.round(performance.now() - started),
-                report: {projectValidation, cleanup, runtimeErrors: errors.length, relationships: relationshipIssues},
-            },
-            {
-                name: 'Editable', status: editable.ok ? 'pass' : 'fail', summary: editable.summary,
-                codes: codes(editable.issues), report: editable,
-            },
-            {
-                name: 'Persisted', status: persistence.ok && !serializationError ? 'pass' : 'fail',
-                summary: serializationError ? 'Serialization failed: ' + serializationError : persistence.summary,
-                codes: codes(persistence.issues), report: persistence,
-            },
-        ],
-    }
-} catch (error) {
-    const summary = 'Headless check failed: ' + message(error)
-    window.__kite3dCheckResult = {
-        ok: false,
-        mode: 'headless',
-        outcomes: ['Playable', 'Editable', 'Persisted'].map(name => ({name, status: 'fail', summary, codes: []})),
-    }
-} finally {
-    window.__kite3dCheckDone = true
-}
-</script></body></html>`
 }
 
 async function injectProjectImportMap(html: string, root: string): Promise<string> {

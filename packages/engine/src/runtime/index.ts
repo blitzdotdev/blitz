@@ -1,4 +1,4 @@
-export {createGame, createStoppedGame} from './createGame.ts'
+export {createGame} from './createGame.ts'
 export type {CreatedGame, CreateGameOptions, RuntimeProject} from './createGame.ts'
 export {RUNTIME_VERSION} from './version.ts'
 export * from './projectFormat.ts'
@@ -10,7 +10,6 @@ export {CannonPhysicsPlugin} from '../plugins/cannon/CannonPhysicsPlugin.ts'
 export {serializeSceneGltf, serializeSceneGltfDocument} from '../sceneSerialization.ts'
 export type {SerializeSceneGltfOptions, SerializedSceneFile, SerializedSceneGltf} from '../sceneSerialization.ts'
 export * from '../authoring.ts'
-export * from '../authoringValidation.ts'
 
 export * from 'threepipe'
 export * from 'uiconfig.js'

@@ -16,13 +16,12 @@ import {
     stopDev,
     upgradeProject,
 } from './commands.ts'
-import {checkProject, formatCheckTable} from './check.ts'
 import {enforceVersionPin} from './version-pin.ts'
 import {KITE3D_VERSION} from './versions.ts'
 import {sanitizeDiagnostic} from './api.ts'
 import {archiveProject} from './archive.ts'
 import {doctorProject, formatDoctorTable} from './doctor.ts'
-import {checkpointProject, gitRepositoryRoot, restoreProject} from './git.ts'
+import {gitRepositoryRoot} from './git.ts'
 import {assertKite3dProjectRoot, isKite3dProjectRoot} from './project-root.ts'
 import {LEGACY_PROJECT_MESSAGE, legacyProjectMigrationNeeded} from './legacy.ts'
 import {bundledSkills} from './skills.ts'
@@ -34,7 +33,6 @@ Workflow:
   npx kite3d init my-game && cd my-game && npm install
   Read AGENTS.md in the project. It is the guide: engine API, scene file, rules.
   npx kite3d dev        keeps the local editor running while you edit
-  npx kite3d check      run it and fix every failure before you publish
   npx kite3d publish    prints the live URL
 
 Usage: kite3d <command> [options]
@@ -43,15 +41,12 @@ Commands:
   init [dir] [--no-git]       Create a Kite3D project and Git repository
   dev [options]               Start or stop the local editor
   doctor [--port <port>]      Check the local development prerequisites
-  checkpoint [label]          Commit a project checkpoint
-  restore [hash]              Restore files from a checkpoint
   archive                     Write a sanitized project source ZIP
   publish [options]           Publish the project
   pull [--force]              Pull the active release
   status                      Show local deploy status
   claim [--no-open]           Open claim pages for local deploys
   screenshot [options]        Save a PNG of the editor viewport
-  check                       Check Playable, Editable, and Persisted outcomes
   journal [options]           Read the edit journal
   open [options]              Open or stop the project launcher
   sources                     Locate installed source
@@ -64,15 +59,12 @@ const COMMAND_USAGE: Record<string, string> = {
     init: 'Usage: kite3d init [dir] [--no-git]',
     dev: 'Usage: kite3d dev [--port <port>] [--no-open] [--force] [--detach | --stop]',
     doctor: 'Usage: kite3d doctor [--port <port>]',
-    checkpoint: 'Usage: kite3d checkpoint [label] [--allow-parent-repo]',
-    restore: 'Usage: kite3d restore [hash] [--allow-parent-repo]',
     archive: 'Usage: kite3d archive',
-    publish: 'Usage: kite3d publish [--slug <slug>] [--name <name>] [--message <message>] [--no-check] [--no-verify]',
+    publish: 'Usage: kite3d publish [--slug <slug>] [--name <name>] [--message <message>] [--no-verify]',
     pull: 'Usage: kite3d pull [--force]',
     status: 'Usage: kite3d status',
     claim: 'Usage: kite3d claim [--no-open]',
     screenshot: 'Usage: kite3d screenshot [--name <name>] [--headless] [--full] [--width <px>] [--height <px>] [--json]',
-    check: 'Usage: kite3d check',
     journal: 'Usage: kite3d journal [--since <iso>] [-n <count>]',
     open: 'Usage: kite3d open [--no-open] [--stop]',
     sources: 'Usage: kite3d sources',
@@ -81,7 +73,7 @@ const COMMAND_USAGE: Record<string, string> = {
 }
 
 const PROJECT_ROOT_COMMANDS = new Set([
-    'dev', 'check', 'screenshot', 'publish', 'doctor', 'checkpoint', 'restore', 'archive', 'status',
+    'dev', 'screenshot', 'publish', 'doctor', 'archive', 'status',
 ])
 
 const [command = 'help', ...args] = process.argv.slice(2)
@@ -135,7 +127,7 @@ try {
             console.log(`Next: cd ${directory} && npm install && npx kite3d dev`)
             console.log(
                 'Then read AGENTS.md in the project before you write code. '
-                + 'Build, run npx kite3d check, then npx kite3d publish.',
+                + 'Build, inspect the saved project, then run npx kite3d publish.',
             )
         }
     } else if (command === 'doctor') {
@@ -143,18 +135,6 @@ try {
         const result = await doctorProject(process.cwd(), {port: portOption(parsed.values['--port'])})
         console.log(formatDoctorTable(result))
         if (!result.ok) process.exitCode = 1
-    } else if (command === 'checkpoint') {
-        const parsed = parseArgs(args, {'--allow-parent-repo': 'boolean'}, 1)
-        const result = await checkpointProject(process.cwd(), parsed.positionals[0], {
-            allowParentRepo: parsed.values['--allow-parent-repo'] === true,
-        })
-        console.log(`Checkpoint ${result.hash}${result.label ? ` ${result.label}` : ''}`)
-    } else if (command === 'restore') {
-        const parsed = parseArgs(args, {'--allow-parent-repo': 'boolean'}, 1)
-        const result = await restoreProject(process.cwd(), parsed.positionals[0], {
-            allowParentRepo: parsed.values['--allow-parent-repo'] === true,
-        })
-        console.log(`Restored checkpoint ${result.hash}`)
     } else if (command === 'archive') {
         parseArgs(args, {})
         const result = await archiveProject()
@@ -200,21 +180,19 @@ try {
             process.once('SIGTERM', shutdown)
             console.log(`Kite3D editor: ${server.url} (Kite3D ${KITE3D_VERSION})`)
             console.log(`Project: ${server.projectRoot}`)
-            console.log('Guide: AGENTS.md in this folder. Verify with npx kite3d check. Publish with npx kite3d publish.')
+            console.log('Guide: AGENTS.md in this folder. Inspect the saved project, then publish with npx kite3d publish.')
         }
     } else if (command === 'publish') {
         const parsed = parseArgs(args, {
             '--slug': 'value',
             '--name': 'value',
             '--message': 'value',
-            '--no-check': 'boolean',
             '--no-verify': 'boolean',
         })
         const result = await publishFromDisk(process.cwd(), {
             slug: valueOption(parsed.values['--slug']),
             name: valueOption(parsed.values['--name']),
             message: valueOption(parsed.values['--message']),
-            noCheck: parsed.values['--no-check'] === true,
             noVerify: parsed.values['--no-verify'] === true,
         }, (value) => {
             const progress = value as {phase?: string, done?: number, total?: number, path?: string}
@@ -303,11 +281,6 @@ try {
             source: result.source,
             capturedAt: result.capturedAt,
         }) : result.path)
-    } else if (command === 'check') {
-        parseArgs(args, {})
-        const result = await checkProject()
-        console.log(formatCheckTable(result))
-        if (!result.ok) process.exitCode = 1
     } else if (command === 'journal') {
         const parsed = parseArgs(args, {'--since': 'value', '-n': 'value'})
         const entries = await journalFromDisk(process.cwd(), {

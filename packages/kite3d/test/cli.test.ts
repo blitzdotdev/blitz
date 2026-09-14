@@ -34,7 +34,7 @@ it('never prints deploy tokens or claim secrets from a failed publish', async ()
         let output = ''
         try {
             await execute(process.execPath, [
-                cli, 'publish', '--slug', 'diagnostic-game', '--no-check', '--no-verify',
+                cli, 'publish', '--slug', 'diagnostic-game', '--no-verify',
             ], {cwd: root, env: {...process.env, BLITZ_BACKEND_URL: backend.url}})
         } catch (error) {
             const result = error as {stdout?: string, stderr?: string}

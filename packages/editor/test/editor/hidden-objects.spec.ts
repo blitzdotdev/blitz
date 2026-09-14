@@ -2,7 +2,6 @@ import {expect, test, type Page} from '@playwright/test'
 import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
-import {checkProject} from '../../../kite3d/src/check.ts'
 import {initProject, runDev} from '../../../kite3d/src/commands.ts'
 import {startMockBackend} from '../../../kite3d/test/mockBackend.ts'
 import {closeFixtureSteps} from './fixtureClose.ts'
@@ -70,10 +69,6 @@ test('Save Scene keeps a hierarchy-hidden mesh across reloads', async ({page}) =
     const hiddenNode = saved.nodes.find((node) => node.name === 'Hidden_Wall')
     expect(hiddenNode, 'Save Scene keeps the hidden authored node').toBeDefined()
     expect(hiddenNode).toMatchObject({extensions: {WEBGI_object3d_extras: {visible: false}}})
-    const check = await checkProject(root)
-    expect(check.ok).toBe(true)
-    expect(check.outcomes.find(({name}) => name === 'Persisted')).toMatchObject({status: 'pass', codes: []})
-
     await page.reload()
     await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
     hiddenRow = page.getByRole('button', {name: /Hidden_Wall/})

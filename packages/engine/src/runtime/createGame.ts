@@ -19,13 +19,6 @@ import {MeshoptDecoder} from 'meshoptimizer'
 import {registerScripts} from '../scripts.ts'
 import {HtmlUiComponent} from '../plugins/HtmlUiComponent.ts'
 import {CannonPhysicsPlugin} from '../plugins/cannon/CannonPhysicsPlugin.ts'
-import {
-    installGameHooks,
-    runtimeCleanupReport,
-    type GameValidationFunction,
-    type GameValidationReport,
-    type RuntimeCleanupReport,
-} from '../authoringValidation.ts'
 import {RuntimeNestedAssetLoader} from './nestedAssets.ts'
 import {
     AssetsJSONManifest,
@@ -59,22 +52,14 @@ export interface RuntimeProject {
 export interface CreatedGame {
     viewer: ThreeViewer
     project: RuntimeProject
-    registerGameValidation(fn: GameValidationFunction): () => void
-    publishGameTelemetry(value: object): () => void
-    runGameValidation(): Promise<GameValidationReport>
-    dispose(): RuntimeCleanupReport
+    dispose(): void
 }
 
 type ModuleExports = Record<string, unknown>
 type RuntimeErrorHandler = (error: unknown) => void
 
 export function createGame(options: CreateGameOptions): Promise<CreatedGame> {
-    return createProjectGame(options, true)
-}
-
-/** Load the saved project without starting components, physics, the timeline, or main.js. */
-export function createStoppedGame(options: CreateGameOptions): Promise<CreatedGame> {
-    return createProjectGame(options, false)
+    return createProjectGame(options)
 }
 
 async function createProjectGame({
@@ -83,12 +68,11 @@ async function createProjectGame({
     onError,
     fileRevisions = {},
     moduleRevision,
-}: CreateGameOptions, start: boolean): Promise<CreatedGame> {
+}: CreateGameOptions): Promise<CreatedGame> {
     const reportError = createErrorReporter(onError)
     let viewer: ThreeViewer | undefined
     let nestedAssets: RuntimeNestedAssetLoader | undefined
     let removeURLModifier: (() => void) | undefined
-    let gameHooks: ReturnType<typeof installGameHooks> | undefined
 
     try {
         const baseUrl = validateBase(base)
@@ -134,7 +118,6 @@ async function createProjectGame({
             ],
         })
         viewer.timeline.endTime = 0
-        gameHooks = installGameHooks()
         entityComponents.addComponentType(HtmlUiComponent)
 
         // Three's LoadingManager delegates through this importer hook. It covers
@@ -156,49 +139,39 @@ async function createProjectGame({
         await nestedAssets.loadObjectDependencies(loadedScene as IObject3D)
         await nestedAssets.waitForPending()
 
-        if (start) {
-            viewer.timeline.reset()
-            viewer.timeline.start()
-            entityComponents.start()
-            physics.running = true
+        viewer.timeline.reset()
+        viewer.timeline.start()
+        entityComponents.start()
+        physics.running = true
 
-            const mainUrl = versionedProjectUrl('main.js', baseUrl, fileRevisions, moduleRevision)
-            const mainModule = await importModule(mainUrl.href)
-            if (mainModule.main !== undefined) {
-                if (typeof mainModule.main !== 'function') {
-                    throw new Error('main.js export "main" must be a function')
-                }
-                await mainModule.main({viewer})
+        const mainUrl = versionedProjectUrl('main.js', baseUrl, fileRevisions, moduleRevision)
+        const mainModule = await importModule(mainUrl.href)
+        if (mainModule.main !== undefined) {
+            if (typeof mainModule.main !== 'function') {
+                throw new Error('main.js export "main" must be a function')
             }
+            await mainModule.main({viewer})
         }
 
         const readyViewer = viewer
         let disposed = false
-        let cleanupReport: RuntimeCleanupReport | undefined
         return {
             viewer: readyViewer,
             project,
-            registerGameValidation: gameHooks.registerGameValidation,
-            publishGameTelemetry: gameHooks.publishGameTelemetry,
-            runGameValidation: gameHooks.runGameValidation,
             dispose() {
-                if (disposed) return cleanupReport!
+                if (disposed) return
                 disposed = true
                 entityComponents.stop()
                 physics.running = false
                 readyViewer.timeline.stop()
-                cleanupReport = runtimeCleanupReport(readyViewer)
                 nestedAssets?.dispose()
                 removeURLModifier?.()
-                gameHooks?.dispose()
                 readyViewer.dispose()
-                return cleanupReport
             },
         }
     } catch (error) {
         nestedAssets?.dispose()
         removeURLModifier?.()
-        gameHooks?.dispose()
         viewer?.dispose()
         reportError(error)
         throw error

@@ -4,7 +4,6 @@ import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {initProject, publishFromDisk, runDev} from '../../../kite3d/src/commands.ts'
-import {checkProject} from '../../../kite3d/src/check.ts'
 import {createDevServer, type DevServer} from '../../../kite3d/src/server.ts'
 import {startMockBackend, type MockBackend} from '../../../kite3d/test/mockBackend.ts'
 import {closeFixtureSteps} from './fixtureClose.ts'
@@ -91,126 +90,6 @@ test.beforeEach(async ({page}) => {
 }}}`,
         })
     })
-})
-
-// Guards the core manual workflow: all three checks run through the connected editor.
-test('runs Playable, Editable, and Persisted checks through the connected editor', async ({page}) => {
-    test.setTimeout(90_000)
-    const loadWarnings: string[] = []
-    page.on('console', (message) => {
-        if (message.type() === 'warning' && !message.text().includes('GPU stall due to ReadPixels')) {
-            loadWarnings.push(message.text())
-        }
-    })
-    await page.goto(server.url)
-    await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
-    const cameraPose = await page.evaluate(() => {
-        const scene = (window as unknown as {viewer: {scene: {
-            backgroundColor: {getHexString(): string} | null
-            defaultCamera: {position: {toArray(): number[]}}
-            mainCamera: {position: {toArray(): number[]}, target: {toArray(): number[]}}
-        }}}).viewer.scene
-        return {
-            background: scene.backgroundColor?.getHexString(),
-            camera: scene.defaultCamera.position.toArray(),
-            viewportCamera: scene.mainCamera.position.toArray(),
-            viewportTarget: scene.mainCamera.target.toArray(),
-        }
-    })
-    expect(cameraPose.background).toBe('224466')
-    expect(cameraPose.camera).toEqual([0, 5, 17])
-    for (const [actual, expected] of cameraPose.viewportCamera.map((value, index) => [value, cameraPose.camera[index]])) {
-        expect(actual).toBeCloseTo(expected)
-    }
-    for (const [actual, expected] of cameraPose.viewportTarget.map((value, index) => [value, [0, 0, 0][index]])) {
-        expect(actual).toBeCloseTo(expected)
-    }
-    expect(loadWarnings).toEqual([])
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).dirty).toBe(false)
-    await expect(page.getByTestId('save-scene')).toBeDisabled()
-    const sceneBeforeCheck = await readFile(resolve(root, 'assets/main.scene.gltf'))
-
-    const check = page.getByTestId('check-game')
-    const checkPlacement = await page.evaluate(() => {
-        const play = document.querySelector('[data-testid="play"]')
-        const open = document.querySelector('[data-testid="open-game"]')
-        const checkButton = document.querySelector('[data-testid="check-game"]')
-        const buttons = [...(play?.closest('.bp5-button-group')?.querySelectorAll('button') || [])]
-        return {
-            buttonCount: buttons.length,
-            sameGroup: play?.closest('.bp5-button-group') === checkButton?.closest('.bp5-button-group'),
-            immediatelyAfterOpen: buttons.indexOf(checkButton as HTMLButtonElement)
-                === buttons.indexOf(open as HTMLButtonElement) + 1,
-        }
-    })
-    expect(checkPlacement).toEqual({buttonCount: 5, sameGroup: true, immediatelyAfterOpen: true})
-    await expect(check).toHaveText('')
-    await expect(check.locator('.bp5-icon-tick')).toBeVisible()
-    await expect(check.locator('.kite3d-check-badge')).toHaveCount(0)
-    await check.hover()
-    await expect(page.getByText('Check the game: Playable, Editable, Persisted', {exact: true})).toBeVisible()
-    await expect(page.getByTestId('check-results')).toHaveCount(0)
-    await page.mouse.move(0, 200)
-
-    await check.click()
-    await expect(check).toBeDisabled()
-    await expect(check).toHaveClass(/bp5-loading/)
-    await expect(check).toHaveAttribute('data-check-status', 'pass', {timeout: 45_000})
-    await expect(check.locator('.kite3d-check-badge')).toHaveClass(/kite3d-check-badge-success/)
-    await page.mouse.move(0, 200)
-    await check.hover()
-    const results = page.getByTestId('check-results')
-    await expect(results).toBeVisible()
-    await expect(results.getByRole('heading', {name: 'Check', exact: true})).toBeVisible()
-    await expect(results.getByTestId('check-relative-time')).toHaveText(/^(just now|\d+ (second|minute)s? ago)$/)
-    for (const outcomeName of ['Playable', 'Editable', 'Persisted']) {
-        const outcome = results.getByTestId(`check-outcome-${outcomeName.toLowerCase()}`)
-        await expect(outcome).toContainText(outcomeName)
-        await expect(outcome.locator('.kite3d-check-status-success')).toBeVisible()
-        await expect(outcome.locator('.kite3d-check-summary')).not.toHaveText('')
-    }
-    await expect.poll(async () => JSON.parse(await readFile(resolve(root, '.kite3d/state.json'), 'utf8')).dirty).toBe(false)
-    await expect(page.getByTestId('save-scene')).toBeDisabled()
-    expect(await readFile(resolve(root, 'assets/main.scene.gltf'))).toEqual(sceneBeforeCheck)
-
-    const written = JSON.parse(await readFile(resolve(root, '.kite3d/check.json'), 'utf8')) as {
-        ok: boolean
-        mode: string
-        outcomes: Array<{name: string, status: string, report?: unknown}>
-    }
-    expect(written).toMatchObject({ok: true, mode: 'editor'})
-    expect(written.outcomes).toEqual([
-        expect.objectContaining({
-            name: 'Playable',
-            status: 'pass',
-            report: expect.objectContaining({projectValidation: expect.objectContaining({status: 'pass'})}),
-        }),
-        expect.objectContaining({name: 'Editable', status: 'pass'}),
-        expect.objectContaining({name: 'Persisted', status: 'pass'}),
-    ])
-    expect(await readFile(resolve(root, '.kite3d/console.log'), 'utf8')).toContain('[kite3d check] Playable=pass Editable=pass Persisted=pass')
-
-    await page.mouse.move(0, 200)
-    await page.evaluate(() => {
-        const viewer = (window as unknown as {viewer: {scene: {modelRoot: {
-            children: Array<{userData: Record<string, unknown>}>
-        }}}}).viewer
-        viewer.scene.modelRoot.children[0].userData.kite3dAuthoring = {
-            role: 'template', id: 'orphan-copy', sourceId: 'missing-template',
-        }
-    })
-    await check.click()
-    await expect(check).toHaveAttribute('data-check-status', 'fail', {timeout: 45_000})
-    await expect(check.locator('.kite3d-check-badge')).toHaveClass(/kite3d-check-badge-danger/)
-    await page.mouse.move(0, 200)
-    await check.hover()
-    const failingOutcome = results.locator('[data-status="fail"]').first()
-    await expect(failingOutcome).toBeVisible()
-    await expect(failingOutcome.locator('.kite3d-check-codes'))
-        .toContainText(/MISSING_AUTHORING_SOURCE|PERSISTENCE_DRIFT/)
-
-    const cliResult = await checkProject(root)
-    expect(cliResult).toMatchObject({ok: true, mode: 'editor'})
 })
 
 // Guards the owner's report: a dropped GLB was not registered in assets.json.
@@ -359,7 +238,6 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
     const httpErrors: Array<{status: number, url: string}> = []
     const library = await routeMockLibrary(page)
     await writeFile(resolve(fixture.root, '.kite3d/console.log'), '')
-    await writeFile(resolve(fixture.root, '.kite3d/check.json'), '{}\n')
     page.on('request', (request) => {
         if (request.url().startsWith('https://library.example.test/') || request.url().includes('/files/assets/imports/mock-textured/')) {
             libraryRequests.push({method: request.method(), url: request.url()})
@@ -434,15 +312,6 @@ test('persists a dropped library glTF with its buffer and texture', async ({page
         await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
         await expect.poll(() => texturedObjectState(page)).toEqual({meshCount: 1, positionCount: 3, textureWidth: 96})
 
-        await page.getByTestId('check-game').click()
-        await expect(page.getByTestId('check-game')).toBeDisabled()
-        await expect(page.getByTestId('check-game')).toHaveAttribute('data-check-status', 'pass', {timeout: 45_000})
-        await expect(page.getByTestId('check-game')).toBeEnabled()
-        const check = JSON.parse(await readFile(resolve(fixture.root, '.kite3d/check.json'), 'utf8')) as {
-            outcomes: Array<{name: string, status: string}>
-        }
-        expect(check.outcomes).toContainEqual(expect.objectContaining({name: 'Persisted', status: 'pass'}))
-
         await page.reload()
         await expect(page.getByText('Project loaded')).toBeVisible({timeout: 20_000})
         await expect.poll(() => texturedObjectState(page)).toEqual({meshCount: 1, positionCount: 3, textureWidth: 96})
@@ -482,7 +351,6 @@ async function startPublishEditor() {
         publish: (publishOptions, emit) => publishFromDisk(projectRoot, {
             ...publishOptions,
             backendUrl: mockBackend.url,
-            noCheck: true,
         }, emit),
     })
     return {

@@ -2,7 +2,7 @@ import {FC} from "react";
 import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@blueprintjs/core";
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
 import {useManagerVersion} from "../utils/UseManager.ts";
-import {Kite3dCheckButton, Kite3dOpenGameButton} from "../adapters/Kite3dToolbarControls.tsx";
+import {Kite3dOpenGameButton} from "../adapters/Kite3dToolbarControls.tsx";
 
 export const PlayModeButtonGroup: FC<{
     onPlay(): void
@@ -68,7 +68,6 @@ export const PlayModeButtonGroup: FC<{
                     );
                 })}
                 <Kite3dOpenGameButton onOpenGame={onOpenGame}/>
-                <Kite3dCheckButton/>
             </ButtonGroup>
         </div>
     )

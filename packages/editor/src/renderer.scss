@@ -756,28 +756,6 @@ body{
   width: 1px;
 }
 
-.kite3d-checkpoint-menu-popover form,
-.kite3d-restore-menu-popover > div {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  width: 260px;
-}
-
-.kite3d-checkpoint-menu-popover .bp5-button,
-.kite3d-restore-menu-popover .bp5-button {
-  align-self: flex-end;
-}
-
-.kite3d-restore-menu-popover p {
-  margin: 0;
-}
-
-.kite3d-restore-menu-popover code {
-  color: inherit;
-}
-
 .kite3d-reference-add-row {
   align-items: center;
   display: flex;
@@ -846,72 +824,6 @@ body{
   cursor: pointer;
   font-family: inherit;
   line-height: inherit;
-}
-
-.kite3d-check-badge {
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--pt-app-background-color);
-  height: 7px;
-  position: absolute;
-  right: 4px;
-  top: 4px;
-  width: 7px;
-}
-
-.kite3d-check-badge-success,
-.kite3d-check-status-success {
-  background: var(--pt-intent-success);
-}
-
-.kite3d-check-badge-danger,
-.kite3d-check-status-danger {
-  background: var(--pt-intent-danger);
-}
-
-.kite3d-check-popover {
-  padding: 10px 12px;
-  width: 320px;
-}
-
-.kite3d-check-header {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.kite3d-check-header h6 {
-  margin: 0;
-}
-
-.kite3d-check-header > span,
-.kite3d-check-summary,
-.kite3d-check-codes {
-  color: var(--pt-text-color-muted);
-  font-size: 12px;
-}
-
-.kite3d-check-outcome {
-  align-items: start;
-  display: grid;
-  gap: 2px 8px;
-  grid-template-columns: 8px 72px 1fr;
-  padding: 4px 0;
-}
-
-.kite3d-check-status {
-  border-radius: 50%;
-  height: 8px;
-  margin-top: 5px;
-  width: 8px;
-}
-
-.kite3d-check-outcome strong {
-  font-weight: 500;
-}
-
-.kite3d-check-codes {
-  grid-column: 3;
 }
 
 .source-editor {

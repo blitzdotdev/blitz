@@ -10,7 +10,6 @@ export function DevServerSceneSummary() {
     const cameraName = findSceneCameraName(manager.sceneText)
     const objectCount = countObjects(manager.get().scene.modelRoot)
     const lastSave = useRelativeTime(sceneFile?.mtime)
-    const check = manager.checkResult
     const openScene = () => {
         if (!sceneFile) return
         setSelectedFiles([sceneFile])
@@ -31,12 +30,6 @@ export function DevServerSceneSummary() {
             {cameraName && <SummaryRow label="Camera" value={cameraName}/>}
             <SummaryRow label="Objects" value={String(objectCount)}/>
             {lastSave && <SummaryRow label="Last save" value={lastSave}/>}
-            {check && <div className="kite3d-summary-row">
-                <span>Check</span>
-                <span className={`kite3d-status-chip ${check.ok ? 'is-success' : 'is-danger'}`}>
-                    {check.ok ? 'Passed' : 'Failed'}
-                </span>
-            </div>}
         </section>
     </div>
 }

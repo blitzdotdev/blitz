@@ -13,7 +13,6 @@ export default defineConfig({
                 paths: resolve(__dirname, 'src/paths.ts'),
                 sceneSerialization: resolve(__dirname, 'src/sceneSerialization.ts'),
                 authoring: resolve(__dirname, 'src/authoring.ts'),
-                authoringValidation: resolve(__dirname, 'src/authoringValidation.ts'),
                 version: resolve(__dirname, 'src/runtime/version.ts'),
                 projectFormat: resolve(__dirname, 'src/runtime/projectFormat.ts'),
                 migrations: resolve(__dirname, 'src/runtime/migrations.ts'),

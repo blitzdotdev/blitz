@@ -1,7 +1,5 @@
 export {Kite3dApi, Kite3dApiError, sanitizeDiagnostic} from './api.ts'
 export type {Kite3dApiOptions, BlobUpload, BlobUploadProgress} from './api.ts'
-export {checkProject, formatCheckTable} from './check.ts'
-export type {CheckResult, CheckRow} from './check.ts'
 export {archiveProject} from './archive.ts'
 export type {ArchiveResult} from './archive.ts'
 export {doctorProject, formatDoctorTable} from './doctor.ts'
@@ -47,8 +45,7 @@ export {createHubServer, openProjectHub, readHubState, stopProjectHub} from './h
 export type {HubServer, HubState} from './hub.ts'
 export {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 export {enforceVersionPin, findPinnedProject} from './version-pin.ts'
-export {checkpointProject, gitHead, gitRepositoryRoot, latestCheckpointProject, restoreProject} from './git.ts'
-export type {CheckpointResult} from './git.ts'
+export {gitHead, gitRepositoryRoot} from './git.ts'
 export type {PublishProjectOptions, PullProjectOptions} from './publish.ts'
 export type {
     CreatedAnonymousGame,

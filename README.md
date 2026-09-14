@@ -34,7 +34,6 @@ Or manually install:
 npx kite3d init my-game
 cd my-game && npm install
 npx kite3d dev        # local editor, keeps running while you edit
-npx kite3d check      # proves the game is Playable, Editable, Persisted
 npx kite3d publish    # live at https://<slug>.app.blitz.dev/
 ```
 
@@ -52,8 +51,6 @@ npx kite3d publish    # live at https://<slug>.app.blitz.dev/
 |---|---|
 | `kite3d init <dir>` | Create a project and its Git repository |
 | `kite3d dev` | Start the local editor |
-| `kite3d check` | Run the Playable, Editable, Persisted checks |
-| `kite3d checkpoint [label]` | Commit a checkpoint; `kite3d restore` brings one back |
 | `kite3d publish` | Publish a release; `kite3d pull` fetches the active one |
 | `kite3d doctor` | Verify the local setup |
 | `kite3d skills` | List bundled skills with absolute `SKILL.md` paths |
@@ -71,7 +68,7 @@ Use `npx kite3d@next init my-game` or `npx kite3d@next upgrade` to try the next 
 
 | Package | What it is |
 |---|---|
-| [`kite3d`](packages/kite3d) | The `kite3d` command: local server, checks, checkpoints, publish |
+| [`kite3d`](packages/kite3d) | The `kite3d` command: local server, screenshots, publish |
 | [`@kite3d/engine`](packages/engine) | UI-free runtime, project format, scripting helpers, game plugins |
 | [`@kite3d/editor`](packages/editor) | The React editor served by `kite3d dev` |
 | [`packages/kite3d/template`](packages/kite3d/template) | Starter files bundled in `kite3d` and copied by `kite3d init` |

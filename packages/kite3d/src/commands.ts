@@ -14,7 +14,6 @@ import {createDevServer, type DevServer} from './server.ts'
 import type {DeploysFile, PublishProgress} from './types.ts'
 import {appendJournalEntry, readJournal, type JournalEntry, type ReadJournalOptions} from './journal.ts'
 import {KITE3D_VERSION} from './versions.ts'
-import {checkProject} from './check.ts'
 import {gitRepositoryRoot, gitTracksProject, initializeGitRepository} from './git.ts'
 import {assertLegacyEngineIsHoisted, migrateLegacyProject} from './legacy.ts'
 import {screenshotProject, type ScreenshotOptions, type ScreenshotResult} from './screenshot.ts'
@@ -28,7 +27,6 @@ export interface PublishFromDiskOptions {
     name?: string
     message?: string
     backendUrl?: string
-    noCheck?: boolean
     noVerify?: boolean
 }
 
@@ -284,19 +282,6 @@ export async function publishFromDisk(
         await writeDeploys(directory, deploys)
         await assertEditorAllowsPublish(root)
 
-        if (!options.noCheck) {
-            const check = await checkProject(root)
-            if (!check.ok) {
-                const first = check.rows.find(({status}) => status === 'fail')
-                const outcome = check.outcomes.find(({status}) => status === 'fail')
-                const detail = first
-                    ? `${first.kind} ${first.path}: ${first.detail}`
-                    : outcome ? `${outcome.name}${outcome.codes.length ? ` ${outcome.codes.join(', ')}` : ''}: ${outcome.summary}` : ''
-                const error = new Error(`Project check failed${detail ? `: ${detail}` : ''}. Run kite3d check for details, or use --no-check to skip it.`)
-                Object.assign(error, {status: 422, code: 'check_failed'})
-                throw error
-            }
-        }
         const result = await publishProject({
             dirHandle: directory,
             api: new Kite3dApi({baseUrl: resolveBackendUrl(options.backendUrl)}),
