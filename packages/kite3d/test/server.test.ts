@@ -1,10 +1,10 @@
-import {mkdtemp, mkdir, open, readFile, rm, writeFile} from 'node:fs/promises'
+import {mkdtemp, mkdir, open, readFile, rm, stat, utimes, writeFile} from 'node:fs/promises'
 import {request} from 'node:http'
 import {createConnection} from 'node:net'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, expect, it} from 'vitest'
-import {createDevServer, type DevServer, type DevServerOptions} from '../src/server.ts'
+import {createDevServer, type DevServer, type DevServerOptions, type ManifestEntry} from '../src/server.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 
 const cleanup: Array<() => Promise<void>> = []
@@ -116,6 +116,39 @@ it('settles split external scene writes before journaling', async () => {
         })
         expect.soft(externalEntries.some(journalEntryHasErrors)).toBe(false)
     })
+
+// Guards the owner's report: /api/files reread and rehashed 3.4 GB on every Play.
+// The walk now reuses a cached hash while the size and the modification time hold,
+// so a rewrite that leaves both untouched must still report the new hash.
+it('reports a new manifest hash after a same size rewrite that keeps the modification time', async () => {
+        const {server, root, headers} = await startServer()
+        const target = resolve(root, 'main.js')
+        const original = await readFile(target, 'utf8')
+        // Whole seconds, so the rewrite below restores the modification time exactly.
+        // A Date drops the sub-millisecond part and would move the time on its own.
+        const pinnedSeconds = 1_700_000_000
+        await utimes(target, pinnedSeconds, pinnedSeconds)
+        const firstHash = await manifestHash(server, headers, 'main.js')
+
+        const controller = new AbortController()
+        const eventsResponse = await fetch(`${base(server)}/api/events`, {headers, signal: controller.signal})
+        const eventPromise = readEvent(eventsResponse, controller, 'main.js')
+        const rewritten = original.replace('main', 'MAIN')
+        expect(rewritten).toHaveLength(original.length)
+        await writeFile(target, rewritten)
+        await utimes(target, pinnedSeconds, pinnedSeconds)
+        await eventPromise
+
+        expect((await stat(target)).mtimeMs).toBe(pinnedSeconds * 1_000)
+        expect(await manifestHash(server, headers, 'main.js')).not.toBe(firstHash)
+    })
+
+async function manifestHash(server: DevServer, headers: Record<string, string>, path: string): Promise<string> {
+    const entries = await (await fetch(`${base(server)}/api/files`, {headers})).json() as ManifestEntry[]
+    const entry = entries.find((candidate) => candidate.path === path)
+    if (!entry) throw new Error(`${path} is missing from the manifest`)
+    return entry.sha256
+}
 
 async function temporaryProject(): Promise<string> {
     const root = await mkdtemp(resolve(tmpdir(), 'kite3d-server-'))
