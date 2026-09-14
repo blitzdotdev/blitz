@@ -103,6 +103,7 @@ export function FilesPanelGrid() {
         if (a.type === b.type) return a.path.localeCompare(b.path)
         return a.type === 'directory' ? -1 : 1
     })
+    const [gridSelectionPath, setGridSelectionPath] = useState<string | null>(selectedFiles[0]?.path || null)
     const {prompt, close} = useDialogPrompt()
     const saveBeforeClose = () => new Promise<boolean | null>((resolve) => {
         let resolved = false
@@ -202,6 +203,15 @@ export function FilesPanelGrid() {
         }],
     ])
     const {handleContextMenu} = useObjContextMenu(actions)
+    const selectGridEntry = (file: typeof files[number]) => {
+        setGridSelectionPath(file.path)
+        if (file.type === 'directory') {
+            setSelectedFiles([])
+            return
+        }
+        setSelectedFiles([file])
+        manager.selectFile(file.path)
+    }
     const showEmptyMenu = (event: React.MouseEvent<HTMLElement>) => {
         event.preventDefault()
         event.stopPropagation()
@@ -213,6 +223,7 @@ export function FilesPanelGrid() {
         onContextMenu={showEmptyMenu}
         onClick={(event) => {
             if ((event.target as HTMLElement).closest('.file-item-button')) return
+            setGridSelectionPath(null)
             setSelectedFiles([])
         }}
     ><ButtonGroup
@@ -220,19 +231,40 @@ export function FilesPanelGrid() {
         data-testid="project-files"
         tabIndex={0}
         onKeyDown={(event) => {
-            if (event.key !== 'Enter' || selectedFiles.length !== 1) return
-            const selected = selectedFiles[0]
-            if (!isOpenableFile(selected.path)) return
-            event.preventDefault()
-            event.stopPropagation()
-            void openFile(selected)
+            if (event.key === 'Escape') {
+                event.preventDefault()
+                setGridSelectionPath(null)
+                setSelectedFiles([])
+                return
+            }
+            const selectedIndex = files.findIndex((file) => file.path === gridSelectionPath)
+            if (event.key === 'Enter' && selectedIndex >= 0) {
+                event.preventDefault()
+                event.stopPropagation()
+                const selected = files[selectedIndex]
+                if (selected.type === 'directory') {
+                    setCurrentPath(`/${selected.path}`)
+                    setGridSelectionPath(null)
+                    setSelectedFiles([])
+                } else if (isOpenableFile(selected.path)) {
+                    void openFile(selected)
+                }
+                return
+            }
+            if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && selectedIndex >= 0) {
+                event.preventDefault()
+                event.stopPropagation()
+                const offset = event.key === 'ArrowRight' ? 1 : -1
+                const nextIndex = Math.max(0, Math.min(files.length - 1, selectedIndex + offset))
+                selectGridEntry(files[nextIndex])
+            }
         }}
     >
         {files.map((file) => <FileButton
             key={file.path}
             fileEntry={file}
             aria-label={file.path}
-            active={selectedFiles[0]?.path === file.path}
+            active={gridSelectionPath === file.path}
             onContextMenu={(event) => {
                 if (file.type === 'directory') return
                 event.preventDefault()
@@ -248,13 +280,12 @@ export function FilesPanelGrid() {
                 handleContextMenu(event, items, file)
             }}
             onClick={() => {
-                if (file.type === 'directory') return
-                setSelectedFiles([file])
-                manager.selectFile(file.path)
+                selectGridEntry(file)
             }}
             onDoubleClick={() => {
                 if (file.type === 'directory') {
                     setCurrentPath(`/${file.path}`)
+                    setGridSelectionPath(null)
                     setSelectedFiles([])
                 } else if (isOpenableFile(file.path)) {
                     void openFile(file)
