@@ -46,6 +46,13 @@ export interface ManifestEntry {
     mtime: number
 }
 
+/**
+ * Content hashes the manifest walk may reuse. An entry stays valid while the
+ * file keeps the size and modification time the hash was taken from, so an
+ * unchanged file is stat-ed instead of read.
+ */
+export type ManifestHashCache = Map<string, {size: number, mtime: number, sha256: string}>
+
 export interface DevServerOptions {
     projectRoot?: string
     port?: number
@@ -171,6 +178,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const pendingEvents = new Map<string, PendingEvent>()
     const pendingWatchedFiles = new Map<string, ReturnType<typeof setTimeout>>()
     const knownHashes = new Map<string, string>()
+    const manifestHashCache: ManifestHashCache = new Map()
     const moduleRewriter = new ProjectModuleRewriter()
     let {path: mainScenePath, text: lastSceneText} = await readMainSceneSnapshot(projectRoot)
     let sceneJournalQueue = Promise.resolve()
@@ -183,7 +191,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const backendUrl = resolveBackendUrl(options.backendUrl)
     const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
 
-    for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)
+    for (const entry of await buildManifest(projectRoot, manifestHashCache)) knownHashes.set(entry.path, entry.sha256)
 
     const app = new Hono<LocalAppEnv>({router: new LinearRouter()})
     installLocalServerMiddleware(app, token)
@@ -199,7 +207,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     app.get('/index.html', serveIndex)
     app.get('/favicon.ico', () => serveStaticFile(resolve(editorDirectory, 'favicon.ico'), editorDirectory))
     app.get('/api/import-map', async () => jsonResponse(await readProjectImportMap(projectRoot)))
-    app.get('/api/files', async () => jsonResponse(await buildManifest(projectRoot)))
+    app.get('/api/files', async () => jsonResponse(await buildManifest(projectRoot, manifestHashCache)))
     app.get('/api/state', async () => jsonResponse(await projectState(projectRoot)))
     app.get('/api/events', (c) => {
         c.header('Cache-Control', 'no-cache')
@@ -560,6 +568,11 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     }
 
     function scheduleEvent(path: string, client?: string, forcedType?: PendingEvent['forcedType']) {
+        // Every route that changes a file reaches this function: the file PUT and
+        // DELETE handlers, the watcher, and the server mutation diff. Dropping the
+        // cached hash here keeps the manifest honest when a write leaves the size
+        // and the modification time where they were.
+        manifestHashCache.delete(path)
         const previous = pendingEvents.get(path)
         if (previous) clearTimeout(previous.timer)
         const effectiveType = previous?.forcedType === 'add' && forcedType !== 'unlink'
@@ -736,13 +749,13 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
 
     function runServerMutation<T>(operation: () => Promise<T>): Promise<T> {
         const run = mutationQueue.then(async () => {
-            const before = manifestHashes(await buildManifest(projectRoot))
+            const before = manifestHashes(await buildManifest(projectRoot, manifestHashCache))
             serverMutationActive = true
             try {
                 return await operation()
             } finally {
                 try {
-                    const after = manifestHashes(await buildManifest(projectRoot))
+                    const after = manifestHashes(await buildManifest(projectRoot, manifestHashCache))
                     const changedPaths = new Set([...before.keys(), ...after.keys()])
                     for (const path of changedPaths) {
                         const previous = before.get(path)
@@ -808,7 +821,7 @@ function manifestHashes(entries: ManifestEntry[]): Map<string, string> {
     return new Map(entries.map(({path, sha256}) => [path, sha256]))
 }
 
-export async function buildManifest(root: string): Promise<ManifestEntry[]> {
+export async function buildManifest(root: string, hashes: ManifestHashCache): Promise<ManifestEntry[]> {
     const entries: ManifestEntry[] = []
     await walk(root, '')
     return entries.sort((left, right) => left.path.localeCompare(right.path))
@@ -822,7 +835,12 @@ export async function buildManifest(root: string): Promise<ManifestEntry[]> {
             if (entry.isDirectory()) await walk(target, path)
             else if (entry.isFile()) {
                 const metadata = await stat(target)
-                entries.push({path, size: metadata.size, sha256: await hashFile(target), mtime: metadata.mtimeMs})
+                const cached = hashes.get(path)
+                const sha256 = cached && cached.size === metadata.size && cached.mtime === metadata.mtimeMs
+                    ? cached.sha256
+                    : await hashFile(target)
+                hashes.set(path, {size: metadata.size, mtime: metadata.mtimeMs, sha256})
+                entries.push({path, size: metadata.size, sha256, mtime: metadata.mtimeMs})
             }
         }
     }
