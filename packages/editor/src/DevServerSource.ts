@@ -39,6 +39,19 @@ export class DevServerSource implements ProjectSource {
         return this.json('/api/files')
     }
 
+    async listDirectories(): Promise<string[]> {
+        const result = await this.json<{directories: string[]}>('/api/directories')
+        return result.directories
+    }
+
+    async createDirectory(path: string): Promise<void> {
+        await this.json('/api/directories', {
+            method: 'POST',
+            headers: this.headers({'Content-Type': 'application/json'}),
+            body: JSON.stringify({path}),
+        })
+    }
+
     async state(): Promise<Record<string, unknown>> {
         return this.json('/api/state')
     }

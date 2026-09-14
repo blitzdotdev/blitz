@@ -24,6 +24,8 @@ export interface ProjectSource {
     read(path: string): Promise<ProjectReadResult>
     write(path: string, bytes: Uint8Array, ifMatch: string | '*'): Promise<{sha256: string}>
     delete(path: string): Promise<void>
+    listDirectories(): Promise<string[]>
+    createDirectory(path: string): Promise<void>
     events(listener: (event: ProjectEvent) => void): () => void
     checkpoint?(label?: string): Promise<{hash: string, label?: string}>
     latestCheckpoint?(): Promise<{hash: string, label?: string} | undefined>

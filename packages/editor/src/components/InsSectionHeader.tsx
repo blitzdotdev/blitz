@@ -6,9 +6,10 @@ import {ButtonGroup} from "@blueprintjs/core";
 import {InsSectionTitle} from "./InsSectionTitle.tsx";
 
 export function InsSectionHeader({
-    children, title, icon, className, style,
+    children, title, hoverTitle, icon, className, style,
 }: {
     title: string,
+    hoverTitle?: string,
     icon?: IconName | MaybeElement,
     className?: string,
     style?: React.CSSProperties,
@@ -21,7 +22,7 @@ export function InsSectionHeader({
         ...style,
     }}>
         {/*<div>File</div>*/}
-        <InsSectionTitle title={title || 'Selection'} icon={icon}/>
+        <InsSectionTitle title={title || 'Selection'} hoverTitle={hoverTitle} icon={icon}/>
         {/*{selFile.uiConfig && (<ConfigObject {...props} config={selFile.uiConfig}/>)}*/}
         {children}
     </ButtonGroup>

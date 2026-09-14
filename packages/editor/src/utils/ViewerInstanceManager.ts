@@ -20,8 +20,11 @@ import {
     TransformControlsPlugin,
     USDZLoadPlugin,
     type Class,
+    type IMaterial,
     type IObject3D,
     type IViewerPlugin,
+    PhysicalMaterial,
+    UnlitMaterial,
 } from 'threepipe'
 import {
     CannonPhysicsPlugin,
@@ -63,6 +66,7 @@ import {FileTracker} from './FileTracker.ts'
 import {DevServerAssetTracker} from '../adapters/DevServerAssetTracker.ts'
 import {writeEditorState, type EditorState} from './editorState.ts'
 import {CanvasFileDropHandler} from './CanvasFileDropHandler.tsx'
+import {cloneAssetItem} from './AssetTracker.ts'
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 const encode = (text: string) => new TextEncoder().encode(text)
@@ -124,6 +128,8 @@ export interface ProjectLoadStatus {
 }
 
 type ModuleExports = Record<string, unknown>
+export type ProjectEntryKind = 'scene' | 'asset' | 'physical-material' | 'unlit-material'
+    | 'plugin' | 'script' | 'json' | 'folder'
 
 /** Owns the persistent edit viewer and the disposable published-game viewer. */
 export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
@@ -138,6 +144,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     game?: CreatedGame
     project?: EditorProject
     manifest: ProjectFileEntry[] = []
+    directoryManifest: string[] = []
     assetsManifest: AssetsJSONManifest = {version: 1, files: {}}
     sceneText = ''
     scenePath = 'assets/main.scene.gltf'
@@ -157,7 +164,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     loadedProject: EditorProject | null = null
     loadedProjectFile: LoadedProjectFile | null = null
     loadedScene: string | null = null
-    loadedAssetObj: null = null
+    loadedAssetObj: IObject3D | IMaterial | null = null
     loadedPath: string | null = null
     selectedFilePath: string | null = null
 
@@ -288,12 +295,14 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     async loadProject(): Promise<void> {
         this.setStatus('Loading project…')
-        const [serverState, entries, packageFile, lastCheckpoint] = await Promise.all([
+        const [serverState, entries, packageFile, lastCheckpoint, directories] = await Promise.all([
             this.source.state() as unknown as Promise<ServerState>,
             this.source.list(),
             this.source.read('package.json'),
             this.source.latestCheckpoint(),
+            this.source.listDirectories(),
         ])
+        this.directoryManifest = directories
         this.lastCheckpoint = lastCheckpoint
         const assetsFile = entries.some(({path}) => path === 'assets.json')
             ? await this.source.read('assets.json')
@@ -1007,6 +1016,227 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.replaceManifest(await this.source.list())
     }
 
+    async createProjectEntry(path: string, kind: ProjectEntryKind): Promise<void> {
+        if (kind === 'folder') {
+            await this.source.createDirectory(path)
+            this.directoryManifest = await this.source.listDirectories()
+            this.changed()
+            return
+        }
+        const bytes = projectEntryBytes(path, kind)
+        const written = await this.source.write(path, bytes, '*')
+        this.hashes.set(path, written.sha256)
+        if (kind === 'plugin' || kind === 'script') await this.registerProjectModule(path, kind)
+        this.replaceManifest(await this.source.list())
+    }
+
+    async openProjectFile(path: string): Promise<void> {
+        if (path === this.scenePath && this.loadedScene) return
+        if (this.isPlaying || this.isStartingPlay) await this.stopPlay()
+        if (/\.scene\.gltf$/i.test(path)) {
+            const scene = await this.source.read(path)
+            const text = decode(scene.bytes)
+            validateSceneSource(path, text)
+            this.scenePath = path
+            this.hashes.set(path, scene.sha256)
+            this.loadedProjectFile = {path}
+            this.loadedScene = path
+            this.loadedAssetObj = null
+            this.loadedPath = this.source.fileUrl(path, scene.sha256)
+            await this.loadEditScene(text)
+            this.setStatus(`Opened ${path}`)
+            return
+        }
+        if (!/\.(?:glb|gltf|mat)$/i.test(path)) throw new Error('Only scenes and 3D assets can be opened.')
+        const asset = await this.getAssetFromPath(this.assetPathUrl(path))
+        if (!asset || (!asset.isObject3D && !asset.isMaterial)) throw new Error(`Unable to open ${path}.`)
+        const viewer = this.get()
+        viewer.getPlugin(EditModePlugin)?.exitIsolate()
+        viewer.scene.disposeSceneModels(true, true)
+        if (asset.isObject3D) await viewer.assetManager.loadImported(asset, {
+            autoCenter: true,
+            importConfig: true,
+            autoScale: true,
+            autoScaleRadius: 2,
+            clearSceneObjects: true,
+            disposeSceneObjects: true,
+        })
+        this.loadedProjectFile = {path}
+        this.loadedScene = null
+        this.loadedAssetObj = asset as IObject3D | IMaterial
+        this.loadedPath = this.assetPathUrl(path)
+        this.loadedNeedsSave = false
+        viewer.getPlugin(PickingPlugin)?.setSelectedObject(asset as IObject3D | IMaterial, false)
+        this.setStatus(`Opened ${path}`)
+        this.changed()
+    }
+
+    async importProjectAsset(path: string): Promise<IObject3D> {
+        const loadedObject = this.loadedAssetObj as IObject3D | null
+        if (!this.loadedScene && !loadedObject?.isObject3D) throw new Error('Open a scene or object asset before importing.')
+        const source = await this.getAssetFromPath(this.assetPathUrl(path))
+        if (!source?.isObject3D) throw new Error(`Unable to import ${path} as a 3D object.`)
+        const object = cloneAssetItem(source as IObject3D)
+        object.userData ||= {}
+        object.userData.rootPath = this.assetPathUrl(path)
+        object.userData.kite3dImportedInstance = true
+        object.userData.sProperties = [...assetInstanceProperties]
+        object.name = path.split('/').pop() || object.name
+        for (const child of object.children) child.userData.excludeFromExport = true
+        if (loadedObject?.isObject3D) loadedObject.add(object)
+        else this.get().scene.addObject(object)
+        this.get().getPlugin(PickingPlugin)?.setSelectedObject(object, false)
+        this.loadedNeedsSave = true
+        this.setStatus(`Imported ${path}`)
+        return object
+    }
+
+    async saveNewProjectAsset(
+        _project: EditorProject,
+        _scene: LoadedProjectFile | null,
+        object: IObject3D | IMaterial,
+    ): Promise<{path?: string, result?: IObject3D | IMaterial, error?: string}> {
+        try {
+            if (object.userData?.rootPath) return {error: 'This object is already an asset instance.'}
+            const isObject = Boolean((object as IObject3D).isObject3D)
+            const isMaterial = Boolean((object as IMaterial).isMaterial)
+            if (!isObject && !isMaterial) return {error: 'Only objects and materials can become assets.'}
+            const extension = isObject ? 'glb' : 'mat'
+            const stem = safeFileStem(object.name || (isObject ? 'object' : 'material'))
+            const path = uniqueProjectAssetPath(`assets/${stem}.asset.${extension}`, this.manifest)
+            const exported = await this.get().assetManager.exporter.exportObject(object as IObject3D, {
+                exportExt: extension,
+                viewerConfig: false,
+            })
+            if (!exported) return {error: `Unable to export ${object.name || 'asset'}.`}
+            const written = await this.source.write(path, new Uint8Array(await exported.arrayBuffer()), '*')
+            this.hashes.set(path, written.sha256)
+            const assetId = await this.registerAsset(path)
+            const rootPath = assetIdUrl(assetId, path)
+            const result = cloneAssetItem(object, rootPath) as IObject3D | IMaterial
+            result.userData ||= {}
+            result.userData.rootPath = rootPath
+            if (isObject) {
+                const source = object as IObject3D
+                const instance = result as IObject3D
+                const parent = source.parent
+                const index = parent?.children.indexOf(source) ?? -1
+                instance.userData.sProperties = [...assetInstanceProperties]
+                for (const child of instance.children) child.userData.excludeFromExport = true
+                if (parent) {
+                    source.removeFromParent()
+                    parent.add(instance)
+                    if (index >= 0) {
+                        parent.children.splice(parent.children.indexOf(instance), 1)
+                        parent.children.splice(index, 0, instance)
+                    }
+                }
+                this.get().getPlugin(PickingPlugin)?.setSelectedObject(instance, false)
+            }
+            this.loadedNeedsSave = true
+            this.replaceManifest(await this.source.list())
+            this.setStatus(`Created ${path}`)
+            return {path, result}
+        } catch (error) {
+            return {error: errorMessage(error)}
+        }
+    }
+
+    async saveProjectAsset(
+        _project: unknown,
+        _scene: unknown,
+        object: IObject3D | IMaterial,
+        path: string,
+    ): Promise<{error: string | null}> {
+        try {
+            if (!/\.(?:glb|gltf|mat)$/i.test(path)) return {error: `Unsupported asset path: ${path}`}
+            const extension = path.split('.').pop()?.toLowerCase() || 'glb'
+            const exported = await this.get().assetManager.exporter.exportObject(object as IObject3D, {
+                exportExt: extension,
+                viewerConfig: false,
+            })
+            if (!exported) return {error: `Unable to export ${path}.`}
+            let ifMatch = this.hashes.get(path)
+            if (!ifMatch) ifMatch = (await this.source.read(path)).sha256
+            const written = await this.source.write(path, new Uint8Array(await exported.arrayBuffer()), ifMatch)
+            this.hashes.set(path, written.sha256)
+            this.replaceManifest(await this.source.list())
+            if (object === this.loadedAssetObj) this.loadedNeedsSave = false
+            this.setStatus(`Saved ${path}`)
+            return {error: null}
+        } catch (error) {
+            return {error: errorMessage(error)}
+        }
+    }
+
+    async reloadProjectAsset(path: string): Promise<IObject3D | IMaterial> {
+        const file = await this.source.read(path)
+        this.hashes.set(path, file.sha256)
+        const url = versionedPath(this.assetPathUrl(path), file.sha256, String(++this.moduleReloadSequence))
+        const imported = await this.get().assetManager.importer.import(url)
+        const asset = imported.find((item) => item?.isObject3D || item?.isMaterial)
+        if (!asset) throw new Error(`Unable to reload ${path}.`)
+        this.get().getPlugin(PickingPlugin)?.setSelectedObject(asset as IObject3D | IMaterial, false)
+        if (this.loadedProjectFile?.path === path) this.loadedAssetObj = asset as IObject3D | IMaterial
+        this.setStatus(`Reloaded ${path}`)
+        this.changed()
+        return asset as IObject3D | IMaterial
+    }
+
+    async setMainScene(path: string): Promise<void> {
+        if (!/\.scene\.gltf$/i.test(path)) throw new Error('The main scene must be a .scene.gltf file.')
+        const packageFile = await this.source.read('package.json')
+        const packageJson = JSON.parse(decode(packageFile.bytes)) as ProjectPackageJSON
+        packageJson.mainScene = path
+        const written = await this.source.write(
+            'package.json',
+            encode(`${JSON.stringify(packageJson, null, 2)}\n`),
+            packageFile.sha256,
+        )
+        this.hashes.set('package.json', written.sha256)
+        if (this.project) {
+            this.project.mainScene = path
+            this.project.packageJson = packageJson
+        }
+        await this.openProjectFile(path)
+        this.changed()
+    }
+
+    private assetPathUrl(path: string): string {
+        const registered = Object.entries(this.assetsManifest.files).find(([, entry]) => entry.path === path)
+        if (!registered) return this.source.fileUrl(path, this.hashes.get(path))
+        const extension = path.split('.').pop() || 'glb'
+        return assetIdUrl(registered[0], `f.${extension}`)
+    }
+
+    async refreshProjectFiles(): Promise<void> {
+        const [files, directories] = await Promise.all([
+            this.source.list(),
+            this.source.listDirectories(),
+        ])
+        this.directoryManifest = directories
+        this.replaceManifest(files)
+    }
+
+    private async registerProjectModule(path: string, kind: 'plugin' | 'script'): Promise<void> {
+        const packageFile = await this.source.read('package.json')
+        const packageJson = JSON.parse(decode(packageFile.bytes)) as Record<string, unknown>
+        const kite3d = packageJson.kite3d && typeof packageJson.kite3d === 'object' && !Array.isArray(packageJson.kite3d)
+            ? packageJson.kite3d as Record<string, unknown>
+            : {}
+        const key = kind === 'plugin' ? 'plugins' : 'scripts'
+        const entries = Array.isArray(kite3d[key]) ? [...kite3d[key] as unknown[]] : []
+        if (!entries.some((entry) => entry === path || (entry && typeof entry === 'object' && 'import' in entry
+            && (entry as {import?: unknown}).import === path))) entries.push(path)
+        packageJson.kite3d = {...kite3d, [key]: entries}
+        const written = await this.source.write(
+            'package.json',
+            encode(`${JSON.stringify(packageJson, null, 2)}\n`),
+            packageFile.sha256,
+        )
+        this.hashes.set('package.json', written.sha256)
+    }
+
     private async registerAsset(path: string, preferredId?: string, files?: Record<string, string>): Promise<string> {
         const existing = Object.entries(this.assetsManifest.files)
             .find(([, asset]) => asset.path === path)?.[0]
@@ -1099,14 +1329,14 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     async getAssetFromPath(path: string) {
-        const normalized = path.startsWith('/kite3d/') ? path : this.source.fileUrl(path)
+        const normalized = path.startsWith('/kite3d/') || /^https?:\/\//.test(path) ? path : this.source.fileUrl(path)
         const imported = await this.get().assetManager.importer.import(normalized)
         return imported.find(Boolean)
     }
 
     resolveAssetIdPath(path?: string | null) {
         if (!path) return path ?? null
-        const id = path.replace(/^@/, '').replace(/\/$/, '')
+        const id = path.replace(/^@/, '').split('/', 1)[0]
         return this.assetsManifest.files[id]?.path || path
     }
 
@@ -1444,6 +1674,67 @@ function isPluginType(value: unknown): value is Class<IViewerPlugin> {
 
 function normalizeProjectPath(path: string) {
     return path.replace(/^\.\//, '').replace(/\\/g, '/').split(/[?#]/, 1)[0]
+}
+
+function projectEntryBytes(path: string, kind: Exclude<ProjectEntryKind, 'folder'>): Uint8Array {
+    const name = path.split('/').pop()?.replace(/\.(?:scene\.gltf|asset\.glb|asset\.mat|plugin\.js|script\.js|json)$/i, '') || 'NewEntry'
+    if (kind === 'scene') return encode(`${JSON.stringify({
+        asset: {version: '2.0', generator: 'Kite3D'},
+        scene: 0,
+        scenes: [{name, nodes: []}],
+        nodes: [],
+    }, null, 2)}\n`)
+    if (kind === 'asset') return emptyGlbBytes()
+    if (kind === 'physical-material' || kind === 'unlit-material') {
+        const material = kind === 'physical-material' ? new PhysicalMaterial() : new UnlitMaterial()
+        material.name = name
+        return encode(`${JSON.stringify(material.toJSON(), null, 2)}\n`)
+    }
+    if (kind === 'plugin') {
+        const className = safeClassName(name, 'ProjectPlugin')
+        return encode(`import {AViewerPluginSync} from 'threepipe'\n\nexport class ${className} extends AViewerPluginSync {\n  static PluginType = '${className}'\n}\n`)
+    }
+    if (kind === 'script') {
+        const className = safeClassName(name, 'ProjectComponent')
+        return encode(`import {Object3DComponent} from 'threepipe'\n\nexport class ${className} extends Object3DComponent {\n  static ComponentType = '${className}'\n  static StateProperties = ['speed']\n\n  speed = 1\n\n  update({deltaTime}) {\n    this.object.rotation.y += this.speed * deltaTime / 1000\n    return true\n  }\n}\n`)
+    }
+    return encode('{}\n')
+}
+
+function safeClassName(value: string, fallback: string): string {
+    const words = value.replace(/[^a-zA-Z0-9_$]+/g, ' ').trim().split(/\s+/).filter(Boolean)
+    const result = words.map((word) => word[0].toUpperCase() + word.slice(1)).join('').replace(/^[^a-zA-Z_$]+/, '')
+    return result || fallback
+}
+
+function emptyGlbBytes(): Uint8Array {
+    const json = encode(JSON.stringify({asset: {version: '2.0', generator: 'Kite3D'}, scene: 0, scenes: [{nodes: []}], nodes: []}))
+    const paddedLength = Math.ceil(json.byteLength / 4) * 4
+    const bytes = new Uint8Array(12 + 8 + paddedLength)
+    const view = new DataView(bytes.buffer)
+    view.setUint32(0, 0x46546c67, true)
+    view.setUint32(4, 2, true)
+    view.setUint32(8, bytes.byteLength, true)
+    view.setUint32(12, paddedLength, true)
+    view.setUint32(16, 0x4e4f534a, true)
+    bytes.fill(0x20, 20)
+    bytes.set(json, 20)
+    return bytes
+}
+
+function safeFileStem(value: string): string {
+    return value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'asset'
+}
+
+function uniqueProjectAssetPath(path: string, entries: ProjectFileEntry[]): string {
+    const used = new Set(entries.map((entry) => entry.path))
+    if (!used.has(path)) return path
+    const extensionIndex = path.indexOf('.asset.')
+    const stem = extensionIndex >= 0 ? path.slice(0, extensionIndex) : path
+    const extension = extensionIndex >= 0 ? path.slice(extensionIndex) : ''
+    let suffix = 1
+    while (used.has(`${stem}-${suffix}${extension}`)) suffix += 1
+    return `${stem}-${suffix}${extension}`
 }
 
 async function hashBytes(bytes: Uint8Array): Promise<string> {
