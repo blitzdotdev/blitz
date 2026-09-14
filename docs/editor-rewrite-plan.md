@@ -8,6 +8,8 @@ Paths: `packages/editor` is the upstream editor (repalash/threepipe-blueprint-ed
 
 Every line in the new editor is upstream's unless one of five reasons forces a change: the local dev server owns the file system; the simplifications that fall out of watching the file system and treating the editor as a pure client; agent-editable glTF text instead of GLB; one `createGame` so embedding a game is easy; a bug fix or a better abstraction. That is the whole rule. Anything else needs a line here and your mark.
 
+A second rule, yours on 2026-09-14, covers everything that goes: no legacy support. A deleted feature leaves no trace in code, docs, comments, tests or changelogs, as if it never existed. The test is `rg` for the feature's names across the repository: zero hits. Games that used a deleted export migrate on their side. This file is the one exception, because it is the list of what goes, and it leaves the repository when the rewrite ships; its history stays in git.
+
 - [ ] Accept the rule.
 
 ## 1. Why a restart and not a cleanup
@@ -22,7 +24,7 @@ The kite3d and engine packages are different. They are new code with no upstream
 
 ## 2. The repository
 
-This part is done. `~/kite3d` is the new monorepo and will become master of the kite3d repository when 0.20.0 ships from it. No GitHub remote exists yet; say the name when you want it pushed.
+This part is done. `~/kite3d` is the new monorepo and will become master of the kite3d repository. Your call on the push: nothing goes to GitHub until the rewrite is proven locally; then `main` here is force-pushed over `main` of blitzdotdev/kite3d, after the old `main` is kept there as a branch named `old-main` so nothing is lost. Tags and the `next` branch are untouched by that push.
 
 ```
 ~/kite3d  (branch main)
@@ -46,6 +48,7 @@ upstream/master ──► upstream-master   (mirror of repalash, never edited)
 Nothing builds yet. The editor's `package.json` still points at upstream's `file:../threepipe` link, and the deletions of section 3 have not run. That is step 1 of section 14.
 
 - [ ] Accept the layout: one monorepo, five packages, upstream's branch kept as a mirror.
+- [x] The push: prove it locally first, then force over blitzdotdev/kite3d `main`, keeping the old main as `old-main` (decided 2026-09-14).
 - [ ] Fork point: head 7fac408. (Alternative: c3d8c6a, the exact point we forked; head adds upstream's camera selection improvement, seven files.)
 
 ## 3. What goes from upstream
@@ -299,7 +302,7 @@ export async function writeFileHandle(fileHandle: ProjectFileHandle, file: Blob 
 
 Two things to notice. `getFileHandle` without `create` throws a `NotFoundError` DOMException, which is what upstream's `fsApi.ts:29` and `:42` already catch. And a write carries, as `If-Match`, the sha256 this tab last read or wrote for that path, so two editors on one project cannot overwrite each other silently.
 
-Here is the whole conflict story, because the base matters. Editors A and B both loaded the scene at sha S0. A saves: the server compares `If-Match: "S0"` with the file, they agree, it writes, the sha is now S1, and A remembers S1. The server sends `change {path, sha256: S1, client: A}` to every tab; B's listing learns S1, and if B has unsaved edits B is asked whether to reload the disk copy. Say B says no and saves later. B's PUT still carries S0, because the base is what B read, never what B heard. The server answers 412 with the current sha (`server.ts:298 to 300`), and nothing is written. That surfaces as `ProjectConflictError`; the save handler then reads the disk copy and asks `The scene changed on disk. Reload the disk version?`, the port of the old manager at 637 to 647. Yes replaces B's copy with A's version, and B's edits are gone. No writes nothing and keeps B's copy, and the next save asks again. There is no overwrite button. Two saves at the same instant behave the same way: the server takes them one at a time, the first wins, the second gets the 412.
+Here is the whole conflict story, because the base matters. Editors A and B both loaded the scene at sha S0. A saves: the server compares `If-Match: "S0"` with the file, they agree, it writes, the sha is now S1, and A remembers S1. The server sends `change {path, sha256: S1, client: A}` to every tab; B's listing learns S1, and if B has unsaved edits B is asked whether to reload the disk copy. Say B says no and saves later. B's PUT still carries S0, because the base is what B read, never what B heard. The server answers 412 with the current sha (`server.ts:298 to 300`), and nothing is written. That surfaces as `ProjectConflictError`; the save handler then reads the disk copy and asks: the scene changed on disk, reload it, overwrite it, or cancel? Reload replaces B's copy with A's version, and B's edits are gone. Overwrite sends the same PUT again with the sha the 412 returned, so B's copy lands on disk and A's version is gone; A then gets the change event and its own prompt. Cancel writes nothing and keeps B's copy, and the next save asks again. The old manager (637 to 647) offered reload only; overwrite is your addition, for the case where a human in the editor wants to win over an agent's edit. Two saves at the same instant behave the same way: the server takes them one at a time, the first wins, the second gets the prompt.
 
 ### 4.3 How the editor opens
 
@@ -368,9 +371,10 @@ if (state.hub) {
                     │                                                  │
  3b stale           │◄─ 412 {sha256: <disk>} ──────────────────────────│  nothing written
     ProjectConflictError                                               │
-    read the disk copy, ask "Reload the disk version?"                 │
-      yes: base[path] = <disk>, reload, the edits are gone             │
-      no:  keep the editor copy, nothing saved, ask again next time    │
+    read the disk copy, ask: reload, overwrite, or cancel?            │
+      reload:    base[path] = <disk>, reload, the edits are gone       │
+      overwrite: PUT again with If-Match: "<disk>", my copy wins       │
+      cancel:    keep the editor copy, nothing saved, ask again        │
 ```
 
 The write is one side. The other side is the event every write causes, whoever made it.
@@ -636,7 +640,7 @@ Upstream's bottom-bar Library lists `asset-cdn.threepipe.org` through its tsdb c
 The dialog we added on top, "apply as object, material or texture, remember my choice", is not ported; upstream applies the drop directly.
 
 - [ ] Accept section 9.
-- [ ] Decision: leave the drop dialog out (my pick, and your earlier call), or port it (500 lines).
+- [x] The drop dialog stays out (decided 2026-09-14).
 
 ## 10. Feature: the project picker, at `kite3d.dev` and behind `kite3d open`
 
@@ -644,7 +648,7 @@ The dialog we added on top, "apply as object, material or texture, remember my c
 
 > Your call on 2026-09-14: "using a CLI `kite3d open` is suboptimal - most ppl don't like to open terminals. ideally i want to be able to type in `kite3d.dev` and just see the project picker page, where i can see all my kite3d projects." The button reads "Open engine". `npx kite3d open` stays. A launcher started at login was the first answer; you called it jank, and the URL scheme below replaced it: "ok do the url scheme. keep it simple".
 
-Some history first, because it explains where the code comes from. The old repository had this picker. PR #13 built the CLI half (`bc5f390`: the project index, background servers, the launcher) and PR #12 the editor half (`b35ce75`: the hub page, the welcome dialog, the navbar picker, the worktrees section). The cleanup in #30 deleted the CLI half and its tests but left the editor half in place with nothing to talk to. So most of this section is a restore from `f87b8c6^`, with the editor half moved onto upstream's welcome dialog, which is what it was derived from. Two things are new: a `kite3d://` URL scheme, so a click on `kite3d.dev` starts the launcher, and the hub routes live in every dev server.
+Some history first, because it explains what this section is not. The old repository had this picker. PR #13 built the CLI half (`bc5f390`: the project index, background servers, the launcher) and PR #12 the editor half (`b35ce75`: the hub page, the welcome dialog, the navbar picker, the worktrees section). The cleanup in #30 deleted the CLI half and its tests but left the editor half in place with nothing to talk to. Your call: none of that code comes back. Both halves are written from scratch against this section, simpler and readable, with comments that say what each part is for. The old commits at `f87b8c6^` are a reference for behaviour only, and the numbers below describe them so the pass knows the size of the job. Two things are new against the old behaviour: a `kite3d://` URL scheme, so a click on `kite3d.dev` starts the launcher, and the hub routes live in every dev server.
 
 Here is the idea in one sentence. A browser page cannot read `~/.kite3d` and cannot start a dev server, so something local must run; the old hub was that thing, and the only problem with it was that a terminal command started it. Let a link start it instead, the way `vscode://` and `figma://` links start those apps, and the terminal disappears from the daily path. Nothing stays resident: the launcher starts on the first click and lives until logout.
 
@@ -753,15 +757,15 @@ A project is "running" when its `dev.json` parses, its `pid` answers `kill(pid, 
    Open: POST start, wait, window.open(url)        Open: window.open(url) only, no new process
 ```
 
-On the editor side the restore is four files from `b35ce75`, re-based onto upstream's welcome dialog: `hubClient.tsx` (the seven routes and the token header, 262 lines), `HubProjectPicker.tsx` (the navbar popover, 104), `WelcomeDialogProjectsTab.tsx` (the hub version, 220, replacing upstream's 48-line IndexedDB recents tab), and the `hubMode` prop of `WelcomeScreenDialog.tsx` (forced open, no escape, no outside click). The mode switch is the `if (state.hub)` in section 4.3. Upstream's directory-picker files of section 3 are what this replaces.
+On the editor side, four pieces, written fresh on upstream's welcome dialog: a client module for the seven routes with the token header, the navbar popover, the projects tab (replacing upstream's 48-line IndexedDB recents tab), and a `hubMode` prop on `WelcomeScreenDialog.tsx` (forced open, no escape, no outside click). The mode switch is the `if (state.hub)` in section 4.3. Upstream's directory-picker files of section 3 are what this replaces. For size, the old versions were 262, 104 and 220 lines.
 
-Two things change from the old code, both because the old code was heavier than its job. First, the three lock files go: `projects.lock`, `hub-start.lock` and `dev-detach.lock`, each with a 60-second staleness rule and a polling loop. The index is written through a temp file and a rename, so a lost race costs one registration that the next `dev` repeats; two launchers at the same instant land on two ports, and both work. Second, a start on an already-running project also refreshes `lastOpened`, so the field name stops lying.
+Two things the fresh code does not repeat from the old, because the old was heavier than its job. First, no lock files: the old code had three (`projects.lock`, `hub-start.lock`, `dev-detach.lock`), each with a 60-second staleness rule and a polling loop. The index is written through a temp file and a rename, so a lost race costs one registration that the next `dev` repeats; two launchers at the same instant land on two ports, and both work. Second, a start on an already-running project also refreshes `lastOpened`, so the field name does not lie.
 
 Evidence, all headless: a first `kite3d init` on this Mac with no `~/.kite3d/launcher` builds the applet, prints the line, and `lsregister -dump` lists the `kite3d` scheme; a second `init` prints nothing and changes nothing; a `dev` from a newer kite3d refreshes the copy; running the handler line by hand with `--no-open` starts the launcher and writes `hub.json`; the click itself is yours to try, since a real click opens your browser; the picker lists two scratch projects, one running, grouped under their repository with the worktree branch names; Open on the stopped one writes its `dev.json`, returns its URL, and a new page loads the editor; Open on the running one spawns nothing; the tab count goes from 1 to 2 when a second tab opens; Stop turns the row grey; `npx kite3d open` with the launcher running opens the URL and starts no second process; `kite3d dev` in a project opens the editor with no dialog, and the navbar button shows the picker with that tab marked. Screenshots viewed. The Linux and Windows registrations are verified when a machine is at hand, not in this pass.
 
 - [ ] Accept section 10: the `kite3d://` scheme registered by the first `init` or `dev` on a machine, "Open engine" as a scheme link, the hub routes on every server, tab counts, `npx kite3d open` kept.
-- [ ] Decision: restore the hub lean, without the three lock files (my pick), or byte for byte as it was.
-- [ ] Decision: the by-hand command is `kite3d install` and `kite3d install --remove` (my pick), or `kite3d launcher install` and `kite3d launcher remove`.
+- [x] Written from scratch, simpler, commented; no lock files (decided 2026-09-14).
+- [x] The by-hand command is `kite3d install` and `kite3d install --remove` (decided 2026-09-14).
 - [ ] Later, not in this rewrite: the hosted picker, rendered on `kite3d.dev` itself for a paired browser, Chrome first. It needs CORS on the launcher, a pairing step that hands the page the token, and Chrome's one-time local-network prompt; Safari blocks the fetch, so the link stays as the fallback.
 - [ ] Later, not in this rewrite: a browser extension with a native messaging host, a picker in the toolbar with no server at all.
 
@@ -805,11 +809,10 @@ Each of these lands on a file that exists upstream, so it ports as a diff with i
 
 After #30 the CLI is `init`, `dev` with `--no-open` and `--port`, `screenshot`, `skills`, and `publish`, which prints the path of `packages/kite3d/skills/publish/SKILL.md`, a thirteen-step procedure an agent follows with curl. Section 10 adds `open` back, with `--no-open` and `--stop`, and adds `install` with `--remove`; `init` and `dev` register the scheme by themselves. The server has the file, directory, state, events, screenshot and plugin-package routes, plus the hub routes when it runs as the launcher. The engine has `createGame` (split as in section 6), `nestedAssets`, the format parsers, `registerScripts`, the import map with the plugin mapping, `serializeSceneGltf` with the canonical helpers, `fileTypes`, and the plugins. The public API game projects rely on stays: `createGame` and its options, `main({viewer})`, `registerScripts`, `serializeSceneGltf`, the parsers and types, `createProjectAssetURLModifier`, `HtmlUiComponent`, `CannonPhysicsPlugin` and its components.
 
-One export is gone that a real game uses. The terminator project imports `RuntimeObjectOwner` from `authoring.ts` in seven files, and `registerGameValidation` plus `publishGameTelemetry` in its `main.js`. The last two were the check feature and stay gone. `RuntimeObjectOwner` is the runtime-object ownership API the guide documents (lines 79 to 97): runtime-created objects are tracked so they never reach the saved scene and get cleaned up on stop. Nothing in the repository imports it, but a game does.
+The engine's authoring metadata API, the runtime-object ownership helper the old guide described, stays deleted with the rest of the check feature. The terminator project uses it and migrates on its side; the list of what it must change lives with terminator's own notes, not here, per the rule in section 0.
 
 - [ ] Accept section 12.
-- [ ] Decision: restore `authoring.ts` for `RuntimeObjectOwner` (my pick; one commit from history), or delete it and have terminator's agent migrate.
-- [ ] Terminator upgrade note for its agent: remove `registerGameValidation` and `publishGameTelemetry` from `main.js`; drop `kite3d.publish.exclude` from `package.json`; keep `kite3d.imports`, `scripts`, `plugins`, `viewer`.
+- [x] No authoring API comes back; terminator migrates (decided 2026-09-14).
 
 ## 13. The guide
 
@@ -823,7 +826,7 @@ One export is gone that a real game uses. The terminator project imports `Runtim
  old repository (blitzdotdev/kite3d)          new repository (~/kite3d)
  ──────────────────────────────────           ──────────────────────────
  #30 cleanup merged on main  ✓                step 0  repository shape            ✓
- 0.19.0-alpha.3 on next  (your mark)          step 1  section 3 deletions, editor package.json
+ no more releases from here                   step 1  section 3 deletions, editor package.json
                                                       wired to the workspace, green build
                                               step 2  section 4  adapter and SSE: the editor opens
                                                       the served project, lists, saves
@@ -833,19 +836,21 @@ One export is gone that a real game uses. The terminator project imports `Runtim
                                                       and the scheme, editor half, Open engine (blitz-cloud)
                                               step 6  sections 8, 9, 11: screenshot, Library fixes,
                                                       keys, Set as main scene, three guards
-                                              step 7  section 13 guide; 0.20.0-alpha.1 on next
-                                                      terminator upgrade; then 0.20.0 on latest
+                                              step 7  section 13 guide; prove it on this Mac end to end;
+                                                      force-push over blitzdotdev/kite3d main;
+                                                      0.20.0-alpha.1 on next; terminator migrates;
+                                                      then 0.20.0 on latest
 ```
 
 Each step is one codex pass at medium with the pr-skill section, manual headless evidence with screenshots I view myself, no proactive tests, one squash commit on `main`.
 
 - [ ] Accept the order.
-- [ ] 0.19.0-alpha.3 from the old repository now, so terminator can test the CLI shape early (my pick), or skip it.
+- [x] No 0.19.0-alpha.3. The old repository's `main` has the cleanup (#30) but no release carries it; `next` still points at alpha.2 from before it. A release from there would have let terminator try the cleaned CLI early. Since terminator migrates once, to 0.20.0, that release has no reader. Skipped (2026-09-14).
 
 ## 15. What is not happening
 
-No mesh editing in the browser; Blender stays the editor, and the round trip through the watcher is what section 4 already gives you. No tabs and no stage yet; the document-and-stage design note stands and lands after this rewrite, on the upstream manager shape, which is the shape it was written for. No new tests; the three ported guards are tests of reported bugs. No new features beyond the six fixes and the restored picker with its URL scheme. No hosted picker on `kite3d.dev` yet. No GitHub remote until you name it.
+No mesh editing in the browser; Blender stays the editor, and the round trip through the watcher is what section 4 already gives you. No tabs and no stage yet; the document-and-stage design note stands and lands after this rewrite, on the upstream manager shape, which is the shape it was written for. No new tests; the three ported guards are tests of reported bugs. No new features beyond the six fixes and the picker with its URL scheme. No hosted picker on `kite3d.dev` yet. No push until it works locally.
 
 ## 16. Numbers to expect
 
-Upstream `src` is 27,201 lines; after section 3 about 23,000. New editor code: about 250 lines for the transport and the handles, about 100 for the bootstrap and the event listener, about 60 for the loader, about 90 for the screenshot capture, the ported fixes at about 400, and the picker's four files at about 680 restored. kite3d after the cleanup: 1,504 lines of source, plus about 800 restored for the index, the launcher and the hub routes without their locks, and about 120 new for `install` and its three registrations. Engine: 4,613, of which about 4,100 are upstream's plugins. Against the tree we are leaving: an editor of 24,000 lines with 80 percent suspect, a CLI package of 10,247 with 80 percent suspect, an engine of 6,667 with 20 percent suspect.
+Upstream `src` is 27,201 lines; after section 3 about 23,000. New editor code: about 250 lines for the transport and the handles, about 100 for the bootstrap and the event listener, about 60 for the loader, about 90 for the screenshot capture, the ported fixes at about 400, and the picker's four pieces at about 500 written fresh. kite3d after the cleanup: 1,504 lines of source, plus about 600 written fresh for the index, the launcher and the hub routes, and about 120 for `install` and its three registrations. Engine: 4,613, of which about 4,100 are upstream's plugins. Against the tree we are leaving: an editor of 24,000 lines with 80 percent suspect, a CLI package of 10,247 with 80 percent suspect, an engine of 6,667 with 20 percent suspect.
