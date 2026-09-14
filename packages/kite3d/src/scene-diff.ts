@@ -232,11 +232,13 @@ function compareMaterials(diff: SceneDiff, before: GltfDocument, after: GltfDocu
         const oldMaterial = oldMaterials[match.before]
         const newMaterial = newMaterials[match.after]
         const material = mergeIdentity(materialIdentity(oldMaterial), materialIdentity(newMaterial))
-        const properties = new Set([...flattenMaterial(oldMaterial).keys(), ...flattenMaterial(newMaterial).keys()])
+        const oldFlat = flattenMaterial(oldMaterial)
+        const newFlat = flattenMaterial(newMaterial)
+        const properties = new Set([...oldFlat.keys(), ...newFlat.keys()])
         const nodes = materialNodes(after, match.after)
         for (const property of [...properties].sort()) {
-            const oldValue = flattenMaterial(oldMaterial).get(property)
-            const newValue = flattenMaterial(newMaterial).get(property)
+            const oldValue = oldFlat.get(property)
+            const newValue = newFlat.get(property)
             if (!jsonEqual(oldValue, newValue)) diff.materials.push({material, nodes, property, old: oldValue, new: newValue})
         }
     }

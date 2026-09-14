@@ -175,6 +175,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     })
     private unsubscribe?: () => void
     private heartbeat?: ReturnType<typeof setInterval>
+    private pendingSceneUpdateFrame?: number
     private idleFrameViewer?: ThreeViewer
     private editViewerUpdatedThisFrame = false
     private playCanvas?: HTMLCanvasElement
@@ -595,7 +596,14 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         if (!this.loadingScene && !this.savingScene && event.object) {
             this.loadedNeedsSave = true
         }
-        this.changed()
+        // A gizmo drag fires one sceneUpdate per moved object per frame, and every
+        // stateChange re-renders the whole editor tree. React cannot show more than one
+        // frame, so collapse the burst into a single dispatch on the next frame.
+        if (this.pendingSceneUpdateFrame !== undefined) return
+        this.pendingSceneUpdateFrame = requestAnimationFrame(() => {
+            this.pendingSceneUpdateFrame = undefined
+            this.changed()
+        })
     }
 
     async saveScene(): Promise<boolean> {
@@ -1408,6 +1416,10 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     dispose() {
         this.unsubscribe?.()
         this.stopHeartbeat()
+        if (this.pendingSceneUpdateFrame !== undefined) {
+            cancelAnimationFrame(this.pendingSceneUpdateFrame)
+            this.pendingSceneUpdateFrame = undefined
+        }
         window.removeEventListener('error', this.onWindowError)
         window.removeEventListener('unhandledrejection', this.onUnhandledRejection)
         window.removeEventListener('pagehide', this.onPageHide)
