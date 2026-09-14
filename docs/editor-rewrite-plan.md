@@ -530,13 +530,17 @@ export async function createGame(options: CreateGameOptions): Promise<CreatedGam
     const project = await loadRuntimeProject(options.base)
     const viewer = createViewer(options, project)                       // the plugin list as today
     viewer.assetManager.importer.addURLModifier(createProjectAssetURLModifier(options.base, project.assetsManifest))
+    await registerProjectScripts(viewer, project, options)              // before the scene loads: a component type that is
+    await registerProjectPlugins(viewer, project, options)              // unknown at load time stays a dead placeholder in threepipe
     const nested = new RuntimeNestedAssetLoader(viewer, options.onError)
     const root = await viewer.load(new URL(project.mainScene, options.base).href, { importAsModelRoot: true })
     await nested.loadObjectDependencies(root); await nested.waitForPending()
-    const running = await startGame(viewer, project, options)
+    const running = await startGame(viewer, project, options)          // registers nothing new here; it skips what the viewer has
     return { viewer, project, dispose: async () => { await running.stop(); nested.dispose(); viewer.dispose() } }
 }
 ```
+
+One order matters, and the engine pass measured it: the project's modules must be registered before the scene loads. threepipe's entity plugin creates a placeholder for a component type it does not know at load time and never swaps it for the real one when the type arrives later, so a scene authored with a `Mover` component ends up with zero movers. `createGame` therefore registers first and loads second, as it did before the split; `startGame` registers too, for the editor's viewer, and skips what is already there. The editor's `ScriptUtil` registers scripts at settings load, before the scene, so on the editor that call is a no-op.
 
 The editor keeps upstream's `PlayModeHelper` and changes three lines. The temp file becomes memory, which upstream's code already half does: `exportScene('running', false, 'gltf')` at line 57 produces text glTF and keeps it at line 70; the `resolveFile` fallback at 164 goes. Where upstream called `EntityComponentPlugin.start()` after `timeline.start()` (lines 103 to 108), it calls `startGame`, and `stopRunMode` calls `stop()`.
 
