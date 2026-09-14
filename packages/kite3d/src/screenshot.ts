@@ -1,5 +1,5 @@
 import {createRequire} from 'node:module'
-import {mkdir, readFile, writeFile} from 'node:fs/promises'
+import {mkdir, writeFile} from 'node:fs/promises'
 import {resolve} from 'node:path'
 import type {DevServer} from './server.ts'
 
@@ -60,14 +60,7 @@ export async function screenshotProject(
     const width = screenshotDimension(options.width, '--width', 1280)
     const height = screenshotDimension(options.height, '--height', 720)
     const name = screenshotName(options.name)
-    const connection = await runningDevConnection(root)
-
-    if (!options.headless && !options.full && connection) {
-        const result = await requestEditorScreenshot(connection, {name, width, height})
-        if (result) return result
-    }
-
-    return runWithHeadlessChromium(root, {connection}, async (browser, activeConnection) => {
+    return runWithHeadlessChromium(root, async (browser, activeConnection) => {
         const page = await browser.newPage({viewport: {width, height}})
         const url = new URL(activeConnection.url)
         url.searchParams.set('headless', 'screenshot')
@@ -90,29 +83,8 @@ export async function screenshotProject(
     })
 }
 
-export async function runningDevConnection(root: string): Promise<DevConnection | undefined> {
-    let value: {url?: unknown, token?: unknown}
-    try {
-        value = JSON.parse(await readFile(resolve(root, '.kite3d/dev.json'), 'utf8')) as typeof value
-    } catch {
-        return undefined
-    }
-    if (typeof value.url !== 'string' || typeof value.token !== 'string') return undefined
-    try {
-        const response = await fetch(new URL('/api/state', value.url), {
-            headers: {'X-Kite3D-Token': value.token},
-            signal: AbortSignal.timeout(1_500),
-        })
-        if (!response.ok) return undefined
-    } catch {
-        return undefined
-    }
-    return {url: value.url, token: value.token}
-}
-
 export async function runWithHeadlessChromium<T>(
     root: string,
-    options: {connection?: DevConnection},
     operation: (browser: BrowserHandle, connection: DevConnection) => Promise<T>,
 ): Promise<T> {
     let chromium: BrowserLauncher
@@ -124,15 +96,10 @@ export async function runWithHeadlessChromium<T>(
 
     let server: DevServer | undefined
     let browser: BrowserHandle | undefined
-    const devPath = resolve(root, '.kite3d/dev.json')
-    const previousDevFile = options.connection ? undefined : await readFile(devPath).catch(() => undefined)
     try {
-        let connection = options.connection
-        if (!connection) {
-            const {createDevServer} = await import('./server.ts')
-            server = await createDevServer({projectRoot: root, port: 0, strictPort: true})
-            connection = {url: server.url, token: server.token}
-        }
+        const {createDevServer} = await import('./server.ts')
+        server = await createDevServer({projectRoot: root, port: 0, strictPort: true})
+        const connection = {url: server.url, token: server.token}
         try {
             browser = await chromium.launch({headless: true})
         } catch (error) {
@@ -145,7 +112,6 @@ export async function runWithHeadlessChromium<T>(
     } finally {
         await browser?.close().catch(() => undefined)
         await server?.close().catch(() => undefined)
-        if (previousDevFile) await writeFile(devPath, previousDevFile, {mode: 0o600})
     }
 }
 
@@ -196,50 +162,6 @@ function screenshotName(value?: string): string {
     const normalized = (value || 'editor').trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '')
     if (!normalized) throw new Error('--name must contain a letter, number, underscore, or hyphen.')
     return normalized.slice(0, 80)
-}
-
-async function requestEditorScreenshot(
-    connection: DevConnection,
-    options: {name: string, width: number, height: number},
-): Promise<ScreenshotResult | undefined> {
-    let response: Response
-    try {
-        response = await fetch(new URL('/api/screenshot', connection.url), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Kite3D-Token': connection.token,
-                'X-Kite3D-Client': 'kite3d-screenshot',
-            },
-            body: JSON.stringify(options),
-            signal: AbortSignal.timeout(12_000),
-        })
-    } catch {
-        return undefined
-    }
-    const body = await response.json().catch(() => ({})) as {
-        error?: {code?: string, message?: string}
-        path?: unknown
-        width?: unknown
-        height?: unknown
-        source?: unknown
-        capturedAt?: unknown
-    }
-    if (response.status === 404 || response.status === 409 && body.error?.code === 'editor_not_connected') {
-        return undefined
-    }
-    if (!response.ok) throw new Error(body.error?.message || `Screenshot failed with status ${response.status}.`)
-    if (typeof body.path !== 'string' || typeof body.width !== 'number' || typeof body.height !== 'number'
-        || body.source !== 'editor' || typeof body.capturedAt !== 'string') {
-        throw new Error('The editor returned an invalid screenshot result.')
-    }
-    return {
-        path: body.path,
-        width: body.width,
-        height: body.height,
-        source: body.source,
-        capturedAt: body.capturedAt,
-    }
 }
 
 function browserIsMissing(error: unknown): boolean {

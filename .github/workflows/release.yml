@@ -44,10 +44,7 @@ jobs:
             packages/editor/playwright-report
           if-no-files-found: ignore
           retention-days: 7
-      - name: Publish, register runtime, and upload agents guide
-        run: node scripts/release.mjs --publish --register
+      - name: Publish packages
+        run: node scripts/release.mjs --publish
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          RUNTIME_UPLOAD_TOKEN: ${{ secrets.RUNTIME_UPLOAD_TOKEN }}
-          # Configure this repository secret as https://blitz.dev.
-          BLITZ_BACKEND_URL: ${{ secrets.BLITZ_BACKEND_URL }}

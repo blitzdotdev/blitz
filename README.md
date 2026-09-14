@@ -48,19 +48,15 @@ npx kite3d dev        # local editor, keeps running while you edit
 
 | Command | Does |
 |---|---|
-| `kite3d init <dir>` | Create a project and its Git repository |
+| `kite3d init <dir>` | Create a project |
 | `kite3d dev` | Start the local editor |
-| `kite3d doctor` | Verify the local setup |
+| `kite3d screenshot` | Save a PNG of the editor viewport |
 | `kite3d skills` | List bundled skills with absolute `SKILL.md` paths |
-| `kite3d upgrade` | Move a project to the invoked CLI version and apply all migrations it knows, including old `blitz` projects |
+| `kite3d publish` | Print the bundled publishing procedure path |
 
 `npx kite3d skills` lists skills bundled with the invoked CLI and works outside a project, including from an npx cache or global install. Pass `--json` for structured output.
 
 Run `npx kite3d` with no argument for the full list.
-
-### Prerelease channel
-
-Use `npx kite3d@next init my-game` or `npx kite3d@next upgrade` to try the next version before it ships. The `latest` channel stays stable.
 
 ## Packages
 

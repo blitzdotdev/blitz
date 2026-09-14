@@ -89,7 +89,7 @@ export function FilesPanelGrid() {
     const {currentPath, setCurrentPath, fileManifest, selectedFiles, setSelectedFiles} = useAssets()
     const prefix = currentPath === '/' ? '' : `${currentPath.replace(/^\//, '').replace(/\/$/, '')}/`
     const entries = new Map<string, FileManifestEntry | {name: string, path: string, type: 'directory'}>()
-    for (const file of fileManifest.filter(({path}) => !isPrivateKite3dFile(path) && !path.startsWith('.') && !isTemplateSample(path))) {
+    for (const file of fileManifest.filter(({path}) => !path.startsWith('.') && !isTemplateSample(path))) {
         if (!file.path.startsWith(prefix)) continue
         const relative = file.path.slice(prefix.length)
         const [name, ...rest] = relative.split('/')
@@ -306,7 +306,7 @@ export function FilesPanelGrid() {
                 }
             }}/>
         })}
-        {fileManifest.filter(({path}) => path.includes('/') && !isPrivateKite3dFile(path)).map((file, index) =>
+        {fileManifest.filter(({path}) => path.includes('/')).map((file, index) =>
             <button key={`semantic-${file.path}`} type="button" className="kite3d-semantic-hook"
                     style={{left: `${index * 4}px`, top: `${index * 4}px`}}
                     aria-label={file.path} onClick={() => {
@@ -436,10 +436,6 @@ function fileIcon(path: string): IconName {
     if (/\.(js|mjs|cjs|ts|tsx|jsx)$/i.test(name)) return 'code'
     if (/\.jsonc?$/i.test(name)) return 'document-code'
     return 'document'
-}
-
-function isPrivateKite3dFile(path: string): boolean {
-    return path === '.kite3d/deploys.json' || path === '.kite3d/dev.json'
 }
 
 /** AGREED-4: bundled runnable examples are source fixtures, not project assets. */

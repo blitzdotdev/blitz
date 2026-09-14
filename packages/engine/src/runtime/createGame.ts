@@ -36,10 +36,6 @@ export interface CreateGameOptions {
     base: string
     canvas: HTMLCanvasElement
     onError?: (error: unknown) => void
-    /** Content hashes for cache-safe project module imports in development. */
-    fileRevisions?: Readonly<Record<string, string>>
-    /** Identifies one module-graph load so transitive imports bypass the browser module map together. */
-    moduleRevision?: string
 }
 
 export interface RuntimeProject {
@@ -66,8 +62,6 @@ async function createProjectGame({
     base,
     canvas,
     onError,
-    fileRevisions = {},
-    moduleRevision,
 }: CreateGameOptions): Promise<CreatedGame> {
     const reportError = createErrorReporter(onError)
     let viewer: ThreeViewer | undefined
@@ -128,8 +122,8 @@ async function createProjectGame({
 
         nestedAssets = new RuntimeNestedAssetLoader(viewer, reportError)
 
-        await registerProjectScripts(viewer, project, baseUrl, fileRevisions, moduleRevision)
-        await registerProjectPlugins(viewer, project, baseUrl, fileRevisions, moduleRevision)
+        await registerProjectScripts(viewer, project, baseUrl)
+        await registerProjectPlugins(viewer, project, baseUrl)
 
         const sceneUrl = new URL(project.mainScene, baseUrl).href
         const loadedScene = await viewer.load(sceneUrl, {importAsModelRoot: true})
@@ -144,7 +138,7 @@ async function createProjectGame({
         entityComponents.start()
         physics.running = true
 
-        const mainUrl = versionedProjectUrl('main.js', baseUrl, fileRevisions, moduleRevision)
+        const mainUrl = projectUrl('main.js', baseUrl)
         const mainModule = await importModule(mainUrl.href)
         if (mainModule.main !== undefined) {
             if (typeof mainModule.main !== 'function') {
@@ -182,13 +176,11 @@ async function registerProjectPlugins(
     viewer: ThreeViewer,
     project: RuntimeProject,
     base: URL,
-    fileRevisions: Readonly<Record<string, string>>,
-    moduleRevision?: string,
 ) {
     const {config, packageJson} = project
     for (const definition of config.plugins) {
         if (definition.active === false) continue
-        const specifier = resolvePluginSpecifier(definition, packageJson, base, fileRevisions, moduleRevision)
+        const specifier = resolvePluginSpecifier(definition, packageJson, base)
         const module = await importModule(specifier)
         const plugin = findPluginExport(module, definition)
         if (viewer.getPlugin(plugin)) continue
@@ -200,8 +192,6 @@ async function registerProjectScripts(
     viewer: ThreeViewer,
     project: RuntimeProject,
     base: URL,
-    fileRevisions: Readonly<Record<string, string>>,
-    moduleRevision?: string,
 ) {
     const {config, packageJson} = project
     const modules: ModuleExports[] = []
@@ -209,7 +199,7 @@ async function registerProjectScripts(
         if (definition.active === false) continue
         const specifier = isDependencyModuleSpecifier(definition.import, packageJson)
             ? definition.import
-            : versionedProjectUrl(definition.import, base, fileRevisions, moduleRevision).href
+            : projectUrl(definition.import, base).href
         modules.push(await importModule(specifier))
     }
     await registerScripts(viewer, modules)
@@ -219,26 +209,14 @@ function resolvePluginSpecifier(
     definition: ExternalPlugin,
     packageJson: ProjectPackageJSON,
     base: URL,
-    fileRevisions: Readonly<Record<string, string>>,
-    moduleRevision?: string,
 ) {
     const isDependency = isDependencyModuleSpecifier(definition.import, packageJson)
     if (isDependency) return definition.import
-    return versionedProjectUrl(definition.import, base, fileRevisions, moduleRevision).href
+    return projectUrl(definition.import, base).href
 }
 
-function versionedProjectUrl(
-    path: string,
-    base: URL,
-    fileRevisions: Readonly<Record<string, string>>,
-    moduleRevision?: string,
-): URL {
-    const url = assertSameOrigin(new URL(path, base), base)
-    const normalized = path.replace(/^\.\//, '')
-    const revision = fileRevisions[normalized]
-    if (revision) url.searchParams.set('v', revision)
-    if (moduleRevision) url.searchParams.set('r', moduleRevision)
-    return url
+function projectUrl(path: string, base: URL): URL {
+    return assertSameOrigin(new URL(path, base), base)
 }
 
 function findPluginExport(module: ModuleExports, definition: ExternalPlugin): Class<IViewerPlugin> {

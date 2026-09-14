@@ -63,9 +63,7 @@ Extracted from editor utils, runtime parts only:
 |---|---|---|
 | `scripts.ts` | `ScriptUtil.ts` 470-574 and the copy inside `createGame.ts` | `registerScripts(viewer, modules)`: the export walk that registers component types and plugins. The editor and the runtime call the same function. Hot reload stays in the editor. |
 | `importMap.ts` | `utils/importMaps.ts` 52 | `dependencyImportMap(deps)` for project-declared extra dependencies; used by the `index.html` generator in `kite3d` and by `kite3d dev` |
-| `defaults.ts` | `data/EmptyProjectSettings.ts` 277 | default project and viewer settings applied when a project omits them |
 | `fileTypes.ts` | `data/fileTypes.ts` 22 | asset extension and MIME map |
-| `paths.ts` | scattered constants | `.kite3d/` layout: `deploys.json`, `thumbs/`, `backups/`, `running/` |
 
 Added later, in the engine because both the editor and the runtime need them:
 

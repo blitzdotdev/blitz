@@ -9,8 +9,5 @@
   },
   "devDependencies": {
     "kite3d": "__KITE3D_VERSION__"
-  },
-  "kite3d": {
-    "version": "__KITE3D_VERSION__"
   }
 }

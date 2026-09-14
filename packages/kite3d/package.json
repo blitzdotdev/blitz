@@ -7,15 +7,6 @@
   "bin": {
     "kite3d": "dist/cli.js"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./package.json": "./package.json"
-  },
   "files": [
     "dist",
     "src",
@@ -37,7 +28,6 @@
     "@hono/node-server": "^1.19.17",
     "chokidar": "^4.0.3",
     "es-module-lexer": "^3.0.2",
-    "fflate": "^0.8.2",
     "hono": "^4.13.7",
     "open": "^10.1.2"
   },

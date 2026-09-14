@@ -19,18 +19,17 @@ import {pipeline} from 'node:stream/promises'
 import {fileURLToPath} from 'node:url'
 import {serve, type HttpBindings} from '@hono/node-server'
 import {mimeTypeForPath} from '@kite3d/engine/fileTypes'
-import {dependencyImportMap, projectDependencies} from '@kite3d/engine/importMap'
+import {dependencyImportMap} from '@kite3d/engine/importMap'
+import {parsePackageJSON, parsePackageJsonSettingsConfig, type ProjectPackageJSON} from '@kite3d/engine/projectFormat'
 import {Hono, type Context, type Next} from 'hono'
 import {getCookie} from 'hono/cookie'
 import {LinearRouter} from 'hono/router/linear-router'
 import {streamSSE, type SSEStreamingApi} from 'hono/streaming'
 import {watch, type FSWatcher} from 'chokidar'
-import {NodeProjectDirectory} from './node-filesystem.ts'
 import {ProjectModuleRewriter} from './module-rewriter.ts'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 import {DEVELOPMENT_PLUGIN_URL, installedPluginPackages} from './plugins.ts'
 import {pngDimensions, saveScreenshotPng} from './screenshot.ts'
-import {mountHubRoutes} from './hubRoutes.ts'
 
 export interface ManifestEntry {
     path: string
@@ -76,7 +75,6 @@ interface PendingScreenshot {
 }
 
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
-const protectedProjectPaths = new Set(['.kite3d/deploys.json', '.kite3d/dev.json'])
 const watchedFileSettleMs = 50
 const maxScreenshotBytes = 50 * 1024 * 1024
 const serverRequire = createRequire(import.meta.url)
@@ -155,8 +153,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const moduleRewriter = new ProjectModuleRewriter()
     let watcher: FSWatcher | undefined
     let closing = false
-    const projectDirectory = new NodeProjectDirectory(projectRoot).asHandle()
-
     for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)
 
     const app = new Hono<LocalAppEnv>({router: new LinearRouter()})
@@ -269,10 +265,9 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             throw error
         }
     })
-    mountHubRoutes(app)
     app.get('/kite3d/plugins/*', async (c) => {
         const packageJson = await readProjectPackageJson(projectRoot)
-        const plugins = await installedPluginPackages(projectDirectory, packageJson, DEVELOPMENT_PLUGIN_URL)
+        const plugins = await installedPluginPackages(projectRoot, packageJson, DEVELOPMENT_PLUGIN_URL)
         const requestPath = decodeURIComponent(new URL(c.req.url).pathname)
         const plugin = plugins.find(({rootUrl}) => requestPath.startsWith(rootUrl))
         if (!plugin) return missingFileResponse()
@@ -400,8 +395,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const origin = `http://127.0.0.1:${port}`
     const url = `${origin}/?t=${encodeURIComponent(token)}`
 
-    await mkdir(resolve(projectRoot, '.kite3d'), {recursive: true})
-    await writeDevFile(projectRoot, {origin, url, port, token, pid: process.pid, started_at: new Date().toISOString()})
     try {
         const handleWatchedFile = (watchedPath: string) => {
             const path = normalizeRelativePath(relative(projectRoot, watchedPath))
@@ -461,7 +454,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             server.closeIdleConnections()
             server.closeAllConnections()
             await serverClosed
-            await removeDevFileIfOwned(projectRoot, process.pid, token)
         },
     }
 
@@ -544,7 +536,6 @@ async function buildDirectoryManifest(root: string): Promise<string[]> {
 
 function isIncludedPath(path: string): boolean {
     const normalized = normalizeRelativePath(path)
-    if (protectedProjectPaths.has(normalized)) return false
     const parts = normalized.split('/')
     if (parts.some((part) => excludedDirectories.has(part))) return false
     return !parts.some((part) => part.startsWith('.') && part !== '.kite3d')
@@ -562,13 +553,13 @@ async function projectState(root: string) {
 
 async function readProjectImportMap(root: string): Promise<{imports: Record<string, string>}> {
     const packageJson = await readProjectPackageJson(root)
-    const directory = new NodeProjectDirectory(root).asHandle()
-    const plugins = await installedPluginPackages(directory, packageJson, DEVELOPMENT_PLUGIN_URL)
-    return dependencyImportMap(projectDependencies(packageJson), '/editor-runtime.js', plugins)
+    const config = await parsePackageJsonSettingsConfig(packageJson)
+    const plugins = await installedPluginPackages(root, packageJson, DEVELOPMENT_PLUGIN_URL)
+    return dependencyImportMap(config.dependencies, '/editor-runtime.js', plugins)
 }
 
-async function readProjectPackageJson(root: string): Promise<Record<string, unknown>> {
-    return JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as Record<string, unknown>
+async function readProjectPackageJson(root: string): Promise<ProjectPackageJSON> {
+    return parsePackageJSON(await readFile(resolve(root, 'package.json'), 'utf8'))
 }
 
 function safePluginFilePath(path: string): boolean {
@@ -755,19 +746,6 @@ async function readJsonBody(request: Request): Promise<Record<string, unknown>> 
     const body = JSON.parse(text) as unknown
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('JSON body must be an object')
     return body as Record<string, unknown>
-}
-
-async function writeDevFile(root: string, value: unknown): Promise<void> {
-    const {writeFile} = await import('node:fs/promises')
-    await writeFile(resolve(root, '.kite3d/dev.json'), `${JSON.stringify(value, null, 2)}\n`, {mode: 0o600})
-}
-
-async function removeDevFileIfOwned(root: string, pid: number, token: string): Promise<void> {
-    const path = resolve(root, '.kite3d/dev.json')
-    try {
-        const value = JSON.parse(await readFile(path, 'utf8')) as {pid?: unknown, token?: unknown}
-        if (value.pid === pid && value.token === token) await unlink(path)
-    } catch { /* already removed or replaced */ }
 }
 
 async function resolvePackageDirectory(packageName: string): Promise<string> {

@@ -19,12 +19,12 @@ test.beforeAll(async () => {
 
     const packagePath = resolve(root, 'package.json')
     const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
-        kite3d: {viewer?: Record<string, unknown>}
+        kite3d?: {viewer?: Record<string, unknown>}
     }
-    packageJson.kite3d.viewer = {
+    packageJson.kite3d = {viewer: {
         backgroundColor: '#224466',
         camera: {position: [0, 5, 17], target: [0, 0, 0]},
-    }
+    }}
     await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`)
     await writeFile(resolve(root, 'main.js'), 'export async function main() {}\n')
     const scenePath = resolve(root, 'assets/main.scene.gltf')

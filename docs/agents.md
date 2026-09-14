@@ -13,19 +13,11 @@ npx kite3d dev
 
 `kite3d dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Run `npx kite3d <command> --help` for command-specific usage.
 
-`kite3d init` stamps the running command's exact version into both `devDependencies["kite3d"]` and `kite3d.version`. The devDependency is the project version source of truth. For `file:`, `link:`, `workspace:`, URL, tag, or range specs, commands resolve the version from the installed package metadata. Every command except help, version, `doctor`, `upgrade`, and `skills` checks the resolved version. `doctor` reports a mismatch as a FAIL row. `upgrade` runs in the invoked CLI so it can apply that version's migrations. Other commands delegate to the installed project binary, or tell you to install dependencies or run the pinned exact package through `npx`.
-
-`kite3d init` also initializes a Git repository and commits the generated template. Inside a parent repository it creates a project repository unless that parent already tracks a file below the project directory. Use `kite3d init --no-git` only when Git is deliberately managed elsewhere. The command always prints which Git decision it made.
-
-Run `npx kite3d doctor` to check Node, the project version pin, installed Kite3D package versions, the development port or live project server, backend and runtime registration, Playwright Chromium, and Git. It warns when the detected repository root is not the project root. Fix every FAIL row before relying on the affected workflow.
-
-Run `npx kite3d archive` to write `<project-name>-source.zip`. The archive uses the publish exclusion rules, omits `node_modules`, `.kite3d`, and `.git`, and includes `KITE3D-PROJECT.txt` with the creation date, Git commit, and installed Kite3D package versions.
-
-Upgrade the project with `npx kite3d upgrade`. Upgrade targets the invoked CLI's exact version even when the project pins an older CLI. It applies every migration the invoked version knows, rewrites both version fields, runs `npm install --ignore-scripts`, and validates the scene.
-
-- Use `npx kite3d@next init my-game` or `npx kite3d@next upgrade` to try the next version before it ships. The `latest` channel stays stable.
+`kite3d init` records the running command's exact version in `devDependencies["kite3d"]`.
 
 `npx kite3d skills` lists the invoked CLI's bundled skills and absolute, readable `SKILL.md` paths. It works outside a project and does not install or execute a skill; pass `--json` for structured output.
+
+`npx kite3d publish` prints the path to the bundled publishing procedure. Read and follow that skill to publish a saved project.
 
 Source code to grep after `npm install`:
 
@@ -46,9 +38,7 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 # Engine quick reference
 
 - `createGame`: boot Play mode; `@kite3d/engine/src/runtime/createGame.ts`.
-- `setAuthoringMetadata`, `getAuthoringMetadata`, and `AuthoringRole`: tag and read stable `direct` or `template` sources; `@kite3d/engine/src/authoring.ts`.
-- `RuntimeObjectOwner`: own Play-only roots, clones, effects, and cleanup; `@kite3d/engine/src/authoring.ts`.
-- `serializeSceneGltf` and `serializeSceneGltfDocument`: write deterministic text glTF and external resources; `@kite3d/engine/src/sceneSerialization.ts`.
+- `serializeSceneGltf`: write deterministic text glTF and external resources; `@kite3d/engine/src/sceneSerialization.ts`.
 - `HtmlUiComponent`: attach world, screen, or viewport-positioned HTML to an object; `@kite3d/engine/src/plugins/HtmlUiComponent.ts`.
 - `CannonPhysicsPlugin`, `Cannon3DBodyComponent`, and `Cannon3DShapeComponent`: physics plugin and body components; `@kite3d/engine/src/plugins/cannon/`.
 - `Mesh2`: supported mesh class; `threepipe/src/core/object/Mesh2.ts`.
@@ -59,37 +49,19 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 
 For camera ownership during Play, `camera.controlsMode = ''` disables built-in controls; set `autoLookAtTarget = true` when driving `target`, or false when driving the quaternion. Save `scene.mainCamera` and the changed camera properties in `start()`, call the gameplay camera's `activateMain()`, then reactivate the saved camera and restore its properties in `stop()`.
 
-The Play button is `data-testid="play"`. Other core `data-testid` values for Playwright are `game-canvas`, `save-scene`, `project-files`, and `scene-hierarchy`; select them through `page.getByTestId()`.
-
-The token-protected local API includes `GET /api/state`, `GET /api/files`, and `GET /api/events`.
-
-The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions. Keep secrets from `.kite3d/deploys.json` and `.kite3d/dev.json` private.
+The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions.
 
 # Local feedback and health
 
-- `kite3d dev --detach` runs the server in the background with its log in `.kite3d/dev.log`.
-- `kite3d dev --stop` stops the background development server.
-- `kite3d open` opens the launcher that lists every known project and every running editor.
 - Run npx kite3d screenshot to save a PNG of the editor viewport under .kite3d/screenshots/ and print its path. Look at it before and after visual changes. Add --headless when no editor is open.
 
-Authenticated read endpoints are `GET /api/state`, `GET /api/files`, and the `/api/events` server-sent event stream. Send the token in `X-Kite3D-Token`; GET requests also accept the `?t=` query parameter from the URL printed by `kite3d dev`. In `.kite3d/dev.json`, `origin` is the token-free server origin and `url` includes the session query. Keep that token out of logs and reports.
+The URL printed by `kite3d dev` includes a private session token. Keep it out of logs and reports.
 
 # Authored versus runtime game content
 
-Every meaningful system must have a useful stopped-mode representation under `viewer.scene.modelRoot`: direct named objects, or a selectable `template` copied for Play. Tag stable sources with `setAuthoringMetadata`.
+Every meaningful system must have a useful stopped-mode representation under `viewer.scene.modelRoot`: direct named objects, or a selectable template copied for Play.
 
-Keep runtime roots outside `modelRoot` through `RuntimeObjectOwner`. Treat `start()` as repeatable and `stop()`/`destroy()` as mandatory: remove listeners, timers, DOM, physics state, effects, and every runtime root. Never delete or mutate the authored template.
-
-```js
-start() {
-  this.stop()
-  const source = this.ctx.viewer.scene.modelRoot.getObjectByName('Enemy Template')
-  this.runtime = new RuntimeObjectOwner('enemy-spawner')
-  const root = this.runtime.attachRuntimeRoot(new Group(), this.ctx.viewer.scene, source)
-  this.runtime.cloneFrom(source, root, {position: [4, 0, 0]})
-}
-stop() { this.runtime?.cleanup(); this.runtime = undefined }
-```
+Keep Play-only roots outside `modelRoot`. Treat `start()` as repeatable and `stop()`/`destroy()` as mandatory: remove listeners, timers, DOM, physics state, effects, and every Play-only root. Never delete or mutate the authored template.
 
 Keep Play state out of the saved scene. The saved camera must frame authored content and stay outside solid geometry on every load, including reloads of an existing scene. Before calling a change done: Stop, save, reload the editor page, and look.
 
@@ -966,10 +938,6 @@ class EnemySystemComponent extends Object3DComponent {
   }
 }
 ```
-
-# Deploy records
-
-Run `npx kite3d status` to print the live local dev server and deploy metadata without tokens or secrets. Run `npx kite3d claim` to print each unclaimed deploy's Blitz claim URL and open it in a browser for Google sign-in. Add `--no-open` to print the URLs without launching a browser. Unknown flags fail with a nonzero exit code.
 
 # Limits
 

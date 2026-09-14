@@ -31,8 +31,6 @@ What to expect today:
 
 - The editor URL opens in your browser and shows the project in the upstream editor layout, with Play and Save Scene in the toolbar. Script saves by the agent hot-reload, including modules they import. The scene is a deterministic text glTF at `assets/main.scene.gltf` with an external `.bin`; the agent edits it with scripts, and generated content lives under Generator nodes.
 - Before releasing, stop Play, save, reload the editor page, and inspect the result. Follow the bundled release skill and verify every public asset after activation.
-- The live URL is `https://<slug>.app.blitz.dev/`, valid for 12 hours unless claimed. Claim it with `npx kite3d claim`.
-- The legacy workers.dev path form `https://blitz-game-gateway.blitzapp.workers.dev/<slug>/` still works for unclaimed test games.
+- The live URL is `https://<slug>.app.blitz.dev/`, valid for 12 hours unless claimed. The private deploy record contains the claim URL.
 - You can open the project in the editor while the agent works, edit the scene or a script in the Inspector, and save. Both work on the same folder.
-- `npx kite3d doctor` checks Node, the version pin, installed packages, a free port, the backend, the runtime registry, and Playwright. `npx kite3d status` shows the running dev server.
 - The store at `https://blitz.dev/` lists claimed games only.

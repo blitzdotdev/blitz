@@ -34,8 +34,6 @@
     "build:kite3d": "npm run build -w packages/kite3d",
     "build": "npm run build:threepipe && npm run build:ui && npm run build:engine && npm run build:editor && npm run build:kite3d",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test:runtime": "npm run test:runtime -w packages/engine",
-    "test:gates": "npm run test:gates -w packages/engine",
     "test:kite3d": "npm test -w packages/kite3d",
     "test:editor": "npm test -w packages/editor",
     "test:scripts": "node --test scripts/*.test.mjs",
@@ -46,7 +44,6 @@
     "release:patch": "node scripts/set-version.mjs patch && npm run release",
     "release:minor": "node scripts/set-version.mjs minor && npm run release",
     "release:major": "node scripts/set-version.mjs major && npm run release",
-    "release:register": "node scripts/register-runtime.mjs",
     "dev:editor": "npm run dev -w packages/editor"
   }
 }

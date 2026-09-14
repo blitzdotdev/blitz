@@ -40,9 +40,7 @@ node_modules/threepipe/src            engine core, glTF, plugins
 node_modules/uiconfig-blueprint/src   editor UI kit
 ```
 
-If the published `threepipe` tarball lacks `src/`, `kite3d sources` fetches the tagged upstream source into `.kite3d/upstream/` for grepping.
-
-The devDependency is the version pin. `npx kite3d` runs the local bin at that version. `kite3d.version` in package.json is not needed.
+Published packages include their source so agents can inspect the installed implementation.
 
 ## Repository
 

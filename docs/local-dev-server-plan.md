@@ -13,7 +13,7 @@ One npm package, `kite3d`, with the bin named `kite3d` and the editor build insi
 ```
 kite3d init my-game     # writes the project template and AGENTS.md
 kite3d dev              # serves the editor and the project at http://127.0.0.1:4321/?t=<token>
-kite3d open             # opens the editor URL in the default browser
+kite3d dev              # opens the editor URL in the default browser
 ```
 
 `dev` serves everything from one origin, so nothing needs CORS, private-network permission, or mixed-content exemptions:
@@ -27,7 +27,7 @@ kite3d open             # opens the editor URL in the default browser
 | `PUT /files/<path>` | write; `If-Match: "<sha256>"` or `*`; `412` on mismatch; creates directories |
 | `DELETE /files/<path>` | delete |
 | `GET /api/events` | server-sent events: `change`, `add`, `unlink`, each with path, sha256, and the client id that wrote it, debounced |
-| `GET /api/state` | project name, version, deploys, server version |
+| `GET /api/state` | project name and package versions |
 
 Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the editor in a header, required on every request. Reject requests whose `Host` is not localhost. Reject paths that escape the folder. Never serve `.git`, `node_modules`, or dotfiles other than `.kite3d`.
 
@@ -41,11 +41,11 @@ Security: bind `127.0.0.1` only. A random token in the URL query, echoed by the 
 
 ## Versioning
 
-The project's `devDependencies` select `kite3d`. Exact specs are checked directly; other specs resolve through the installed package metadata. Every command except help, version, `doctor`, and `upgrade` compares itself with that version. A mismatch delegates to the installed local binary or refuses with install and pinned `npx` instructions. `doctor` reports the mismatch, while `kite3d upgrade` stays in the invoked CLI, updates the pin and `kite3d.version` to that CLI's version, installs without lifecycle scripts, runs every migration it knows, and validates the scene. npm is the versioned store for editor, runtime, template, and `agents.md`. See `docs/open-source-split.md` for the packages.
+The project's `devDependencies` select `kite3d`. npm is the versioned store for editor, runtime, template, and `agents.md`. See `docs/open-source-split.md` for the packages.
 
 ## No hosted editor
 
-The editor runs only from `kite3d dev`. There is no editor on any domain and no follow mode. Releasing is an agent task described by a bundled skill. Claiming remains a command-line task. blitz.dev is the store, see `docs/storefront-plan.md`.
+The editor runs only from `kite3d dev`. There is no editor on any domain and no follow mode. Releasing and claiming are agent tasks described by a bundled skill. blitz.dev is the store, see `docs/storefront-plan.md`.
 
 ## Agents
 

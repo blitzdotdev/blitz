@@ -2,7 +2,6 @@ import {parse, ParseError} from 'jsonc-parser'
 
 export const settingsKey = 'kite3d'
 export const assetUrlPrefix = `/${settingsKey}/`
-export const REMOVED_GENERATOR_GUIDANCE = 'Generator components were removed in Kite3D 0.19.0.'
 
 export type JSONValue = string | number | boolean | null | JSONValue[] | {[key: string]: JSONValue}
 export type ProjectPackageJSON = Record<string, JSONValue> & {mainScene: string}
@@ -138,30 +137,6 @@ export function validateSceneSource(path: string, text: string): void {
     if (!document || typeof document !== 'object' || !document.asset) {
         throw new Error(`${path} is not a JSON glTF document`)
     }
-}
-
-/** Find nodes that still carry the component removed in Kite3D 0.19.0. */
-export function findRemovedGeneratorNodes(text: string): Array<{nodeIndex: number, nodeName: string}> {
-    const document = JSON.parse(text) as {
-        nodes?: Array<{
-            name?: unknown
-            extras?: {EntityComponentPlugin?: Record<string, {type?: unknown}>}
-        }>
-    }
-    const nodes: Array<{nodeIndex: number, nodeName: string}> = []
-    for (const [nodeIndex, node] of (document.nodes || []).entries()) {
-        const components = Object.values(node.extras?.EntityComponentPlugin || {})
-        if (!components.some(({type}) => type === 'Generator')) continue
-        nodes.push({
-            nodeIndex,
-            nodeName: typeof node.name === 'string' && node.name.trim() ? node.name : `Node ${nodeIndex}`,
-        })
-    }
-    return nodes
-}
-
-export function removedGeneratorMessage(nodeName: string): string {
-    return `${REMOVED_GENERATOR_GUIDANCE} Convert ${nodeName} to asset files. See the guide's Scene asset management section.`
 }
 
 export async function parsePackageJsonSettingsConfig(json: ProjectPackageJSON, _project?: unknown): Promise<ProjectConfigSettings> {

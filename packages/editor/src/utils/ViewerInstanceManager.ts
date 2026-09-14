@@ -738,14 +738,10 @@ export class ViewerInstanceManager extends EventDispatcher<{stateChange: object}
             if (!this.playCanvas) return
             this.game?.dispose()
             this.game = undefined
-            const entries = await this.source.list()
-            const fileRevisions = Object.fromEntries(entries.map(({path, sha256}) => [path, sha256]))
             this.get().renderEnabled = false
             this.game = await createGame({
                 base: new URL('/files/', location.origin).href,
                 canvas: this.playCanvas,
-                fileRevisions,
-                moduleRevision: this.moduleRevision,
                 onError: (error) => this.reportError(error),
             })
             this.isPlaying = true
