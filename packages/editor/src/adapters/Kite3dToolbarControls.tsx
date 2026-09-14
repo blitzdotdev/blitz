@@ -258,14 +258,6 @@ export function Kite3dToolbarHooks() {
     const manager = useManagerVersion()
     return <>
         <span className="kite3d-status-hook" aria-live="polite">{manager.status}</span>
-        {/* Compatibility roles keep the unchanged integration assertions while the
-            non-reference Scene and Timeline panels remain absent. */}
-        <span className="kite3d-semantic-hook" role="tab" aria-label="Scene"/>
-        <span className="kite3d-semantic-hook" role="tab" aria-label="Timeline"/>
-        <button className="kite3d-semantic-hook" title="Snapshot" type="button"
-                onClick={() => void manager.snapshot()}/>
-        <button className="kite3d-semantic-hook" title="Fullscreen" type="button"
-                onClick={() => void manager.get().container.parentElement?.requestFullscreen()}/>
         {manager.error && <div className="kite3d-project-error" role="alert">{manager.error}</div>}
     </>
 }

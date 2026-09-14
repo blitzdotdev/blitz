@@ -1455,7 +1455,7 @@ body{
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 16px);
+  max-height: calc(100vh - 96px);
   overflow: hidden;
   width: 380px;
 }
@@ -1465,6 +1465,45 @@ body{
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.kite3d-settings-toolbar {
+  align-items: flex-start;
+  background-color: var(--pt-app-background-color, #1c2127);
+  border-bottom: 1px solid var(--pt-divider-black);
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.kite3d-settings-toolbar > .bp5-button {
+  flex: 0 0 140px;
+  justify-content: flex-start;
+}
+
+.kite3d-settings-toolbar > .bp5-menu {
+  background: transparent;
+  display: flex;
+  flex: 2;
+  padding: 0;
+}
+
+.kite3d-settings-toolbar > .bp5-menu > .bp5-menu-item {
+  flex: 1;
+}
+
+.kite3d-settings-toolbar-fullscreen {
+  background-color: rgb(28 33 39 / 92%);
+  border: 1px solid var(--pt-divider-black);
+  border-radius: 3px;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 360px;
+  z-index: 3;
 }
 
 .kite3d-editor-settings > h2,
@@ -1504,6 +1543,39 @@ body{
 
 .kite3d-settings-mode {
   border-top: 1px solid var(--pt-divider-black);
+}
+
+.kite3d-settings-mode > summary {
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+}
+
+.kite3d-settings-mode > summary::-webkit-details-marker {
+  display: none;
+}
+
+.kite3d-settings-mode > summary::after {
+  color: var(--pt-text-color-muted);
+  content: '⌃';
+  position: absolute;
+  right: 12px;
+  top: 5px;
+}
+
+.kite3d-settings-mode:not([open]) > summary::after {
+  content: '⌄';
+}
+
+.kite3d-export-actions {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.kite3d-export-actions .bp5-button {
+  flex: 1;
+  justify-content: flex-start;
 }
 
 .kite3d-settings-mode .bp5-menu {
