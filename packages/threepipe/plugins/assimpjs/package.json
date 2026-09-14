@@ -1,0 +1,69 @@
+{
+    "name": "@threepipe/plugin-assimpjs",
+    "description": "Assimp.js Plugin for ThreePipe",
+    "version": "0.2.3",
+    "devDependencies": {
+    },
+    "dependencies": {
+        "threepipe": "file:./../../src/",
+        "assimpjs": "^0.0.10"
+    },
+    "peerDependencies": {
+        "threepipe": ">=0.1.0"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js"
+        },
+        "./dist/": {
+            "import": "./dist/",
+            "require": "./dist/"
+        }
+    },
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.ts",
+    "files": [
+        "dist",
+        "src", "README.md", "CHANGELOG.md", "docs", "tsconfig.json"
+    ],
+    "scripts": {
+        "new:pack": "npm run prepare 1>&2 && npm run docs 1>&2 && clean-package && npm pack --silent && clean-package restore",
+        "prepare": "npm run build",
+        "build": "rimraf dist && vite build",
+        "dev": "NODE_ENV=development vite build --watch",
+        "docs": "rimraf docs && npx typedoc --skipErrorChecking"
+    },
+    "author": "repalash <palash@shaders.app>",
+    "license": "Apache-2.0",
+    "keywords": [
+        "three",
+        "three.js",
+        "threepipe",
+        "vite",
+        "plugin"
+    ],
+    "bugs": {
+        "url": "https://github.com/repalash/threepipe/issues"
+    },
+    "homepage": "https://github.com/repalash/threepipe#readme",
+    "repository": {
+        "type": "git",
+        "url": "git://github.com/repalash/threepipe.git",
+        "directory": "plugins/assimpjs"
+    },
+    "clean-package": {
+        "remove": [
+            "clean-package",
+            "scripts",
+            "devDependencies",
+            "//"
+        ],
+        "replace": {
+            "dependencies": {}
+        }
+    }
+}

@@ -1,0 +1,49 @@
+{
+    "compilerOptions": {
+        "baseUrl": "./",
+        "allowJs": true,
+        "checkJs": false,
+        "skipLibCheck": true,
+        "allowSyntheticDefaultImports": true,
+        "experimentalDecorators": true,
+        "isolatedModules": false,
+        "module": "es2020",
+        "noImplicitAny": true,
+        "noImplicitOverride": false,
+        "declaration": false,
+        "noImplicitThis": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "removeComments": false,
+        "preserveConstEnums": true,
+        "moduleResolution": "bundler",
+        "skipDefaultLibCheck": true,
+        "emitDecoratorMetadata": false,
+        "sourceMap": false,
+        "paths": {
+            "@threepipe/plugin-*": ["../plugins/*/src"],
+            "@threepipe/plugins-*": ["../plugins/*/src"],
+            "threepipe": ["../src/"]
+        },
+        "esModuleInterop": true,
+        "target": "ES2020",
+        "strictNullChecks": true,
+        "lib": [
+            "es2020",
+            "esnext",
+            "dom"
+        ],
+        "jsx": "react"
+    },
+    "include": [
+        "./**/*.ts",
+        "./**/*.tsx",
+        "./**/*.jsx"
+    ],
+    "exclude": [
+        "node_modules",
+        "../dist/**/*",
+        "../src/**/*",
+        "**/*.spec.ts"
+    ]
+}

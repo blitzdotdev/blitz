@@ -1,0 +1,172 @@
+import {UiObjectConfig} from 'uiconfig.js'
+import {Group2, IObject3D, IWidget} from '../../core'
+import {AViewerPluginSync, type IViewerEvent, IViewerEventTypes, ThreeViewer} from '../../viewer'
+import {IEvent, onChange} from 'ts-browser-helpers'
+import {
+    CameraHelper2,
+    DirectionalLightHelper2,
+    LineHelper,
+    PointLightHelper2,
+    SkeletonHelper2,
+    SpotLightHelper2,
+} from '../../three/widgets'
+import {PartialRecord} from '../../utils'
+
+export interface IObject3DHelper<T extends IWidget = IWidget>{
+    Create: (o: IObject3D)=>T,
+    Check: (o: IObject3D)=>boolean,
+}
+
+/**
+ * Automatically creates and manages helper widgets for lights, cameras, lines, and skeletons.
+ * Custom widget types can be registered via the `helpers` array.
+ * See https://threepipe.org/notes/widgets-and-helpers for the full widget system documentation.
+ * @category Plugins
+ */
+export class Object3DWidgetsPlugin extends AViewerPluginSync {
+    @onChange(Object3DWidgetsPlugin.prototype.setDirty)
+        enabled = true
+    public static readonly PluginType = 'Object3DWidgetsPlugin'
+
+    helpers: IObject3DHelper[] = [
+        DirectionalLightHelper2,
+        SpotLightHelper2,
+        PointLightHelper2,
+        CameraHelper2,
+        LineHelper,
+        SkeletonHelper2,
+        // BoneHelper,
+    ]
+
+    setDirty() {
+        this.widgets?.forEach(w => w.visible = !this.isDisabled())
+        this._viewer?.setDirty()
+    }
+
+    toJSON: any = null
+    inSceneRoot = false
+
+    constructor(enabled = true, inSceneRoot = false) {
+        super()
+        this.enabled = enabled
+        this.inSceneRoot = inSceneRoot
+    }
+
+    private _widgetRoot = new Group2()
+
+    private _modelRoot?: IObject3D
+
+    onAdded(viewer: ThreeViewer) {
+        super.onAdded(viewer)
+        this._widgetRoot.userData.isWidgetRoot = true
+        this._widgetRoot.name = 'Widgets Root'
+        this._modelRoot = this.inSceneRoot ? viewer.scene : viewer.scene.modelRoot
+
+        viewer.scene.addObject(this._widgetRoot, {addToRoot: true, autoScale: false, autoCenter: false})
+
+        viewer.object3dManager.getObjects().forEach(object=>this._objectAdd({object}))
+        viewer.object3dManager.addEventListener('objectAdd', this._objectAdd)
+        viewer.object3dManager.addEventListener('objectRemove', this._objectRemove)
+
+    }
+    onRemove(viewer: ThreeViewer) {
+        viewer.object3dManager.removeEventListener('objectAdd', this._objectAdd)
+        viewer.object3dManager.removeEventListener('objectRemove', this._objectRemove)
+        viewer.object3dManager.getObjects().forEach(object=>this._objectRemove({object}))
+        this.widgets.forEach(w => w.dispose && w.dispose())
+        this.widgets = []
+        this._widgetRoot.removeFromParent()
+        this._widgetRoot.clear()
+        super.onRemove(viewer)
+    }
+
+    refreshObject = (object?: IObject3D)=>{
+        const r = this._createWidget(object)
+        if (!r) {
+            this._removeWidget(object)
+        }
+    }
+
+    protected _viewerListeners: PartialRecord<IViewerEventTypes, (e: IViewerEvent)=>void> = {
+        preRender: ()=>{
+            this.widgets.forEach(w => w.preRender && w.preRender())
+        },
+    }
+
+    widgets: (IWidget)[] = []
+
+    private _widgetDisposed = (e: IEvent<any>)=> this._unregisterWidget(e.target)
+
+    private _registerWidget(w: IWidget) {
+        this.widgets.push(w)
+        w.addEventListener('dispose', this._widgetDisposed) // todo: maybe unregister when removed from parent, dispose makes little sense.
+    }
+    private _unregisterWidget(w: IWidget) {
+        w.removeEventListener('dispose', this._widgetDisposed)
+        const i = this.widgets.indexOf(w)
+        if (i >= 0) this.widgets.splice(i, 1)
+    }
+
+    private _createWidget(o?: IObject3D) {
+        if (!o || o.assetType === 'widget' || o === this._widgetRoot || o.isWidget) {
+            return false
+        }
+        if (o.userData.disableWidgets) return false
+        let ignored = false
+        let inSceneRoot = false
+        o.traverseAncestors(c=> {
+            ignored = ignored
+                || c === this._widgetRoot || !!c.isWidget || c.assetType === 'widget' // inside a widget
+                || !!c.userData.disableWidgets
+            inSceneRoot = inSceneRoot || c === this._modelRoot
+        })
+        if (ignored) return false
+        if (!inSceneRoot) return false
+
+        const widget = this.widgets.find(w => w.object === o)
+        if (widget) {
+            widget.update && widget.update()
+            return true
+        }
+        const helpers = this.helpers.filter(h => h.Check(o))
+        for (const h of helpers) {
+            const w = h.Create(o)
+            w.visible = !this.isDisabled()
+            this._widgetRoot.add(w)
+            this._registerWidget(w)
+        }
+        return true
+    }
+
+    private _removeWidget(o?: IObject3D) {
+        if (!o) return
+        const widgetsToRemove = this.widgets.filter(w => w.object === o)
+        for (const w of widgetsToRemove) {
+            w.dispose && w.dispose(true)
+            w.parent && w.removeFromParent()
+            this._unregisterWidget(w)
+        }
+    }
+
+    private _objectAdd = (e: {object?: IObject3D})=>{
+        const l = e.object
+        this._createWidget(l)
+    }
+
+    private _objectRemove = (e: {object?: IObject3D})=>{
+        const l = e.object
+        this._removeWidget(l)
+    }
+
+    uiConfig: UiObjectConfig = {
+        type: 'folder',
+        label: 'Widgets',
+        children: [
+            {
+                type: 'checkbox',
+                label: 'Enabled',
+                property: [this, 'enabled'],
+            },
+        ],
+    }
+}

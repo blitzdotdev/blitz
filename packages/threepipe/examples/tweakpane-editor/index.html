@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Tweakpane Editor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Import maps polyfill -->
+    <!-- Remove this when import maps will be widely supported -->
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/gh/repalash/gilroy-free-webfont@master/Gilroy-Extrabold.css" rel="stylesheet">
+
+    <script type="importmap">
+    {
+        "imports": {
+          "three": "./../../dist/index.mjs",
+          "threepipe": "./../../dist/index.mjs",
+          "@threepipe/plugin-tweakpane": "./../../plugins/tweakpane/dist/index.mjs",
+          "@threepipe/plugin-tweakpane-editor": "./../../plugins/tweakpane-editor/dist/index.mjs",
+          "@threepipe/plugins-extra-importers": "./../../plugins/extra-importers/dist/index.js",
+          "@threepipe/plugin-blend-importer": "./../../plugins/blend-importer/dist/index.mjs",
+          "@threepipe/plugin-geometry-generator": "./../../plugins/geometry-generator/dist/index.mjs",
+          "@threepipe/plugin-configurator": "./../../plugins/configurator/dist/index.mjs",
+          "@threepipe/plugin-network": "./../../plugins/network/dist/index.mjs",
+          "@threepipe/plugin-gltf-transform": "./../../plugins/gltf-transform/dist/index.mjs",
+          "@threepipe/plugin-gaussian-splatting": "./../../plugins/gaussian-splatting/dist/index.mjs",
+          "@threepipe/plugin-3d-tiles-renderer": "./../../plugins/3d-tiles-renderer/dist/index.mjs",
+          "@threepipe/plugin-assimpjs": "./../../plugins/assimpjs/dist/index.mjs",
+          "@threepipe/plugin-path-tracing": "./../../plugins/path-tracing/dist/index.mjs",
+          "@threepipe/plugin-timeline-ui": "./../../plugins/timeline-ui/dist/index.mjs",
+          "@threepipe/plugin-troika-text": "./../../plugins/troika-text/dist/index.mjs",
+          "@threepipe/webgi-plugins": "https://unpkg.com/@threepipe/webgi-plugins@0.6.4/dist/index.mjs",
+          "./ThreeEditor": "./ThreeEditor.js"
+        }
+    }
+
+    </script>
+    <style id="example-style">
+        html {
+            display: block;
+            overscroll-behavior: contain;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+    <script type="module" src="../examples-utils/global-loading.mjs"></script>
+    <script type="module" src="../examples-utils/simple-code-preview.mjs"></script>
+    <script id="example-script" type="module" src="./script.js" data-scripts="./script.ts;./script.js"></script>
+</head>
+<body class="code-preview-container">
+<div id="canvas-container">
+    <canvas id="mcanvas"></canvas>
+</div>
+
+</body>

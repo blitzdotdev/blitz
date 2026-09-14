@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Threepipe HTML/JS Sample</title>
+    <style>
+        html, body{
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+
+    <script type="module" src="../examples-utils/simple-code-preview.mjs"></script>
+</head>
+<body>
+<canvas id="three-canvas" style="width: 800px; height: 600px;"></canvas>
+<!--<script src="https://unpkg.com/threepipe"></script>-->
+<script src="./../../dist/index.js"></script>
+<script id="example-script" type="module" data-scripts="./index.html">
+    const {ThreeViewer, LoadingScreenPlugin} = threepipe
+    // or
+    // import {ThreeViewer, LoadingScreenPlugin} from 'threepipe' // if using import maps
+    // import {ThreeViewer, LoadingScreenPlugin} from './../../dist/index.mjs'
+    // import {ThreeViewer, LoadingScreenPlugin} from 'https://unpkg.com/threepipe@latest/dist/index.mjs'
+
+    const viewer = new ThreeViewer({canvas: document.getElementById('three-canvas')})
+
+    viewer.addPluginSync(LoadingScreenPlugin)
+
+    // Load an environment map
+    const envPromise = viewer.setEnvironmentMap('https://samples.threepipe.org/minimal/venice_sunset_1k.hdr')
+    const modelPromise = viewer.load('https://samples.threepipe.org/minimal/DamagedHelmet/glTF/DamagedHelmet.gltf', {
+        autoCenter: true,
+        autoScale: true,
+    })
+
+    Promise.all([envPromise, modelPromise]).then(([env, model])=>{
+        console.log('Loaded', model, env, viewer)
+    })
+</script>
+</body>
+</html>

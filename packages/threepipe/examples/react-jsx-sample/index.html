@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Threepipe React/JSX Sample</title>
+    <style>
+        html, body, #root{
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+        body {
+            overflow: hidden;
+        }
+    </style>
+
+    <script type="module" src="../examples-utils/global-loading.mjs"></script>
+    <script type="module" src="../examples-utils/simple-code-preview.mjs"></script>
+    <!-- Include Babel for JSX transformation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script id="example-script" type="text/babel" data-type="module">
+    // import {ThreeViewer, LoadingScreenPlugin} from 'https://unpkg.com/threepipe@latest/dist/index.mjs'
+    import {ThreeViewer, LoadingScreenPlugin, _testFinish, _testStart} from './../../dist/index.mjs'
+    import React from 'https://esm.sh/react@18'
+    import {createRoot} from 'https://esm.sh/react-dom@18/client'
+
+    function ThreeViewerComponent({ src, env }) {
+        const canvasRef = React.useRef(null);
+        React.useEffect(() => {
+            if(!canvasRef.current) return
+
+            const viewer = new ThreeViewer({
+                canvas: canvasRef.current,
+                plugins: [LoadingScreenPlugin],
+            })
+
+            // Load an environment map
+            const envPromise = viewer.setEnvironmentMap(env)
+            const modelPromise = viewer.load(src, {
+                autoCenter: true,
+                autoScale: true,
+            })
+
+            Promise.all([envPromise, modelPromise]).then(([env, model])=>{
+                console.log('Loaded', model, env, viewer)
+                _testFinish()
+            })
+            return () => {
+                // dispose the viewer and all its resources when component unmounts
+                viewer.dispose()
+            }
+        }, []);
+        return <div style={{
+            position: 'relative',
+            width: '80vw',
+            height: '80vh',
+            margin: '10vh 10vw',
+            borderRadius: '0.5rem',
+            boxShadow: 'rgba(0, 0, 0, 0.25) 0px 25px 50px -12px',
+        }}>
+            <canvas
+                id="three-canvas"
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '0.5rem',
+                }}
+                ref={canvasRef} />
+        </div>
+    }
+
+    _testStart()
+    createRoot(document.getElementById('root')).render(
+        <ThreeViewerComponent
+            src={'https://samples.threepipe.org/minimal/DamagedHelmet/glTF/DamagedHelmet.gltf'}
+            env={'https://samples.threepipe.org/minimal/venice_sunset_1k.hdr'}
+        />
+    )
+</script>
+</body>
+</html>

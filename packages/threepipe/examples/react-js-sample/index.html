@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Threepipe React/JS Sample</title>
+    <style>
+        html, body{
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+        #root{
+            position: relative;
+            width: 80vw;
+            height: 80vh;
+            margin: 10vh 10vw;
+            border-radius: 0.5rem;
+            box-shadow: rgba(0, 0, 0, 0.25) 0px 25px 50px -12px;
+        }
+    </style>
+
+    <script type="module" src="../examples-utils/global-loading.mjs"></script>
+    <script type="module" src="../examples-utils/simple-code-preview.mjs"></script>
+</head>
+<body>
+<div id="root"></div>
+<script id="example-script" type="module" data-scripts="./index.html">
+    // import {ThreeViewer, LoadingScreenPlugin} from 'https://unpkg.com/threepipe@latest/dist/index.mjs'
+    import {ThreeViewer, LoadingScreenPlugin, _testFinish, _testStart} from './../../dist/index.mjs'
+    import React from 'https://esm.sh/react@18'
+    import ReactDOM from 'https://esm.sh/react-dom@18'
+
+    function ThreeViewerComponent({ src }) {
+        const canvasRef = React.useRef(null);
+        React.useEffect(() => {
+            const viewer = new ThreeViewer({
+                canvas: canvasRef.current,
+                plugins: [LoadingScreenPlugin],
+            })
+
+            // Load an environment map
+            const envPromise = viewer.setEnvironmentMap('https://samples.threepipe.org/minimal/venice_sunset_1k.hdr')
+            const modelPromise = viewer.load('https://samples.threepipe.org/minimal/DamagedHelmet/glTF/DamagedHelmet.gltf', {
+                autoCenter: true,
+                autoScale: true,
+            })
+
+            Promise.all([envPromise, modelPromise]).then(([env, model])=>{
+                console.log('Loaded', model, env, viewer)
+                _testFinish()
+            })
+            return () => {
+                viewer.dispose()
+            }
+        }, []);
+        return React.createElement(
+            'canvas',
+            {id: 'three-canvas', style: {width: "100%", height: "100%", borderRadius: "inherit"}, ref: canvasRef},
+        )
+    }
+
+    _testStart()
+    ReactDOM.render(
+        React.createElement(ThreeViewerComponent),
+        document.getElementById('root')
+    )
+</script>
+</body>
+</html>
