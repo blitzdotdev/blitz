@@ -26,7 +26,14 @@ import {getCookie} from 'hono/cookie'
 import {LinearRouter} from 'hono/router/linear-router'
 import {streamSSE, type SSEStreamingApi} from 'hono/streaming'
 import {watch, type FSWatcher} from 'chokidar'
+import {mountHubRoutes} from './hubRoutes.ts'
 import {ProjectModuleRewriter} from './module-rewriter.ts'
+import {
+    removeServerState,
+    serverStatePath,
+    writeServerState,
+    type ServerState,
+} from './serverState.ts'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 import {DEVELOPMENT_PLUGIN_URL, installedPluginPackages} from './plugins.ts'
 import {pngDimensions, saveScreenshotPng} from './screenshot.ts'
@@ -39,7 +46,7 @@ export interface ManifestEntry {
 }
 
 export interface DevServerOptions {
-    projectRoot?: string
+    projectRoot?: string    // the project to serve; without it the server is the launcher
     port?: number
     strictPort?: boolean
     open?: boolean
@@ -47,7 +54,7 @@ export interface DevServerOptions {
 
 export interface DevServer {
     readonly server: Server
-    readonly projectRoot: string
+    readonly projectRoot: string | undefined
     readonly port: number
     readonly token: string
     readonly url: string
@@ -142,7 +149,8 @@ export function serveEditorPath(pathname: string, editorDirectory: string): Prom
 }
 
 export async function createDevServer(options: DevServerOptions = {}): Promise<DevServer> {
-    const projectRoot = await realpath(resolve(options.projectRoot || process.cwd()))
+    // Without a project this server is the launcher: the editor bundle and the hub routes, no files.
+    const projectRoot = options.projectRoot ? await realpath(resolve(options.projectRoot)) : undefined
     const token = randomBytes(24).toString('base64url')
     const editorDirectory = await resolveEditorDirectory()
     const clients = new Map<SSEStreamingApi, string | undefined>()
@@ -153,7 +161,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const moduleRewriter = new ProjectModuleRewriter()
     let watcher: FSWatcher | undefined
     let closing = false
-    for (const entry of await buildManifest(projectRoot)) knownHashes.set(entry.path, entry.sha256)
 
     const app = new Hono<LocalAppEnv>({router: new LinearRouter()})
     installLocalServerMiddleware(app, token)
@@ -162,170 +169,14 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         c.req.raw,
         token,
         editorDirectory,
-        (source) => injectProjectImportMap(source, projectRoot),
+        projectRoot ? (source) => injectProjectImportMap(source, projectRoot) : undefined,
     )
     app.get('/', serveIndex)
     app.get('/index.html', serveIndex)
     app.get('/favicon.ico', () => serveStaticFile(resolve(editorDirectory, 'favicon.ico'), editorDirectory))
-    app.get('/api/files', async () => jsonResponse(await buildManifest(projectRoot)))
-    app.get('/api/directories', async () => jsonResponse({directories: await buildDirectoryManifest(projectRoot)}))
-    app.post('/api/directories', async (c) => {
-        const body = await readJsonBody(c.req.raw)
-        if (typeof body.path !== 'string') {
-            return jsonResponse({error: {code: 'invalid_path', message: 'A directory path is required.'}}, 400)
-        }
-        const directoryPath = await safeProjectPath(projectRoot, body.path, true)
-        if (await fileExists(directoryPath)) {
-            return jsonResponse({error: {code: 'already_exists', message: 'A file or directory with that name already exists.'}}, 409)
-        }
-        await mkdir(directoryPath)
-        return jsonResponse({path: body.path}, 201)
-    })
-    app.get('/api/state', async () => jsonResponse(await projectState(projectRoot)))
-    app.get('/api/events', (c) => {
-        c.header('Cache-Control', 'no-cache')
-        c.header('Connection', 'keep-alive')
-        return streamSSE(c, async (stream) => {
-            clients.set(stream, c.req.query('client') || c.get('clientId'))
-            await stream.write(': connected\n\n')
-            await new Promise<void>((resolveAbort) => stream.onAbort(() => {
-                clients.delete(stream)
-                resolveAbort()
-            }))
-        })
-    })
-    app.post('/api/screenshot', async (c) => {
-        const body = await readJsonBody(c.req.raw)
-        if (body.name !== undefined && typeof body.name !== 'string') {
-            return jsonResponse({error: {code: 'invalid_name', message: 'name must be a string.'}}, 400)
-        }
-        if (![...clients.values()].some(Boolean)) {
-            return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected.'}}, 409)
-        }
-        const id = randomBytes(16).toString('hex')
-        const result = await new Promise<ScreenshotResult>((resolveScreenshot) => {
-            const timer = setTimeout(() => {
-                pendingScreenshots.delete(id)
-                resolveScreenshot({
-                    ok: false,
-                    code: 'screenshot_timeout',
-                    error: 'The editor did not answer the screenshot request. Reload the editor tab or run kite3d screenshot --headless.',
-                })
-            }, 10_000)
-            pendingScreenshots.set(id, {
-                name: typeof body.name === 'string' ? body.name : 'editor',
-                resolve: resolveScreenshot,
-                timer,
-            })
-            void broadcast('command', {
-                id,
-                command: 'screenshot',
-                options: {
-                    name: typeof body.name === 'string' ? body.name : 'editor',
-                    ...(typeof body.width === 'number' ? {width: body.width} : {}),
-                    ...(typeof body.height === 'number' ? {height: body.height} : {}),
-                },
-            })
-        })
-        if (result.ok) return jsonResponse(result)
-        const code = result.code === 'screenshot_timeout' ? 'screenshot_timeout' : 'screenshot_failed'
-        const status = code === 'screenshot_timeout' ? 504 : 409
-        return jsonResponse({error: {code, message: result.error || 'Screenshot failed.'}}, status)
-    })
-    app.post('/api/screenshot/:id', async (c) => {
-        const id = c.req.param('id')
-        if (!/^[a-f\d]+$/.test(id) || !pendingScreenshots.has(id)) {
-            return jsonResponse({error: {code: 'screenshot_not_found', message: 'Screenshot is no longer pending.'}}, 404)
-        }
-        const contentLength = Number(c.req.header('Content-Length'))
-        if (Number.isFinite(contentLength) && contentLength > maxScreenshotBytes) {
-            return jsonResponse({error: {code: 'screenshot_too_large', message: 'The screenshot is larger than 50 MB.'}}, 413)
-        }
-        const bytes = new Uint8Array(await c.req.arrayBuffer())
-        if (bytes.byteLength > maxScreenshotBytes) {
-            return jsonResponse({error: {code: 'screenshot_too_large', message: 'The screenshot is larger than 50 MB.'}}, 413)
-        }
-        try {
-            pngDimensions(bytes)
-        } catch (error) {
-            return jsonResponse({error: {code: 'invalid_screenshot', message: errorMessage(error)}}, 400)
-        }
-        const pending = pendingScreenshots.get(id)
-        if (!pending) {
-            return jsonResponse({error: {code: 'screenshot_not_found', message: 'Screenshot is no longer pending.'}}, 404)
-        }
-        pendingScreenshots.delete(id)
-        clearTimeout(pending.timer)
-        try {
-            const saved = await saveScreenshotPng(projectRoot, bytes, pending.name)
-            pending.resolve({ok: true, ...saved, source: 'editor'})
-            return jsonResponse({accepted: true}, 202)
-        } catch (error) {
-            pending.resolve({ok: false, error: errorMessage(error)})
-            throw error
-        }
-    })
-    app.get('/kite3d/plugins/*', async (c) => {
-        const packageJson = await readProjectPackageJson(projectRoot)
-        const plugins = await installedPluginPackages(projectRoot, packageJson, DEVELOPMENT_PLUGIN_URL)
-        const requestPath = decodeURIComponent(new URL(c.req.url).pathname)
-        const plugin = plugins.find(({rootUrl}) => requestPath.startsWith(rootUrl))
-        if (!plugin) return missingFileResponse()
-        const relativePath = requestPath.slice(plugin.rootUrl.length)
-        if (!safePluginFilePath(relativePath)) return textResponse('Forbidden', 403)
-        const packageRoot = resolve(projectRoot, 'node_modules', ...plugin.specifier.split('/'))
-        return serveStaticFile(resolve(packageRoot, ...relativePath.split('/')), packageRoot)
-    })
-    app.get('/files/*', async (c) => {
-        const relativePath = decodeFilePath(new URL(c.req.url).pathname)
-        const filePath = await safeProjectPath(projectRoot, relativePath, true)
-        if (!(await fileExists(filePath))) return missingFileResponse()
-        return serveProjectFile(c.req.raw, filePath, relativePath, moduleRewriter, async (targetPath) => {
-            try {
-                const target = await safeProjectPath(projectRoot, targetPath)
-                if (!(await stat(target)).isFile()) return undefined
-                return await hashFile(target)
-            } catch {
-                return undefined
-            }
-        })
-    })
-    app.put('/files/*', async (c) => {
-        const relativePath = decodeFilePath(new URL(c.req.url).pathname)
-        const filePath = await safeProjectPath(projectRoot, relativePath, true)
-        const existed = await fileExists(filePath)
-        const currentHash = existed ? await hashFile(filePath) : undefined
-        const ifMatch = c.req.header('If-Match')
-        if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
-            return jsonResponse({error: {code: 'precondition_failed', message: 'The file changed on disk.'}, sha256: currentHash}, 412)
-        }
-        await mkdir(dirname(filePath), {recursive: true})
-        const temporary = resolve(dirname(filePath), `.${basename(filePath)}.kite3d-${randomBytes(8).toString('hex')}`)
-        let sha256 = ''
-        try {
-            if (!c.req.raw.body) throw new Error('File request body is required')
-            await pipeline(c.env.incoming, createWriteStream(temporary, {flags: 'wx'}))
-            sha256 = await hashFile(temporary)
-            knownHashes.set(relativePath, sha256)
-            await rename(temporary, filePath)
-        } catch (error) {
-            if (currentHash) knownHashes.set(relativePath, currentHash)
-            else knownHashes.delete(relativePath)
-            await unlink(temporary).catch(() => undefined)
-            throw error
-        }
-        scheduleEvent(relativePath, c.get('clientId'), existed ? 'change' : 'add')
-        return jsonResponse({path: relativePath, sha256}, existed ? 200 : 201)
-    })
-    app.delete('/files/*', async (c) => {
-        const relativePath = decodeFilePath(new URL(c.req.url).pathname)
-        const filePath = await safeProjectPath(projectRoot, relativePath, true)
-        if (!(await fileExists(filePath))) return missingFileResponse()
-        await unlink(filePath)
-        knownHashes.delete(relativePath)
-        scheduleEvent(relativePath, c.get('clientId'), 'unlink')
-        return new Response(null, {status: 204})
-    })
+    mountHubRoutes(app)
+    if (projectRoot) await mountProjectRoutes(projectRoot)
+    else app.get('/api/state', () => jsonResponse({hub: true}))
     app.get('*', (c) => serveEditorPath(new URL(c.req.url).pathname, editorDirectory))
     app.onError((error) => {
         const rawMessage = error instanceof Error ? error.message : 'Internal server error'
@@ -348,31 +199,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         }))
     }
 
-    function scheduleEvent(path: string, client?: string, forcedType?: PendingEvent['forcedType']) {
-        const previous = pendingEvents.get(path)
-        if (previous) clearTimeout(previous.timer)
-        const effectiveType = previous?.forcedType === 'add' && forcedType !== 'unlink'
-            ? 'add'
-            : forcedType ?? previous?.forcedType
-        const effectiveClient = client ?? previous?.client
-        const timer = setTimeout(async () => {
-            pendingEvents.delete(path)
-            const oldHash = knownHashes.get(path)
-            let sha256: string | undefined
-            try {
-                const target = await safeProjectPath(projectRoot, path)
-                sha256 = await hashFile(target)
-            } catch {
-                sha256 = undefined
-            }
-            const type = effectiveType || (sha256 ? (oldHash ? 'change' : 'add') : 'unlink')
-            if (sha256) knownHashes.set(path, sha256)
-            else knownHashes.delete(path)
-            await broadcast(type, {path, sha256, client: effectiveClient})
-        }, 150)
-        pendingEvents.set(path, {path, client: effectiveClient, forcedType: effectiveType, timer})
-    }
-
     for (let attempt = 0; attempt < attempts; attempt += 1) {
         const candidatePort = requestedPort === 0 ? 0 : requestedPort + attempt
         server = serve({fetch: app.fetch, port: candidatePort, hostname: '127.0.0.1'}) as Server
@@ -392,32 +218,15 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('Unable to determine dev server address')
     const port = address.port
-    const origin = `http://127.0.0.1:${port}`
-    const url = `${origin}/?t=${encodeURIComponent(token)}`
+    const url = `http://127.0.0.1:${port}/?t=${encodeURIComponent(token)}`
 
-    try {
-        const handleWatchedFile = (watchedPath: string) => {
-            const path = normalizeRelativePath(relative(projectRoot, watchedPath))
-            if (!path || !isIncludedPath(path)) return
-            scheduleWatchedFile(path)
-        }
-        watcher = watch(projectRoot, {
-            ignoreInitial: true,
-            ignored: (watchedPath) => {
-                const path = normalizeRelativePath(relative(projectRoot, watchedPath))
-                return Boolean(path && !isIncludedPath(path))
-            },
-        })
-        watcher.on('add', handleWatchedFile)
-        watcher.on('change', handleWatchedFile)
-        watcher.on('unlink', handleWatchedFile)
-        watcher.on('error', (error) => {
-            console.warn(`[kite3d] watcher: ${error instanceof Error ? error.message : error}`)
-        })
-        await new Promise<void>((resolveReady) => watcher!.once('ready', resolveReady))
-    } catch (error) {
-        console.warn(`[kite3d] file watching is unavailable: ${error instanceof Error ? error.message : error}`)
-    }
+    // How every other process finds this server: a project server next to its project, the launcher
+    // in the kite3d home, because kite3d open must find it without being in a project.
+    const statePath = serverStatePath(projectRoot)
+    const state: ServerState = {pid: process.pid, port, url, token}
+    await writeServerState(statePath, state)
+
+    if (projectRoot) await startWatcher(projectRoot)
     const keepAlive = setInterval(() => {
         for (const client of clients.keys()) void client.write(': keepalive\n\n')
     }, 15_000)
@@ -454,22 +263,237 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             server.closeIdleConnections()
             server.closeAllConnections()
             await serverClosed
+            await removeServerState(statePath, state)
         },
     }
 
-    function scheduleWatchedFile(path: string): void {
+    async function mountProjectRoutes(root: string): Promise<void> {
+        for (const entry of await buildManifest(root)) knownHashes.set(entry.path, entry.sha256)
+        app.get('/api/files', async () => jsonResponse(await buildManifest(root)))
+        app.get('/api/directories', async () => jsonResponse({directories: await buildDirectoryManifest(root)}))
+        app.post('/api/directories', async (c) => {
+            const body = await readJsonBody(c.req.raw)
+            if (typeof body.path !== 'string') {
+                return jsonResponse({error: {code: 'invalid_path', message: 'A directory path is required.'}}, 400)
+            }
+            const directoryPath = await safeProjectPath(root, body.path, true)
+            if (await fileExists(directoryPath)) {
+                return jsonResponse({error: {code: 'already_exists', message: 'A file or directory with that name already exists.'}}, 409)
+            }
+            await mkdir(directoryPath)
+            return jsonResponse({path: body.path}, 201)
+        })
+        app.get('/api/state', async () => jsonResponse({...await projectState(root), clients: clients.size}))
+        app.get('/api/events', (c) => {
+            c.header('Cache-Control', 'no-cache')
+            c.header('Connection', 'keep-alive')
+            return streamSSE(c, async (stream) => {
+                clients.set(stream, c.req.query('client') || c.get('clientId'))
+                await stream.write(': connected\n\n')
+                await new Promise<void>((resolveAbort) => stream.onAbort(() => {
+                    clients.delete(stream)
+                    resolveAbort()
+                }))
+            })
+        })
+        app.post('/api/screenshot', async (c) => {
+            const body = await readJsonBody(c.req.raw)
+            if (body.name !== undefined && typeof body.name !== 'string') {
+                return jsonResponse({error: {code: 'invalid_name', message: 'name must be a string.'}}, 400)
+            }
+            if (![...clients.values()].some(Boolean)) {
+                return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected.'}}, 409)
+            }
+            const id = randomBytes(16).toString('hex')
+            const result = await new Promise<ScreenshotResult>((resolveScreenshot) => {
+                const timer = setTimeout(() => {
+                    pendingScreenshots.delete(id)
+                    resolveScreenshot({
+                        ok: false,
+                        code: 'screenshot_timeout',
+                        error: 'The editor did not answer the screenshot request. Reload the editor tab or run kite3d screenshot --headless.',
+                    })
+                }, 10_000)
+                pendingScreenshots.set(id, {
+                    name: typeof body.name === 'string' ? body.name : 'editor',
+                    resolve: resolveScreenshot,
+                    timer,
+                })
+                void broadcast('command', {
+                    id,
+                    command: 'screenshot',
+                    options: {
+                        name: typeof body.name === 'string' ? body.name : 'editor',
+                        ...(typeof body.width === 'number' ? {width: body.width} : {}),
+                        ...(typeof body.height === 'number' ? {height: body.height} : {}),
+                    },
+                })
+            })
+            if (result.ok) return jsonResponse(result)
+            const code = result.code === 'screenshot_timeout' ? 'screenshot_timeout' : 'screenshot_failed'
+            const status = code === 'screenshot_timeout' ? 504 : 409
+            return jsonResponse({error: {code, message: result.error || 'Screenshot failed.'}}, status)
+        })
+        app.post('/api/screenshot/:id', async (c) => {
+            const id = c.req.param('id')
+            if (!/^[a-f\d]+$/.test(id) || !pendingScreenshots.has(id)) {
+                return jsonResponse({error: {code: 'screenshot_not_found', message: 'Screenshot is no longer pending.'}}, 404)
+            }
+            const contentLength = Number(c.req.header('Content-Length'))
+            if (Number.isFinite(contentLength) && contentLength > maxScreenshotBytes) {
+                return jsonResponse({error: {code: 'screenshot_too_large', message: 'The screenshot is larger than 50 MB.'}}, 413)
+            }
+            const bytes = new Uint8Array(await c.req.arrayBuffer())
+            if (bytes.byteLength > maxScreenshotBytes) {
+                return jsonResponse({error: {code: 'screenshot_too_large', message: 'The screenshot is larger than 50 MB.'}}, 413)
+            }
+            try {
+                pngDimensions(bytes)
+            } catch (error) {
+                return jsonResponse({error: {code: 'invalid_screenshot', message: errorMessage(error)}}, 400)
+            }
+            const pending = pendingScreenshots.get(id)
+            if (!pending) {
+                return jsonResponse({error: {code: 'screenshot_not_found', message: 'Screenshot is no longer pending.'}}, 404)
+            }
+            pendingScreenshots.delete(id)
+            clearTimeout(pending.timer)
+            try {
+                const saved = await saveScreenshotPng(root, bytes, pending.name)
+                pending.resolve({ok: true, ...saved, source: 'editor'})
+                return jsonResponse({accepted: true}, 202)
+            } catch (error) {
+                pending.resolve({ok: false, error: errorMessage(error)})
+                throw error
+            }
+        })
+        app.get('/kite3d/plugins/*', async (c) => {
+            const packageJson = await readProjectPackageJson(root)
+            const plugins = await installedPluginPackages(root, packageJson, DEVELOPMENT_PLUGIN_URL)
+            const requestPath = decodeURIComponent(new URL(c.req.url).pathname)
+            const plugin = plugins.find(({rootUrl}) => requestPath.startsWith(rootUrl))
+            if (!plugin) return missingFileResponse()
+            const relativePath = requestPath.slice(plugin.rootUrl.length)
+            if (!safePluginFilePath(relativePath)) return textResponse('Forbidden', 403)
+            const packageRoot = resolve(root, 'node_modules', ...plugin.specifier.split('/'))
+            return serveStaticFile(resolve(packageRoot, ...relativePath.split('/')), packageRoot)
+        })
+        app.get('/files/*', async (c) => {
+            const relativePath = decodeFilePath(new URL(c.req.url).pathname)
+            const filePath = await safeProjectPath(root, relativePath, true)
+            if (!(await fileExists(filePath))) return missingFileResponse()
+            return serveProjectFile(c.req.raw, filePath, relativePath, moduleRewriter, async (targetPath) => {
+                try {
+                    const target = await safeProjectPath(root, targetPath)
+                    if (!(await stat(target)).isFile()) return undefined
+                    return await hashFile(target)
+                } catch {
+                    return undefined
+                }
+            })
+        })
+        app.put('/files/*', async (c) => {
+            const relativePath = decodeFilePath(new URL(c.req.url).pathname)
+            const filePath = await safeProjectPath(root, relativePath, true)
+            const existed = await fileExists(filePath)
+            const currentHash = existed ? await hashFile(filePath) : undefined
+            const ifMatch = c.req.header('If-Match')
+            if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
+                return jsonResponse({error: {code: 'precondition_failed', message: 'The file changed on disk.'}, sha256: currentHash}, 412)
+            }
+            await mkdir(dirname(filePath), {recursive: true})
+            const temporary = resolve(dirname(filePath), `.${basename(filePath)}.kite3d-${randomBytes(8).toString('hex')}`)
+            let sha256 = ''
+            try {
+                if (!c.req.raw.body) throw new Error('File request body is required')
+                await pipeline(c.env.incoming, createWriteStream(temporary, {flags: 'wx'}))
+                sha256 = await hashFile(temporary)
+                knownHashes.set(relativePath, sha256)
+                await rename(temporary, filePath)
+            } catch (error) {
+                if (currentHash) knownHashes.set(relativePath, currentHash)
+                else knownHashes.delete(relativePath)
+                await unlink(temporary).catch(() => undefined)
+                throw error
+            }
+            scheduleEvent(root, relativePath, c.get('clientId'), existed ? 'change' : 'add')
+            return jsonResponse({path: relativePath, sha256}, existed ? 200 : 201)
+        })
+        app.delete('/files/*', async (c) => {
+            const relativePath = decodeFilePath(new URL(c.req.url).pathname)
+            const filePath = await safeProjectPath(root, relativePath, true)
+            if (!(await fileExists(filePath))) return missingFileResponse()
+            await unlink(filePath)
+            knownHashes.delete(relativePath)
+            scheduleEvent(root, relativePath, c.get('clientId'), 'unlink')
+            return new Response(null, {status: 204})
+        })
+    }
+
+    async function startWatcher(root: string): Promise<void> {
+        try {
+            const handleWatchedFile = (watchedPath: string) => {
+                const path = normalizeRelativePath(relative(root, watchedPath))
+                if (!path || !isWatchedPath(path)) return
+                scheduleWatchedFile(root, path)
+            }
+            watcher = watch(root, {
+                ignoreInitial: true,
+                ignored: (watchedPath) => {
+                    const path = normalizeRelativePath(relative(root, watchedPath))
+                    return Boolean(path && !isWatchedPath(path))
+                },
+            })
+            watcher.on('add', handleWatchedFile)
+            watcher.on('change', handleWatchedFile)
+            watcher.on('unlink', handleWatchedFile)
+            watcher.on('error', (error) => {
+                console.warn(`[kite3d] watcher: ${error instanceof Error ? error.message : error}`)
+            })
+            await new Promise<void>((resolveReady) => watcher!.once('ready', resolveReady))
+        } catch (error) {
+            console.warn(`[kite3d] file watching is unavailable: ${error instanceof Error ? error.message : error}`)
+        }
+    }
+
+    function scheduleEvent(root: string, path: string, client?: string, forcedType?: PendingEvent['forcedType']) {
+        const previous = pendingEvents.get(path)
+        if (previous) clearTimeout(previous.timer)
+        const effectiveType = previous?.forcedType === 'add' && forcedType !== 'unlink'
+            ? 'add'
+            : forcedType ?? previous?.forcedType
+        const effectiveClient = client ?? previous?.client
+        const timer = setTimeout(async () => {
+            pendingEvents.delete(path)
+            const oldHash = knownHashes.get(path)
+            let sha256: string | undefined
+            try {
+                const target = await safeProjectPath(root, path)
+                sha256 = await hashFile(target)
+            } catch {
+                sha256 = undefined
+            }
+            const type = effectiveType || (sha256 ? (oldHash ? 'change' : 'add') : 'unlink')
+            if (sha256) knownHashes.set(path, sha256)
+            else knownHashes.delete(path)
+            await broadcast(type, {path, sha256, client: effectiveClient})
+        }, 150)
+        pendingEvents.set(path, {path, client: effectiveClient, forcedType: effectiveType, timer})
+    }
+
+    function scheduleWatchedFile(root: string, path: string): void {
         const previous = pendingWatchedFiles.get(path)
         if (previous) clearTimeout(previous)
         const timer = setTimeout(() => {
             pendingWatchedFiles.delete(path)
-            if (!closing) void processWatchedFile(path)
+            if (!closing) void processWatchedFile(root, path)
         }, watchedFileSettleMs)
         pendingWatchedFiles.set(path, timer)
     }
 
-    async function processWatchedFile(path: string): Promise<void> {
+    async function processWatchedFile(root: string, path: string): Promise<void> {
         try {
-            const target = await safeProjectPath(projectRoot, path)
+            const target = await safeProjectPath(root, path)
             const metadata = await lstat(target)
             if (!metadata.isFile()) return
             if (await hashFile(target) === knownHashes.get(path)) return
@@ -478,7 +502,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             // the manifest. Recursive watchers also report removed directories.
             if (!isMissing(error) || !knownHashes.has(path)) return
         }
-        if (!closing) scheduleEvent(path)
+        if (!closing) scheduleEvent(root, path)
     }
 
 }
@@ -534,11 +558,20 @@ async function buildDirectoryManifest(root: string): Promise<string[]> {
     }
 }
 
+// The listing and the file routes keep .kite3d, because the editor's thumbnails and save backups
+// live there.
 function isIncludedPath(path: string): boolean {
     const normalized = normalizeRelativePath(path)
     const parts = normalized.split('/')
     if (parts.some((part) => excludedDirectories.has(part))) return false
     return !parts.some((part) => part.startsWith('.') && part !== '.kite3d')
+}
+
+// The watcher does not, so a screenshot, dev.json, a backup or a detached server's dev.log is not
+// an event for every open tab.
+function isWatchedPath(path: string): boolean {
+    const parts = normalizeRelativePath(path).split('/')
+    return isIncludedPath(path) && !parts.includes('.kite3d')
 }
 
 async function projectState(root: string) {

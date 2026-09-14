@@ -15,6 +15,10 @@ npx kite3d dev
 
 `kite3d init` records the running command's exact version in `devDependencies["kite3d"]`.
 
+`npx kite3d open` opens the project picker. The picker lists the projects of this machine, marks the running ones, and starts or stops their servers. A picker that already runs is reused.
+
+The first `kite3d init` or `kite3d dev` on a machine registers `kite3d://`, the link that kite3d.dev opens. Undo it with `npx kite3d install --remove`. Nothing is registered when `CI` is set.
+
 `npx kite3d skills` lists the invoked CLI's bundled skills and absolute, readable `SKILL.md` paths. It works outside a project and does not install or execute a skill; pass `--json` for structured output.
 
 `npx kite3d publish` prints the path to the bundled publishing procedure. Read and follow that skill to publish a saved project.

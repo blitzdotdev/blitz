@@ -2,7 +2,7 @@ import {mkdtemp, readdir, readFile, rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, describe, expect, it} from 'vitest'
-import {initProject} from '../src/commands.ts'
+import {initProject} from '../src/initProject.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 
 const roots: string[] = []
