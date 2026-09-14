@@ -162,6 +162,24 @@ it('lists an externally added file and forgets an externally deleted one', async
         expect(await manifestPaths(server, headers)).not.toContain('extra.js')
     })
 
+// Guards the owner's request to drop the whole tree hash and publish a size and
+// mtime revision instead. The editor seeds If-Match from this manifest row for a
+// file it never reads, so the row has to stay a real content hash. A revision
+// the PUT route cannot match would 412 every scene save, and skipping the seed
+// would send If-Match: * and overwrite a file another writer had changed.
+it('accepts the manifest hash as an If-Match precondition and rejects a stale one', async () => {
+        const {server, headers} = await startServer()
+        const fromManifest = await manifestHash(server, headers, 'main.js')
+
+        const write = (ifMatch: string) => fetch(`${base(server)}/files/main.js`, {
+            method: 'PUT',
+            headers: {...headers, 'If-Match': `"${ifMatch}"`},
+            body: `export async function main() {} // ${ifMatch.slice(0, 8)}\n`,
+        })
+        expect((await write(fromManifest)).status).toBe(200)
+        expect((await write(fromManifest)).status).toBe(412)
+    })
+
 async function waitForEvent(
     server: DevServer,
     headers: Record<string, string>,
