@@ -750,7 +750,7 @@ POST  /api/hub/projects/add         {path} → {path}                  register 
 errors                              {error: {code, message}}         invalid_request, invalid_path, not_found, conflict, start_failed
 ```
 
-A project is "running" when its `dev.json` parses, its `pid` answers `kill(pid, 0)`, and the `t` in its url equals its token. No heartbeat, no port probe. A dead pid with a stale file reads as stopped, and the next start overwrites the file.
+A project is "running" when its `dev.json` parses and its `pid` answers `kill(pid, 0)`. No heartbeat, no port probe, and no cross-check of the url against the token, since one process writes both from the same two values. A dead pid with a stale file reads as stopped, and the next start overwrites the file. A server that finds a live claim on its project's file leaves it alone, so `kite3d screenshot --headless`, which starts a second server, cannot steal the first one's file.
 
 ```
  a project row in the picker
