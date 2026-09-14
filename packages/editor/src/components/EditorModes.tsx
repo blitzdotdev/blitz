@@ -204,10 +204,11 @@ export const editorModesInspectorConfig =
         label: v.label,
         children: [()=>{
             // if(v.label === 'Configurator') debugger
-            const plugins = [...v.plugins?.map((p)=>viewer?.getPlugin(p))||[], ...(v.tag&&viewer ? getPluginsByTag(viewer, v.tag, 'EditorMode-') : [])].filter(Boolean)
+            const plugins = [...v.plugins?.map((p)=>viewer?.getPlugin(p))||[], ...(v.tag&&viewer ? getPluginsByTag(viewer, v.tag, 'EditorMode-') : [])]
+                .filter((plugin): plugin is IViewerPlugin => Boolean(plugin))
             const uniquePlugins = Array.from(new Set(plugins))
             // console.warn('refresh panel', v.label, uniquePlugins)
-            return uniquePlugins.map(p => p?.uiConfig||{})
+            return uniquePlugins.flatMap(plugin => plugin.uiConfig ? [plugin.uiConfig] : [])
         }]
     })])) as Record<EditorModes, (v: ThreeViewer | null) => UiObjectConfig<any, 'panel'>>
 
@@ -248,4 +249,3 @@ export const EditorModesButtonGroup: FC<{ editorMode: EditorModes, setEditorMode
         </div>
     )
 }
-
