@@ -1,6 +1,6 @@
 import type {ProjectDependency} from './runtime/projectFormat.ts'
 
-export const RUNTIME_SPECIFIERS = [
+const RUNTIME_SPECIFIERS = [
     'threepipe',
     'three',
     'uiconfig.js',
@@ -41,28 +41,6 @@ export function dependencyImportMap(
         imports[`${plugin.specifier}/`] = rootUrl
     }
     return {imports}
-}
-
-/** Read dependency declarations without exposing package-manager-only specs. */
-export function projectDependencies(packageJson: Record<string, unknown>): ProjectDependency[] {
-    const result: ProjectDependency[] = []
-    const dependencies = packageJson.dependencies
-    if (isRecord(dependencies)) {
-        for (const [key, version] of Object.entries(dependencies)) {
-            if (typeof version === 'string') result.push({key, version})
-        }
-    }
-    const kite3d = packageJson.kite3d
-    const imports = isRecord(kite3d) ? kite3d.imports : undefined
-    if (isRecord(imports)) {
-        for (const [key, value] of Object.entries(imports)) {
-            if (typeof value !== 'string') continue
-            result.push(value.startsWith('@')
-                ? {key, version: value.slice(1)}
-                : {key, version: '', url: value})
-        }
-    }
-    return result
 }
 
 /** Return configured plugin names that are exact project dependency keys. */

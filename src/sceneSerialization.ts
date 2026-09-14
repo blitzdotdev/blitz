@@ -67,7 +67,7 @@ function isAuthoredSceneObject(object: IObject3D): boolean {
 }
 
 /** Canonicalize JSON glTF and extract every embedded resource. */
-export async function serializeSceneGltfDocument(
+async function serializeSceneGltfDocument(
     input: unknown,
     options: SerializeSceneGltfOptions = {},
 ): Promise<SerializedSceneGltf> {
