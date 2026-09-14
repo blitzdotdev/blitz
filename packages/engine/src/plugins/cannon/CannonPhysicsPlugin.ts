@@ -241,30 +241,32 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
             console.error(e)
         }
 
-        this._dirty = false
-        let dirty = false
+        // True when this step moved at least one mesh. `movedAnyMesh` accumulates across
+        // every body; `movedThisMesh` is per body. Keeping them separate matters, because
+        // the public `dirty` getter and the shadow reset below both read the accumulated one.
+        let movedAnyMesh = false
         // Update the bodies
         for (const bodyC of this.bodyComponents.values()) {
             if (bodyC.mass === 0) continue
             const mesh = bodyC.object
             const body = bodyC.body
             if (!mesh) continue
-            dirty = false
+            let movedThisMesh = false
             mesh.updateWorldMatrix(true, false)
             mesh.getWorldPosition(this._v2)
             mesh.getWorldQuaternion(this._q2)
             mesh.getWorldScale(this._s2)
             this._v1.copy(body.position)
-            if (!dirty && this._v2.manhattanDistanceTo(this._v1) > 0) {
-                dirty = true
+            if (this._v2.manhattanDistanceTo(this._v1) > 0) {
+                movedThisMesh = true
                 // world = parent.local
                 // parent-1 . world = local
             }
             this._q1.copy(body.quaternion as any)
-            if (!dirty && this._q2.angleTo(this._q1) > 0) {
-                dirty = true
+            if (!movedThisMesh && this._q2.angleTo(this._q1) > 0) {
+                movedThisMesh = true
             }
-            if (dirty) {
+            if (movedThisMesh) {
                 this._m1.compose(this._v1, this._q1, this._s2)
                 if (!mesh.parent) {
                     // throw new Error('no parent')
@@ -276,13 +278,17 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
                     mesh.position.copy(this._v1)
                     mesh.quaternion.copy(this._q1)
                     mesh.setDirty && mesh.setDirty({change: 'transform', source: 'CannonPhysicsPlugin'})
+                    movedAnyMesh = true
                 }
             }
         }
-        this._dirty = dirty
+        this._dirty = movedAnyMesh
+        // A running game renders every frame, so this stays unguarded.
         viewer.setDirty()
         // viewer.scene.setDirty({sceneUpdate: false})
-        viewer.renderManager.resetShadows()
+        // Shadow maps only go stale when a caster moves. Re-rendering every light's shadow
+        // map on a step that moved nothing is pure waste, so only reset when a mesh moved.
+        if (movedAnyMesh) viewer.renderManager.resetShadows()
 
         if (this.nextSteps > 0) {
             this.running = false
