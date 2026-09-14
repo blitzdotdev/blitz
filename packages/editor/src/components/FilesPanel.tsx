@@ -18,6 +18,7 @@ import {useManagerVersion} from '../utils/UseManager.ts'
 import {useAssets, type FileManifestEntry} from '../utils/AssetsProvider.ts'
 import type {ProjectEntryKind} from '../utils/ViewerInstanceManager.ts'
 import type {MenuItem2, MenuItemAction} from '../utils/ContextMenuUtils.ts'
+import {thumbPath} from '../utils/projectUtils.ts'
 import {PopupMenuButton} from './PopupMenuButton.tsx'
 import {useObjContextMenu} from './UseObjContextMenu.tsx'
 
@@ -260,9 +261,16 @@ export function FilesPanelGrid() {
             }
         }}
     >
-        {files.map((file) => <FileButton
+        {files.map((file) => {
+            const thumbnail = file.type === 'file'
+                ? fileManifest.find((entry) => entry.path === thumbPath(file.path))
+                : undefined
+            const fileEntry = thumbnail
+                ? {...file, icon: manager.source.fileUrl(thumbnail.path, thumbnail.sha256)}
+                : file
+            return <FileButton
             key={file.path}
-            fileEntry={file}
+            fileEntry={fileEntry}
             aria-label={file.path}
             active={gridSelectionPath === file.path}
             onContextMenu={(event) => {
@@ -290,7 +298,8 @@ export function FilesPanelGrid() {
                 } else if (isOpenableFile(file.path)) {
                     void openFile(file)
                 }
-            }}/>) }
+            }}/>
+        })}
         {fileManifest.filter(({path}) => path.includes('/') && !isPrivateKite3dFile(path)).map((file, index) =>
             <button key={`semantic-${file.path}`} type="button" className="kite3d-semantic-hook"
                     style={{left: `${index * 4}px`, top: `${index * 4}px`}}
