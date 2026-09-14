@@ -5,6 +5,7 @@ import {
     Button,
     ButtonGroup,
     Icon,
+    Intent,
     MenuItem,
     Slider,
     type BreadcrumbProps,
@@ -102,7 +103,43 @@ export function FilesPanelGrid() {
         if (a.type === b.type) return a.path.localeCompare(b.path)
         return a.type === 'directory' ? -1 : 1
     })
-    const {prompt} = useDialogPrompt()
+    const {prompt, close} = useDialogPrompt()
+    const saveBeforeClose = () => new Promise<boolean | null>((resolve) => {
+        let resolved = false
+        const choose = (value: boolean | null) => {
+            resolved = true
+            close()
+            resolve(value)
+        }
+        void prompt({
+            canClose: false,
+            title: 'Save File',
+            message: 'You have unsaved changes. Do you want to save before opening another file?',
+            showInput: false,
+            actions: <>
+                <Button onClick={() => choose(null)}>Cancel</Button>
+                <Button intent={Intent.DANGER} onClick={() => choose(false)}>Discard</Button>
+                <Button intent={Intent.SUCCESS} onClick={() => choose(true)}>Save</Button>
+            </>,
+        }).finally(() => {
+            if (!resolved) resolve(null)
+        })
+    })
+    const prepareToOpen = async () => {
+        if (!manager.loadedNeedsSave) return true
+        const choice = await saveBeforeClose()
+        if (choice === null) return false
+        if (choice && !await manager.saveScene()) return false
+        return true
+    }
+    const openFile = async (file: FileManifestEntry) => {
+        if (!await prepareToOpen()) return
+        try {
+            await manager.openProjectFile(file.path)
+        } catch (error) {
+            AppToaster().show({message: errorMessage(error), intent: 'danger', icon: 'error', timeout: 4000, isCloseButtonShown: true})
+        }
+    }
     const create = async (kind: ProjectEntryKind) => {
         const option = createOptions[kind]
         const value = await prompt({
@@ -136,6 +173,33 @@ export function FilesPanelGrid() {
             await manager.refreshProjectFiles()
             AppToaster().show({message: 'Files refreshed.', intent: 'success', icon: 'refresh', timeout: 2500})
         }],
+        ['open', async (data: {file: FileManifestEntry}) => openFile(data.file)],
+        ['import', async (data: {file: FileManifestEntry}) => {
+            try {
+                await manager.importProjectAsset(data.file.path)
+            } catch (error) {
+                return {error: errorMessage(error)}
+            }
+        }],
+        ['set-main', async (data: {file: FileManifestEntry}) => {
+            const current = manager.project?.mainScene || manager.scenePath
+            const confirmed = await prompt({
+                title: 'Set main scene',
+                message: current === data.file.path
+                    ? `${data.file.path} is already the main scene. Load it again?`
+                    : `Change the main scene from ${current} to ${data.file.path} and load it?`,
+                showInput: false,
+                value: 'yes',
+                submitButtonText: current === data.file.path ? 'Load scene' : 'Set main scene',
+                closeButtonText: 'Cancel',
+            })
+            if (!confirmed || !await prepareToOpen()) return
+            try {
+                await manager.setMainScene(data.file.path)
+            } catch (error) {
+                return {error: errorMessage(error)}
+            }
+        }],
     ])
     const {handleContextMenu} = useObjContextMenu(actions)
     const showEmptyMenu = (event: React.MouseEvent<HTMLElement>) => {
@@ -160,6 +224,20 @@ export function FilesPanelGrid() {
             fileEntry={file}
             aria-label={file.path}
             active={selectedFiles[0]?.path === file.path}
+            onContextMenu={(event) => {
+                if (file.type === 'directory') return
+                event.preventDefault()
+                event.stopPropagation()
+                const items: MenuItem2[] = []
+                if (isOpenableFile(file.path)) items.push({action: 'open', key: 'open', data: {file}, props: {text: 'Open', icon: 'folder-open'}})
+                if (/\.(?:glb|gltf)$/i.test(file.path) && !/\.scene\.gltf$/i.test(file.path)) {
+                    items.push({action: 'import', key: 'import', data: {file}, props: {text: 'Import in Scene', icon: 'document-open'}})
+                }
+                if (/\.scene\.gltf$/i.test(file.path)) {
+                    items.push({action: 'set-main', key: 'set-main', data: {file}, props: {text: 'Set as main scene', icon: 'home'}})
+                }
+                handleContextMenu(event, items, file)
+            }}
             onClick={() => {
                 if (file.type === 'directory') return
                 setSelectedFiles([file])
@@ -198,6 +276,10 @@ function validateEntryName(
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error)
+}
+
+function isOpenableFile(path: string): boolean {
+    return /(?:\.scene\.gltf|\.asset\.glb|\.glb|\.gltf|\.asset\.mat|\.mat)$/i.test(path)
 }
 
 export function SliderMenuItem({thumbSize, setThumbSize, icon = 'rect-width'}: {

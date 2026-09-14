@@ -20,6 +20,7 @@ import {
     TransformControlsPlugin,
     USDZLoadPlugin,
     type Class,
+    type IMaterial,
     type IObject3D,
     type IViewerPlugin,
     PhysicalMaterial,
@@ -65,6 +66,7 @@ import {FileTracker} from './FileTracker.ts'
 import {DevServerAssetTracker} from '../adapters/DevServerAssetTracker.ts'
 import {writeEditorState, type EditorState} from './editorState.ts'
 import {CanvasFileDropHandler} from './CanvasFileDropHandler.tsx'
+import {cloneAssetItem} from './AssetTracker.ts'
 
 const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes)
 const encode = (text: string) => new TextEncoder().encode(text)
@@ -162,7 +164,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     loadedProject: EditorProject | null = null
     loadedProjectFile: LoadedProjectFile | null = null
     loadedScene: string | null = null
-    loadedAssetObj: null = null
+    loadedAssetObj: IObject3D | IMaterial | null = null
     loadedPath: string | null = null
     selectedFilePath: string | null = null
 
@@ -1028,6 +1030,93 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.replaceManifest(await this.source.list())
     }
 
+    async openProjectFile(path: string): Promise<void> {
+        if (path === this.scenePath && this.loadedScene) return
+        if (this.isPlaying || this.isStartingPlay) await this.stopPlay()
+        if (/\.scene\.gltf$/i.test(path)) {
+            const scene = await this.source.read(path)
+            const text = decode(scene.bytes)
+            validateSceneSource(path, text)
+            this.scenePath = path
+            this.hashes.set(path, scene.sha256)
+            this.loadedProjectFile = {path}
+            this.loadedScene = path
+            this.loadedAssetObj = null
+            this.loadedPath = this.source.fileUrl(path, scene.sha256)
+            await this.loadEditScene(text)
+            this.setStatus(`Opened ${path}`)
+            return
+        }
+        if (!/\.(?:glb|gltf|mat)$/i.test(path)) throw new Error('Only scenes and 3D assets can be opened.')
+        const asset = await this.getAssetFromPath(this.assetPathUrl(path))
+        if (!asset || (!asset.isObject3D && !asset.isMaterial)) throw new Error(`Unable to open ${path}.`)
+        const viewer = this.get()
+        viewer.getPlugin(EditModePlugin)?.exitIsolate()
+        viewer.scene.disposeSceneModels(true, true)
+        if (asset.isObject3D) await viewer.assetManager.loadImported(asset, {
+            autoCenter: true,
+            importConfig: true,
+            autoScale: true,
+            autoScaleRadius: 2,
+            clearSceneObjects: true,
+            disposeSceneObjects: true,
+        })
+        this.loadedProjectFile = {path}
+        this.loadedScene = null
+        this.loadedAssetObj = asset as IObject3D | IMaterial
+        this.loadedPath = this.assetPathUrl(path)
+        this.loadedNeedsSave = false
+        viewer.getPlugin(PickingPlugin)?.setSelectedObject(asset as IObject3D | IMaterial, false)
+        this.setStatus(`Opened ${path}`)
+        this.changed()
+    }
+
+    async importProjectAsset(path: string): Promise<IObject3D> {
+        const loadedObject = this.loadedAssetObj as IObject3D | null
+        if (!this.loadedScene && !loadedObject?.isObject3D) throw new Error('Open a scene or object asset before importing.')
+        const source = await this.getAssetFromPath(this.assetPathUrl(path))
+        if (!source?.isObject3D) throw new Error(`Unable to import ${path} as a 3D object.`)
+        const object = cloneAssetItem(source as IObject3D)
+        object.userData ||= {}
+        object.userData.rootPath = this.assetPathUrl(path)
+        object.userData.kite3dImportedInstance = true
+        object.userData.sProperties = [...assetInstanceProperties]
+        object.name = path.split('/').pop() || object.name
+        for (const child of object.children) child.userData.excludeFromExport = true
+        if (loadedObject?.isObject3D) loadedObject.add(object)
+        else this.get().scene.addObject(object)
+        this.get().getPlugin(PickingPlugin)?.setSelectedObject(object, false)
+        this.loadedNeedsSave = true
+        this.setStatus(`Imported ${path}`)
+        return object
+    }
+
+    async setMainScene(path: string): Promise<void> {
+        if (!/\.scene\.gltf$/i.test(path)) throw new Error('The main scene must be a .scene.gltf file.')
+        const packageFile = await this.source.read('package.json')
+        const packageJson = JSON.parse(decode(packageFile.bytes)) as ProjectPackageJSON
+        packageJson.mainScene = path
+        const written = await this.source.write(
+            'package.json',
+            encode(`${JSON.stringify(packageJson, null, 2)}\n`),
+            packageFile.sha256,
+        )
+        this.hashes.set('package.json', written.sha256)
+        if (this.project) {
+            this.project.mainScene = path
+            this.project.packageJson = packageJson
+        }
+        await this.openProjectFile(path)
+        this.changed()
+    }
+
+    private assetPathUrl(path: string): string {
+        const registered = Object.entries(this.assetsManifest.files).find(([, entry]) => entry.path === path)
+        if (!registered) return this.source.fileUrl(path, this.hashes.get(path))
+        const extension = path.split('.').pop() || 'glb'
+        return assetIdUrl(registered[0], `f.${extension}`)
+    }
+
     async refreshProjectFiles(): Promise<void> {
         const [files, directories] = await Promise.all([
             this.source.list(),
@@ -1148,7 +1237,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     async getAssetFromPath(path: string) {
-        const normalized = path.startsWith('/kite3d/') ? path : this.source.fileUrl(path)
+        const normalized = path.startsWith('/kite3d/') || /^https?:\/\//.test(path) ? path : this.source.fileUrl(path)
         const imported = await this.get().assetManager.importer.import(normalized)
         return imported.find(Boolean)
     }
