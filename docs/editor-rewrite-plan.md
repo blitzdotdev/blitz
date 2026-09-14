@@ -699,7 +699,7 @@ One server class. `kite3d dev` and `kite3d open` start the same server; the diff
 
 On tabs, since that is what you said this is really about: the launcher cannot see browser tabs, but every dev server knows its own, because an open tab is one SSE subscriber. So `/api/state` on a dev server gains a `clients` count, the launcher asks each running server with the token from its `dev.json`, and a row reads "running, 2 tabs" or "running, no tab". What no page can do is focus a tab it did not open. Open on a running project is always a new tab on the same server, which is safe: the two tabs stay in sync through the events, and If-Match keeps them from overwriting each other.
 
-Three shapes, one per job: what persists, what a running server writes, and what the picker renders.
+Two shapes, one per job: what persists, and what a running server writes. The picker's list is the first shape plus what only the server can know right now.
 
 ```ts
 // packages/kite3d/src/projectIndex.ts     ~/.kite3d/projects.json: what persists across reboots
@@ -716,14 +716,8 @@ export interface IndexedProject {
 // a project server writes it to <project>/.kite3d/dev.json. Same shape, two places.
 export interface ServerState { pid: number; port: number; url: string; token: string }
 
-// GET /api/hub/projects                    what the picker renders; computed on each request, nothing persisted
-export interface HubProjects {
-    repos: Array<{ name: string; root: string; worktrees: HubProject[] }>   // the repository is the unit; its worktrees are the rows
-    loose: HubProject[]                                                    // projects without git
-}
-export interface HubProject {
-    path: string            // from the index
-    name: string            // from the index
+// GET /api/hub/projects → ProjectRow[]      the index rows, each with the five things only the server knows right now
+export type ProjectRow = IndexedProject & {
     branch: string | null   // from git at request time; null when HEAD is detached
     head: string | null     // the short commit when branch is null
     running: boolean        // <path>/.kite3d/dev.json parses and its pid is alive
@@ -732,12 +726,14 @@ export interface HubProject {
 }
 ```
 
-The old code had two server shapes, `HubState` and a `DevState` with `origin` and `started_at` on top, because the hub was a second server type. With one server class there is one shape; `origin` was the url without its token, and `started_at` was never read. The old response also carried an `active` list beside the rows; the picker now filters the rows on `running` itself.
+The picker does the rest in the browser: it groups rows by `repoRoot` (null is the loose list), names a group by the last path segment of `repoRoot`, lists the running rows first, and sorts by `lastOpened`.
+
+The old code had two server shapes, `HubState` and a `DevState` with `origin` and `started_at` on top, because the hub was a second server type. With one server class there is one shape; `origin` was the url without its token, and `started_at` was never read. The old response was a nested object with an `active` list, a `repos` tree and a `loose` list, all built on the server from the same rows; a flat list and a group-by in the picker is less code on both sides.
 
 ```
 on every server (the launcher is the one without a project)
 GET   /api/state                    {hub: true}                     the editor picks hub mode on this
-GET   /api/hub/projects             HubProjects                      index + git grouping + dev.json liveness + tab counts
+GET   /api/hub/projects             ProjectRow[]                     the index rows plus branch, running, tabs, url
 GET   /api/hub/folders?path=        {path, parent, folders: [{name, path, isProject, isRepo}]}   Open Project browser, under $HOME
 POST  /api/hub/projects/start       {path} → {url}                   reuse a live dev.json, else spawn and wait 60 s
 POST  /api/hub/projects/stop        {path} → {stopped: true}         SIGTERM, 5 s, SIGKILL
