@@ -42,6 +42,14 @@ import {mountHubRoutes} from './hubRoutes.ts'
 export interface ManifestEntry {
     path: string
     size: number
+    /**
+     * A real content hash, not a revision counter. The editor seeds `If-Match`
+     * from this field for files it writes but never reads, the extracted scene
+     * buffers among them, and the PUT route compares it against a fresh hash of
+     * the file. Publishing size and mtime here instead would either 412 every
+     * scene save or drop the write to `If-Match: *` and overwrite a file another
+     * writer had changed.
+     */
     sha256: string
     mtime: number
 }
