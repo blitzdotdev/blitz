@@ -176,7 +176,7 @@ export function InspectorPanelComponent({...props}: PanelActions & InspectorPane
                 console.error('Could not find file in manifest: ' + assetRootPath1, fileManifest)
                 return
             }
-            return await manager.loadAsset(entry, project) // this will refresh the same loaded asset
+            return await manager.reloadProjectAsset(entry.path)
         }
 
         const saveAsset = async ()=>{

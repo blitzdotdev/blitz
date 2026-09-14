@@ -1142,6 +1142,47 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         }
     }
 
+    async saveProjectAsset(
+        _project: unknown,
+        _scene: unknown,
+        object: IObject3D | IMaterial,
+        path: string,
+    ): Promise<{error: string | null}> {
+        try {
+            if (!/\.(?:glb|gltf|mat)$/i.test(path)) return {error: `Unsupported asset path: ${path}`}
+            const extension = path.split('.').pop()?.toLowerCase() || 'glb'
+            const exported = await this.get().assetManager.exporter.exportObject(object as IObject3D, {
+                exportExt: extension,
+                viewerConfig: false,
+            })
+            if (!exported) return {error: `Unable to export ${path}.`}
+            let ifMatch = this.hashes.get(path)
+            if (!ifMatch) ifMatch = (await this.source.read(path)).sha256
+            const written = await this.source.write(path, new Uint8Array(await exported.arrayBuffer()), ifMatch)
+            this.hashes.set(path, written.sha256)
+            this.replaceManifest(await this.source.list())
+            if (object === this.loadedAssetObj) this.loadedNeedsSave = false
+            this.setStatus(`Saved ${path}`)
+            return {error: null}
+        } catch (error) {
+            return {error: errorMessage(error)}
+        }
+    }
+
+    async reloadProjectAsset(path: string): Promise<IObject3D | IMaterial> {
+        const file = await this.source.read(path)
+        this.hashes.set(path, file.sha256)
+        const url = versionedPath(this.assetPathUrl(path), file.sha256, String(++this.moduleReloadSequence))
+        const imported = await this.get().assetManager.importer.import(url)
+        const asset = imported.find((item) => item?.isObject3D || item?.isMaterial)
+        if (!asset) throw new Error(`Unable to reload ${path}.`)
+        this.get().getPlugin(PickingPlugin)?.setSelectedObject(asset as IObject3D | IMaterial, false)
+        if (this.loadedProjectFile?.path === path) this.loadedAssetObj = asset as IObject3D | IMaterial
+        this.setStatus(`Reloaded ${path}`)
+        this.changed()
+        return asset as IObject3D | IMaterial
+    }
+
     async setMainScene(path: string): Promise<void> {
         if (!/\.scene\.gltf$/i.test(path)) throw new Error('The main scene must be a .scene.gltf file.')
         const packageFile = await this.source.read('package.json')
@@ -1295,7 +1336,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     resolveAssetIdPath(path?: string | null) {
         if (!path) return path ?? null
-        const id = path.replace(/^@/, '').replace(/\/$/, '')
+        const id = path.replace(/^@/, '').split('/', 1)[0]
         return this.assetsManifest.files[id]?.path || path
     }
 
