@@ -131,7 +131,8 @@ export class Cannon3DShapeComponent extends Object3DComponent {
         if (refreshBody && this.bodyRef) this.bodyRef.refreshShapes()
 
         this.object.setDirty?.()
-        this.ctx.plugin(Object3DWidgetsPlugin)?.refreshObject(this.object)
+        // ctx.plugin throws when a plugin is absent, and a game has no widgets plugin.
+        this.ctx.viewer.getPlugin(Object3DWidgetsPlugin)?.refreshObject(this.object)
     }
 
     private _needsUpdate = false

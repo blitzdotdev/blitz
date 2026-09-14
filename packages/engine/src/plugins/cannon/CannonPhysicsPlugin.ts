@@ -210,7 +210,9 @@ export class CannonPhysicsPlugin extends AViewerPluginSync {
         if(this.isDisabled()) return
         const frameFadePlugin = viewer.getPlugin(FrameFadePlugin)
         // todo use isDisabled
-        if (!this.running) {
+        // A paused frame steps nothing: the viewer timeline is the game clock, so a stopped
+        // timeline reads here exactly like `running = false`. Only the Step button below passes.
+        if (!this.running || !viewer.timeline.running) {
             if (this.nextSteps > 0) this.running = true
             else {
                 if (frameFadePlugin && this.frameFadeToggled) {

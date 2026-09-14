@@ -32,10 +32,13 @@ import {
     ProjectConfigSettings,
 } from './projectFormat.ts'
 
-export interface CreateGameOptions {
+export interface StartGameOptions {
     base: string
-    canvas: HTMLCanvasElement
     onError?: (error: unknown) => void
+}
+
+export interface CreateGameOptions extends StartGameOptions {
+    canvas: HTMLCanvasElement
 }
 
 export interface RuntimeProject {
@@ -45,131 +48,147 @@ export interface RuntimeProject {
     mainScene: string
 }
 
+export interface RunningGame {
+    stop(): Promise<void>
+}
+
 export interface CreatedGame {
     viewer: ThreeViewer
     project: RuntimeProject
-    dispose(): void
+    dispose(): Promise<void>
 }
 
 type ModuleExports = Record<string, unknown>
 type RuntimeErrorHandler = (error: unknown) => void
 
-export function createGame(options: CreateGameOptions): Promise<CreatedGame> {
-    return createProjectGame(options)
+/**
+ * Runs a project on a viewer that already holds its scene: the project's scripts and plugins,
+ * the timeline, the components, physics, and `main({viewer})`. The editor runs Play with this.
+ */
+export async function startGame(
+    viewer: ThreeViewer,
+    project: RuntimeProject,
+    options: StartGameOptions,
+): Promise<RunningGame> {
+    const base = new URL(options.base, window.location.href)
+    // Throws when the viewer has no EntityComponentPlugin, so the lookups below have one.
+    await registerProjectScripts(viewer, project, base)
+    await registerProjectPlugins(viewer, project, base)
+
+    viewer.timeline.reset()
+    viewer.timeline.start()
+    viewer.getPlugin(EntityComponentPlugin)!.start()
+    const physics = viewer.getPlugin(CannonPhysicsPlugin)
+    if (physics) physics.running = true
+
+    const mainPath = typeof project.packageJson.main === 'string' ? project.packageJson.main : './main.js'
+    const {main} = await importModule(projectUrl(mainPath, base).href)
+    if (main !== undefined && typeof main !== 'function') {
+        throw new Error(`${mainPath} export "main" must be a function`)
+    }
+    const cleanup: unknown = await main?.({viewer})
+
+    return {
+        async stop() {
+            if (typeof cleanup === 'function') await cleanup()
+            if (physics) physics.running = false
+            viewer.getPlugin(EntityComponentPlugin)!.stop()
+            viewer.timeline.stop()
+            viewer.timeline.reset()
+        },
+    }
 }
 
-async function createProjectGame({
-    base,
-    canvas,
-    onError,
-}: CreateGameOptions): Promise<CreatedGame> {
-    const reportError = createErrorReporter(onError)
+export async function createGame(options: CreateGameOptions): Promise<CreatedGame> {
+    const reportError = createErrorReporter(options.onError)
     let viewer: ThreeViewer | undefined
-    let nestedAssets: RuntimeNestedAssetLoader | undefined
-    let removeURLModifier: (() => void) | undefined
+    let nested: RuntimeNestedAssetLoader | undefined
 
     try {
-        const baseUrl = validateBase(base)
-        const [packageText, assetsText] = await Promise.all([
-            fetchText(new URL('package.json', baseUrl)),
-            fetchText(new URL('assets.json', baseUrl)),
-        ])
-        const packageJson = parsePackageJSON(packageText)
-        const config = await parsePackageJsonSettingsConfig(packageJson)
-        const assetsManifest = parseAssetsJSONManifest(assetsText)
-        const project: RuntimeProject = {
-            packageJson,
-            config,
-            assetsManifest,
-            mainScene: packageJson.mainScene,
-        }
-
-        const entityComponents = new EntityComponentPlugin(false)
-        const physics = new CannonPhysicsPlugin(true, false)
-        EntityComponentPlugin.AddObjectUiConfig = false
-        window.MeshoptDecoder = MeshoptDecoder
-
-        viewer = new ThreeViewer({
-            canvas,
-            ...config.viewer,
-            assetManager: {
-                simpleCache: false,
-                storage: false,
-            },
-            plugins: [
-                entityComponents,
-                new GBufferPlugin(),
-                physics,
-                new PopmotionPlugin(),
-                new GLTFAnimationPlugin(),
-                new GLTFMeshOptDecodePlugin(false),
-                new KTX2LoadPlugin(),
-                new KTXLoadPlugin(),
-                new PLYLoadPlugin(),
-                new Rhino3dmLoadPlugin(),
-                new STLLoadPlugin(),
-                new USDZLoadPlugin(),
-            ],
-        })
-        viewer.timeline.endTime = 0
-        entityComponents.addComponentType(HtmlUiComponent)
-
+        const base = validateBase(options.base)
+        const project = await loadRuntimeProject(base)
+        viewer = createViewer(options.canvas, project)
         // Three's LoadingManager delegates through this importer hook. It covers
         // glTF buffers/textures and nested imports without patching global fetch.
-        const urlModifier = createProjectAssetURLModifier(baseUrl, assetsManifest)
-        viewer.assetManager.importer.addURLModifier(urlModifier)
-        removeURLModifier = () => viewer?.assetManager.importer.removeURLModifier(urlModifier)
+        viewer.assetManager.importer.addURLModifier(createProjectAssetURLModifier(base, project.assetsManifest))
+        nested = new RuntimeNestedAssetLoader(viewer, reportError)
 
-        nestedAssets = new RuntimeNestedAssetLoader(viewer, reportError)
+        // The project's component types have to exist before the scene loads. A node whose
+        // component type is unknown at load keeps a placeholder that never becomes the real
+        // component, so its script never runs. startGame skips what is registered here.
+        await registerProjectScripts(viewer, project, base)
+        await registerProjectPlugins(viewer, project, base)
 
-        await registerProjectScripts(viewer, project, baseUrl)
-        await registerProjectPlugins(viewer, project, baseUrl)
+        const sceneUrl = new URL(project.mainScene, base).href
+        const root = await viewer.load(sceneUrl, {importAsModelRoot: true})
+        if (!root?.isObject3D) throw new Error(`The main scene did not load as an Object3D: ${sceneUrl}`)
+        await nested.loadObjectDependencies(root as IObject3D)
+        await nested.waitForPending()
 
-        const sceneUrl = new URL(project.mainScene, baseUrl).href
-        const loadedScene = await viewer.load(sceneUrl, {importAsModelRoot: true})
-        if (!loadedScene?.isObject3D) {
-            throw new Error(`The main scene did not load as an Object3D: ${sceneUrl}`)
-        }
-        await nestedAssets.loadObjectDependencies(loadedScene as IObject3D)
-        await nestedAssets.waitForPending()
-
-        viewer.timeline.reset()
-        viewer.timeline.start()
-        entityComponents.start()
-        physics.running = true
-
-        const mainUrl = projectUrl('main.js', baseUrl)
-        const mainModule = await importModule(mainUrl.href)
-        if (mainModule.main !== undefined) {
-            if (typeof mainModule.main !== 'function') {
-                throw new Error('main.js export "main" must be a function')
-            }
-            await mainModule.main({viewer})
-        }
-
+        const running = await startGame(viewer, project, options)
         const readyViewer = viewer
-        let disposed = false
+        const readyNested = nested
         return {
             viewer: readyViewer,
             project,
-            dispose() {
-                if (disposed) return
-                disposed = true
-                entityComponents.stop()
-                physics.running = false
-                readyViewer.timeline.stop()
-                nestedAssets?.dispose()
-                removeURLModifier?.()
+            async dispose() {
+                await running.stop()
+                readyNested.dispose()
                 readyViewer.dispose()
             },
         }
     } catch (error) {
-        nestedAssets?.dispose()
-        removeURLModifier?.()
+        nested?.dispose()
         viewer?.dispose()
         reportError(error)
         throw error
     }
+}
+
+async function loadRuntimeProject(base: URL): Promise<RuntimeProject> {
+    const [packageText, assetsText] = await Promise.all([
+        fetchText(new URL('package.json', base)),
+        fetchText(new URL('assets.json', base)),
+    ])
+    const packageJson = parsePackageJSON(packageText)
+    return {
+        packageJson,
+        config: await parsePackageJsonSettingsConfig(packageJson),
+        assetsManifest: parseAssetsJSONManifest(assetsText),
+        mainScene: packageJson.mainScene,
+    }
+}
+
+function createViewer(canvas: HTMLCanvasElement, project: RuntimeProject): ThreeViewer {
+    const entityComponents = new EntityComponentPlugin(false)
+    EntityComponentPlugin.AddObjectUiConfig = false
+    window.MeshoptDecoder = MeshoptDecoder
+
+    const viewer = new ThreeViewer({
+        canvas,
+        ...project.config.viewer,
+        assetManager: {
+            simpleCache: false,
+            storage: false,
+        },
+        plugins: [
+            entityComponents,
+            new GBufferPlugin(),
+            new CannonPhysicsPlugin(true, false),
+            new PopmotionPlugin(),
+            new GLTFAnimationPlugin(),
+            new GLTFMeshOptDecodePlugin(false),
+            new KTX2LoadPlugin(),
+            new KTXLoadPlugin(),
+            new PLYLoadPlugin(),
+            new Rhino3dmLoadPlugin(),
+            new STLLoadPlugin(),
+            new USDZLoadPlugin(),
+        ],
+    })
+    viewer.timeline.endTime = 0
+    entityComponents.addComponentType(HtmlUiComponent)
+    return viewer
 }
 
 async function registerProjectPlugins(
