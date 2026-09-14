@@ -22,7 +22,7 @@ import React from "react";
 import {FileManifestEntry} from "./AssetsProvider.ts";
 import {environmentCommand, materialCommand, objectCommand, textureCommand} from "./objectApplyCommands.tsx";
 import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
-import {assetableFileTypes, isExternalObject, notAssetableFileTypes} from "./projectUtils.ts";
+import {isExternalObject} from "./projectUtils.ts";
 import {cloneAssetItem} from "./AssetTracker.ts";
 import {requestLibraryDropDialog, type LibraryDropActionOption} from '../components/LibraryDropDialog.tsx'
 import {
@@ -35,6 +35,9 @@ import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib'
 
 type DraggedItem = IMaterial | IObject3D | ITexture
 type LibraryEntry = FileManifestEntry | TExternalFile | {path: string, name?: string, assetType?: string, isFSEntry: false}
+type DragSource =
+    | {kind: 'library', entry: LibraryEntry}
+    | {kind: 'project', entry: FileManifestEntry}
 
 const textureSlots: LibraryDropActionOption[] = [
     {id: 'map', label: 'Base color'},
@@ -204,39 +207,47 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         this.draggedItem = null;
     }
 
-    private draggingEntry: LibraryEntry | null = null
-    private libraryImport: Promise<DraggedItem> | null = null
+    private dragSource: DragSource | null = null
+    private dragPreparation: Promise<DraggedItem> | null = null
     private dropLanded = false
 
     handleDragStart = async (e: React.DragEvent, f: LibraryEntry) => {
-        if(this.libraryImport) return // already dragging something
-        this.draggingEntry = f
+        await this.startDrag(e, {kind: 'library', entry: f})
+    };
+
+    handleProjectDragStart = async (e: React.DragEvent, f: FileManifestEntry) => {
+        await this.startDrag(e, {kind: 'project', entry: f})
+    };
+
+    private async startDrag(e: React.DragEvent, source: DragSource) {
+        if(this.dragPreparation) return // already dragging something
+        this.dragSource = source
         draggingSpinner.style.display = 'block'
         e.dataTransfer.setData('text/uri-list', ' ');
         e.dataTransfer!.setDragImage(transparentPixelCanvas, 16, 16);
         // e.preventDefault();
-        const libraryImport = this.manager.getAssetFromEntry(f).then((item) => {
+        const dragPreparation = this.manager.getAssetFromEntry(source.entry).then((item) => {
             if (!item) throw new Error('No supported asset was loaded.')
             return item as DraggedItem
         })
-        this.libraryImport = libraryImport
+        this.dragPreparation = dragPreparation
         this.dropLanded = false
         let loaded = false
         try {
-            const item = await libraryImport
-            if (this.libraryImport !== libraryImport) return
+            const item = await dragPreparation
+            if (this.dragPreparation !== dragPreparation) return
             this.setDraggedItem(item);
             if (!this.draggedItem) throw new Error('The asset type is not supported by the editor.')
             loaded = true
         } catch (error) {
-            console.error(`Unable to import library asset ${f.name || this.fileName(f.path)}`, error)
-            showLibraryImportError(f, error)
+            console.error(`Unable to import asset ${source.entry.name || this.fileName(source.entry.path)}`, error)
+            showLibraryImportError(source.entry, error)
         } finally {
-            if (this.libraryImport === libraryImport) {
+            if (this.dragPreparation === dragPreparation) {
                 draggingSpinner.style.display = 'none'
                 if (!loaded && !this.dropLanded) {
-                    this.libraryImport = null
-                    this.draggingEntry = null
+                    this.dragPreparation = null
+                    this.dragSource = null
                 }
             }
         }
@@ -248,7 +259,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         // const path = f.isFSEntry ? assetUrlPrefix+f.path : f.path
         // e.dataTransfer.setData('application/json', JSON.stringify({path}));
         e.dataTransfer.setData('text/uri-list', ' ');
-    };
+    }
 
     handleDragEnd = (e?: React.DragEvent) => {
         if (this.dropLanded) {
@@ -256,9 +267,9 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             return
         }
         draggingSpinner.style.display = 'none'
-        this.libraryImport = null
+        this.dragPreparation = null
         this.dropLanded = false
-        this.draggingEntry = null
+        this.dragSource = null
         this.clearDraggedItem();
         e?.dataTransfer.clearData();
     }
@@ -275,7 +286,7 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         const effect = this.draggedItem === this.draggedItemSrc ? 'move' : 'copy'
         this.lastIntersects = intersects as Array<Intersection<IObject3D>>
         this.dropTarget = intersects[0]?.object as IObject3D || null
-        const res = Boolean(this.draggedItem || this.libraryImport)
+        const res = Boolean(this.draggedItem || this.dragPreparation)
         if (e.dataTransfer) {
             e.dataTransfer.dropEffect = res ? effect : 'none';
         }
@@ -285,17 +296,27 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
     private async handleDrop(e: DragEvent): Promise<void> {
         if(!this._viewer) return
         if(e.dataTransfer?.files?.length) return // for dropzone
-        const libraryImport = this.libraryImport
-        if(!this.draggedItem && !libraryImport) return;
+        const dragPreparation = this.dragPreparation
+        if(!this.draggedItem && !dragPreparation) return;
 
         e.preventDefault();
-        if (libraryImport) this.dropLanded = true
+        if (dragPreparation) this.dropLanded = true
         const intersects = this.getIntersects(e)
-        const entry = this.draggingEntry
+        const source = this.dragSource
 
+        let imported: DraggedItem | null
         try {
-            const imported = this.draggedItem || await libraryImport
-            if (!imported || (libraryImport && (this.libraryImport !== libraryImport || !this.dropLanded))) return
+            imported = this.draggedItemSrc || (dragPreparation ? await dragPreparation : null)
+        } catch {
+            return
+        }
+        try {
+            if (!imported) return
+            if (dragPreparation && (this.dragPreparation !== dragPreparation || !this.dropLanded)) return
+            if (source?.kind === 'project') {
+                await this.manager.registerProjectAssetItem(source.entry.path, imported)
+                this.clearDraggedItem()
+            }
             if (!this.draggedItem) this.setDraggedItem(imported)
             const item = this.draggedItem
             if (!item) return
@@ -306,17 +327,21 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
                 ? this.getDroppedObjectWorldPosition(item as IObject3D, filteredIntersects as Array<Intersection<IObject3D>>)
                 : undefined
 
-            this.dropLibraryItem(item, entry, mesh || null, dropPosition)
+            this.dropLibraryItem(item, source?.entry || null, mesh || null, dropPosition)
 
             this.clearDraggedItem(true);
-        } catch {
+        } catch (error) {
+            if (source?.kind === 'project') {
+                showLibraryImportError(source.entry, error)
+                this.clearDraggedItem()
+            }
             return
         } finally {
-            if (!libraryImport || (this.libraryImport === libraryImport && this.dropLanded)) {
+            if (!dragPreparation || (this.dragPreparation === dragPreparation && this.dropLanded)) {
                 draggingSpinner.style.display = 'none'
-                this.libraryImport = null
+                this.dragPreparation = null
                 this.dropLanded = false
-                this.draggingEntry = null
+                this.dragSource = null
             }
         }
     }
@@ -767,9 +792,8 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
     canDragFile(f: {path: string, type?: 'file' | 'directory', assetType?: string}): boolean {
         if(f.type && f.type !== 'file') return false
         if (f.assetType && ['model', 'material', 'texture', 'hdri'].includes(f.assetType)) return true
-        // todo use isLoadableFile?
-        return !notAssetableFileTypes.some(e=>f.path.endsWith(e)) // not a scene or something
-            && assetableFileTypes.some(e=>f.path.endsWith(e)) // its a model, material, etc
+        return !/\.scene\.(?:glb|gltf)$/i.test(f.path)
+            && /\.(?:glb|gltf|phmatgltf|mat|png|jpe?g|gif|bmp|tiff|webp|hdr|exr|ktx2?|svg)$/i.test(f.path)
     }
 
     private getMousePosition(event: DragEvent): Vector2 {

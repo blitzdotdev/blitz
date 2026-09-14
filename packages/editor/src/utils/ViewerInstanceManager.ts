@@ -22,6 +22,7 @@ import {
     type Class,
     type IMaterial,
     type IObject3D,
+    type ITexture,
     type IViewerPlugin,
     PhysicalMaterial,
     UnlitMaterial,
@@ -1260,6 +1261,22 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         return assetId
     }
 
+    async registerProjectAssetItem(path: string, item: IObject3D | IMaterial | ITexture): Promise<void> {
+        const rootPath = assetIdUrl(await this.registerAsset(path), path)
+        item.userData ||= {}
+        item.userData.rootPath = rootPath
+        item.userData.kite3dImportedInstance = true
+        item._tpRootPath = rootPath
+        if ((item as IObject3D).isObject3D) {
+            const object = item as IObject3D
+            if (object.type === 'Group' && object.name === 'AuxScene' && object.children.length > 1) {
+                object.name = path.split('/').pop() || object.name
+            }
+            object.userData.sProperties = [...assetInstanceProperties]
+            for (const child of object.children) child.userData.excludeFromExport = true
+        }
+    }
+
     async importUrl(url: string) {
         const response = await fetch(url)
         if (!response.ok) throw new Error(`Unable to import ${url}: ${response.status}`)
@@ -1268,9 +1285,9 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     }
 
     /** AGREED-4: reference asset pickers delegate reads to the dev-server URL space. */
-    async getAssetFromEntry(entry: {path: string, name?: string, libFileId?: string}) {
+    async getAssetFromEntry(entry: {path: string, name?: string, libFileId?: string, isFSEntry?: boolean}) {
         if (entry.libFileId) return this.importLibraryAsset(entry)
-        return this.getAssetFromPath(entry.path)
+        return this.getAssetFromPath(entry.isFSEntry ? this.assetPathUrl(entry.path) : entry.path)
     }
 
     private async importLibraryAsset(entry: {path: string, name?: string}) {
@@ -1330,8 +1347,22 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     async getAssetFromPath(path: string) {
         const normalized = path.startsWith('/kite3d/') || /^https?:\/\//.test(path) ? path : this.source.fileUrl(path)
-        const imported = await this.get().assetManager.importer.import(normalized)
-        return imported.find(Boolean)
+        const importer = this.get().assetManager.importer
+        let importError: unknown
+        const captureImportError = (event: {state: string, error?: unknown}) => {
+            if (event.state === 'error') importError = event.error
+        }
+        importer.addEventListener('importFile', captureImportError)
+        const imported = await importer.import(normalized).finally(() =>
+            importer.removeEventListener('importFile', captureImportError))
+        const loaded = imported.find(Boolean)
+        if (loaded) return loaded
+        if (importError instanceof Error) throw importError
+        if (importError && typeof importError === 'object' && 'message' in importError) {
+            throw new Error(String(importError.message))
+        }
+        if (importError) throw new Error(String(importError))
+        return undefined
     }
 
     resolveAssetIdPath(path?: string | null) {

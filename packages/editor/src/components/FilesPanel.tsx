@@ -1,5 +1,5 @@
 import type {FC, ReactNode} from 'react'
-import {useState} from 'react'
+import {useEffect, useState} from 'react'
 import {
     Breadcrumbs,
     Button,
@@ -21,6 +21,7 @@ import type {MenuItem2, MenuItemAction} from '../utils/ContextMenuUtils.ts'
 import {thumbPath} from '../utils/projectUtils.ts'
 import {PopupMenuButton} from './PopupMenuButton.tsx'
 import {useObjContextMenu} from './UseObjContextMenu.tsx'
+import {CanvasFileDropHandler} from '../utils/CanvasFileDropHandler.tsx'
 
 const emptyMenuItems: MenuItem2[] = [
     {action: 'scene', key: 'scene', props: {text: 'New Scene', icon: 'cube-add'}},
@@ -83,6 +84,8 @@ export function FilesPanelBreadCrumbs() {
 
 export function FilesPanelGrid() {
     const manager = useManagerVersion()
+    const dragger = manager.get().getPlugin(CanvasFileDropHandler)
+    useEffect(() => () => dragger?.handleDragEnd(), [dragger])
     const {currentPath, setCurrentPath, fileManifest, selectedFiles, setSelectedFiles} = useAssets()
     const prefix = currentPath === '/' ? '' : `${currentPath.replace(/^\//, '').replace(/\/$/, '')}/`
     const entries = new Map<string, FileManifestEntry | {name: string, path: string, type: 'directory'}>()
@@ -273,6 +276,9 @@ export function FilesPanelGrid() {
             fileEntry={fileEntry}
             aria-label={file.path}
             active={gridSelectionPath === file.path}
+            draggable={dragger?.canDragFile(file)}
+            onDragStart={(event) => void (file.type === 'file' && dragger?.handleProjectDragStart(event, file))}
+            onDragEnd={dragger?.handleDragEnd}
             onContextMenu={(event) => {
                 if (file.type === 'directory') return
                 event.preventDefault()
