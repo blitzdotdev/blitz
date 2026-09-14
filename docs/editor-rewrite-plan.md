@@ -133,8 +133,9 @@ export class DevServerSource {
     async listDirectories(): Promise<string[]> { return (await this.json<{ directories: string[] }>('/api/directories')).directories }
     async createDirectory(path: string) { await this.json('/api/directories', { method: 'POST', body: JSON.stringify({ path }), headers: { 'Content-Type': 'application/json' } }) }
     async state(): Promise<{ hub?: true; name?: string; versions?: Record<string, string> }> { return this.json('/api/state') }
-    async read(path: string): Promise<ProjectReadResult> {
-        const res = await fetch(this.fileUrl(path), { headers: this.headers() })
+    async read(path: string, sha256?: string): Promise<ProjectReadResult> {
+        // ?v=<sha> makes the URL unique per version; no-cache revalidates against the ETag when the sha is unknown
+        const res = await fetch(this.fileUrl(path, sha256), { headers: this.headers(), cache: 'no-cache' })
         if (!res.ok) throw new Error(`Cannot read ${path}: ${res.status}`)
         return { bytes: new Uint8Array(await res.arrayBuffer()), sha256: (res.headers.get('etag') || '').replace(/"/g, '') }
     }
@@ -176,6 +177,8 @@ export class DevServerSource {
 ```
 
 The server side is unchanged from the cleanup branch: `GET /api/files` returns `{path, size, sha256, mtime}` entries, `GET /files/<path>` answers with an `ETag` and rewrites relative imports in `.m?js` files when `?v=` is present, `PUT /files/<path>` requires `If-Match` and writes through a temp file and a rename, `GET /api/events` is Server-Sent Events with a 150 ms coalescing window per path. The token is accepted from the header, from the per-port cookie the first page load sets, or from `?t=` on GET, which is what keeps `<script type=module>` and `viewer.load` working without a header.
+
+One server change, your call on 2026-09-14: the watcher ignores `.kite3d`. Today one predicate, `isIncludedPath` (`server.ts:537`), gates the listing, the file routes and the watcher, and it lets `.kite3d` through because the editor keeps thumbnails and save backups there. The listing and the routes keep that exception. The watcher gets a stricter one, so screenshots, `dev.json`, backups and a detached server's `dev.log` no longer become events for every tab.
 
 ### 4.2 The handles
 
@@ -273,7 +276,7 @@ export class DevServerFileHandle implements ProjectFileHandle {
     constructor(readonly path: string, private readonly source: DevServerSource, private readonly manifest: ProjectManifest) {}
     get name() { return this.path.split('/').pop() || '' }
     async getFile(): Promise<File> {
-        const { bytes, sha256 } = await this.source.read(this.path)
+        const { bytes, sha256 } = await this.source.read(this.path, this.manifest.files.get(this.path)?.sha256)
         this.manifest.based.set(this.path, sha256)
         return new File([bytes], this.name, { lastModified: this.manifest.files.get(this.path)?.mtime })
     }
@@ -382,15 +385,66 @@ The write is one side. The other side is the event every write causes, whoever m
        main scene, clean ... reload from disk
        main scene, dirty ... ask "Changed on disk: reload and discard the editor copy?"
        script, package.json, assets.json ... changedFilesQ.push(path)   (section 7 takes it from there)
+       a placed asset, or one of its files ... scheduleAssetRefresh(path)   (below)
+       anything else ............ the Files panel listing only
 ```
 
 The two main-scene lines are the one new behaviour in this section, and they are a port of what our editor already did: a scene changed on disk by an agent or by Blender reloads, with a confirm when the editor copy is dirty. Upstream's `refreshChangedFilesQ` takes it from there for scripts, `package.json` and `assets.json`, because its queue already accepts a plain path string (`ScriptUtil.ts:610`, the string branch at 629). `FileSystemObserver`, the two-second poll, the `BroadcastChannel` and `FetchProxy` are gone; asset URLs under `/kite3d/` resolve through the engine's `createProjectAssetURLModifier` on the viewer's importer, the same call `createGame` makes.
+
+#### A changed asset file
+
+The gap you asked me to close: a Blender re-export of `assets/tree.glb` did not enter the viewer live, not in the old editor and not in revision 3. You saw the new mesh after the next scene reload.
+
+Upstream already has the machinery; it only lacks the trigger. `AssetTracker` keeps a registry keyed by rootPath, the URL a placed asset stores in the scene (`/kite3d/@<id>/f.glb`, or `/kite3d/<path>` before the asset has an id, from `toAssetIdPath` at `ViewerInstanceManager.ts:1452`). Every placed instance subscribes to its entry (`subsToAsset`, 1529). `refreshFromRegistry(key, {importedFile})` (`AssetTracker.ts:304`) re-imports the asset from a `File`, then runs `_objectRefresh` (379) on each subscriber: the instance's children are swapped for the new mesh, and its own transform, name and visibility survive because they sit in its override list. Upstream fires this when you re-open the asset's file from the Files panel (1404 and 1430). The change event becomes the second trigger.
+
+```ts
+// packages/editor/src/utils/ViewerInstanceManager.ts, called from the event listener of section 8
+private assetRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+private scheduleAssetRefresh(path: string) {
+    const owner = this.assetOwning(path)      // the assets.json entry whose path is this file, or whose files list it,
+    if (!owner) return                        // or the .gltf next to a .bin of the same name; else not a placed asset
+    clearTimeout(this.assetRefreshTimers.get(owner.path))
+    this.assetRefreshTimers.set(owner.path, setTimeout(() => {   // Blender writes .gltf, .bin and textures within a few ms: one refresh
+        this.assetRefreshTimers.delete(owner.path)
+        void this.refreshAsset(owner.path).catch((error) => this.reportError(error))
+    }, 250))
+}
+
+private async refreshAsset(assetPath: string) {
+    const project = this.loadedProject!
+    const key = await this.toAssetIdPath({ path: assetPath })               // upstream, unchanged
+    const tracker = this.get().assetManager.tracker
+    if (!tracker.registry[key]) return                                      // on disk, never placed: nothing to refresh
+    const file = await resolveFile(assetPath, project.path, project.handle)  // GET /files/<path>?v=<new sha>
+    await tracker.refreshFromRegistry(key, { importedFile: file }).pms       // every placed instance updates in place
+}
+```
+
+```
+ Blender saves assets/tree.gltf + assets/tree.bin
+   ─► two change events, a few ms apart
+   ─► assetOwning: both belong to assets/tree.gltf
+   ─► one timer, 250 ms after the last event
+   ─► resolveFile reads the new bytes through the handle (the sha from the event is in the URL)
+   ─► tracker.refreshFromRegistry('/kite3d/@tree/f.gltf', {importedFile})
+        ├─ instance 1: children swapped, its transform kept
+        ├─ instance 2: same
+        └─ instance 3: same
+   the scene file is untouched: instances reference the asset by id, so there is nothing to save
+```
+
+Play does not stop for a refresh; the instances update in the running scene. What this does not cover: a texture that a scene material references directly, not through an asset entry. It refreshes on the next scene reload. That case gets its own line when it bites.
+
+Evidence: place `tree.glb` three times with different transforms; copy a different mesh over `assets/tree.glb` from a shell; within a second the three instances show the new mesh at their own transforms (before and after screenshots, viewed); Save writes a byte-identical `main.scene.gltf`.
 
 Lifecycle of the pieces: one `DevServerSource` and one `ProjectManifest` per page, made in `main.tsx`. The SSE subscription opens in `ViewerInstanceManager.initialize()` and closes in `dispose()`. Handles are values, created on demand, and hold no state; the per-path base sha lives in the manifest. Nothing caches `File` objects.
 
 Evidence for the pass: open a scratch project headless; Files lists every file and empty folder; New Folder, New Script and New Scene create files on disk; a script edited from a shell shows in the editor within a second and its component reloads; an external edit of the open scene prompts and reloads; two editors on the same project, a save in one appears in the other and a stale save gets the conflict message; no request without the token succeeds. Screenshots per case, viewed.
 
 - [ ] Accept section 4, with the two interfaces of 4.2 as the contract.
+- [ ] Accept the asset refresh of 4.4.
+- [x] The watcher ignores `.kite3d` (decided 2026-09-14).
 
 ## 5. Feature: glTF text scenes
 
