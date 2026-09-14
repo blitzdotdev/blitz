@@ -650,10 +650,12 @@ Here is the idea in one sentence. A browser page cannot read `~/.kite3d` and can
 
 ### 10.1 The `kite3d://` scheme
 
-`npx kite3d install`, one terminal command, once. It installs a copy of the CLI where npx cannot evict it and registers `kite3d://` with the operating system. The handler does one thing whatever the link says: it runs `kite3d open`.
+> Your note: "can't we just run npx kite3d install when a npx kite3d init is first run in ANY project, one-time procedure per machine. requiring an explict install => likely ppl will forget"
+
+Nobody runs a separate install step, so the registration happens by itself. The first `kite3d init` or `kite3d dev` on a machine installs a copy of the CLI where npx cannot evict it, registers `kite3d://` with the operating system, and prints one line: `Registered kite3d:// so kite3d.dev can open your projects. Undo with npx kite3d install --remove.` `dev` is in the list because a cloned project never runs `init`. The check is the registration itself: if the applet, the `.desktop` file or the registry key is there, nothing happens. When a newer kite3d runs `dev`, it refreshes the copy, so the launcher never falls behind the newest project on the machine. Under `CI=1` nothing is registered. `kite3d install` stays as the by-hand form, for a repair or for `--remove`. The handler does one thing whatever the link says: it runs `kite3d open`.
 
 ```
- npx kite3d install   (once)
+ first npx kite3d init or npx kite3d dev on this machine   (or npx kite3d install by hand)
    ├─ npm install kite3d@<this version> --prefix ~/.kite3d/launcher      a copy npx will not evict
    ├─ macOS    osacompile -o "~/Applications/Kite3D Launcher.app"         a twenty-line applet: on open location, do shell script
    │           CFBundleURLTypes kite3d in its Info.plist, lsregister -f     unsigned and built locally, so no Gatekeeper quarantine
@@ -669,7 +671,7 @@ Here is the idea in one sentence. A browser page cannot read `~/.kite3d` and can
 
 ### 10.2 The door at `kite3d.dev`
 
-The landing page gets one button, "Open engine", a link to `kite3d://open`. Next to it, one line: "First time here? Run `npx kite3d install` once."
+The landing page gets one button, "Open engine", a link to `kite3d://open`. Next to it, one line: "First time here? Run `npx kite3d init` in a new folder, or `npx kite3d dev` in a project."
 
 ```
  kite3d.dev ─ click "Open engine" ─► <a href="kite3d://open">
@@ -746,11 +748,11 @@ On the editor side the restore is four files from `b35ce75`, re-based onto upstr
 
 Two things change from the old code, both because the old code was heavier than its job. First, the three lock files go: `projects.lock`, `hub-start.lock` and `dev-detach.lock`, each with a 60-second staleness rule and a polling loop. The index is written through a temp file and a rename, so a lost race costs one registration that the next `dev` repeats; two launchers at the same instant land on two ports, and both work. Second, a start on an already-running project also refreshes `lastOpened`, so the field name stops lying.
 
-Evidence, all headless: `kite3d install` on this Mac builds the applet and `lsregister -dump` lists the `kite3d` scheme; running the handler line by hand with `--no-open` starts the launcher and writes `hub.json`; the click itself is yours to try, since a real click opens your browser; the picker lists two scratch projects, one running, grouped under their repository with the worktree branch names; Open on the stopped one writes its `dev.json`, returns its URL, and a new page loads the editor; Open on the running one spawns nothing; the tab count goes from 1 to 2 when a second tab opens; Stop turns the row grey; `npx kite3d open` with the launcher running opens the URL and starts no second process; `kite3d dev` in a project opens the editor with no dialog, and the navbar button shows the picker with that tab marked. Screenshots viewed. The Linux and Windows registrations are verified when a machine is at hand, not in this pass.
+Evidence, all headless: a first `kite3d init` on this Mac with no `~/.kite3d/launcher` builds the applet, prints the line, and `lsregister -dump` lists the `kite3d` scheme; a second `init` prints nothing and changes nothing; a `dev` from a newer kite3d refreshes the copy; running the handler line by hand with `--no-open` starts the launcher and writes `hub.json`; the click itself is yours to try, since a real click opens your browser; the picker lists two scratch projects, one running, grouped under their repository with the worktree branch names; Open on the stopped one writes its `dev.json`, returns its URL, and a new page loads the editor; Open on the running one spawns nothing; the tab count goes from 1 to 2 when a second tab opens; Stop turns the row grey; `npx kite3d open` with the launcher running opens the URL and starts no second process; `kite3d dev` in a project opens the editor with no dialog, and the navbar button shows the picker with that tab marked. Screenshots viewed. The Linux and Windows registrations are verified when a machine is at hand, not in this pass.
 
-- [ ] Accept section 10: the `kite3d://` scheme registered by `install`, "Open engine" as a scheme link, the hub routes on every server, tab counts, `npx kite3d open` kept.
+- [ ] Accept section 10: the `kite3d://` scheme registered by the first `init` or `dev` on a machine, "Open engine" as a scheme link, the hub routes on every server, tab counts, `npx kite3d open` kept.
 - [ ] Decision: restore the hub lean, without the three lock files (my pick), or byte for byte as it was.
-- [ ] Decision: the command is `kite3d install` and `kite3d install --remove` (my pick), or `kite3d launcher install` and `kite3d launcher remove`.
+- [ ] Decision: the by-hand command is `kite3d install` and `kite3d install --remove` (my pick), or `kite3d launcher install` and `kite3d launcher remove`.
 - [ ] Later, not in this rewrite: the hosted picker, rendered on `kite3d.dev` itself for a paired browser, Chrome first. It needs CORS on the launcher, a pairing step that hands the page the token, and Chrome's one-time local-network prompt; Safari blocks the fetch, so the link stays as the fallback.
 - [ ] Later, not in this rewrite: a browser extension with a native messaging host, a picker in the toolbar with no server at all.
 
@@ -792,7 +794,7 @@ Each of these lands on a file that exists upstream, so it ports as a diff with i
 
 ## 12. Carry-over from kite3d and the engine
 
-After #30 the CLI is `init`, `dev` with `--no-open` and `--port`, `screenshot`, `skills`, and `publish`, which prints the path of `packages/kite3d/skills/publish/SKILL.md`, a thirteen-step procedure an agent follows with curl. Section 10 adds `open` back, with `--no-open` and `--stop`, and adds `install` with `--remove`. The server has the file, directory, state, events, screenshot and plugin-package routes, plus the hub routes when it runs as the launcher. The engine has `createGame` (split as in section 6), `nestedAssets`, the format parsers, `registerScripts`, the import map with the plugin mapping, `serializeSceneGltf` with the canonical helpers, `fileTypes`, and the plugins. The public API game projects rely on stays: `createGame` and its options, `main({viewer})`, `registerScripts`, `serializeSceneGltf`, the parsers and types, `createProjectAssetURLModifier`, `HtmlUiComponent`, `CannonPhysicsPlugin` and its components.
+After #30 the CLI is `init`, `dev` with `--no-open` and `--port`, `screenshot`, `skills`, and `publish`, which prints the path of `packages/kite3d/skills/publish/SKILL.md`, a thirteen-step procedure an agent follows with curl. Section 10 adds `open` back, with `--no-open` and `--stop`, and adds `install` with `--remove`; `init` and `dev` register the scheme by themselves. The server has the file, directory, state, events, screenshot and plugin-package routes, plus the hub routes when it runs as the launcher. The engine has `createGame` (split as in section 6), `nestedAssets`, the format parsers, `registerScripts`, the import map with the plugin mapping, `serializeSceneGltf` with the canonical helpers, `fileTypes`, and the plugins. The public API game projects rely on stays: `createGame` and its options, `main({viewer})`, `registerScripts`, `serializeSceneGltf`, the parsers and types, `createProjectAssetURLModifier`, `HtmlUiComponent`, `CannonPhysicsPlugin` and its components.
 
 One export is gone that a real game uses. The terminator project imports `RuntimeObjectOwner` from `authoring.ts` in seven files, and `registerGameValidation` plus `publishGameTelemetry` in its `main.js`. The last two were the check feature and stay gone. `RuntimeObjectOwner` is the runtime-object ownership API the guide documents (lines 79 to 97): runtime-created objects are tracked so they never reach the saved scene and get cleaned up on stop. Nothing in the repository imports it, but a game does.
 
@@ -802,7 +804,7 @@ One export is gone that a real game uses. The terminator project imports `Runtim
 
 ## 13. The guide
 
-`docs/agents.md` is 1,000 lines. 908 of them describe the project format and the engine, mostly upstream's own text, and they stay. The 92 lines of editor and CLI text become one short section: `npx kite3d init`, `npx kite3d dev`, `npx kite3d install` once, `npx kite3d open`, `npx kite3d screenshot`, `npx kite3d skills`, `npx kite3d publish` prints the skill; the token rule; the `.kite3d/` folder and `~/.kite3d/`. The `data-testid` list and the route list go.
+`docs/agents.md` is 1,000 lines. 908 of them describe the project format and the engine, mostly upstream's own text, and they stay. The 92 lines of editor and CLI text become one short section: `npx kite3d init`, `npx kite3d dev`, `npx kite3d open`, `npx kite3d screenshot`, `npx kite3d skills`, `npx kite3d publish` prints the skill; the token rule; the `.kite3d/` folder and `~/.kite3d/`. The `data-testid` list and the route list go.
 
 - [ ] Accept section 13.
 
