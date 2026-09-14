@@ -699,27 +699,40 @@ One server class. `kite3d dev` and `kite3d open` start the same server; the diff
 
 On tabs, since that is what you said this is really about: the launcher cannot see browser tabs, but every dev server knows its own, because an open tab is one SSE subscriber. So `/api/state` on a dev server gains a `clients` count, the launcher asks each running server with the token from its `dev.json`, and a row reads "running, 2 tabs" or "running, no tab". What no page can do is focus a tab it did not open. Open on a running project is always a new tab on the same server, which is safe: the two tabs stay in sync through the events, and If-Match keeps them from overwriting each other.
 
+Three shapes, one per job: what persists, what a running server writes, and what the picker renders.
+
 ```ts
-// packages/kite3d/src/projectIndex.ts          ~/.kite3d/projects.json
+// packages/kite3d/src/projectIndex.ts     ~/.kite3d/projects.json: what persists across reboots
 export interface ProjectIndex { version: 1; projects: IndexedProject[] }
 export interface IndexedProject {
     path: string            // absolute, symlinks resolved; the key
     name: string            // package.json name, or the folder name
-    repoRoot: string | null // git worktree root, or null for a loose project
-    lastOpened: string      // ISO time of the last init, dev, or open through the picker
+    repoRoot: string | null // the repository root; worktrees of one repository share it; null for a loose project
+    lastOpened: string      // ISO time of the last init, dev, or open through the picker; the sort key
 }
-// packages/kite3d/src/hub.ts                    ~/.kite3d/hub.json, the launcher
-export interface HubState { pid: number; port: number; url: string; token: string }
-// packages/kite3d/src/server.ts                 <project>/.kite3d/dev.json, every dev server (already written today)
-export interface DevState { origin: string; url: string; port: number; token: string; pid: number; started_at: string }
-// GET /api/hub/projects
+
+// packages/kite3d/src/server.ts           what every running server writes when it listens, and deletes on a clean close
+// the launcher writes it to ~/.kite3d/hub.json, because kite3d open must find it without a project;
+// a project server writes it to <project>/.kite3d/dev.json. Same shape, two places.
+export interface ServerState { pid: number; port: number; url: string; token: string }
+
+// GET /api/hub/projects                    what the picker renders; computed on each request, nothing persisted
 export interface HubProjects {
-    active: Array<{ path: string; name: string; branch: string | null; url: string; tabs: number }>
-    repos: Array<{ name: string; root: string; worktrees: HubProject[] }>
-    loose: HubProject[]
+    repos: Array<{ name: string; root: string; worktrees: HubProject[] }>   // the repository is the unit; its worktrees are the rows
+    loose: HubProject[]                                                    // projects without git
 }
-export interface HubProject { path: string; name: string; branch: string | null; head: string | null; running: boolean; tabs: number; url?: string }
+export interface HubProject {
+    path: string            // from the index
+    name: string            // from the index
+    branch: string | null   // from git at request time; null when HEAD is detached
+    head: string | null     // the short commit when branch is null
+    running: boolean        // <path>/.kite3d/dev.json parses and its pid is alive
+    tabs: number            // that server's SSE subscribers, asked with its token; 0 when not running
+    url?: string            // the tokenized URL to open; only when running
+}
 ```
+
+The old code had two server shapes, `HubState` and a `DevState` with `origin` and `started_at` on top, because the hub was a second server type. With one server class there is one shape; `origin` was the url without its token, and `started_at` was never read. The old response also carried an `active` list beside the rows; the picker now filters the rows on `running` itself.
 
 ```
 on every server (the launcher is the one without a project)
