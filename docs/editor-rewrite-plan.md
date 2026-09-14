@@ -642,59 +642,54 @@ The dialog we added on top, "apply as object, material or texture, remember my c
 
 > Your note on revision 2: "TODO keep project picker, it should be what opens when user runs `npx kite3d open` in a blank terminal (not in project dir). when they run `npx kite3d dev` in a project folder then it should open the project wihthout the picker being shown. Also the picker should use the old monorepo's picker, which allowed user to list all kite3d projects, see which ones are active / not and open them in a new tab."
 
-> Your call on 2026-09-14: "using a CLI `kite3d open` is suboptimal - most ppl don't like to open terminals. ideally i want to be able to type in `kite3d.dev` and just see the project picker page, where i can see all my kite3d projects." The button reads "Open engine". `npx kite3d open` stays.
+> Your call on 2026-09-14: "using a CLI `kite3d open` is suboptimal - most ppl don't like to open terminals. ideally i want to be able to type in `kite3d.dev` and just see the project picker page, where i can see all my kite3d projects." The button reads "Open engine". `npx kite3d open` stays. A launcher started at login was the first answer; you called it jank, and the URL scheme below replaced it: "ok do the url scheme. keep it simple".
 
-Some history first, because it explains where the code comes from. The old repository had this picker. PR #13 built the CLI half (`bc5f390`: the project index, background servers, the launcher) and PR #12 the editor half (`b35ce75`: the hub page, the welcome dialog, the navbar picker, the worktrees section). The cleanup in #30 deleted the CLI half and its tests but left the editor half in place with nothing to talk to. So most of this section is a restore from `f87b8c6^`, with the editor half moved onto upstream's welcome dialog, which is what it was derived from. Two things are new: the launcher becomes a login item, and `kite3d.dev` becomes the door.
+Some history first, because it explains where the code comes from. The old repository had this picker. PR #13 built the CLI half (`bc5f390`: the project index, background servers, the launcher) and PR #12 the editor half (`b35ce75`: the hub page, the welcome dialog, the navbar picker, the worktrees section). The cleanup in #30 deleted the CLI half and its tests but left the editor half in place with nothing to talk to. So most of this section is a restore from `f87b8c6^`, with the editor half moved onto upstream's welcome dialog, which is what it was derived from. Two things are new: a `kite3d://` URL scheme, so a click on `kite3d.dev` starts the launcher, and the hub routes live in every dev server.
 
-Here is the idea in one sentence. A browser page cannot read `~/.kite3d` and cannot start a dev server, so something local must run; the old hub was that thing, and the only problem with it was that a terminal command started it. Start it at login instead, and the terminal disappears from the daily path.
+Here is the idea in one sentence. A browser page cannot read `~/.kite3d` and cannot start a dev server, so something local must run; the old hub was that thing, and the only problem with it was that a terminal command started it. Let a link start it instead, the way `vscode://` and `figma://` links start those apps, and the terminal disappears from the daily path. Nothing stays resident: the launcher starts on the first click and lives until logout.
 
-### 10.1 The launcher is a login item
+### 10.1 The `kite3d://` scheme
 
-`npx kite3d install`, one terminal command, once. It installs a copy of the CLI where npx cannot evict it, writes a login item for the platform, starts the launcher now, and opens the tokenized picker URL once so this browser is paired.
+`npx kite3d install`, one terminal command, once. It installs a copy of the CLI where npx cannot evict it and registers `kite3d://` with the operating system. The handler does one thing whatever the link says: it runs `kite3d open`.
 
 ```
  npx kite3d install   (once)
-   ├─ npm install kite3d@<this version> --prefix ~/.kite3d/launcher     a copy npx will not evict
-   ├─ write the login item                                              runs: <node> ~/.kite3d/launcher/node_modules/kite3d/dist/cli.js open --serve
-   │    macOS    ~/Library/LaunchAgents/dev.kite3d.launcher.plist       RunAtLoad, KeepAlive, stdout to ~/.kite3d/launcher.log
-   │    Linux    ~/.config/systemd/user/kite3d-launcher.service         systemctl --user enable --now
-   │    Windows  schtasks /Create /SC ONLOGON /TN kite3d-launcher
-   ├─ start it now                                                      launchctl bootstrap gui/$UID, systemctl, schtasks /Run
-   └─ open http://127.0.0.1:4320/?t=<token>                             pairs this browser: the cookie is set
+   ├─ npm install kite3d@<this version> --prefix ~/.kite3d/launcher      a copy npx will not evict
+   ├─ macOS    osacompile -o "~/Applications/Kite3D Launcher.app"         a twenty-line applet: on open location, do shell script
+   │           CFBundleURLTypes kite3d in its Info.plist, lsregister -f     unsigned and built locally, so no Gatekeeper quarantine
+   ├─ Linux    ~/.local/share/applications/kite3d.desktop                  MimeType=x-scheme-handler/kite3d, then xdg-mime default
+   └─ Windows  HKCU\Software\Classes\kite3d\shell\open\command             with the URL Protocol value
+      the handler line on all three:  /bin/zsh -lc 'exec node ~/.kite3d/launcher/node_modules/kite3d/dist/cli.js open'
+      (a login shell, so the user's own node is on PATH; nothing records a binary path)
 
- login  ─►  the launcher starts by itself  ─►  listens on 127.0.0.1:4320 (through 4339), writes ~/.kite3d/hub.json
- npx kite3d install --remove  ─►  stops it, deletes the login item, keeps ~/.kite3d/projects.json
+ npx kite3d install --remove  ─►  deletes the registration and the copy, keeps ~/.kite3d/projects.json
 ```
 
-The launcher itself is `kite3d open --serve`: the old hub server in the foreground, for the login item to own. `kite3d open` without a flag keeps its old meaning and gains one check: if `hub.json` names a live launcher, it opens that URL and starts nothing; otherwise it starts a detached launcher as before and opens it. Both paths end on the same server, so the login item is an accelerator, not a requirement.
+`kite3d open` keeps its old meaning, with one check first: if `~/.kite3d/hub.json` names a live launcher it opens that URL and starts nothing; otherwise it starts a detached launcher on `127.0.0.1:4320` (through 4339) as before, waits for `hub.json`, and opens it. Flags stay `--no-open` and `--stop`. There is no `--serve`, nothing starts at login, and there is no idle timeout.
 
 ### 10.2 The door at `kite3d.dev`
 
-The landing page gets one button, "Open engine". It is a plain link to `http://127.0.0.1:4320/`. A link is a navigation, and every browser allows a navigation to a loopback address from a public page: no CORS, no local-network prompt, no mixed-content rule. The picker page itself is served by the launcher, from the editor bundle in hub mode, exactly as the old hub did.
+The landing page gets one button, "Open engine", a link to `kite3d://open`. Next to it, one line: "First time here? Run `npx kite3d install` once."
 
 ```
-                 browser                                     launcher, 127.0.0.1:4320
-                    │                                                    │
- 1  kite3d.dev: the landing page, one button, Open engine                │  hosted, blitz-cloud
- 2  click           │── GET /   Cookie: kite3d-token-4320 (if paired) ──►│  a navigation: no CORS, no prompt
- 3a paired          │◄─ the picker page ─────────────────────────────────│  the cookie is valid
- 3b not paired      │◄─ "Pair this browser: run npx kite3d open once" ───│  no cookie, no ?t=
-                    │                                                    │
- 4  picker          │── GET /api/hub/projects ──────────────────────────►│  index + git + dev.json + tab counts
-                    │◄─ {active, repos, loose} ──────────────────────────│
-                    │                                                    │
- 5  Open a row      │── POST /api/hub/projects/start {path} ────────────►│  X-Kite3D-Client header, same-origin only
-                    │◄─ {url} ───────────────────────────────────────────│  spawned dev --no-open, waited for dev.json
- 6  window.open(url, '_blank')                                           │  the project's own server, its own token in the URL
+ kite3d.dev ─ click "Open engine" ─► <a href="kite3d://open">
+   browser   "Open Kite3D Launcher?"  [always allow for kite3d.dev]      once per browser
+   OS        runs the registered handler
+   handler   kite3d open
+   open      hub.json names a live launcher?   yes ─► reuse it    no ─► start one detached, wait for hub.json
+   open      opens http://127.0.0.1:4320/?t=<token> in the default browser
+   tab       the picker; ?t= sets the per-port cookie, Strict, exactly as on every dev server
 ```
 
-Two rules make the link work. The launcher's cookie is `SameSite=Lax`, not `Strict` like the dev servers', so a click on `kite3d.dev` carries it; the launcher then knows the browser is paired. And every route that changes anything is a POST that requires the `X-Kite3D-Client` header and a same-origin `Sec-Fetch-Site`. A cross-site page cannot set that header without a preflight the launcher never answers, so the Lax cookie buys nothing to an attacker. The `?t=` token still pairs a browser: `install` pairs the browser it opens, and `npx kite3d open` pairs any other one by opening the tokenized URL.
+Because the handler opens the tokenized URL itself, nothing else changes: no cookie relaxation, no pairing page, no CORS, no local-network prompt. A page on the web never talks to the launcher; it only asks the OS to run a program the user installed. The one quirk: the tab opens in the default browser, which may not be the one you clicked in.
 
-The landing page lives in blitz-cloud, so the button is a separate, one-line pull request there.
+The landing page lives in blitz-cloud, so the button is a separate, two-line pull request there.
 
 ### 10.3 The picker
 
 The behaviour, in your words and in the old code's terms:
+
+One server class. `kite3d dev` and `kite3d open` start the same server; the difference is whether a project is attached. Every server serves the editor bundle and the hub routes; a server with a project also serves the file routes; `/api/state` answers `{hub: true}` when there is no project. So the launcher is a server without a project, and the navbar picker of any open editor can start and stop the others. The old `createHubServer` goes; `hub.ts` keeps start-or-reuse and stop.
 
 - `kite3d.dev`, "Open engine", or `npx kite3d open`: the picker, forced open, no viewer behind it. Every indexed project grouped by git repository, worktrees under their repository, loose projects below, running ones marked, with Open and Stop, plus New Project and Open Project.
 - `npx kite3d dev` in a project folder: that project's server starts (`4321` through 4340), registers in the index, and the editor opens directly. No dialog. The first navbar button shows the same picker on demand, with "this tab" marked.
@@ -725,7 +720,7 @@ export interface HubProject { path: string; name: string; branch: string | null;
 ```
 
 ```
-GET   /                             the picker page when the cookie or ?t= is valid, else the pairing page
+on every server (the launcher is the one without a project)
 GET   /api/state                    {hub: true}                     the editor picks hub mode on this
 GET   /api/hub/projects             HubProjects                      index + git grouping + dev.json liveness + tab counts
 GET   /api/hub/folders?path=        {path, parent, folders: [{name, path, isProject, isRepo}]}   Open Project browser, under $HOME
@@ -751,12 +746,13 @@ On the editor side the restore is four files from `b35ce75`, re-based onto upstr
 
 Two things change from the old code, both because the old code was heavier than its job. First, the three lock files go: `projects.lock`, `hub-start.lock` and `dev-detach.lock`, each with a 60-second staleness rule and a polling loop. The index is written through a temp file and a rename, so a lost race costs one registration that the next `dev` repeats; two launchers at the same instant land on two ports, and both work. Second, a start on an already-running project also refreshes `lastOpened`, so the field name stops lying.
 
-Evidence, all headless: `kite3d install` on this Mac writes the plist, the launcher answers on 4320 without a terminal, and a paired browser reaches the picker through a page with the "Open engine" link; an unpaired browser sees the pairing page; the picker lists two scratch projects, one running, grouped under their repository with the worktree branch names; Open on the stopped one writes its `dev.json`, returns its URL, and a new page loads the editor; Open on the running one spawns nothing; the tab count goes from 1 to 2 when a second tab opens; Stop turns the row grey; `npx kite3d open` with the launcher running opens the URL and starts no second process; `kite3d dev` in a project opens the editor with no dialog, and the navbar button shows the picker with that tab marked. Screenshots viewed. Linux and Windows login items are verified when a machine is at hand, not in this pass.
+Evidence, all headless: `kite3d install` on this Mac builds the applet and `lsregister -dump` lists the `kite3d` scheme; running the handler line by hand with `--no-open` starts the launcher and writes `hub.json`; the click itself is yours to try, since a real click opens your browser; the picker lists two scratch projects, one running, grouped under their repository with the worktree branch names; Open on the stopped one writes its `dev.json`, returns its URL, and a new page loads the editor; Open on the running one spawns nothing; the tab count goes from 1 to 2 when a second tab opens; Stop turns the row grey; `npx kite3d open` with the launcher running opens the URL and starts no second process; `kite3d dev` in a project opens the editor with no dialog, and the navbar button shows the picker with that tab marked. Screenshots viewed. The Linux and Windows registrations are verified when a machine is at hand, not in this pass.
 
-- [ ] Accept section 10: the launcher as a login item, "Open engine" on `kite3d.dev` as a plain link, cookie Lax plus the POST guard, tab counts, `npx kite3d open` kept.
+- [ ] Accept section 10: the `kite3d://` scheme registered by `install`, "Open engine" as a scheme link, the hub routes on every server, tab counts, `npx kite3d open` kept.
 - [ ] Decision: restore the hub lean, without the three lock files (my pick), or byte for byte as it was.
 - [ ] Decision: the command is `kite3d install` and `kite3d install --remove` (my pick), or `kite3d launcher install` and `kite3d launcher remove`.
 - [ ] Later, not in this rewrite: the hosted picker, rendered on `kite3d.dev` itself for a paired browser, Chrome first. It needs CORS on the launcher, a pairing step that hands the page the token, and Chrome's one-time local-network prompt; Safari blocks the fetch, so the link stays as the fallback.
+- [ ] Later, not in this rewrite: a browser extension with a native messaging host, a picker in the toolbar with no server at all.
 
 ## 11. The fixes to port, one commit each
 
@@ -796,7 +792,7 @@ Each of these lands on a file that exists upstream, so it ports as a diff with i
 
 ## 12. Carry-over from kite3d and the engine
 
-After #30 the CLI is `init`, `dev` with `--no-open` and `--port`, `screenshot`, `skills`, and `publish`, which prints the path of `packages/kite3d/skills/publish/SKILL.md`, a thirteen-step procedure an agent follows with curl. Section 10 adds `open` back, with `--no-open`, `--stop` and `--serve`, and adds `install` with `--remove`. The server has the file, directory, state, events, screenshot and plugin-package routes, plus the hub routes when it runs as the launcher. The engine has `createGame` (split as in section 6), `nestedAssets`, the format parsers, `registerScripts`, the import map with the plugin mapping, `serializeSceneGltf` with the canonical helpers, `fileTypes`, and the plugins. The public API game projects rely on stays: `createGame` and its options, `main({viewer})`, `registerScripts`, `serializeSceneGltf`, the parsers and types, `createProjectAssetURLModifier`, `HtmlUiComponent`, `CannonPhysicsPlugin` and its components.
+After #30 the CLI is `init`, `dev` with `--no-open` and `--port`, `screenshot`, `skills`, and `publish`, which prints the path of `packages/kite3d/skills/publish/SKILL.md`, a thirteen-step procedure an agent follows with curl. Section 10 adds `open` back, with `--no-open` and `--stop`, and adds `install` with `--remove`. The server has the file, directory, state, events, screenshot and plugin-package routes, plus the hub routes when it runs as the launcher. The engine has `createGame` (split as in section 6), `nestedAssets`, the format parsers, `registerScripts`, the import map with the plugin mapping, `serializeSceneGltf` with the canonical helpers, `fileTypes`, and the plugins. The public API game projects rely on stays: `createGame` and its options, `main({viewer})`, `registerScripts`, `serializeSceneGltf`, the parsers and types, `createProjectAssetURLModifier`, `HtmlUiComponent`, `CannonPhysicsPlugin` and its components.
 
 One export is gone that a real game uses. The terminator project imports `RuntimeObjectOwner` from `authoring.ts` in seven files, and `registerGameValidation` plus `publishGameTelemetry` in its `main.js`. The last two were the check feature and stay gone. `RuntimeObjectOwner` is the runtime-object ownership API the guide documents (lines 79 to 97): runtime-created objects are tracked so they never reach the saved scene and get cleaned up on stop. Nothing in the repository imports it, but a game does.
 
@@ -822,8 +818,8 @@ One export is gone that a real game uses. The terminator project imports `Runtim
                                                       the served project, lists, saves
                                               step 3  section 5  glTF text, section 7 modules by URL
                                               step 4  section 6  Play on the edit viewer, engine split
-                                              step 5  section 10 the picker: CLI half with install,
-                                                      editor half, the Open engine button (blitz-cloud)
+                                              step 5  section 10 the picker: one server class, install
+                                                      and the scheme, editor half, Open engine (blitz-cloud)
                                               step 6  sections 8, 9, 11: screenshot, Library fixes,
                                                       keys, Set as main scene, three guards
                                               step 7  section 13 guide; 0.20.0-alpha.1 on next
@@ -837,8 +833,8 @@ Each step is one codex pass at medium with the pr-skill section, manual headless
 
 ## 15. What is not happening
 
-No mesh editing in the browser; Blender stays the editor, and the round trip through the watcher is what section 4 already gives you. No tabs and no stage yet; the document-and-stage design note stands and lands after this rewrite, on the upstream manager shape, which is the shape it was written for. No new tests; the three ported guards are tests of reported bugs. No new features beyond the six fixes and the restored picker with its login item. No hosted picker on `kite3d.dev` yet. No GitHub remote until you name it.
+No mesh editing in the browser; Blender stays the editor, and the round trip through the watcher is what section 4 already gives you. No tabs and no stage yet; the document-and-stage design note stands and lands after this rewrite, on the upstream manager shape, which is the shape it was written for. No new tests; the three ported guards are tests of reported bugs. No new features beyond the six fixes and the restored picker with its URL scheme. No hosted picker on `kite3d.dev` yet. No GitHub remote until you name it.
 
 ## 16. Numbers to expect
 
-Upstream `src` is 27,201 lines; after section 3 about 23,000. New editor code: about 250 lines for the transport and the handles, about 100 for the bootstrap and the event listener, about 60 for the loader, about 90 for the screenshot capture, the ported fixes at about 400, and the picker's four files at about 680 restored. kite3d after the cleanup: 1,504 lines of source, plus about 800 restored for the index, the launcher and the hub routes without their locks, and about 150 new for `install` and its three login items. Engine: 4,613, of which about 4,100 are upstream's plugins. Against the tree we are leaving: an editor of 24,000 lines with 80 percent suspect, a CLI package of 10,247 with 80 percent suspect, an engine of 6,667 with 20 percent suspect.
+Upstream `src` is 27,201 lines; after section 3 about 23,000. New editor code: about 250 lines for the transport and the handles, about 100 for the bootstrap and the event listener, about 60 for the loader, about 90 for the screenshot capture, the ported fixes at about 400, and the picker's four files at about 680 restored. kite3d after the cleanup: 1,504 lines of source, plus about 800 restored for the index, the launcher and the hub routes without their locks, and about 120 new for `install` and its three registrations. Engine: 4,613, of which about 4,100 are upstream's plugins. Against the tree we are leaving: an editor of 24,000 lines with 80 percent suspect, a CLI package of 10,247 with 80 percent suspect, an engine of 6,667 with 20 percent suspect.
