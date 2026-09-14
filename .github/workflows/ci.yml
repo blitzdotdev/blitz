@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # npm 10's CI/prepare handling is incompatible with the vendored workspaces; npm 11 install keeps resolution and scripts stable.
+      - run: npm install --global npm@11.19.0
+      - run: npm install --ignore-scripts
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:kite3d
+      - run: npm run test:runtime
+      - run: npm run test:editor
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-test-results
+          path: |
+            packages/editor/test-results
+            packages/editor/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7

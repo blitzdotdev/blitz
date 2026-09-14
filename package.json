@@ -1,6 +1,49 @@
 {
-  "name": "kite3d-monorepo",
+  "name": "kite3d",
+  "version": "0.19.0-alpha.2",
   "private": true,
-  "version": "0.0.0",
-  "workspaces": ["packages/*"]
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "overrides": {
+    "@blueprintjs/colors": "5.1.9",
+    "three": "https://github.com/repalash/three.js-modded/releases/download/v0.163.10003/package.tgz",
+    "threepipe": {
+      "@types/three": "$@types/three"
+    },
+    "@tanstack/db": "0.5.11",
+    "@tanstack/query-db-collection": "1.0.6",
+    "@tanstack/react-db": "0.1.55",
+    "ts-browser-helpers": "0.19.4",
+    "zod": "4.1.13"
+  },
+  "devDependencies": {
+    "@blueprintjs/node-build-scripts": "9.3.3",
+    "@blueprintjs/colors": "5.1.9",
+    "@types/three": "https://github.com/repalash/three-ts-types/releases/download/v0.163.10003/package.tgz",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "build:threepipe": "npm run compile -w packages/threepipe",
+    "build:ui": "node scripts/build-uiconfig-blueprint.mjs",
+    "build:engine": "npm run build -w packages/engine",
+    "build:editor": "npm run build -w packages/editor",
+    "build:kite3d": "npm run build -w packages/kite3d",
+    "build": "npm run build:threepipe && npm run build:ui && npm run build:engine && npm run build:editor && npm run build:kite3d",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:kite3d": "npm test -w packages/kite3d",
+    "test:editor": "npm test -w packages/editor",
+    "test:scripts": "node --test scripts/*.test.mjs",
+    "lint": "npm run lint -w packages/engine && npm run lint -w packages/editor && npm run lint -w packages/kite3d",
+    "version:set": "node scripts/set-version.mjs",
+    "release:dry": "node scripts/release.mjs --dry-run",
+    "release": "node scripts/release.mjs --publish",
+    "release:patch": "node scripts/set-version.mjs patch && npm run release",
+    "release:minor": "node scripts/set-version.mjs minor && npm run release",
+    "release:major": "node scripts/set-version.mjs major && npm run release",
+    "dev:editor": "npm run dev -w packages/editor"
+  }
 }
