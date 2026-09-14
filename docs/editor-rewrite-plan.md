@@ -207,8 +207,9 @@ export interface ProjectFileHandle {
 }
 
 export class ProjectManifest {
-    files = new Map<string, ProjectFileEntry>()
+    files = new Map<string, ProjectFileEntry>()      // the listing; events keep it current
     directories = new Set<string>()
+    based = new Map<string, string>()                // the sha this tab last read or wrote, per path; events never touch it
     constructor(private readonly source: DevServerSource) {}
     async refresh() {
         const [files, directories] = await Promise.all([this.source.list(), this.source.listDirectories()])
@@ -253,8 +254,9 @@ export class DevServerDirectoryHandle implements ProjectDirectoryHandle {
         const path = this.child(name)
         if (!this.manifest.files.has(path)) {
             if (!options.create) throw notFound(name)
-            const { sha256 } = await this.source.write(path, new Uint8Array(), '*')
+            const { sha256 } = await this.source.write(path, new Uint8Array(), '*')   // '*' is unconditional; callers check existence first (FilesPanel.tsx:222)
             this.manifest.files.set(path, { path, size: 0, sha256, mtime: Date.now() })
+            this.manifest.based.set(path, sha256)
         }
         return new DevServerFileHandle(path, this.source, this.manifest)
     }
@@ -268,18 +270,18 @@ export class DevServerDirectoryHandle implements ProjectDirectoryHandle {
 
 export class DevServerFileHandle implements ProjectFileHandle {
     readonly kind = 'file' as const
-    private lastSha256?: string
     constructor(readonly path: string, private readonly source: DevServerSource, private readonly manifest: ProjectManifest) {}
     get name() { return this.path.split('/').pop() || '' }
     async getFile(): Promise<File> {
         const { bytes, sha256 } = await this.source.read(this.path)
-        this.lastSha256 = sha256
+        this.manifest.based.set(this.path, sha256)
         return new File([bytes], this.name, { lastModified: this.manifest.files.get(this.path)?.mtime })
     }
     async write(data: Blob | Uint8Array | string) {
-        const ifMatch = this.lastSha256 || this.manifest.files.get(this.path)?.sha256 || '*'
-        const { sha256 } = await this.source.write(this.path, data, ifMatch)
-        this.lastSha256 = sha256
+        // The base is what this tab read or wrote, never what it heard from an event. A file this tab
+        // never read (a new sidecar) writes unconditionally, which the server spells '*'.
+        const { sha256 } = await this.source.write(this.path, data, this.manifest.based.get(this.path) || '*')
+        this.manifest.based.set(this.path, sha256)
         this.manifest.files.set(this.path, { ...(this.manifest.files.get(this.path) || { path: this.path, size: 0, mtime: 0 }), sha256, mtime: Date.now() })
     }
 }
@@ -292,7 +294,9 @@ export async function writeFileHandle(fileHandle: ProjectFileHandle, file: Blob 
 }
 ```
 
-Two things to notice. `getFileHandle` without `create` throws a `NotFoundError` DOMException, which is what upstream's `fsApi.ts:29` and `:42` already catch. And a write carries the sha256 of the last read as `If-Match`, so two editors on one project cannot overwrite each other silently; a 412 surfaces as `ProjectConflictError` through the caller's existing error path.
+Two things to notice. `getFileHandle` without `create` throws a `NotFoundError` DOMException, which is what upstream's `fsApi.ts:29` and `:42` already catch. And a write carries, as `If-Match`, the sha256 this tab last read or wrote for that path, so two editors on one project cannot overwrite each other silently.
+
+Here is the whole conflict story, because the base matters. Editors A and B both loaded the scene at sha S0. A saves: the server compares `If-Match: "S0"` with the file, they agree, it writes, the sha is now S1, and A remembers S1. The server sends `change {path, sha256: S1, client: A}` to every tab; B's listing learns S1, and if B has unsaved edits B is asked whether to reload the disk copy. Say B says no and saves later. B's PUT still carries S0, because the base is what B read, never what B heard. The server answers 412 with the current sha (`server.ts:298 to 300`), and nothing is written. That surfaces as `ProjectConflictError`; the save handler then reads the disk copy and asks `The scene changed on disk. Reload the disk version?`, the port of the old manager at 637 to 647. Yes replaces B's copy with A's version, and B's edits are gone. No writes nothing and keeps B's copy, and the next save asks again. There is no overwrite button. Two saves at the same instant behave the same way: the server takes them one at a time, the first wins, the second gets the 412.
 
 ### 4.3 How the editor opens
 
@@ -336,8 +340,10 @@ Save Scene (or New Script, or Make Asset, or a package.json edit)
   upstream code calls fsHelper.writeFile(handle, path, file)     (fsApi.ts:84, unchanged)
     handle.getFileHandle(path, {create: true}).write(file)
         └──► PUT /files/<path>   If-Match: "<sha of last read>"   X-Kite3D-Client: <id>
-               200 or 201 {path, sha256}   the handle remembers the new sha
-               412                          ProjectConflictError: "<path> changed on disk"
+               200 or 201 {path, sha256}   this tab's base for <path> becomes the new sha
+               412 {sha256: <current>}     ProjectConflictError ─► read the disk copy ─► "Reload the disk version?"
+                                              yes: base = disk sha, reload, editor copy gone
+                                              no:  nothing written, editor copy kept, ask again on the next save
 
 server: writes .<name>.kite3d-<hex>, renames, hashes, schedules the event (150 ms window)
         └──► SSE  change {path, sha256, client: <id>}     to every subscriber
@@ -351,7 +357,7 @@ each editor tab:
 
 The last line is the one new behaviour in this section, and it is a port of what our editor already did: a scene changed on disk by an agent or by Blender reloads, with a confirm when the editor copy is dirty. Upstream's `refreshChangedFilesQ` takes it from there for scripts, `package.json` and `assets.json`, because its queue already accepts a plain path string (`ScriptUtil.ts:610`, the string branch at 629). `FileSystemObserver`, the two-second poll, the `BroadcastChannel` and `FetchProxy` are gone; asset URLs under `/kite3d/` resolve through the engine's `createProjectAssetURLModifier` on the viewer's importer, the same call `createGame` makes.
 
-Lifecycle of the pieces: one `DevServerSource` and one `ProjectManifest` per page, made in `main.tsx`. The SSE subscription opens in `ViewerInstanceManager.initialize()` and closes in `dispose()`. Handles are values, created on demand, and cache only the last sha they saw. Nothing caches `File` objects.
+Lifecycle of the pieces: one `DevServerSource` and one `ProjectManifest` per page, made in `main.tsx`. The SSE subscription opens in `ViewerInstanceManager.initialize()` and closes in `dispose()`. Handles are values, created on demand, and hold no state; the per-path base sha lives in the manifest. Nothing caches `File` objects.
 
 Evidence for the pass: open a scratch project headless; Files lists every file and empty folder; New Folder, New Script and New Scene create files on disk; a script edited from a shell shows in the editor within a second and its component reloads; an external edit of the open scene prompts and reloads; two editors on the same project, a save in one appears in the other and a stale save gets the conflict message; no request without the token succeeds. Screenshots per case, viewed.
 
