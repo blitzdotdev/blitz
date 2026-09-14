@@ -1,0 +1,46 @@
+{
+  "name": "kite3d",
+  "version": "0.19.0-alpha.2",
+  "description": "The Kite3D command and secure localhost development server.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {
+    "kite3d": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "template",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test --ext ts --report-unused-disable-directives --max-warnings 0 && eslint template --ext js --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kite3d/editor": "0.19.0-alpha.2",
+    "@kite3d/engine": "0.19.0-alpha.2",
+    "@hono/node-server": "^1.19.17",
+    "chokidar": "^4.0.3",
+    "es-module-lexer": "^3.0.2",
+    "hono": "^4.13.7",
+    "open": "^10.1.2"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.57.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.1.0",
+    "@types/wicg-file-system-access": "^2023.10.5",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "eslint": "^8.55.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  }
+}
