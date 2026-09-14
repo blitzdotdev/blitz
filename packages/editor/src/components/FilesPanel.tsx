@@ -12,9 +12,41 @@ import {
     type IconName,
     type MaybeElement,
 } from '@blueprintjs/core'
+import {AppToaster, useDialogPrompt} from 'uiconfig-blueprint/lib/esm/lib'
 import {useManagerVersion} from '../utils/UseManager.ts'
 import {useAssets, type FileManifestEntry} from '../utils/AssetsProvider.ts'
+import type {ProjectEntryKind} from '../utils/ViewerInstanceManager.ts'
+import type {MenuItem2, MenuItemAction} from '../utils/ContextMenuUtils.ts'
 import {PopupMenuButton} from './PopupMenuButton.tsx'
+import {useObjContextMenu} from './UseObjContextMenu.tsx'
+
+const emptyMenuItems: MenuItem2[] = [
+    {action: 'scene', key: 'scene', props: {text: 'New Scene', icon: 'cube-add'}},
+    {action: 'asset', key: 'asset', props: {text: 'New Asset (GLB)', icon: 'package'}},
+    {action: 'physical-material', key: 'physical-material', props: {text: 'New Physical Material', icon: 'style'}},
+    {action: 'unlit-material', key: 'unlit-material', props: {text: 'New Unlit Material', icon: 'style'}},
+    {action: 'plugin', key: 'plugin', props: {text: 'New Plugin (JS)', icon: 'document-code'}},
+    {action: 'script', key: 'script', props: {text: 'New Script (JS)', icon: 'document-code'}},
+    {action: 'json', key: 'json', props: {text: 'New JSON Object', icon: 'code-block'}},
+    {action: 'folder', key: 'folder', props: {text: 'New Folder', icon: 'folder-new'}},
+    {action: 'refresh', key: 'refresh', props: {text: 'Refresh', icon: 'refresh'}},
+]
+
+const createOptions: Record<ProjectEntryKind, {
+    title: string
+    message: string
+    value: string
+    suffix: string
+}> = {
+    scene: {title: 'Create New Scene', message: 'Enter the name of the new scene', value: 'NewScene', suffix: '.scene.gltf'},
+    asset: {title: 'Create New Asset', message: 'Enter the name of the new 3D model asset', value: 'NewAsset', suffix: '.asset.glb'},
+    'physical-material': {title: 'Create New Physical Material', message: 'Enter the name of the new material', value: 'PhysicalMaterial', suffix: '.asset.mat'},
+    'unlit-material': {title: 'Create New Unlit Material', message: 'Enter the name of the new material', value: 'UnlitMaterial', suffix: '.asset.mat'},
+    plugin: {title: 'Create New Plugin', message: 'Enter the name of the new plugin', value: 'NewPlugin', suffix: '.plugin.js'},
+    script: {title: 'Create New Script', message: 'Enter the name of the new script', value: 'NewScript', suffix: '.script.js'},
+    json: {title: 'Create New JSON Object', message: 'Enter the name of the new JSON object', value: 'NewObject', suffix: '.json'},
+    folder: {title: 'Create New Folder', message: 'Enter the name of the new folder', value: 'NewFolder', suffix: ''},
+}
 
 /** AGREED-4: the reference file grid reads the flat DevServerSource manifest. */
 export function FilesPanelBreadCrumbs() {
@@ -60,11 +92,69 @@ export function FilesPanelGrid() {
         const path = `${prefix}${name}`
         entries.set(name, rest.length ? {name, path, type: 'directory'} : file)
     }
+    for (const directory of manager.directoryManifest) {
+        if (!directory.startsWith(prefix) || directory.startsWith('.') || isTemplateSample(directory)) continue
+        const relative = directory.slice(prefix.length)
+        const name = relative.split('/')[0]
+        if (name) entries.set(name, {name, path: `${prefix}${name}`, type: 'directory'})
+    }
     const files = [...entries.values()].sort((a, b) => {
         if (a.type === b.type) return a.path.localeCompare(b.path)
         return a.type === 'directory' ? -1 : 1
     })
-    return <ButtonGroup className="file-item-button-group" data-testid="project-files">
+    const {prompt} = useDialogPrompt()
+    const create = async (kind: ProjectEntryKind) => {
+        const option = createOptions[kind]
+        const value = await prompt({
+            title: option.title,
+            message: option.message,
+            placeholder: option.value,
+            value: option.value,
+            helperText: option.suffix ? `The ${option.suffix} extension will be added automatically` : undefined,
+            submitButtonText: 'Create',
+            closeButtonText: 'Cancel',
+            onSubmit: async (input) => validateEntryName(input, option.suffix, prefix, manager),
+        })
+        if (!value) return
+        const path = `${prefix}${value.trim()}${option.suffix}`
+        try {
+            await manager.createProjectEntry(path, kind)
+            const entry = manager.manifest.find((file) => file.path === path)
+            if (entry) {
+                const selected = {...entry, name: entry.path.split('/').pop() || entry.path, type: 'file' as const, isFSEntry: true as const}
+                setSelectedFiles([selected])
+                manager.selectFile(path)
+            }
+            AppToaster().show({message: `Created ${path}.`, intent: 'success', icon: 'tick', timeout: 2500})
+        } catch (error) {
+            AppToaster().show({message: errorMessage(error), intent: 'danger', icon: 'error', timeout: 4000, isCloseButtonShown: true})
+        }
+    }
+    const actions: Record<string, MenuItemAction> = Object.fromEntries([
+        ...Object.keys(createOptions).map((kind) => [kind, () => create(kind as ProjectEntryKind)]),
+        ['refresh', async () => {
+            await manager.refreshProjectFiles()
+            AppToaster().show({message: 'Files refreshed.', intent: 'success', icon: 'refresh', timeout: 2500})
+        }],
+    ])
+    const {handleContextMenu} = useObjContextMenu(actions)
+    const showEmptyMenu = (event: React.MouseEvent<HTMLElement>) => {
+        event.preventDefault()
+        event.stopPropagation()
+        handleContextMenu(event, emptyMenuItems, null)
+    }
+    return <div
+        className="file-item-context-area"
+        style={{width: '100%', height: '100%'}}
+        onContextMenu={showEmptyMenu}
+        onClick={(event) => {
+            if ((event.target as HTMLElement).closest('.file-item-button')) return
+            setSelectedFiles([])
+        }}
+    ><ButtonGroup
+        className="file-item-button-group"
+        data-testid="project-files"
+    >
         {files.map((file) => <FileButton
             key={file.path}
             fileEntry={file}
@@ -85,7 +175,29 @@ export function FilesPanelGrid() {
                         setSelectedFiles([file])
                         manager.selectFile(file.path)
                     }}/>) }
-    </ButtonGroup>
+    </ButtonGroup></div>
+}
+
+function validateEntryName(
+    input: string,
+    suffix: string,
+    prefix: string,
+    manager: ReturnType<typeof useManagerVersion>,
+): true | {error: string} {
+    const name = input.trim()
+    if (!name) return {error: 'Enter a name.'}
+    if (name === '.' || name === '..' || /[\\/]/.test(name)) {
+        return {error: 'Names cannot contain path separators.'}
+    }
+    const path = `${prefix}${name}${suffix}`
+    if (manager.manifest.some((entry) => entry.path === path) || manager.directoryManifest.includes(path)) {
+        return {error: 'A file or folder with that name already exists.'}
+    }
+    return true
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error)
 }
 
 export function SliderMenuItem({thumbSize, setThumbSize, icon = 'rect-width'}: {

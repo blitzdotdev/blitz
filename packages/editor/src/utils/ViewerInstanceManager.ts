@@ -22,6 +22,8 @@ import {
     type Class,
     type IObject3D,
     type IViewerPlugin,
+    PhysicalMaterial,
+    UnlitMaterial,
 } from 'threepipe'
 import {
     CannonPhysicsPlugin,
@@ -124,6 +126,8 @@ export interface ProjectLoadStatus {
 }
 
 type ModuleExports = Record<string, unknown>
+export type ProjectEntryKind = 'scene' | 'asset' | 'physical-material' | 'unlit-material'
+    | 'plugin' | 'script' | 'json' | 'folder'
 
 /** Owns the persistent edit viewer and the disposable published-game viewer. */
 export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
@@ -138,6 +142,7 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
     game?: CreatedGame
     project?: EditorProject
     manifest: ProjectFileEntry[] = []
+    directoryManifest: string[] = []
     assetsManifest: AssetsJSONManifest = {version: 1, files: {}}
     sceneText = ''
     scenePath = 'assets/main.scene.gltf'
@@ -288,12 +293,14 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
 
     async loadProject(): Promise<void> {
         this.setStatus('Loading project…')
-        const [serverState, entries, packageFile, lastCheckpoint] = await Promise.all([
+        const [serverState, entries, packageFile, lastCheckpoint, directories] = await Promise.all([
             this.source.state() as unknown as Promise<ServerState>,
             this.source.list(),
             this.source.read('package.json'),
             this.source.latestCheckpoint(),
+            this.source.listDirectories(),
         ])
+        this.directoryManifest = directories
         this.lastCheckpoint = lastCheckpoint
         const assetsFile = entries.some(({path}) => path === 'assets.json')
             ? await this.source.read('assets.json')
@@ -1007,6 +1014,48 @@ export class ViewerInstanceManager extends EventDispatcher<ManagerEventMap> {
         this.replaceManifest(await this.source.list())
     }
 
+    async createProjectEntry(path: string, kind: ProjectEntryKind): Promise<void> {
+        if (kind === 'folder') {
+            await this.source.createDirectory(path)
+            this.directoryManifest = await this.source.listDirectories()
+            this.changed()
+            return
+        }
+        const bytes = projectEntryBytes(path, kind)
+        const written = await this.source.write(path, bytes, '*')
+        this.hashes.set(path, written.sha256)
+        if (kind === 'plugin' || kind === 'script') await this.registerProjectModule(path, kind)
+        this.replaceManifest(await this.source.list())
+    }
+
+    async refreshProjectFiles(): Promise<void> {
+        const [files, directories] = await Promise.all([
+            this.source.list(),
+            this.source.listDirectories(),
+        ])
+        this.directoryManifest = directories
+        this.replaceManifest(files)
+    }
+
+    private async registerProjectModule(path: string, kind: 'plugin' | 'script'): Promise<void> {
+        const packageFile = await this.source.read('package.json')
+        const packageJson = JSON.parse(decode(packageFile.bytes)) as Record<string, unknown>
+        const kite3d = packageJson.kite3d && typeof packageJson.kite3d === 'object' && !Array.isArray(packageJson.kite3d)
+            ? packageJson.kite3d as Record<string, unknown>
+            : {}
+        const key = kind === 'plugin' ? 'plugins' : 'scripts'
+        const entries = Array.isArray(kite3d[key]) ? [...kite3d[key] as unknown[]] : []
+        if (!entries.some((entry) => entry === path || (entry && typeof entry === 'object' && 'import' in entry
+            && (entry as {import?: unknown}).import === path))) entries.push(path)
+        packageJson.kite3d = {...kite3d, [key]: entries}
+        const written = await this.source.write(
+            'package.json',
+            encode(`${JSON.stringify(packageJson, null, 2)}\n`),
+            packageFile.sha256,
+        )
+        this.hashes.set('package.json', written.sha256)
+    }
+
     private async registerAsset(path: string, preferredId?: string, files?: Record<string, string>): Promise<string> {
         const existing = Object.entries(this.assetsManifest.files)
             .find(([, asset]) => asset.path === path)?.[0]
@@ -1444,6 +1493,52 @@ function isPluginType(value: unknown): value is Class<IViewerPlugin> {
 
 function normalizeProjectPath(path: string) {
     return path.replace(/^\.\//, '').replace(/\\/g, '/').split(/[?#]/, 1)[0]
+}
+
+function projectEntryBytes(path: string, kind: Exclude<ProjectEntryKind, 'folder'>): Uint8Array {
+    const name = path.split('/').pop()?.replace(/\.(?:scene\.gltf|asset\.glb|asset\.mat|plugin\.js|script\.js|json)$/i, '') || 'NewEntry'
+    if (kind === 'scene') return encode(`${JSON.stringify({
+        asset: {version: '2.0', generator: 'Kite3D'},
+        scene: 0,
+        scenes: [{name, nodes: []}],
+        nodes: [],
+    }, null, 2)}\n`)
+    if (kind === 'asset') return emptyGlbBytes()
+    if (kind === 'physical-material' || kind === 'unlit-material') {
+        const material = kind === 'physical-material' ? new PhysicalMaterial() : new UnlitMaterial()
+        material.name = name
+        return encode(`${JSON.stringify(material.toJSON(), null, 2)}\n`)
+    }
+    if (kind === 'plugin') {
+        const className = safeClassName(name, 'ProjectPlugin')
+        return encode(`import {AViewerPluginSync} from 'threepipe'\n\nexport class ${className} extends AViewerPluginSync {\n  static PluginType = '${className}'\n}\n`)
+    }
+    if (kind === 'script') {
+        const className = safeClassName(name, 'ProjectComponent')
+        return encode(`import {Object3DComponent} from 'threepipe'\n\nexport class ${className} extends Object3DComponent {\n  static ComponentType = '${className}'\n  static StateProperties = ['speed']\n\n  speed = 1\n\n  update({deltaTime}) {\n    this.object.rotation.y += this.speed * deltaTime / 1000\n    return true\n  }\n}\n`)
+    }
+    return encode('{}\n')
+}
+
+function safeClassName(value: string, fallback: string): string {
+    const words = value.replace(/[^a-zA-Z0-9_$]+/g, ' ').trim().split(/\s+/).filter(Boolean)
+    const result = words.map((word) => word[0].toUpperCase() + word.slice(1)).join('').replace(/^[^a-zA-Z_$]+/, '')
+    return result || fallback
+}
+
+function emptyGlbBytes(): Uint8Array {
+    const json = encode(JSON.stringify({asset: {version: '2.0', generator: 'Kite3D'}, scene: 0, scenes: [{nodes: []}], nodes: []}))
+    const paddedLength = Math.ceil(json.byteLength / 4) * 4
+    const bytes = new Uint8Array(12 + 8 + paddedLength)
+    const view = new DataView(bytes.buffer)
+    view.setUint32(0, 0x46546c67, true)
+    view.setUint32(4, 2, true)
+    view.setUint32(8, bytes.byteLength, true)
+    view.setUint32(12, paddedLength, true)
+    view.setUint32(16, 0x4e4f534a, true)
+    bytes.fill(0x20, 20)
+    bytes.set(json, 20)
+    return bytes
 }
 
 async function hashBytes(bytes: Uint8Array): Promise<string> {
