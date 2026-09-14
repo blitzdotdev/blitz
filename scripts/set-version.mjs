@@ -16,10 +16,11 @@ const stableVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 const explicitVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[A-Za-z][0-9A-Za-z-]*\.(0|[1-9]\d*))?$/
 
 export function computeVersion(currentVersion, requestedVersion) {
+    if (explicitVersionPattern.test(requestedVersion)) return requestedVersion
+
     const match = stableVersionPattern.exec(currentVersion)
     if (!match) throw new Error(`Root package version is not a stable semantic version: ${currentVersion}`)
 
-    if (explicitVersionPattern.test(requestedVersion)) return requestedVersion
     if (!['patch', 'minor', 'major'].includes(requestedVersion)) {
         throw new Error('Version must be patch, minor, major, or an explicit x.y.z or x.y.z-word.n version.')
     }

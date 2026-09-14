@@ -24,6 +24,9 @@ test('computes stable semantic version bumps', () => {
     assert.equal(computeVersion('0.12.0', 'major'), '1.0.0')
     assert.equal(computeVersion('0.12.0', '2.3.4'), '2.3.4')
     assert.throws(() => computeVersion('0.12.0', '^1.0.0'), /Version must be/)
+    // Guards the alpha.2 release failure reported on 2026-09-14.
+    assert.equal(computeVersion('0.19.0-alpha.1', '0.19.0-alpha.2'), '0.19.0-alpha.2')
+    assert.throws(() => computeVersion('0.19.0-alpha.1', 'patch'), /Root package version is not a stable semantic version: 0\.19\.0-alpha\.1/)
 })
 
 test('rewrites copied manifests and exact internal pins', async () => {
