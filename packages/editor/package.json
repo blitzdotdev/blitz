@@ -1,6 +1,6 @@
 {
   "name": "@kite3d/editor",
-  "version": "0.19.0-alpha.1",
+  "version": "0.19.0-alpha.2",
   "type": "module",
   "license": "Apache-2.0",
   "files": [
@@ -32,7 +32,7 @@
     "@codemirror/language": "6.12.4",
     "@codemirror/state": "6.7.4",
     "@codemirror/view": "6.43.11",
-    "@kite3d/engine": "0.19.0-alpha.1",
+    "@kite3d/engine": "0.19.0-alpha.2",
     "@lezer/highlight": "1.2.3",
     "@tanstack/query-db-collection": "^1.0.6",
     "@tanstack/react-db": "^0.1.55",
