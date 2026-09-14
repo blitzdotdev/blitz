@@ -28,10 +28,6 @@
       "types": "./dist/authoring.d.ts",
       "import": "./dist/authoring.js"
     },
-    "./authoringValidation": {
-      "types": "./dist/authoringValidation.d.ts",
-      "import": "./dist/authoringValidation.js"
-    },
     "./version": {
       "types": "./dist/runtime/version.d.ts",
       "import": "./dist/version.js"
@@ -61,7 +57,6 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run test/unit --passWithNoTests",
-    "test:gates": "npm run build && playwright test persistence-gate.spec.ts",
     "test:runtime": "npm run build && npm test && playwright test"
   },
   "dependencies": {
