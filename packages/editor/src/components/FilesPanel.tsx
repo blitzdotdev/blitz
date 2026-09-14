@@ -218,6 +218,15 @@ export function FilesPanelGrid() {
     ><ButtonGroup
         className="file-item-button-group"
         data-testid="project-files"
+        tabIndex={0}
+        onKeyDown={(event) => {
+            if (event.key !== 'Enter' || selectedFiles.length !== 1) return
+            const selected = selectedFiles[0]
+            if (!isOpenableFile(selected.path)) return
+            event.preventDefault()
+            event.stopPropagation()
+            void openFile(selected)
+        }}
     >
         {files.map((file) => <FileButton
             key={file.path}
@@ -244,7 +253,12 @@ export function FilesPanelGrid() {
                 manager.selectFile(file.path)
             }}
             onDoubleClick={() => {
-                if (file.type === 'directory') setCurrentPath(`/${file.path}`)
+                if (file.type === 'directory') {
+                    setCurrentPath(`/${file.path}`)
+                    setSelectedFiles([])
+                } else if (isOpenableFile(file.path)) {
+                    void openFile(file)
+                }
             }}/>) }
         {fileManifest.filter(({path}) => path.includes('/') && !isPrivateKite3dFile(path)).map((file, index) =>
             <button key={`semantic-${file.path}`} type="button" className="kite3d-semantic-hook"
