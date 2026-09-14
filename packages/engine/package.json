@@ -1,0 +1,65 @@
+{
+  "name": "@kite3d/engine",
+  "version": "0.19.0-alpha.2",
+  "description": "The open Kite3D game runtime, project format, scripting helpers, and game plugins.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./fileTypes": {
+      "types": "./dist/fileTypes.d.ts",
+      "import": "./dist/fileTypes.js"
+    },
+    "./sceneSerialization": {
+      "types": "./dist/sceneSerialization.d.ts",
+      "import": "./dist/sceneSerialization.js"
+    },
+    "./version": {
+      "types": "./dist/runtime/version.d.ts",
+      "import": "./dist/version.js"
+    },
+    "./projectFormat": {
+      "types": "./dist/runtime/projectFormat.d.ts",
+      "import": "./dist/projectFormat.js"
+    },
+    "./importMap": {
+      "types": "./dist/importMap.d.ts",
+      "import": "./dist/importMap.js"
+    },
+    "./runtime.js": "./dist/runtime.js",
+    "./package.json": "./package.json",
+    "./src/*": "./src/*"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "vite build && vite build --config vite.runtime.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext ts --report-unused-disable-directives --max-warnings 0"
+  },
+  "dependencies": {
+    "cannon-es": "^0.20.0",
+    "jsonc-parser": "^3.3.1",
+    "meshoptimizer": "^0.20.0",
+    "threepipe": "0.5.1",
+    "ts-browser-helpers": "0.19.4",
+    "uiconfig.js": "^0.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.1.0",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "eslint": "^8.55.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.3.5",
+    "vite-plugin-dts": "^4.5.4"
+  }
+}
