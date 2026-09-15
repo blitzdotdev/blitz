@@ -16,6 +16,19 @@ export interface ProjectState {
     versions?: Record<string, string>
 }
 
+export type ProjectFileEvent = {type: 'change' | 'add' | 'unlink', path: string, sha256?: string, client?: string}
+
+export type ProjectEvent =
+    | ProjectFileEvent
+    | {type: 'command', id: string, command: 'screenshot', options: {name?: string, width?: number, height?: number}}
+
+/** A write the server refused: the file on disk is not the one the write was based on. */
+export class ProjectConflictError extends Error {
+    constructor(readonly path: string, readonly sha256?: string) {
+        super(`${path} changed on disk`)
+    }
+}
+
 /**
  * The routes of `kite3d dev`. This is the only file that knows them.
  * The token comes from `?t=` on the URL the CLI prints.
@@ -60,15 +73,31 @@ export class DevServerSource {
         }
     }
 
+    /** Writes when the file is still at `ifMatch`, or unconditionally when that is `'*'`. */
     async write(path: string, bytes: Blob | Uint8Array<ArrayBuffer> | string, ifMatch: string | '*'): Promise<{sha256: string}> {
+        return this.put(path, bytes, {'If-Match': ifMatch === '*' ? '*' : `"${ifMatch}"`})
+    }
+
+    /** Writes only when the path is free, so a file this tab has never seen is never truncated. */
+    async create(path: string, bytes: Blob | Uint8Array<ArrayBuffer> | string): Promise<{sha256: string}> {
+        return this.put(path, bytes, {'If-None-Match': '*'})
+    }
+
+    events(listener: (event: ProjectEvent) => void): () => void {
+        const source = new EventSource(`/api/events?client=${encodeURIComponent(this.clientId)}`)
+        for (const type of ['change', 'add', 'unlink', 'command'] as const) {
+            source.addEventListener(type, (e) => listener({type, ...JSON.parse((e as MessageEvent).data)}))
+        }
+        return () => source.close()
+    }
+
+    private async put(path: string, bytes: Blob | Uint8Array<ArrayBuffer> | string, precondition: Record<string, string>): Promise<{sha256: string}> {
         const res = await fetch(this.fileUrl(path), {
             method: 'PUT',
             body: bytes,
-            headers: this.headers({
-                'Content-Type': 'application/octet-stream',
-                'If-Match': ifMatch === '*' ? '*' : `"${ifMatch}"`,
-            }),
+            headers: this.headers({'Content-Type': 'application/octet-stream', ...precondition}),
         })
+        if (res.status === 412) throw new ProjectConflictError(path, (await res.json()).sha256)
         if (!res.ok) throw new Error(`Cannot write ${path}: ${res.status}`)
         return res.json()
     }

@@ -17,6 +17,7 @@ import {ViewerInstanceManager} from "./utils/ViewerInstanceManager.ts";
 import {LoadedProject} from "./utils/project.ts";
 import {HubClient} from "./devserver/HubClient.ts";
 import {HubProvider} from "./utils/UseHub.ts";
+import {AskDialogBridge} from "./utils/AskDialog.tsx";
 
 // console.log(InspectorStackComponent, Split)
 
@@ -34,6 +35,7 @@ function App({manager, project, hub}: { manager: ViewerInstanceManager, project:
             <>
                 <ThreeEditorComponent />
                 <DialogComponent/>
+                <AskDialogBridge/>
                 <AppToasterOverlay/>
             </>
         </ContextMenuProvider>

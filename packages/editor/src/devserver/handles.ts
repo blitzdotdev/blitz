@@ -1,4 +1,4 @@
-import {DevServerSource, ProjectFileEntry} from './DevServerSource.ts'
+import {DevServerSource, ProjectConflictError, ProjectFileEntry, ProjectFileEvent} from './DevServerSource.ts'
 
 // The whole contract. Upstream calls nothing else on a handle.
 export interface ProjectDirectoryHandle {
@@ -21,7 +21,7 @@ export interface ProjectFileHandle {
 export class ProjectManifest {
     files = new Map<string, ProjectFileEntry>()
     directories = new Set<string>()
-    based = new Map<string, string>()                // the sha this tab last read or wrote, per path
+    based = new Map<string, string>()                // the disk sha this tab's copy of the path came from
 
     constructor(private readonly source: DevServerSource) {}
 
@@ -29,6 +29,12 @@ export class ProjectManifest {
         const [files, directories] = await Promise.all([this.source.list(), this.source.listDirectories()])
         this.files = new Map(files.map((f) => [f.path, f]))
         this.directories = new Set(directories)
+    }
+
+    /** Keeps the listing current from the change stream. The base sha is this tab's own and stays untouched. */
+    apply(event: ProjectFileEvent) {
+        if (event.type === 'unlink') this.files.delete(event.path)
+        else this.files.set(event.path, {path: event.path, size: 0, sha256: event.sha256 || '', mtime: Date.now()})
     }
 
     childrenOf(dir: string): Array<[string, 'file' | 'directory']> {
@@ -72,8 +78,12 @@ export class DevServerDirectoryHandle implements ProjectDirectoryHandle {
         const path = this.child(name)
         if (!this.manifest.files.has(path)) {
             if (!options.create) throw notFound(name)
-            // '*' is unconditional; callers check existence first (FilesPanel.tsx:222)
-            const {sha256} = await this.source.write(path, new Uint8Array(), '*')
+            // The listing can be behind disk. The create is conditional on the path being free, so a
+            // file that appeared since the listing answers 412 and keeps its bytes.
+            const {sha256} = await this.source.create(path, new Uint8Array()).catch((error) => {
+                if (!(error instanceof ProjectConflictError)) throw error
+                return {sha256: error.sha256 || ''}
+            })
             this.manifest.files.set(path, {path, size: 0, sha256, mtime: Date.now()})
             this.manifest.based.set(path, sha256)
         }

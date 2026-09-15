@@ -58,7 +58,7 @@ async function openServedProject() {
     await manifest.refresh()
     const root = new DevServerDirectoryHandle('', source, manifest)
 
-    const manager = new ViewerInstanceManager()
+    const manager = new ViewerInstanceManager(source, manifest)
     const project = await manager.initReadWriteProject({
         path: state.name || '',
         file: 'package.json',
@@ -75,6 +75,7 @@ async function openServedProject() {
             <App manager={manager} project={project} hub={hub}/>
         // </StrictMode>,
     )
+    manager.initialize()
     window.kite3dProjectLoaded = true
 }
 

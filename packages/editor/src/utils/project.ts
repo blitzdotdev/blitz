@@ -21,6 +21,7 @@ export interface SavedSceneFile {
 export interface AssetsJSONManifest{
     files: Record<string, { // id to files meta
         path: string,
+        files?: Record<string, string>, // the asset's sidecars, by the name the asset refers to them
     }>
     version: number,
 }

@@ -67,7 +67,9 @@ import {
     SavedSceneFileMeta,
     settingsKey
 } from "./project.ts";
-import {ProjectDirectoryHandle} from "../devserver/handles.ts";
+import {ProjectDirectoryHandle, ProjectManifest} from "../devserver/handles.ts";
+import {DevServerSource, ProjectConflictError, ProjectEvent} from "../devserver/DevServerSource.ts";
+import {ask, AskChoice} from "./AskDialog.tsx";
 import {AnotherFSHelper, getDirHandle, getFileHandle} from "./fsApi.ts";
 import {AssetTracker, cloneAssetItem, defSPropsMat, defSPropsObj} from "./AssetTracker.ts";
 import {CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
@@ -105,6 +107,7 @@ export interface ViewerProps {
 export class ViewerInstanceManager extends EventDispatcher<{
     loadedNeedsSaveChange: {},
     loadedProjectFileChange: {},
+    projectFilesChange: {},
     // assetRegistryChange: {},
 }>{
     private _viewers = new Map<string, ThreeViewer>()
@@ -115,9 +118,16 @@ export class ViewerInstanceManager extends EventDispatcher<{
     settingsManager = new ProjectSettingsManager(this)
     fsHelper = new AnotherFSHelper()
 
-    constructor() {
+    constructor(readonly source: DevServerSource, readonly manifest: ProjectManifest) {
         super()
         this.scriptUtil.onObserveFileChange = this.onObserveFileChange
+    }
+
+    private unsubscribeEvents: (() => void) | null = null
+
+    /** Opens the change stream, so a write by anyone else reaches this tab. */
+    initialize() {
+        this.unsubscribeEvents = this.source.events((event) => void this.onProjectEvent(event))
     }
 
     get(props?: Partial<ViewerProps>, id = 'default', container?: HTMLElement) {
@@ -381,8 +391,81 @@ export class ViewerInstanceManager extends EventDispatcher<{
     }
 
     dispose() {
+        this.unsubscribeEvents?.()
+        this.unsubscribeEvents = null
         this._viewers.forEach(this._disposeViewer)
         this._viewers.clear()
+    }
+
+    /**
+     * One file event, from this tab or from anyone else. The listing is always brought up to date;
+     * what else happens depends on what the path is to this tab.
+     */
+    private onProjectEvent = async (event: ProjectEvent) => {
+        if (event.type === 'command') return                    // the screenshot answer is its own pass
+        if (event.client === this.source.clientId) return        // this tab wrote it, its base is already the new sha
+        this.manifest.apply(event)
+        if (event.path === this.loadedProjectFile?.path) await this.openFileChangedOnDisk()
+        // package.json and assets.json reload the settings, a module re-imports: the queue does both
+        else if (event.path === 'package.json' || event.path === 'assets.json' || /\.m?js$/i.test(event.path)) {
+            this.scriptUtil.changedFilesQ.push(event.path)
+            await this.scriptUtil.refreshChangedFilesQ()
+        } else this.scheduleAssetRefresh(event.path)
+        this.dispatchEvent({type: 'projectFilesChange'})
+    }
+
+    /** The open file changed under the editor. A clean editor takes the disk copy, a dirty one asks. */
+    private async openFileChangedOnDisk() {
+        const path = this.loadedProjectFile?.path
+        if (!path) return
+        if (this.loadedNeedsSave) {
+            const reload = await ask('Changed on disk', `${path} changed on disk. Reload it and discard the editor copy?`, [
+                {label: 'Keep editing', value: false},
+                {label: 'Reload', value: true, intent: 'danger'},
+            ])
+            if (!reload) return
+        }
+        await this.reloadOpenFile()
+    }
+
+    /** Replaces the open file with the copy on disk. Unsaved edits are lost. */
+    private async reloadOpenFile() {
+        const project = this.loadedProject
+        const path = this.loadedProjectFile?.path
+        if (!project || !path) return
+        await this.loadProjectFile(await this.getLoadedFile(project, path), true)
+    }
+
+    // One timer per asset: Blender writes the .gltf, its .bin and its textures within a few ms.
+    private assetRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+    private scheduleAssetRefresh(path: string) {
+        const owner = this.assetOwning(path)
+        if (!owner) return
+        clearTimeout(this.assetRefreshTimers.get(owner))
+        this.assetRefreshTimers.set(owner, setTimeout(() => {
+            this.assetRefreshTimers.delete(owner)
+            void this.refreshAsset(owner).catch(e => console.error('Unable to refresh changed asset', owner, e))
+        }, 250))
+    }
+
+    /** Re-imports the asset, so every placed instance shows the new file and keeps its own transform. */
+    private async refreshAsset(assetPath: string) {
+        const project = this.loadedProject
+        if (!project) return
+        const key = await this.toAssetIdPath({path: assetPath})
+        const tracker = this.get().assetManager.tracker
+        if (!tracker.registry[key]) return                       // on disk, never placed: nothing to refresh
+        const file: File = await resolveFile(assetPath, project.handle)
+        await tracker.refreshFromRegistry(key, {importedFile: file}).pms
+    }
+
+    /** The assets.json entry this file belongs to: the asset, one of its listed files, or its sibling .bin. */
+    private assetOwning(path: string): string | null {
+        const assets = Object.values(this.loadedProject?.assetsManifest?.files ?? {})
+        const sibling = path.replace(/\.bin$/i, '.gltf')
+        const owner = assets.find(a => a.path === path || a.path === sibling || Object.values(a.files ?? {}).includes(path))
+        return owner?.path ?? null
     }
 
     // assetsManifest is replaced on every asset id write, so every lookup goes through the current one
@@ -655,14 +738,20 @@ export class ViewerInstanceManager extends EventDispatcher<{
         return {file, preview: previewFile, ext}
     }
 
+    // Returns a result only when the asset did not land on disk; the caller stops on it.
     async writeAssetFile(obj: IObject3D|IMaterial, assetId: string, handle: ProjectDirectoryHandle, assetPath: string, res: {file: File, preview?: string | File}) {
-        const res1 = await this.fsHelper.writeFile(handle, assetPath, res.file).catch(e => {
+        const res1 = await this.writeResolvingConflict(handle, assetPath, res.file).catch(e => {
             console.error('Failed to save asset file.', e)
-            return false
+            return null
         })
         if(!res1){
             // delete obj.userData.tpAssetId
             return {error: 'Failed to save asset file.'}
+        }
+        if(res1 !== 'written'){
+            return res1 === 'reloaded'
+                ? {error: null, warn: `Reloaded ${assetPath} from disk. The editor copy is gone.`}
+                : {error: null, warn: `${assetPath} changed on disk. Nothing was saved.`}
         }
         // todo
         //  save preview thumbnail
@@ -1239,7 +1328,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
             this.loadedPath = (res as ImportResultExtras).__rootPath ?? (assetUrlPrefix+file.path)
             this.loadedAssetObj = !isScene ? obj : null
             this.loadedProjectFile = file
-            this.loadedNeedsSave = true // obj._tpAssetNeedsSave ?? false
+            this.loadedNeedsSave = false // the editor copy came from disk, so there is nothing to save yet
 
             // todo remove event listeners on file unload
 
@@ -1401,6 +1490,34 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
     savingScene = false
 
+    /**
+     * Writes the file. The server refuses a write whose base is not what is on disk, which means
+     * someone else wrote the path since this tab read it, so the user picks what wins.
+     */
+    private async writeResolvingConflict(handle: ProjectDirectoryHandle, path: string, file: File): Promise<'written' | 'reloaded' | 'cancelled'> {
+        try {
+            await this.fsHelper.writeFile(handle, path, file)
+            return 'written'
+        } catch (e) {
+            if (!(e instanceof ProjectConflictError)) throw e
+            // Reload answers only for the file on screen. No other path has an editor copy to replace.
+            const choices: AskChoice<'cancelled' | 'reload' | 'overwrite'>[] = [{label: 'Cancel', value: 'cancelled'}]
+            if (path === this.loadedProjectFile?.path) choices.push({label: 'Reload from disk', value: 'reload', intent: 'danger'})
+            choices.push({label: 'Overwrite', value: 'overwrite', intent: 'primary'})
+            const answer = await ask('Changed on disk', `${path} changed on disk since you opened it.`, choices)
+            if (answer === 'cancelled') return 'cancelled'
+            if (answer === 'reload') {
+                await this.reloadOpenFile()
+                return 'reloaded'
+            }
+            // The editor copy wins: rebase on what the 412 reported, then send the same write again.
+            if (e.sha256) this.manifest.based.set(path, e.sha256)
+            else this.manifest.based.delete(path)
+            await this.fsHelper.writeFile(handle, path, file)
+            return 'written'
+        }
+    }
+
     async saveProjectSceneOrAsset(project: LoadedProject, file: SavedSceneFile): Promise<{ error: string | null, warn?: string }> {
         if(project !== this.loadedProject){
             console.error('Project does not match the loaded project, cannot save scene/asset.', file)
@@ -1438,21 +1555,25 @@ export class ViewerInstanceManager extends EventDispatcher<{
             const backupFilePath = backupPath(scene, Date.now().toFixed()) // todo clear old backups?
             const previewFilePath = thumbPath(scene)
 
-            let handles = await getFileHandle(handle, filePath, false)
-            if (handles.fileHandle) {
-                // file exists, create a backup
-                const originalFile = await handles.fileHandle.getFile()
-                this.fsHelper.writeFile(handle, backupFilePath, originalFile).catch(e => {
+            const listed = this.manifest.files.get(filePath)
+            if (listed) {
+                // The backup keeps the copy that is on disk now. It reads through the transport, not
+                // through the handle, so the save below still carries the base this tab loaded.
+                const original = await this.source.read(filePath, listed.sha256)
+                this.fsHelper.writeFile(handle, backupFilePath, new File([original.bytes], listed.path.split('/').pop()!)).catch(e => {
                     console.error('Failed to create backup of scene file.', e)
                 })
             }
-            const saved = await this.fsHelper.writeFile(handle, filePath, res.file).catch(e => {
+            const saved = await this.writeResolvingConflict(handle, filePath, res.file).catch(e => {
                 console.error(e)
-                return false
+                return null
             })
-            if (!saved) {
+            if (saved !== 'written') {
                 this.savingScene = false
-                return {error: 'Failed to save scene file.'}
+                if (!saved) return {error: 'Failed to save scene file.'}
+                return saved === 'reloaded'
+                    ? {error: null, warn: `Reloaded ${filePath} from disk. The editor copy is gone.`}
+                    : {error: null, warn: `${filePath} changed on disk. Nothing was saved.`}
             }
 
             if (res.preview) {
@@ -1559,7 +1680,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         const assetPath = assets + assetName + ext
 
         const res2 = await this.writeAssetFile(obj, assetId, handle, assetPath, res)
-        if(res2?.error){
+        if(res2){
             // delete obj.userData.tpAssetId
             return res2
         }
@@ -1699,7 +1820,7 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }
 
         const res2 = await this.writeAssetFile(obj, assetId, handle, path, res)
-        if(res2?.error){
+        if(res2){
             return res2
         }
 

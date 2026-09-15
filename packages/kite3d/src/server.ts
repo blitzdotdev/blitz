@@ -397,8 +397,14 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             const filePath = await safeProjectPath(root, relativePath, true)
             const existed = await fileExists(filePath)
             const currentHash = existed ? await hashFile(filePath) : undefined
+            // A create sends If-None-Match: *, so it never truncates a file the editor has not listed yet.
+            const ifNoneMatch = c.req.header('If-None-Match')
             const ifMatch = c.req.header('If-Match')
-            if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
+            if (ifNoneMatch === '*') {
+                if (existed) {
+                    return jsonResponse({error: {code: 'precondition_failed', message: 'The file already exists.'}, sha256: currentHash}, 412)
+                }
+            } else if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
                 return jsonResponse({error: {code: 'precondition_failed', message: 'The file changed on disk.'}, sha256: currentHash}, 412)
             }
             await mkdir(dirname(filePath), {recursive: true})

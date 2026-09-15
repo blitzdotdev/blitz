@@ -715,11 +715,13 @@ export function FilesPanel({}: {
 
         // document.addEventListener("visibilitychange", onChange);
         window.addEventListener("focus", onChange);
+        manager.addEventListener('projectFilesChange', onChange);
         return () => {
             // document.removeEventListener("visibilitychange", onChange);
             window.removeEventListener("focus", onChange);
+            manager.removeEventListener('projectFilesChange', onChange);
         };
-    }, [refreshManifest]);
+    }, [manager, refreshManifest]);
 
     const [thumbSize, setThumbSize] = useState(32);
 

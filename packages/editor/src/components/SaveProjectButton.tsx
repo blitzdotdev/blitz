@@ -41,6 +41,15 @@ export function SaveProjectButton() {
     const manager = useManager()
 
     const [fileNeedsSave] = useFileNeedsSave()
+    // the button renders from the loaded file, so it has to hear when a reload replaces it
+    const [loadedFile, setLoadedFile] = useState(manager.loadedProjectFile)
+    useEffect(()=>{
+        const l = ()=>setLoadedFile(manager.loadedProjectFile)
+        manager.addEventListener('loadedProjectFileChange', l)
+        return ()=>{
+            manager.removeEventListener('loadedProjectFileChange', l)
+        }
+    }, [manager])
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -55,7 +64,7 @@ export function SaveProjectButton() {
         }
     }, [saveProjectFile, updateLoading])
 
-    return !manager.loadedProjectFile || !project ? null : <>
+    return !loadedFile || !project ? null : <>
         {manager.loadedScene &&
             <Button
                     variant={"minimal"} size={"small"}

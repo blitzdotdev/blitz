@@ -198,7 +198,7 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
         //     throw new Error(`Cannot read ${project.file.name} file`)
         // }
         //
-        // // Prepare edits — jsonc-parser gives minimal text edits preserving comments
+        // // Prepare edits, jsonc-parser gives minimal text edits preserving comments
         // const edits = jsonc.modify(
         //     text,                  // original JSONC text
         //     [settingsKey],         // JSON path (can be nested like ['compilerOptions', 'target'])

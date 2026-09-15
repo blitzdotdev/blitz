@@ -199,11 +199,10 @@ export async function loadModules(path: string[], readFile: (path: string)=>Prom
 }
 
 export function getFileChanged(path: string[]|Set<string>){
-    const pathSet = Array.isArray(path) ? new Set(path) : path
+    // The watcher reports a project-relative path; a script is imported as ./<path>. Compare both normalized.
+    const pathSet = new Set([...path].map(p=>urlToPath(new URL(p, 'http://example.com'))))
     const ps: string[] = []
     pathSet.forEach(p=>{
-        const pathURL = new URL(p, 'http://example.com')
-        p = urlToPath(pathURL)
         if(files.has(p)){
             const f = files.get(p)!
             // f.cacheKey = (f.cacheKey || 0) + 1
@@ -211,10 +210,10 @@ export function getFileChanged(path: string[]|Set<string>){
         }
     })
     scriptModules.forEach((paths, key)=>{
-        if(pathSet.has(key) || paths.deps.find(p=> pathSet.has(p))){
+        const keyPath = urlToPath(new URL(key, 'http://example.com'))
+        if(pathSet.has(keyPath) || paths.deps.find(p=> pathSet.has(urlToPath(new URL(p, 'http://example.com'))))){
             ps.push(key)
-            const pathURL = new URL(key, 'http://example.com')
-            const fi = files.get(urlToPath(pathURL))
+            const fi = files.get(keyPath)
             if(fi){
                 // fi.cacheKey = (fi.cacheKey || 0) + 1
                 fi.needsUpdate = true
