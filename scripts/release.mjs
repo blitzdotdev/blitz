@@ -69,10 +69,16 @@ async function readJson(path) {
     return JSON.parse(await readFile(resolve(repositoryDirectory, path), 'utf8'))
 }
 
-async function validateLockstepVersion() {
+async function validateReleaseManifests() {
     const rootManifest = await readJson('package.json')
     const manifests = await Promise.all(publishOrder.map(name => readJson(`packages/${name}/package.json`)))
     for (const manifest of manifests) {
+        if (manifest.private) {
+            throw new Error(`${manifest.name} is private, so npm publish would skip the workspace and print nothing but a warning.`)
+        }
+        if (!manifest.files?.length) {
+            throw new Error(`${manifest.name} has no files field, so its tarball would follow .gitignore and drop dist.`)
+        }
         if (manifest.version !== rootManifest.version) {
             throw new Error(`${manifest.name} is ${manifest.version}; expected lockstep version ${rootManifest.version}.`)
         }
@@ -147,7 +153,7 @@ function finishTag(version, branch, dryRun) {
 
 async function release() {
     const {dryRun} = parseArguments(process.argv.slice(2))
-    const version = await validateLockstepVersion()
+    const version = await validateReleaseManifests()
     const branch = verifyGitState(version, dryRun)
     const npm = await createNpmEnvironment()
 

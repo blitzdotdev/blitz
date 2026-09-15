@@ -77,6 +77,7 @@ async function serializeSceneGltfDocument(
     const document = cloneJson(input) as GltfDocument
     removeVolatileViewerIds(document)
     removeUnreferencedUuids(document)
+    sortExtensionLists(document)
     const scenePath = normalizeProjectPath(options.scenePath || 'assets/main.scene.gltf')
     const sceneDirectory = directoryName(scenePath)
     const files: SerializedSceneFile[] = []
@@ -84,10 +85,10 @@ async function serializeSceneGltfDocument(
     extractBuffers(document, sceneDirectory, fileStem(scenePath), files)
     await extractImages(document, sceneDirectory, files, 16)
 
-    const sorted = sortObjectKeys(document) as GltfDocument
+    const canonical = canonicalizeJson(document) as GltfDocument
     return {
-        document: sorted,
-        gltf: encoder.encode(`${JSON.stringify(sorted, null, 2)}\n`),
+        document: canonical,
+        gltf: encoder.encode(`${JSON.stringify(canonical, null, 2)}\n`),
         files: files.sort((left, right) => left.path.localeCompare(right.path)),
     }
 }
@@ -245,10 +246,34 @@ function imageExtension(mimeType: string): string {
     return extensions[normalized] || normalized.split('/')[1]?.replace(/[^a-z0-9.+-]/g, '') || 'bin'
 }
 
-function sortObjectKeys(value: unknown): unknown {
-    if (Array.isArray(value)) return value.map(sortObjectKeys)
+/** The two glTF extension lists are sets: the exporter fills them in load order, which a reload changes. */
+function sortExtensionLists(document: GltfDocument): void {
+    for (const key of ['extensionsUsed', 'extensionsRequired']) {
+        const list = document[key]
+        if (Array.isArray(list)) list.sort()
+    }
+}
+
+function canonicalizeJson(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(canonicalizeJson)
+    if (typeof value === 'number') return canonicalNumber(value)
     if (!isRecord(value)) return value
-    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortObjectKeys(value[key])]))
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalizeJson(value[key])]))
+}
+
+/**
+ * Nine significant digits: a scene value lives as float32 in the buffers and on the GPU, and float32 round
+ * trips through nine digits, so nine keeps every position, rotation, colour and animation time the engine
+ * can hold, while a transform recomputed from the same inputs moves far below the ninth digit and rounds
+ * back to the same text. Integers are indices, counts and byte offsets: exact, sometimes longer than nine
+ * digits, never noisy. The 1e-7 floor is float32 resolution at scene scale, so a value under it cannot
+ * change any sum the renderer makes. Measured on a saved scene of boxes and a light: every number is above
+ * 1e-2, except the leftover of a rotation rebuilt from the file, near 1e-10, which wanders from save to save.
+ */
+function canonicalNumber(value: number): number {
+    if (Number.isInteger(value)) return value
+    if (Math.abs(value) < 1e-7) return 0
+    return Number(value.toPrecision(9))
 }
 
 function cloneJson<T>(value: T): T {
