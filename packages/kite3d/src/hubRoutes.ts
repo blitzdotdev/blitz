@@ -118,12 +118,11 @@ async function startProject(path: string): Promise<{url: string}> {
     return {url}
 }
 
-// The project's own pinned kite3d serves it, so a project never runs on the launcher's version.
 async function spawnProjectServer(projectRoot: string): Promise<ServerState> {
-    const cliPath = resolve(projectRoot, 'node_modules/kite3d/dist/cli.js')
-    if (!await pathExists(cliPath)) {
-        throw new HubError(409, 'conflict', `Run npm install in ${projectRoot} first.`)
-    }
+    // A project pins its own kite3d once it is installed, and until then it runs on this server's
+    // own CLI, so a project created from the picker starts on the click that created it.
+    const pinnedCli = resolve(projectRoot, 'node_modules/kite3d/dist/cli.js')
+    const cliPath = await pathExists(pinnedCli) ? pinnedCli : process.argv[1]
     await mkdir(resolve(projectRoot, '.kite3d'), {recursive: true})
     const log = openSync(resolve(projectRoot, '.kite3d/dev.log'), 'a', 0o600)
     let child: ChildProcess
