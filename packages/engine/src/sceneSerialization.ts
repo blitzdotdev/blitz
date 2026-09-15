@@ -1,4 +1,4 @@
-import type {IObject3D, ThreeViewer} from 'threepipe'
+import {PropertyBinding, type IObject3D, type ThreeViewer} from 'threepipe'
 
 export interface SerializeSceneGltfOptions {
     scenePath?: string
@@ -32,10 +32,17 @@ interface GltfImage {
     [key: string]: unknown
 }
 
+interface GltfNode {
+    name?: string
+    extras?: Record<string, unknown>
+    [key: string]: unknown
+}
+
 interface GltfDocument extends Record<string, unknown> {
     buffers?: GltfBuffer[]
     bufferViews?: GltfBufferView[]
     images?: GltfImage[]
+    nodes?: GltfNode[]
 }
 
 const encoder = new TextEncoder()
@@ -74,6 +81,7 @@ async function serializeSceneGltfDocument(
         throw new Error('The scene is not a JSON glTF document')
     }
     const document = cloneJson(input) as GltfDocument
+    restoreAuthoredNames(document)
     removeVolatileViewerIds(document)
     removeUnreferencedUuids(document)
     sortExtensionLists(document)
@@ -89,6 +97,29 @@ async function serializeSceneGltfDocument(
         gltf: encoder.encode(`${JSON.stringify(canonical, null, 2)}\n`),
         files: files.sort((left, right) => left.path.localeCompare(right.path)),
     }
+}
+
+/**
+ * three's GLTFLoader sanitizes a node name into `Object3D.name`, so that animation tracks can bind to it,
+ * and keeps the authored name in `userData.name` (GLTFLoader.js:4391). The exporter writes the sanitized
+ * name as the node name and the authored one into `extras`, so the authored name goes back where it was
+ * written, and the copy in `extras` goes. A node the editor renamed no longer carries the loader's name,
+ * and keeps the new one.
+ */
+function restoreAuthoredNames(document: GltfDocument): void {
+    for (const node of document.nodes || []) {
+        const extras = node.extras
+        if (!isRecord(extras) || typeof extras.name !== 'string') continue
+        if (isLoaderNameOf(node.name || '', extras.name)) node.name = extras.name
+        delete extras.name
+        if (!Object.keys(extras).length) delete node.extras
+    }
+}
+
+/** The name the loader makes from an authored one, plus the `_1` and up that a repeated name gets. */
+function isLoaderNameOf(name: string, authored: string): boolean {
+    const sanitized = PropertyBinding.sanitizeNodeName(authored)
+    return name === sanitized || name.startsWith(sanitized) && /^_\d+$/.test(name.slice(sanitized.length))
 }
 
 function removeVolatileViewerIds(value: unknown): void {

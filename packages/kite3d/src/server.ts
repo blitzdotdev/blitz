@@ -267,11 +267,15 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 return jsonResponse({error: {code: 'invalid_path', message: 'A directory path is required.'}}, 400)
             }
             const directoryPath = await safeProjectPath(root, body.path, true)
-            if (await fileExists(directoryPath)) {
-                return jsonResponse({error: {code: 'already_exists', message: 'A file or directory with that name already exists.'}}, 409)
+            try {
+                // Recursive: parents are made too, and a directory that is already there is the wanted state.
+                // mkdir answers with the first path it made, and with nothing when it made none.
+                const created = await mkdir(directoryPath, {recursive: true})
+                return jsonResponse({path: body.path}, created === undefined ? 200 : 201)
+            } catch (error) {
+                if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+                return jsonResponse({error: {code: 'already_exists', message: 'A file with that name already exists.'}}, 409)
             }
-            await mkdir(directoryPath)
-            return jsonResponse({path: body.path}, 201)
         })
         app.get('/api/state', async () => jsonResponse({...await projectState(root), clients: clients.size}))
         app.get('/api/events', (c) => {
