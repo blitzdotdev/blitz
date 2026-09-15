@@ -10,7 +10,7 @@ Every line in the new editor is upstream's unless one of five reasons forces a c
 
 A second rule, yours on 2026-09-14, covers everything that goes: no legacy support. A deleted feature leaves no trace in code, docs, comments, tests or changelogs, as if it never existed. The test is `rg` for the feature's names across the repository: zero hits. Games that used a deleted export migrate on their side. This file is the one exception, because it is the list of what goes, and it leaves the repository when the rewrite ships; its history stays in git.
 
-- [ ] Accept the rule.
+- [x] Accept the rule (accepted 2026-09-14)
 
 ## 1. Why a restart and not a cleanup
 
@@ -20,7 +20,7 @@ A restart keeps upstream's code as upstream wrote it and swaps only the layer th
 
 The kite3d and engine packages are different. They are new code with no upstream, their justified cores are small and known, and the cleanup already stripped the rest. They carry over as they are, plus the project hub that section 10 brings back from history.
 
-- [ ] Accept the restart.
+- [x] Accept the restart (accepted 2026-09-14)
 
 ## 2. The repository
 
@@ -47,9 +47,9 @@ upstream/master ──► upstream-master   (mirror of repalash, never edited)
 
 Nothing builds yet. The editor's `package.json` still points at upstream's `file:../threepipe` link, and the deletions of section 3 have not run. That is step 1 of section 14.
 
-- [ ] Accept the layout: one monorepo, five packages, upstream's branch kept as a mirror.
+- [x] Accept the layout: one monorepo, five packages, upstream's branch kept as a mirror (accepted 2026-09-14)
 - [x] The push: prove it locally first, then force over blitzdotdev/kite3d `main`, keeping the old main as `old-main` (decided 2026-09-14).
-- [ ] Fork point: head 7fac408. (Alternative: c3d8c6a, the exact point we forked; head adds upstream's camera selection improvement, seven files.)
+- [x] Fork point: head 7fac408 (built on it, 2026-09-14).
 
 ## 3. What goes from upstream
 
@@ -85,7 +85,7 @@ backend/, scripts/upload-r2.mjs, packages/mcp-bridge/, tests/, .github/
 
 What stays even though it looks browser-shaped: `fsApi.ts` minus the two items above (its `getDirHandle`, `getFileHandle`, `writeFileHandle` and `AnotherFSHelper` are the helpers every save goes through), `AssetTracker` (the in-memory asset registry; it imports by URL through the importer and never touches a handle), `ScriptUtil` and `modules.ts` (section 7 changes one function), `PlayModeHelper` (section 6), `ProjectSettingsManager`, `EditPreviewHelper`, `EditorFeatures`, the tsdb Library client (section 9), and upstream's thumbnails and save backups, which now land under `.kite3d/`.
 
-- [ ] Accept the deletions.
+- [x] Accept the deletions (accepted 2026-09-14)
 
 ## 4. Feature: the dev server as the file system
 
@@ -446,8 +446,8 @@ Lifecycle of the pieces: one `DevServerSource` and one `ProjectManifest` per pag
 
 Evidence for the pass: open a scratch project headless; Files lists every file and empty folder; New Folder, New Script and New Scene create files on disk; a script edited from a shell shows in the editor within a second and its component reloads; an external edit of the open scene prompts and reloads; two editors on the same project, a save in one appears in the other and a stale save gets the conflict message; no request without the token succeeds. Screenshots per case, viewed.
 
-- [ ] Accept section 4, with the two interfaces of 4.2 as the contract.
-- [ ] Accept the asset refresh of 4.4.
+- [x] Accept section 4, with the two interfaces of 4.2 as the contract (accepted 2026-09-14)
+- [x] Accept the asset refresh of 4.4 (accepted 2026-09-14)
 - [x] The watcher ignores `.kite3d` (decided 2026-09-14).
 
 ## 5. Feature: glTF text scenes
@@ -497,7 +497,7 @@ Load
 
 Evidence: save a scene with three boxes and one image texture; the `.gltf` is pretty JSON with a sibling `.bin` and the image under `assets/textures/`; a second save writes byte-identical files; an agent script edit to a node's translation shows after the external-change reload; a hidden object survives the round trip.
 
-- [ ] Accept section 5.
+- [x] Accept section 5 (accepted 2026-09-14)
 
 ## 6. Feature: Play on the edit viewer, with pause and inspection
 
@@ -572,7 +572,7 @@ The pause rule is the one thing to add to the engine, from issue #23: a paused f
 
 Evidence: a scene with a physics box high above a ground plane and a script component that moves another box; Play shows both moving; Pause freezes them (two screenshots a second apart, near-zero diff); click the falling box while paused, the Inspector shows it, drag it with the gizmo, resume, it continues from there; Stop restores the pre-Play frame (diff against the pre-Play screenshot) and the file on disk is byte-identical; a published game still boots through `createGame` in a headless page.
 
-- [ ] Accept section 6.
+- [x] Accept section 6 (accepted 2026-09-14)
 
 ## 7. Feature: project modules loaded by URL
 
@@ -611,8 +611,8 @@ export async function loadModules1(paths: string[], project: LoadedProject) {
 
 Adding a dependency is the one thing that needs a page reload, because the server injects the import map into the page at load. Upstream appended a second import map at runtime, which only works with es-module-shims.
 
-- [ ] Accept section 7.
-- [ ] Decision: page reload on a dependency change (my pick), or keep `ImportMapsManager` and es-module-shims to append maps at runtime.
+- [x] Accept section 7 (accepted 2026-09-14)
+- [x] A dependency change reloads the page (built, 2026-09-14).
 
 ## 8. Feature: the screenshot command
 
@@ -635,7 +635,7 @@ this.unsubscribe = this.source.events(async (event) => {
 
 The headless path of the CLI waits for `window.kite3dProjectLoaded`, which `loadProject` sets when the scene is in. During Play the capture shows the running game, because it is the same viewer.
 
-- [ ] Accept section 8.
+- [x] Accept section 8 (accepted 2026-09-14)
 
 ## 9. Feature: the Library
 
@@ -643,7 +643,7 @@ Upstream's bottom-bar Library lists `asset-cdn.threepipe.org` through its tsdb c
 
 The dialog we added on top, "apply as object, material or texture, remember my choice", is not ported; upstream applies the drop directly.
 
-- [ ] Accept section 9.
+- [x] Accept section 9 (accepted 2026-09-14)
 - [x] The drop dialog stays out (decided 2026-09-14).
 
 ## 10. Feature: the project picker, at `kite3d.dev` and behind `kite3d open`
@@ -767,7 +767,7 @@ Two things the fresh code does not repeat from the old, because the old was heav
 
 Evidence, all headless: a first `kite3d init` on this Mac with no `~/.kite3d/launcher` builds the applet, prints the line, and `lsregister -dump` lists the `kite3d` scheme; a second `init` prints nothing and changes nothing; a `dev` from a newer kite3d refreshes the copy; running the handler line by hand with `--no-open` starts the launcher and writes `hub.json`; the click itself is yours to try, since a real click opens your browser; the picker lists two scratch projects, one running, grouped under their repository with the worktree branch names; Open on the stopped one writes its `dev.json`, returns its URL, and a new page loads the editor; Open on the running one spawns nothing; the tab count goes from 1 to 2 when a second tab opens; Stop turns the row grey; `npx kite3d open` with the launcher running opens the URL and starts no second process; `kite3d dev` in a project opens the editor with no dialog, and the navbar button shows the picker with that tab marked. Screenshots viewed. The Linux and Windows registrations are verified when a machine is at hand, not in this pass.
 
-- [ ] Accept section 10: the `kite3d://` scheme registered by the first `init` or `dev` on a machine, "Open engine" as a scheme link, the hub routes on every server, tab counts, `npx kite3d open` kept.
+- [x] Accept section 10: the `kite3d://` scheme registered by the first `init` or `dev` on a machine, "Open engine" as a scheme link, the hub routes on every server, tab counts, `npx kite3d open` kept (accepted 2026-09-14)
 - [x] Written from scratch, simpler, commented; no lock files (decided 2026-09-14).
 - [x] The by-hand command is `kite3d install` and `kite3d install --remove` (decided 2026-09-14).
 - [ ] Later, not in this rewrite: the hosted picker, rendered on `kite3d.dev` itself for a paired browser, Chrome first. It needs CORS on the launcher, a pairing step that hands the page the token, and Chrome's one-time local-network prompt; Safari blocks the fetch, so the link stays as the fallback.
@@ -807,7 +807,7 @@ Each of these lands on a file that exists upstream, so it ports as a diff with i
 } }
 ```
 
-- [ ] Accept section 11.
+- [x] Accept section 11 (accepted 2026-09-14)
 
 ## 12. Carry-over from kite3d and the engine
 
@@ -815,14 +815,14 @@ After #30 the CLI is `init`, `dev` with `--no-open` and `--port`, `screenshot`, 
 
 The engine's authoring metadata API, the runtime-object ownership helper the old guide described, stays deleted with the rest of the check feature. The terminator project uses it and migrates on its side; the list of what it must change lives with terminator's own notes, not here, per the rule in section 0.
 
-- [ ] Accept section 12.
+- [x] Accept section 12 (accepted 2026-09-14)
 - [x] No authoring API comes back; terminator migrates (decided 2026-09-14).
 
 ## 13. The guide
 
 `docs/agents.md` is 1,000 lines. 908 of them describe the project format and the engine, mostly upstream's own text, and they stay. The 92 lines of editor and CLI text become one short section: `npx kite3d init`, `npx kite3d dev`, `npx kite3d open`, `npx kite3d screenshot`, `npx kite3d skills`, `npx kite3d publish` prints the skill; the token rule; the `.kite3d/` folder and `~/.kite3d/`. The `data-testid` list and the route list go.
 
-- [ ] Accept section 13.
+- [x] Accept section 13 (accepted 2026-09-14)
 
 ## 14. Order of work
 
@@ -848,7 +848,7 @@ The engine's authoring metadata API, the runtime-object ownership helper the old
 
 Each step is one codex pass at medium with the pr-skill section, manual headless evidence with screenshots I view myself, no proactive tests, one squash commit on `main`.
 
-- [ ] Accept the order.
+- [x] Accept the order (accepted 2026-09-14)
 - [x] No 0.19.0-alpha.3. The old repository's `main` has the cleanup (#30) but no release carries it; `next` still points at alpha.2 from before it. A release from there would have let terminator try the cleaned CLI early. Since terminator migrates once, to 0.20.0, that release has no reader. Skipped (2026-09-14).
 
 ## 15. What is not happening
