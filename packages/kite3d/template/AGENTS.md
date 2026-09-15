@@ -11,17 +11,21 @@ npm install
 npx kite3d dev
 ```
 
-`kite3d dev` prints a local URL such as `http://127.0.0.1:4321/?t=...`. Keep that process running while editing project files. Run `npx kite3d <command> --help` for command-specific usage.
+# The editor and the command
 
-`kite3d init` records the running command's exact version in `devDependencies["kite3d"]`.
+- `npx kite3d init [dir]` writes a new project and pins the running command's exact version in `devDependencies["kite3d"]`. The first `init` or `dev` on a machine also registers `kite3d://`, the link that kite3d.dev opens, and prints one line saying so. Undo it with `npx kite3d install --remove`, repair it with `npx kite3d install`. Nothing is registered when `CI` is set.
+- `npx kite3d dev` serves the editor for the project in the current folder and prints a URL such as `http://127.0.0.1:4321/?t=...`. It opens that project, never the picker. Keep the process running while you edit. Flags: `--port <port>`, `--no-open`.
+- `npx kite3d open` opens the project picker. It lists every project this machine knows, grouped by repository. A running one is marked with its open tab count. Every row has Open, a running row also Stop. A picker that already runs is reused. Flags: `--no-open`, `--stop`.
+- `npx kite3d screenshot` saves a PNG of the editor viewport under `.kite3d/screenshots/` and prints its path. An open editor tab answers with what it shows, Play included; with no tab open, a headless page renders the saved project instead. Look at the PNG before and after a visual change. Flags: `--headless`, `--full`, `--width`, `--height`, `--name`, `--json`.
+- `npx kite3d skills` lists the bundled skills and their absolute, readable `SKILL.md` paths. It works outside a project and installs nothing. Flag: `--json`.
+- `npx kite3d publish` prints the path of the bundled publishing procedure. Read that file and follow it.
+- `npx kite3d <command> --help` prints one command's usage.
 
-`npx kite3d open` opens the project picker. The picker lists the projects of this machine, marks the running ones, and starts or stops their servers. A picker that already runs is reused.
+The URL that `kite3d dev` and `kite3d open` print carries a private session token. Every request to the server needs it, as `?t=` on the URL, as the cookie the first page load sets for that port, or as the `X-Kite3D-Token` header. Keep it out of logs and reports.
 
-The first `kite3d init` or `kite3d dev` on a machine registers `kite3d://`, the link that kite3d.dev opens. Undo it with `npx kite3d install --remove`. Nothing is registered when `CI` is set.
+The local server owns the project folder. Edit the files directly.
 
-`npx kite3d skills` lists the invoked CLI's bundled skills and absolute, readable `SKILL.md` paths. It works outside a project and does not install or execute a skill; pass `--json` for structured output.
-
-`npx kite3d publish` prints the path to the bundled publishing procedure. Read and follow that skill to publish a saved project.
+A project keeps its editor state under `.kite3d/`, which the template git ignores. It holds `dev.json` for the running server, `thumbs/` for file thumbnails, `backups/` for the copy of a file taken before each save, `screenshots/`, and `dev.log` when the picker started the server. The machine keeps `~/.kite3d/`. It holds `projects.json` for the project list, `hub.json` for the running picker, and `launcher/`, the copy of the command that the `kite3d://` link runs.
 
 Source code to grep after `npm install`:
 
@@ -52,14 +56,6 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 - `LineMaterial2`: configurable line material; `threepipe/src/core/material/LineMaterial2.ts`.
 
 For camera ownership during Play, `camera.controlsMode = ''` disables built-in controls; set `autoLookAtTarget = true` when driving `target`, or false when driving the quaternion. Save `scene.mainCamera` and the changed camera properties in `start()`, call the gameplay camera's `activateMain()`, then reactivate the saved camera and restore its properties in `stop()`.
-
-The local server owns the project folder. Edit files directly; do not attempt to automate browser permissions.
-
-# Local feedback and health
-
-- Run npx kite3d screenshot to save a PNG of the editor viewport under .kite3d/screenshots/ and print its path. Look at it before and after visual changes. Add --headless when no editor is open.
-
-The URL printed by `kite3d dev` includes a private session token. Keep it out of logs and reports.
 
 # Authored versus runtime game content
 
@@ -949,4 +945,3 @@ class EnemySystemComponent extends Object3DComponent {
 - The main glTF must not contain data URLs. Keep its sibling `.bin` and texture files.
 - Scene tools must preserve node extras and unknown extensions.
 - Keep generated output, dependencies, secrets, logs, and transient editor data under excluded paths (`dist/`, `node_modules/`, and `.kite3d/`).
-- The editor is served only by `kite3d dev` on localhost. Keep its random token private.
