@@ -30,7 +30,7 @@ import {EditorModes, editorModesList} from '../components/EditorModes.tsx'
 // } from '@threepipe/webgi-plugins'
 // import {ThreeGpuPathTracerPlugin} from "@threepipe/plugin-path-tracing";
 import {EditModePlugin} from "./EditModePlugin.ts";
-import {CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
+import {CannonPhysicsPlugin} from "@kite3d/engine";
 import {DepthOfFieldPlugin, SSReflectionPlugin} from "@threepipe/webgi-plugins";
 
 const pluginDisableListener = (k: any)=>((ev: IViewerEvent)=>{

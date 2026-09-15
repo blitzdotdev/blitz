@@ -1,6 +1,7 @@
 import {EntityComponentPlugin, EventDispatcher, PickingPlugin} from "threepipe";
-import {resolveFile, settingsKey} from "./project.ts";
-import {ViewerInstanceManager} from "./ViewerInstanceManager.ts";
+import {RunningGame, startGame} from "@kite3d/engine";
+import {settingsKey} from "./project.ts";
+import {SceneDirtyState, ViewerInstanceManager} from "./ViewerInstanceManager.ts";
 import {isPackageProject} from "./projectUtils.ts";
 
 export class PlayModeHelper extends EventDispatcher<{
@@ -12,6 +13,12 @@ export class PlayModeHelper extends EventDispatcher<{
 
     // todo make public readonly
     isRunningMode = false
+
+    // The run on the edit viewer: the project's scripts, plugins, clock, components, physics and main().
+    private running: RunningGame | null = null
+
+    // Play borrows the open scene and gives it back at Stop, the dirty flag included.
+    private dirtyBeforeRun: SceneDirtyState | null = null
 
     constructor(private manager: ViewerInstanceManager) {
         super()
@@ -38,6 +45,8 @@ export class PlayModeHelper extends EventDispatcher<{
         const project = manager.loadedProject
         const isPackage = isPackageProject(project)
         if (!project || (isPackage && !project.handle)) return false
+
+        this.dirtyBeforeRun = manager.sceneDirtyState
 
         await manager.editPreview.start()
 
@@ -104,8 +113,15 @@ export class PlayModeHelper extends EventDispatcher<{
 
         if (load) await load()
 
-        manager.get().timeline.start()
-        manager.get().getPlugin(EntityComponentPlugin)!.start()
+        try {
+            this.running = await startGame(manager.get(), manager.runtimeProject(), {base: '/files/'})
+        } catch (e) {
+            // startGame starts the clock and the components before it imports main.js, so a throw in
+            // main() leaves them running with no handle to stop them. Stop the components by hand.
+            manager.get().getPlugin(EntityComponentPlugin)!.stop()
+            await this.stopRunMode()
+            throw e
+        }
         return true
     }
 
@@ -142,7 +158,8 @@ export class PlayModeHelper extends EventDispatcher<{
         const picking = v.getPlugin(PickingPlugin)
         const selected = picking?.getSelectedObject()?.uuid
 
-        v.getPlugin(EntityComponentPlugin)!.stop()
+        await this.running?.stop()
+        this.running = null
 
         if (isPackage) {
             manager.unloadScene()
@@ -158,12 +175,7 @@ export class PlayModeHelper extends EventDispatcher<{
         if (isPackage) {
             const filePath = `.${settingsKey}/running/${manager.editorId}.scene.gltf` // todo delete file after run mode closed?
 
-            let tempFile = manager._runningSceneFile
-            if (!tempFile) {
-                // try to load from disk
-                const file = await resolveFile(filePath, project.handle)
-                if (file) tempFile = file as File
-            }
+            const tempFile = manager._runningSceneFile
             if (!tempFile) {
                 console.error('No running scene file found, cannot reload scene.')
                 return
@@ -180,6 +192,11 @@ export class PlayModeHelper extends EventDispatcher<{
                 const obj = v.object3dManager.getObject(selected)
                 if (obj) picking.setSelectedObject(obj)
             }
+        }
+
+        if (this.dirtyBeforeRun) {
+            manager.sceneDirtyState = this.dirtyBeforeRun
+            this.dirtyBeforeRun = null
         }
 
     }

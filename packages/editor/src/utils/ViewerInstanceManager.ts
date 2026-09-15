@@ -53,6 +53,7 @@ import {BlueprintJsUiPlugin2} from '../UiConfigRendererBlueprint2.tsx'
 import {GeometryGeneratorPlugin} from '@threepipe/plugin-geometry-generator'
 import {createProjectAssetURLModifier} from '@kite3d/engine/projectFormat'
 import {serializeSceneGltf} from '@kite3d/engine/sceneSerialization'
+import {CannonPhysicsPlugin, HtmlUiComponent, RuntimeProject} from '@kite3d/engine'
 import {EditorFeatures} from './EditorFeatures.ts'
 import {EditModePlugin} from "./EditModePlugin.ts";
 import {FileManifestEntry, manifestEntryToFile, SelectedInspectorItem} from "./AssetsProvider.ts";
@@ -73,9 +74,7 @@ import {DevServerSource, ProjectConflictError, ProjectEvent} from "../devserver/
 import {ask, AskChoice} from "./AskDialog.tsx";
 import {AnotherFSHelper, getDirHandle, getFileHandle} from "./fsApi.ts";
 import {AssetTracker, cloneAssetItem, defSPropsMat, defSPropsObj} from "./AssetTracker.ts";
-import {CannonPhysicsPlugin} from "../plugins/cannon/CannonPhysicsPlugin.ts";
 import {CanvasFileDropHandler} from "./CanvasFileDropHandler.tsx";
-import {HtmlUiComponent} from "../plugins/HtmlUiComponent.ts";
 import {generatePreview} from "./three/GeneratePreview.ts";
 import {mimeToExt, typesExts} from '../data/fileTypes.ts'
 import {ScriptUtil} from "./ScriptUtil.ts";
@@ -95,6 +94,11 @@ import {
     isPackageProject, SelectFileRef,
     thumbPath
 } from "./projectUtils.ts";
+
+export interface SceneDirtyState {
+    needsSave: boolean
+    savedSceneHash: string | null
+}
 
 export interface ViewerProps {
     msaa: boolean,
@@ -433,6 +437,18 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
     // The text this tab last loaded or saved for the open scene.
     private savedSceneHash: string | null = null
+
+    /**
+     * The dirty flag and the text it is measured against. Play reads them before it starts and writes
+     * them back at Stop, because reloading the snapshot looks to the editor like a load from disk.
+     */
+    get sceneDirtyState(): SceneDirtyState {
+        return {needsSave: this._loadedNeedsSave, savedSceneHash: this.savedSceneHash}
+    }
+    set sceneDirtyState(state: SceneDirtyState) {
+        this.savedSceneHash = state.savedSceneHash
+        this.loadedNeedsSave = state.needsSave
+    }
 
     /**
      * The dirty flag follows scene events, and a load or a save can leave one queued for the next
@@ -870,6 +886,18 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
     defaultViewerSettings: ISerializedViewerConfig|null = null
     loadedProject: LoadedProject|null = null
+
+    /** The loaded project in the shape the engine's runtime reads. Play starts the run from it. */
+    runtimeProject(): RuntimeProject {
+        const project = this.loadedProject
+        if (!project?.settings || !project.assetsManifest) throw new Error('No project settings loaded')
+        return {
+            packageJson: project.settings.json,
+            config: project.settings.config,
+            assetsManifest: project.assetsManifest,
+            mainScene: project.settings.mainScene,
+        }
+    }
 
     _viewerPluginAdded = (e: any)=>{
         if(!e.plugin || !this.defaultViewerSettings) return
