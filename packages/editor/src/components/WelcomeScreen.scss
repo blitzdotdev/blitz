@@ -1,0 +1,63 @@
+// below from shader flow
+#welcome-dialog{
+  //width: 100%;
+  //height: 100%;
+  display: flex;
+  flex-direction: row;
+  //gap: $pt-grid-size;
+  //padding: $pt-grid-size;
+  //overflow: hidden;
+  margin: auto;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(100%, 700px);
+  height: min(100%, 520px);
+  padding: 0;
+
+  border: 1px solid $pt-divider-black;
+}
+#welcome-sidebar{
+  width: calc(20 * $pt-grid-size) !important;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 1px 0 0 0 $pt-divider-black;
+
+  background: $light-gray4;
+}
+.bp5-dark #welcome-sidebar{
+  background: $dark-gray1;
+  //box-shadow: 1px 0 0 0 $pt-divider-black;
+}
+#welcome-content{
+  flex-grow: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: $pt-grid-size;
+
+  background: $light-gray5;
+}
+.bp5-dark #welcome-content {
+  background: $black;
+}
+#welcome-sidebar-logo{
+  padding: calc(2 * $pt-grid-size) calc(1.5 * $pt-grid-size);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: $pt-grid-size;
+}
+.welcome-sidebar-list-button{
+  padding: $pt-grid-size calc(1.5 * $pt-grid-size);
+  margin-left: $pt-grid-size;
+  margin-right: $pt-grid-size;
+  margin-bottom: calc(1 * $pt-grid-size) !important;
+  border-radius: calc(0.5 * $pt-grid-size) !important;
+  width: calc(100% - 2 * $pt-grid-size) !important;
+
+  .bp5-icon{
+    width: calc(2 * $pt-grid-size);
+  }
+}

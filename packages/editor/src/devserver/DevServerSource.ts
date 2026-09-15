@@ -83,12 +83,16 @@ export class DevServerSource {
         return {'X-Kite3D-Token': this.token, 'X-Kite3D-Client': this.clientId, ...extra}
     }
 
-    private async json<T>(path: string, init: RequestInit = {}): Promise<T> {
+    async json<T>(path: string, init: RequestInit = {}): Promise<T> {
         const res = await fetch(new URL(path, this.base), {
             ...init,
             headers: this.headers(init.headers as Record<string, string>),
         })
-        if (!res.ok) throw new Error(`${path}: ${res.status}`)
+        if (!res.ok) {
+            // A failure body is {error: {code, message}}, and that message is the one a user can act on.
+            const body = await res.json().catch(() => null) as {error?: {message?: string}} | null
+            throw new Error(body?.error?.message || `${path}: ${res.status}`)
+        }
         return res.json()
     }
 }

@@ -15,15 +15,18 @@ import {
 import {queryClient} from "./tsdb/client.ts";
 import {ViewerInstanceManager} from "./utils/ViewerInstanceManager.ts";
 import {LoadedProject} from "./utils/project.ts";
+import {HubClient} from "./devserver/HubClient.ts";
+import {HubProvider} from "./utils/UseHub.ts";
 
 // console.log(InspectorStackComponent, Split)
 
-function App({manager, project}: { manager: ViewerInstanceManager, project: LoadedProject }) {
+function App({manager, project, hub}: { manager: ViewerInstanceManager, project: LoadedProject, hub: HubClient }) {
     return (
         <QueryClientProvider client={queryClient}>
         <BlueprintProvider>
         <VisualStyleProvider>
         <DialogProvider>
+        <HubProvider hub={hub}>
         <ProjectProvider project={project}>
         <ManagerProvider manager={manager}>
         <AssetsProvider>
@@ -37,6 +40,7 @@ function App({manager, project}: { manager: ViewerInstanceManager, project: Load
         </AssetsProvider>
         </ManagerProvider>
         </ProjectProvider>
+        </HubProvider>
         </DialogProvider>
         </VisualStyleProvider>
         </BlueprintProvider>

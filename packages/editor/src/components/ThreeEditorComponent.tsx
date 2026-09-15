@@ -30,6 +30,7 @@ import {iconForSelectionObject} from "../utils/icons.tsx";
 import {objToSelectItemRef, RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {PlayModeButtonGroup} from "./PlayModeButtonGroup.tsx";
 import {ObjectHierarchyComponent} from "./ObjectHierarchyComponent.tsx";
+import {ProjectPicker} from "./ProjectPicker.tsx";
 import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 import {ExternalFilesPanel} from "./ExternalFilesPanel.tsx";
@@ -386,7 +387,10 @@ export function NavProjectFileName(){
     const [fileNeedsSave] = useFileNeedsSave()
     if(!project) return null
     return <>
-        {project && <Button variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>}
+        {/* The project name opens the picker, which is the hub page's content in a popover. */}
+        {project && <Popover minimal placement="bottom-start" popoverClassName="project-picker-popover" content={<ProjectPicker/>}>
+            <Button variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>
+        </Popover>}
         {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.glb$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
     </>
 }

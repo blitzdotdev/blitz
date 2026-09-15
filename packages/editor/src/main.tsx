@@ -1,11 +1,15 @@
 import './renderer.scss'
-import {FocusStyleManager} from "@blueprintjs/core";
+import {BlueprintProvider, FocusStyleManager} from "@blueprintjs/core";
+import {AppToasterOverlay, VisualStyleProvider} from 'uiconfig-blueprint/lib/esm/lib'
 import App from './App.tsx'
 import {createRoot} from 'react-dom/client'
 // import {StrictMode} from 'react'
 import importMap from 'virtual:importmap'
+import {WelcomeScreenDialog} from './components/WelcomeScreenDialog.tsx'
 import {DevServerSource} from './devserver/DevServerSource.ts'
+import {HubClient} from './devserver/HubClient.ts'
 import {DevServerDirectoryHandle, ProjectManifest} from './devserver/handles.ts'
+import {HubProvider} from './utils/UseHub.ts'
 import {ViewerInstanceManager} from './utils/ViewerInstanceManager.ts'
 
 declare global {
@@ -32,8 +36,23 @@ FocusStyleManager.onlyShowFocusOnTabs();
 async function openServedProject() {
     const source = new DevServerSource()
     const state = await source.state()
-    // A server without a project answers {hub: true}; the project picker pass renders that page.
-    if (state.hub) return
+    const hub = new HubClient(source)
+
+    // A server without a project answers {hub: true}: the picker, and no viewer behind it.
+    if (state.hub) {
+        document.title = 'Kite3D'
+        createRoot(document.getElementById('root')!).render(
+            <BlueprintProvider>
+            <VisualStyleProvider>
+            <HubProvider hub={hub}>
+                <WelcomeScreenDialog/>
+                <AppToasterOverlay/>
+            </HubProvider>
+            </VisualStyleProvider>
+            </BlueprintProvider>,
+        )
+        return
+    }
 
     const manifest = new ProjectManifest(source)
     await manifest.refresh()
@@ -53,7 +72,7 @@ async function openServedProject() {
 
     createRoot(document.getElementById('root')!).render(
         // <StrictMode>
-            <App manager={manager} project={project}/>
+            <App manager={manager} project={project} hub={hub}/>
         // </StrictMode>,
     )
     window.kite3dProjectLoaded = true

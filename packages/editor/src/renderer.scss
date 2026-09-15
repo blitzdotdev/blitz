@@ -3,6 +3,8 @@
 @import "components/BPTreeComponent";
 @import "components/EditorModesButtonGroup";
 @import "components/InteractionControlsButtonGroup";
+@import "components/WelcomeScreen";
+@import "components/ProjectPicker";
 
 html{
   overscroll-behavior: none; // prevent overscroll on touch devices
