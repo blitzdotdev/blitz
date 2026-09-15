@@ -11,7 +11,6 @@ export default defineConfig({
                 index: resolve(__dirname, 'src/index.ts'),
                 fileTypes: resolve(__dirname, 'src/fileTypes.ts'),
                 sceneSerialization: resolve(__dirname, 'src/sceneSerialization.ts'),
-                version: resolve(__dirname, 'src/runtime/version.ts'),
                 projectFormat: resolve(__dirname, 'src/runtime/projectFormat.ts'),
                 importMap: resolve(__dirname, 'src/importMap.ts'),
             },

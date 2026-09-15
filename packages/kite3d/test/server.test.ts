@@ -1,10 +1,10 @@
-import {mkdtemp, mkdir, rm, writeFile} from 'node:fs/promises'
+import {mkdtemp, mkdir, readdir, rm, writeFile} from 'node:fs/promises'
 import {request} from 'node:http'
 import {createConnection} from 'node:net'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
 import {afterEach, expect, it} from 'vitest'
-import {createDevServer, type DevServer, type DevServerOptions} from '../src/server.ts'
+import {createDevServer, type DevServer} from '../src/server.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 
 const cleanup: Array<() => Promise<void>> = []
@@ -15,7 +15,7 @@ afterEach(async () => {
 
 // Guards the owner's manual flake: Ctrl-C hung while connections remained open.
 it('closes within two seconds with an unread event stream and a stalled keep-alive request', async () => {
-        const {server, headers} = await startServer()
+        const {server, root, headers} = await startServer()
         const controller = new AbortController()
         const events = await fetch(`${base(server)}/api/events`, {headers, signal: controller.signal})
         expect(events.status).toBe(200)
@@ -25,7 +25,6 @@ it('closes within two seconds with an unread event stream and a stalled keep-ali
             socket.once('connect', resolveConnect)
             socket.once('error', reject)
         })
-        const requestReceived = new Promise<void>((resolveRequest) => server.server.once('request', () => resolveRequest()))
         socket.write([
             'PUT /files/stalled.txt HTTP/1.1',
             `Host: 127.0.0.1:${server.port}`,
@@ -37,7 +36,11 @@ it('closes within two seconds with an unread event stream and a stalled keep-ali
             '',
             '{',
         ].join('\r\n'))
-        await requestReceived
+        // The PUT route opens its temporary file as soon as it starts reading the body, so the file
+        // appearing is the server holding the stalled request.
+        while (!(await readdir(root)).some((name) => name.startsWith('.stalled.txt.kite3d-'))) {
+            await new Promise((resolveDelay) => setTimeout(resolveDelay, 10))
+        }
 
         try {
             await resolveWithin(server.close(), 2_000)
@@ -114,13 +117,9 @@ async function temporaryProject(): Promise<string> {
     return root
 }
 
-async function startServer(options: DevServerOptions = {}) {
+async function startServer() {
     const root = await temporaryProject()
-    const server = await createDevServer({
-        projectRoot: root,
-        port: 0,
-        ...options,
-    })
+    const server = await createDevServer({projectRoot: root, port: 0})
     cleanup.push(() => server.close())
     return {server, root, headers: {'X-Kite3D-Token': server.token}}
 }

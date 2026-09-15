@@ -1,7 +1,11 @@
+import {spawn, type ChildProcess} from 'node:child_process'
 import {randomBytes} from 'node:crypto'
+import {closeSync, openSync} from 'node:fs'
 import {mkdir, readFile, rename, unlink, writeFile} from 'node:fs/promises'
 import {dirname, resolve} from 'node:path'
 import {kite3dHome} from './home.ts'
+
+const startTimeoutMilliseconds = 60_000
 
 // What a running server writes so another process can find it and talk to it.
 export interface ServerState {
@@ -46,6 +50,38 @@ export async function writeServerState(path: string, state: ServerState): Promis
 export async function removeServerState(path: string, state: ServerState): Promise<void> {
     const current = await readServerState(path)
     if (current?.pid === state.pid && current.token === state.token) await unlink(path).catch(() => undefined)
+}
+
+// One detached server start: spawn it with its own log, then wait for the state file it writes.
+// The subject opens the failure sentence, so an error names the server that did not start.
+export async function startDetachedServer({argv, cwd, env, logPath, statePath, subject}: {
+    argv: string[]
+    cwd: string
+    env?: NodeJS.ProcessEnv
+    logPath: string
+    statePath: string
+    subject: string
+}): Promise<ServerState> {
+    await mkdir(dirname(logPath), {recursive: true})
+    const log = openSync(logPath, 'a', 0o600)
+    let child: ChildProcess
+    try {
+        child = spawn(process.execPath, argv, {cwd, detached: true, env, stdio: ['ignore', log, log]})
+        child.unref()
+    } finally {
+        closeSync(log)
+    }
+    const deadline = Date.now() + startTimeoutMilliseconds
+    while (Date.now() < deadline) {
+        const state = await readRunningServer(statePath)
+        if (state) return state
+        if (child.exitCode !== null || child.signalCode !== null) {
+            throw new Error(`${subject} stopped at once. Read ${logPath}.`)
+        }
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 100))
+    }
+    child.kill('SIGTERM')
+    throw new Error(`${subject} did not answer in ${startTimeoutMilliseconds / 1_000} seconds. Read ${logPath}.`)
 }
 
 // SIGTERM, five seconds, then SIGKILL. False when nothing was running, which also drops a stale file.

@@ -11,7 +11,7 @@ const publishOrder = ['engine', 'editor', 'kite3d']
 const lockstepPackages = new Set(['@kite3d/engine', '@kite3d/editor', 'kite3d'])
 const isLockstepPackage = name => lockstepPackages.has(name)
 
-export function publishTag(version) {
+function publishTag(version) {
     return version.includes('-') ? 'next' : null
 }
 
@@ -30,15 +30,15 @@ function run(command, args, {environment = process.env, capture = false, allowFa
     }
 }
 
-export function publishPackage({name, version, workspace, dryRun, environment, commandRunner = run, logger = console.log}) {
+function publishPackage({name, version, workspace, dryRun, environment}) {
     const packageSpec = `${name}@${version}`
-    const publishedVersion = commandRunner('npm', ['view', packageSpec, 'version'], {
+    const publishedVersion = run('npm', ['view', packageSpec, 'version'], {
         environment,
         capture: true,
         allowFailure: true,
     })?.trim()
     if (publishedVersion) {
-        logger(`${packageSpec} already published, skipping`)
+        console.log(`${packageSpec} already published, skipping`)
         return false
     }
 
@@ -46,8 +46,8 @@ export function publishPackage({name, version, workspace, dryRun, environment, c
     const arguments_ = ['publish', '--workspace', workspace, '--access', 'public']
     if (tag) arguments_.push('--tag', tag)
     if (dryRun) arguments_.push('--dry-run')
-    logger(`${dryRun ? 'Dry-running' : 'Publishing'} ${packageSpec}: npm ${arguments_.join(' ')}`)
-    commandRunner('npm', arguments_, {environment})
+    console.log(`${dryRun ? 'Dry-running' : 'Publishing'} ${packageSpec}: npm ${arguments_.join(' ')}`)
+    run('npm', arguments_, {environment})
     return true
 }
 

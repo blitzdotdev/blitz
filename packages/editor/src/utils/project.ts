@@ -70,28 +70,16 @@ export async function initProjectHandles(meta: SavedSceneFileMeta){
     if(!meta.handle) throw new Error('No handle to check project init')
     const handle = meta.handle
     // @ts-ignore
-    const packageFileHandle = await handle.getFileHandle(typeof meta.file === 'string' ? meta.file : meta.file.name).catch((e) => {
+    const packageFileHandle = await handle.getFileHandle(typeof meta.file === 'string' ? meta.file : meta.file.name).catch(() => {
         // todo handle if there is dir with same name
-        // if(e.name === "NotFoundError") return null
-        if(e.name === "TypeMismatchError") {
-            throw new Error('A directory with the name "package.json" exists in the project folder, cannot continue')
-        }
         return undefined
     })
-    const mainJsHandle = await handle.getFileHandle('main.js').catch((e) => {
+    const mainJsHandle = await handle.getFileHandle('main.js').catch(() => {
         // todo handle if there is dir with same name
-        // if(e.name === "NotFoundError") return null
-        if(e.name === "TypeMismatchError") {
-            throw new Error('A directory with the name "main.js" exists in the project folder, cannot continue')
-        }
         return undefined
     })
-    const assetsJsonHandle = await handle.getFileHandle('assets.json').catch((e) => {
+    const assetsJsonHandle = await handle.getFileHandle('assets.json').catch(() => {
         // todo handle if there is dir with same name
-        // if(e.name === "NotFoundError") return null
-        if(e.name === "TypeMismatchError") {
-            throw new Error('A directory with the name "assets.json" exists in the project folder, cannot continue')
-        }
         return undefined
     })
     return {

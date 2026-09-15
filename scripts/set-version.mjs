@@ -66,15 +66,11 @@ export async function rewriteManifests(repositoryDirectory, newVersion) {
     await Promise.all(manifestPaths.map((path, index) => writeManifest(resolve(repositoryDirectory, path), manifests[index])))
 }
 
-function run(command, args, options = {}) {
+function run(command, args, options) {
     return execFileSync(command, args, {encoding: 'utf8', ...options})
 }
 
-export async function setVersion({
-    repositoryDirectory,
-    requestedVersion,
-    allowDirty = false,
-}) {
+export async function setVersion({repositoryDirectory, requestedVersion, allowDirty}) {
     if (!allowDirty) {
         const status = run('git', ['status', '--porcelain'], {cwd: repositoryDirectory}).trim()
         if (status) throw new Error('Refusing to set the version on a dirty git tree. Commit or stash changes, or pass --allow-dirty.')
@@ -95,8 +91,6 @@ export async function setVersion({
             'install',
             '--package-lock-only',
             '--ignore-scripts',
-            '--cache',
-            '/tmp/kite3d-npm-cache',
         ], {cwd: repositoryDirectory, stdio: 'inherit'})
     } catch (error) {
         await Promise.all([...originals].map(([path, contents]) => writeFile(resolve(repositoryDirectory, path), contents)))

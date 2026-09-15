@@ -88,8 +88,7 @@ async function installLauncherCopy(): Promise<void> {
 }
 
 async function refreshLauncherCopy(): Promise<void> {
-    const installed = await installedLauncherVersion()
-    if (installed && !isNewerVersion(KITE3D_VERSION, installed)) return
+    if (await installedLauncherVersion() === KITE3D_VERSION) return
     await installLauncherCopy()
 }
 
@@ -100,26 +99,6 @@ async function installedLauncherVersion(): Promise<string | null> {
     } catch {
         return null
     }
-}
-
-// True when left is a later version than right. Release numbers first, then a prerelease counts as
-// earlier than the release it leads to.
-function isNewerVersion(left: string, right: string): boolean {
-    const [leftNumbers, leftPrerelease] = splitVersion(left)
-    const [rightNumbers, rightPrerelease] = splitVersion(right)
-    for (let index = 0; index < 3; index += 1) {
-        if (leftNumbers[index] !== rightNumbers[index]) return leftNumbers[index] > rightNumbers[index]
-    }
-    if (leftPrerelease === rightPrerelease) return false
-    if (!leftPrerelease) return true
-    if (!rightPrerelease) return false
-    return leftPrerelease > rightPrerelease
-}
-
-function splitVersion(version: string): [number[], string] {
-    const [numbers, prerelease = ''] = version.split('-', 2)
-    const parts = numbers.split('.').map((part) => Number(part))
-    return [[0, 1, 2].map((index) => Number.isInteger(parts[index]) ? parts[index] : 0), prerelease]
 }
 
 // An applet whose open location handler runs the handler line. It is built here and never signed,

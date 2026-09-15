@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import {resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
-import {runDev, screenshotFromDisk} from './commands.ts'
+import openBrowser from 'open'
 import {initProject} from './initProject.ts'
 import {installScheme, registerSchemeIfAbsent, removeScheme, REGISTERED_MESSAGE} from './install.ts'
 import {LAUNCHER_CHILD, openLauncher, serveLauncher, stopLauncher} from './launcher.ts'
 import {assertKite3dProjectRoot, isKite3dProjectRoot} from './project-root.ts'
 import {registerProject} from './projectIndex.ts'
+import {screenshotProject} from './screenshot.ts'
+import {createDevServer} from './server.ts'
 import {bundledSkills} from './skills.ts'
 import {KITE3D_VERSION} from './versions.ts'
 
@@ -72,11 +74,13 @@ try {
         await assertKite3dProjectRoot(process.cwd())
         const parsed = parseArgs(args, {'--port': 'value', '--no-open': 'boolean'})
         const port = portOption(parsed.values['--port'])
-        const server = await runDev({
-            port,
-            strictPort: port !== undefined,
-            noOpen: parsed.values['--no-open'] === true,
-        })
+        const server = await createDevServer({projectRoot: process.cwd(), port, strictPort: port !== undefined})
+        if (parsed.values['--no-open'] !== true) {
+            await openBrowser(server.url).catch(async (error) => {
+                await server.close()
+                throw error
+            })
+        }
         const shutdown = async () => {
             await server.close()
             process.exit(0)
@@ -124,7 +128,7 @@ try {
             '--height': 'value',
             '--json': 'boolean',
         })
-        const result = await screenshotFromDisk(process.cwd(), {
+        const result = await screenshotProject(process.cwd(), {
             name: valueOption(parsed.values['--name']),
             headless: parsed.values['--headless'] === true,
             full: parsed.values['--full'] === true,

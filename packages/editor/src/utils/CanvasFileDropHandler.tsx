@@ -21,7 +21,7 @@ import {FileManifestEntry} from "./AssetsProvider.ts";
 import {environmentCommand, materialCommand, objectCommand, textureCommand} from "./objectApplyCommands.tsx";
 import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
 import {assetableFileTypes, isExternalObject, notAssetableFileTypes} from "./projectUtils.ts";
-import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib';
+import {showErrorToast} from './Toaster.tsx';
 
 type DraggedItem = IMaterial | IObject3D | ITexture
 
@@ -183,22 +183,29 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         this.draggedItem = null;
     }
 
-    private draggingEntry: {path: string, isFSEntry: boolean} | TExternalFile | null = null
     // The import this drag started. A drop that lands first waits for it, and dragend leaves it alone.
     private libraryImport: Promise<DraggedItem> | null = null
     private dropLanded = false
 
+    /** The library import of a drag and of a double click: the entry's asset, or a throw naming the failure. */
+    async importLibraryEntry(f: FileManifestEntry | TExternalFile | {path: string, isFSEntry: false}): Promise<DraggedItem> {
+        const item = await this.manager.getAssetFromEntry(f)
+        if (!item) throw new Error('No supported asset was loaded.')
+        return item as DraggedItem
+    }
+
+    /** One owner for what a failed library import says, in the console and to the user. */
+    reportLibraryImportError(entry: {path: string, name?: string}, error: unknown) {
+        showErrorToast(`Unable to import ${entryName(entry)}: ${error instanceof Error ? error.message : String(error)}`, error)
+    }
+
     handleDragStart = async (e: React.DragEvent, f: FileManifestEntry | TExternalFile | {path: string, isFSEntry: false}) => {
         if(this.libraryImport) return // already dragging something
-        this.draggingEntry = f
         draggingSpinner.style.display = 'block'
         e.dataTransfer.setData('text/uri-list', ' ');
         e.dataTransfer!.setDragImage(transparentPixelCanvas, 16, 16);
         // e.preventDefault();
-        const libraryImport = this.manager.getAssetFromEntry(f).then((item)=>{
-            if (!item) throw new Error('No supported asset was loaded.')
-            return item as DraggedItem
-        })
+        const libraryImport = this.importLibraryEntry(f)
         this.libraryImport = libraryImport
         this.dropLanded = false
         let loaded = false
@@ -209,15 +216,13 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             if (!this.draggedItem) throw new Error('The asset type is not supported by the editor.')
             loaded = true
         } catch (error) {
-            console.error(`Unable to import library asset ${entryName(f)}`, error)
-            showLibraryImportError(f, error)
+            this.reportLibraryImportError(f, error)
             return
         } finally {
             if (this.libraryImport === libraryImport) {
                 draggingSpinner.style.display = 'none'
                 if (!loaded && !this.dropLanded) {
                     this.libraryImport = null
-                    this.draggingEntry = null
                 }
             }
         }
@@ -239,7 +244,6 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         }
         draggingSpinner.style.display = 'none'
         this.libraryImport = null
-        this.draggingEntry = null
         this.clearDraggedItem();
         e?.dataTransfer.clearData();
     }
@@ -303,7 +307,6 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             draggingSpinner.style.display = 'none'
             this.libraryImport = null
             this.dropLanded = false
-            this.draggingEntry = null
             // dragend already took its early return, so this drop is what clears the drag.
             this.clearDraggedItem(used);
         }
@@ -578,17 +581,6 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
 
 function entryName(entry: {path: string, name?: string}) {
     return entry.name || entry.path.split(/[?#]/)[0].split('/').pop() || 'Library asset'
-}
-
-/** A library import that failed used to fail in silence, so the user saw a drag that did nothing. */
-export function showLibraryImportError(entry: {path: string, name?: string}, error: unknown) {
-    AppToaster().show({
-        message: `Unable to import ${entryName(entry)}: ${error instanceof Error ? error.message : String(error)}`,
-        intent: 'danger',
-        icon: 'error',
-        timeout: 5000,
-        isCloseButtonShown: true,
-    })
 }
 
 export function isDraggableDroppableNode(obj: IObject3D){

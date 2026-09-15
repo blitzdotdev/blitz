@@ -1,6 +1,4 @@
-import {spawn, type ChildProcess} from 'node:child_process'
-import {closeSync, openSync} from 'node:fs'
-import {access, mkdir, readdir, realpath, stat} from 'node:fs/promises'
+import {access, readdir, realpath, stat} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import {dirname, isAbsolute, resolve, sep} from 'node:path'
 import type {Context, Hono} from 'hono'
@@ -8,7 +6,7 @@ import {gitHead, repoRoot} from './gitInfo.ts'
 import {initProject} from './initProject.ts'
 import {isKite3dProjectRoot} from './project-root.ts'
 import {readProjectIndex, registerProject, type IndexedProject} from './projectIndex.ts'
-import {readRunningServer, serverStatePath, stopServer, type ServerState} from './serverState.ts'
+import {readRunningServer, serverStatePath, startDetachedServer, stopServer, type ServerState} from './serverState.ts'
 import type {LocalAppEnv} from './server.ts'
 
 // One row of the picker: what the index remembers, plus the six things only a server knows now.
@@ -27,8 +25,6 @@ interface HubFolder {
     isProject: boolean
     isRepo: boolean
 }
-
-const startTimeoutMilliseconds = 60_000
 
 type HubErrorStatus = 400 | 403 | 404 | 409 | 500
 
@@ -125,31 +121,17 @@ async function spawnProjectServer(projectRoot: string): Promise<ServerState> {
     // own CLI, so a project created from the picker starts on the click that created it.
     const pinnedCli = resolve(projectRoot, 'node_modules/kite3d/dist/cli.js')
     const cliPath = await pathExists(pinnedCli) ? pinnedCli : process.argv[1]
-    await mkdir(resolve(projectRoot, '.kite3d'), {recursive: true})
-    const log = openSync(resolve(projectRoot, '.kite3d/dev.log'), 'a', 0o600)
-    let child: ChildProcess
     try {
-        child = spawn(process.execPath, [cliPath, 'dev', '--no-open'], {
+        return await startDetachedServer({
+            argv: [cliPath, 'dev', '--no-open'],
             cwd: projectRoot,
-            detached: true,
-            stdio: ['ignore', log, log],
+            logPath: resolve(projectRoot, '.kite3d/dev.log'),
+            statePath: serverStatePath(projectRoot),
+            subject: `The dev server for ${projectRoot}`,
         })
-        child.unref()
-    } finally {
-        closeSync(log)
+    } catch (error) {
+        throw new HubError(500, 'start_failed', error instanceof Error ? error.message : String(error))
     }
-    const statePath = serverStatePath(projectRoot)
-    const deadline = Date.now() + startTimeoutMilliseconds
-    while (Date.now() < deadline) {
-        const state = await readRunningServer(statePath)
-        if (state) return state
-        if (child.exitCode !== null || child.signalCode !== null) {
-            throw new HubError(500, 'start_failed', `The dev server for ${projectRoot} stopped at once. Read .kite3d/dev.log.`)
-        }
-        await new Promise((resolveDelay) => setTimeout(resolveDelay, 100))
-    }
-    child.kill('SIGTERM')
-    throw new HubError(500, 'start_failed', `The dev server for ${projectRoot} did not answer in ${startTimeoutMilliseconds / 1_000} seconds. Read .kite3d/dev.log.`)
 }
 
 // True means the project is not running any more, whether this call stopped it or it was already down.

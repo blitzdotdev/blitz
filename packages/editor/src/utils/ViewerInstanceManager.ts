@@ -564,12 +564,8 @@ export class ViewerInstanceManager extends EventDispatcher<{
 
         if(meta.assets) {
             const p = meta.assets.replace(/\/$/, '')
-            let assetsDirHandle = await init.base.getDirectoryHandle(p).catch((e) => {
+            let assetsDirHandle = await init.base.getDirectoryHandle(p).catch(() => {
                 // todo handle if there is dir with same name
-                // if(e.name === "NotFoundError") return null
-                if(e.name === "TypeMismatchError") {
-                    throw new Error(`A file with the name "${p}" exists in the project folder, cannot continue`)
-                }
                 return undefined
             })
             if (!assetsDirHandle) {
@@ -2034,18 +2030,15 @@ function readableAssetId(path: string, manifest?: AssetsJSONManifest): string {
     return id
 }
 
-/** The rendered canvas on the viewport's own background, because the canvas itself is transparent. */
+/** The rendered canvas on the editor's own background, because the canvas itself is transparent. */
 async function compositeScreenshot(source: HTMLCanvasElement): Promise<Blob> {
     const canvas = document.createElement('canvas')
     canvas.width = source.width
     canvas.height = source.height
     const context = canvas.getContext('2d')
     if (!context) throw new Error('The editor could not create a screenshot canvas.')
-    const viewport = source.closest<HTMLElement>('.editorCanvasContainer') || source.parentElement
     const app = source.closest<HTMLElement>('.editorSplitContainer')
-    const viewportBackground = viewport ? getComputedStyle(viewport).backgroundColor : ''
-    const transparent = !viewportBackground || viewportBackground === 'transparent' || viewportBackground === 'rgba(0, 0, 0, 0)'
-    context.fillStyle = transparent && app ? getComputedStyle(app).backgroundColor : viewportBackground
+    context.fillStyle = app ? getComputedStyle(app).backgroundColor : ''
     context.fillRect(0, 0, canvas.width, canvas.height)
     context.drawImage(source, 0, 0, canvas.width, canvas.height)
     return await new Promise<Blob>((resolveBlob, reject)=>{

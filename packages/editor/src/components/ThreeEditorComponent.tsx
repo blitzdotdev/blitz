@@ -260,8 +260,8 @@ export function ThreeEditorComponent() {
                                 <div className={"editorCanvasContainer"} key={"editorCanvasContainer"} ref={canvasContainer}></div>
                                 <EditModeStatusChips viewer={viewer}/>
                             </>}],
-                        bottom: isPackageProject(manager.loadedProject) ? [{title: 'Files', content: <FilesPanel />},
-                            {title: 'Library', content: <ExternalFilesPanel />}]: null,
+                        bottom: [{title: 'Files', content: <FilesPanel />},
+                            {title: 'Library', content: <ExternalFilesPanel />}],
                         right: [
                             {
                                 title: 'Inspector',
@@ -403,9 +403,9 @@ function EditModeStatusChips({viewer}: {viewer: ThreeViewer}) {
         }
     }, [editMode])
 
-    return <div className="kite3d-viewport-status-chips" data-testid="edit-mode-status">
-        {speed === null ? null : <span className="kite3d-status-chip" data-testid="camera-speed-chip">SPEED {speed}</span>}
-        {isolated ? <button className="kite3d-status-chip" data-testid="isolated-chip" onClick={() => editMode?.exitIsolate()}>ISOLATED</button> : null}
+    return <div className="kite3d-viewport-status-chips">
+        {speed === null ? null : <span className="kite3d-status-chip">SPEED {speed}</span>}
+        {isolated ? <button className="kite3d-status-chip" onClick={() => editMode?.exitIsolate()}>ISOLATED</button> : null}
     </div>
 }
 
@@ -413,17 +413,15 @@ export function NavProjectFileName(){
     const { project} = useProject()
     const manager = useManager()
 
-    const pkgProject = project && isPackageProject(project)
-    const projectIcon: IconName = pkgProject ? 'folder-close' : 'cubes'
     const fileIcon: IconName|MaybeElement = !!manager.loadedScene ? 'cubes' : !!manager.loadedAssetObj ? iconForSelectionObject(manager.loadedAssetObj) : 'document'
 
     const [fileNeedsSave] = useFileNeedsSave()
     if(!project) return null
     return <>
         {/* The project name opens the picker, which is the hub page's content in a popover. */}
-        {project && <Popover minimal placement="bottom-start" popoverClassName="project-picker-popover" content={<ProjectPicker/>}>
-            <Button variant={"minimal"} size={"small"} icon={projectIcon} text={(!pkgProject ? typeof project.file === 'string' ? project.file : project.file.name : project.path) || 'New File'}/>
-        </Popover>}
-        {pkgProject && manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.glb$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
+        <Popover minimal placement="bottom-start" popoverClassName="project-picker-popover" content={<ProjectPicker/>}>
+            <Button variant={"minimal"} size={"small"} icon={'folder-close'} text={project.path}/>
+        </Popover>
+        {manager.loadedProjectFile && <Button variant={"minimal"} size={"small"} icon={fileIcon} text={(manager.loadedProjectFile.path.split('/').pop()?.replace(/\.glb$/, '') || 'Untitled') + (fileNeedsSave ? '*' : '')}/>}
     </>
 }

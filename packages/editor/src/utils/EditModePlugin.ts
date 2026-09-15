@@ -145,7 +145,6 @@ export class EditModePlugin extends AViewerPluginSync<{
         } catch {
             // Storage is optional. Camera movement still works when it is unavailable.
         }
-        this._wasdPreferenceLoaded = true
 
         // this.grid.material.color.set(0xff0000)
 
@@ -206,8 +205,6 @@ export class EditModePlugin extends AViewerPluginSync<{
     @serialize()
     enableWASDMovement = true
 
-    private _wasdPreferenceLoaded = false
-
     @uiNumber(undefined, (plugin: EditModePlugin) => ({
         onChange: () => plugin.setWASDMovementSpeed(plugin.wasdMovementSpeed),
     }))
@@ -219,7 +216,6 @@ export class EditModePlugin extends AViewerPluginSync<{
             : 1
         this.wasdMovementSpeed = speed
         this.setDirty()
-        if (!this._wasdPreferenceLoaded) return
         try {
             localStorage.setItem(wasdMovementSpeedStorageKey, String(speed))
         } catch {
@@ -292,6 +288,12 @@ export class EditModePlugin extends AViewerPluginSync<{
         }
     }
 
+    /** True when isolating these objects would hide something, so the menu can offer Isolate or not. */
+    canIsolate(objects: IObject3D[]) {
+        const root = this._viewer?.scene.modelRoot
+        return Boolean(root) && objects.some(object => this.isUnderModelRoot(object, root!))
+    }
+
     private isUnderModelRoot(object: IObject3D, root: IObject3D) {
         for (let current: IObject3D | null = object.parent as IObject3D | null; current; current = current.parent as IObject3D | null) {
             if (current === root) return true
@@ -328,14 +330,12 @@ export class EditModePlugin extends AViewerPluginSync<{
         {
             keys: ['/'],
             onDown: (event: KeyboardEvent) => {
-                if (!this._viewer?.renderEnabled) return
                 if (this.toggleIsolate()) event.preventDefault()
             }
         },
         {
             keys: ['[', ']'],
             onDown: (event: KeyboardEvent) => {
-                if (!this._viewer?.renderEnabled) return
                 event.preventDefault()
                 this.setWASDMovementSpeed(this.wasdMovementSpeed * (event.key === ']' ? 2 : 0.5))
             }

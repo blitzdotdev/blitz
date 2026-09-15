@@ -1,7 +1,7 @@
 import {Button, Icon, InputGroup, Spinner, Tag} from '@blueprintjs/core'
 import {useCallback, useEffect, useState} from 'react'
-import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib'
 import {HubFolderListing, ProjectRow} from '../devserver/HubClient.ts'
+import {showErrorToast} from '../utils/Toaster.tsx'
 import {useHub} from '../utils/UseHub.ts'
 
 /**
@@ -211,11 +211,5 @@ function runningText(row: ProjectRow): string {
 }
 
 function showError(error: unknown) {
-    AppToaster().show({
-        message: error instanceof Error ? error.message : String(error),
-        intent: 'danger',
-        icon: 'error',
-        timeout: 5000,
-        isCloseButtonShown: true,
-    })
+    showErrorToast(error instanceof Error ? error.message : String(error), error)
 }

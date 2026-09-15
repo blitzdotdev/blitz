@@ -1,45 +1,13 @@
-import {createRequire} from 'node:module'
 import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {resolve} from 'node:path'
+import {chromium, type Page} from 'playwright'
 import {afterEach, describe, expect, it} from 'vitest'
 import {createDevServer, type DevServer} from '../src/server.ts'
 import {KITE3D_VERSION} from '../src/versions.ts'
 
-interface BrowserHandle {
-    newContext(): Promise<BrowserContextHandle>
-    close(): Promise<void>
-}
-
-interface BrowserContextHandle {
-    newPage(): Promise<PageHandle>
-    cookies(): Promise<Array<{name: string}>>
-}
-
-interface PageHandle {
-    goto(url: string, options: NavigationOptions): Promise<unknown>
-    reload(options: NavigationOptions): Promise<unknown>
-    waitForFunction(expression: string, argument: undefined, options: {timeout: number}): Promise<unknown>
-    waitForResponse(
-        predicate: (response: ResponseHandle) => boolean,
-        options: {timeout: number},
-    ): Promise<ResponseHandle>
-    on(event: 'response', listener: (response: ResponseHandle) => void): void
-}
-
-interface ResponseHandle {
-    status(): number
-    url(): string
-}
-
-interface NavigationOptions {
-    waitUntil: 'domcontentloaded'
-    timeout: number
-}
-
-const testRequire = createRequire(import.meta.url)
 const cleanup: Array<() => Promise<void>> = []
-const navigationOptions: NavigationOptions = {waitUntil: 'domcontentloaded', timeout: 30_000}
+const navigationOptions = {waitUntil: 'domcontentloaded', timeout: 30_000} as const
 
 afterEach(async () => {
     while (cleanup.length) await cleanup.pop()!()
@@ -52,9 +20,6 @@ describe('editor token cookie isolation', () => {
         const rootB = await temporaryProject('cookie-editor-b')
         const serverA = await startServer(rootA)
         const serverB = await startServer(rootB)
-        const chromium = (testRequire('playwright') as {
-            chromium: {launch(options: {headless: boolean}): Promise<BrowserHandle>}
-        }).chromium
         const browser = await chromium.launch({headless: true})
         cleanup.push(() => browser.close())
         const context = await browser.newContext()
@@ -132,7 +97,7 @@ async function writeScene(root: string, reloaded: boolean): Promise<void> {
     })}\n`)
 }
 
-function waitForProjectLoaded(page: PageHandle): Promise<unknown> {
+function waitForProjectLoaded(page: Page): Promise<unknown> {
     return page.waitForFunction(
         'window.kite3dProjectLoaded === true',
         undefined,

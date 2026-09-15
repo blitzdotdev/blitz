@@ -1,6 +1,5 @@
 export {createGame, startGame} from './createGame.ts'
 export type {CreatedGame, CreateGameOptions, RunningGame, RuntimeProject, StartGameOptions} from './createGame.ts'
-export {RUNTIME_VERSION} from './version.ts'
 export * from './projectFormat.ts'
 export {RuntimeNestedAssetLoader} from './nestedAssets.ts'
 export {registerScripts} from '../scripts.ts'

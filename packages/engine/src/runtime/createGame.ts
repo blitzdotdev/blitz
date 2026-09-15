@@ -59,7 +59,6 @@ export interface CreatedGame {
 }
 
 type ModuleExports = Record<string, unknown>
-type RuntimeErrorHandler = (error: unknown) => void
 
 /**
  * Runs a project on a viewer that already holds its scene: the project's scripts and plugins,
@@ -108,7 +107,10 @@ export async function startGame(
 }
 
 export async function createGame(options: CreateGameOptions): Promise<CreatedGame> {
-    const reportError = createErrorReporter(options.onError)
+    const reportError = (error: unknown) => {
+        console.error('[kite3d] Runtime error', error)
+        options.onError?.(error)
+    }
     let viewer: ThreeViewer | undefined
     let nested: RuntimeNestedAssetLoader | undefined
 
@@ -285,11 +287,4 @@ function assertSameOrigin(url: URL, base: URL): URL {
         throw new Error(`Project modules must be same-origin: ${url.href}`)
     }
     return url
-}
-
-function createErrorReporter(onError?: RuntimeErrorHandler) {
-    return (error: unknown) => {
-        console.error('[kite3d] Runtime error', error)
-        onError?.(error)
-    }
 }

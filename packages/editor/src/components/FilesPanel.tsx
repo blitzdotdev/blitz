@@ -7,6 +7,7 @@ import {
     ButtonProps,
     Icon,
     IconName,
+    Intent,
     MaybeElement,
     MenuItem,
     Slider
@@ -16,7 +17,6 @@ import {useObjContextMenu} from "./UseObjContextMenu.tsx";
 import {MenuItem2, MenuItemAction} from "../utils/ContextMenuUtils.ts";
 import {FileManifestEntry, getFileByPath, manifestEntryToFile, useAssets} from "../utils/AssetsProvider.ts";
 import {ProjectDirectoryHandle, ProjectFileHandle} from "../devserver/handles.ts";
-import {useSaveBeforeClose} from "./UseCloseProject.tsx";
 import {useSaveProjectFile} from "./SaveProjectButton.tsx";
 import {useDialogPrompt, useLoadingState} from "uiconfig-blueprint/lib/esm/lib";
 import {
@@ -131,6 +131,42 @@ const menuItemsFiles: MenuItem2[] = [{
     key: 'revealInSystem',
     props: {text: 'Reveal in System File Explorer', icon: 'folder-shared'},
 }*/]
+
+function useSaveBeforeClose() {
+    const {prompt, close} = useDialogPrompt()
+    const saveBeforeClose = ()=>{
+        return new Promise<boolean|null>((resolve)=>{
+            const buttons = [{
+                label: 'Cancel',
+                value: null,
+            },{
+                label: 'No',
+                value: false,
+            },{
+                label: 'Yes',
+                value: true,
+            },]
+            let resolved = false
+            prompt({
+                canClose: false,
+                title: 'Save File',
+                message: 'You have unsaved changes, do you want to save before closing?',
+                showInput: false,
+                actions: (
+                    buttons.map((b, i)=><Button
+                        key={i}
+                        intent={b.value ? Intent.SUCCESS : b.value === false ? Intent.DANGER : Intent.NONE}
+                        onClick={() => {
+                            resolved = true
+                           close()
+                           resolve(b.value)
+                        }}>{b.label}</Button>)
+                ),
+            }).finally(()=>!resolved && resolve(null))
+        })
+    }
+    return {saveBeforeClose}
+}
 
 export function FilesPanelGrid({}: {
 }){
@@ -460,11 +496,12 @@ export class MyComponent extends Object3DComponent {
             refreshManifest()
         },
         setMainScene: async (data: { file: FileManifestEntry })=>{
-            const mainScene = project?.settings?.mainScene
-            if(!project || !mainScene) return {error: 'No project loaded'}
+            if(!project) return {error: 'No project loaded'}
+            const mainScene = project.settings?.mainScene
             if(data.file.path === mainScene) return {warn: `${mainScene} is already the main scene`}
-            const change = await ask('Set as main scene',
-                `Change the main scene from ${mainScene} to ${data.file.path} and open it?`, [
+            const change = await ask('Set as main scene', mainScene
+                ? `Change the main scene from ${mainScene} to ${data.file.path} and open it?`
+                : `Set ${data.file.path} as the main scene and open it?`, [
                     {label: 'Cancel', value: false},
                     {label: 'Set and open', value: true, intent: 'primary'},
                 ])

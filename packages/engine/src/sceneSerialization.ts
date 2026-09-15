@@ -10,7 +10,6 @@ export interface SerializedSceneFile {
 }
 
 export interface SerializedSceneGltf {
-    document: Record<string, unknown>
     gltf: Uint8Array
     files: SerializedSceneFile[]
 }
@@ -83,11 +82,10 @@ async function serializeSceneGltfDocument(
     const files: SerializedSceneFile[] = []
 
     extractBuffers(document, sceneDirectory, fileStem(scenePath), files)
-    await extractImages(document, sceneDirectory, files, 16)
+    await extractImages(document, sceneDirectory, files)
 
     const canonical = canonicalizeJson(document) as GltfDocument
     return {
-        document: canonical,
         gltf: encoder.encode(`${JSON.stringify(canonical, null, 2)}\n`),
         files: files.sort((left, right) => left.path.localeCompare(right.path)),
     }
@@ -155,49 +153,25 @@ function canonicalizeViewerConfig(value: unknown): void {
     Object.values(value).forEach(canonicalizeViewerConfig)
 }
 
+// three's exporter merges the scene into one buffer, so the document has one embedded buffer or none.
 function extractBuffers(
     document: GltfDocument,
     sceneDirectory: string,
     baseName: string,
     files: SerializedSceneFile[],
 ): void {
-    const buffers = document.buffers
-    if (!buffers?.length) return
-
-    const embedded = buffers.map((buffer) => buffer.uri?.startsWith('data:') ? decodeDataUrl(buffer.uri).bytes : undefined)
-    if (embedded.every((value) => value === undefined)) return
-    if (embedded.some((value, index) => value === undefined && buffers[index]?.uri)) {
-        throw new Error('A scene cannot combine embedded and external buffers during serialization')
-    }
-
-    let byteLength = 0
-    const offsets = embedded.map((bytes) => {
-        const offset = align4(byteLength)
-        byteLength = offset + (bytes?.byteLength || 0)
-        return offset
-    })
-    const combined = new Uint8Array(byteLength)
-    embedded.forEach((bytes, index) => {
-        if (bytes) combined.set(bytes, offsets[index])
-    })
-
-    for (const view of document.bufferViews || []) {
-        const offset = offsets[view.buffer]
-        if (offset === undefined) throw new Error(`Invalid glTF buffer index: ${view.buffer}`)
-        view.byteOffset = (view.byteOffset || 0) + offset
-        view.buffer = 0
-    }
-
+    const embedded = document.buffers?.[0]
+    if (!embedded?.uri?.startsWith('data:')) return
+    const bytes = decodeDataUrl(embedded.uri).bytes
     const binName = `${baseName}.bin`
-    document.buffers = [{byteLength: combined.byteLength, uri: binName}]
-    files.push({path: joinProjectPath(sceneDirectory, binName), bytes: combined})
+    document.buffers = [{byteLength: bytes.byteLength, uri: binName}]
+    files.push({path: joinProjectPath(sceneDirectory, binName), bytes})
 }
 
 async function extractImages(
     document: GltfDocument,
     sceneDirectory: string,
     files: SerializedSceneFile[],
-    hashLength: number,
 ): Promise<void> {
     const byPath = new Map<string, Uint8Array>()
     for (const image of document.images || []) {
@@ -205,7 +179,7 @@ async function extractImages(
         const decoded = decodeDataUrl(image.uri)
         const mimeType = decoded.mimeType || image.mimeType || 'application/octet-stream'
         const hash = await sha256(decoded.bytes)
-        const path = `assets/textures/${hash.slice(0, hashLength)}.${imageExtension(mimeType)}`
+        const path = `assets/textures/${hash.slice(0, 16)}.${imageExtension(mimeType)}`
         byPath.set(path, decoded.bytes)
         image.uri = relativeProjectPath(sceneDirectory, path)
         image.mimeType = mimeType
@@ -315,8 +289,4 @@ function relativeProjectPath(fromDirectory: string, target: string): string {
         to.shift()
     }
     return [...from.map(() => '..'), ...to].join('/') || '.'
-}
-
-function align4(value: number): number {
-    return (value + 3) & ~3
 }

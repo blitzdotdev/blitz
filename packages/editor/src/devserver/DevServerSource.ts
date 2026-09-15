@@ -37,7 +37,7 @@ export class DevServerSource {
     readonly clientId = crypto.randomUUID()
     private readonly token: string
 
-    constructor(readonly base = new URL('/', location.href)) {
+    constructor() {
         const token = new URL(location.href).searchParams.get('t')
         if (!token) throw new Error('Open the tokenized URL printed by kite3d dev.')
         this.token = token
@@ -98,7 +98,7 @@ export class DevServerSource {
 
     /** The answer to one `command: 'screenshot'` event. The server names the file and saves it. */
     async screenshotResult(id: string, png: Blob) {
-        const res = await fetch(new URL(`/api/screenshot/${id}`, this.base), {
+        const res = await fetch(`/api/screenshot/${id}`, {
             method: 'POST',
             body: png,
             headers: this.headers({'Content-Type': 'image/png'}),
@@ -119,7 +119,7 @@ export class DevServerSource {
 
     /** `?v=` is the file's own version, `?r=` the page revision that forces a module to import fresh. */
     fileUrl(path: string, sha256?: string, revision?: number): string {
-        const url = new URL('/files/' + path.split('/').map(encodeURIComponent).join('/'), this.base)
+        const url = new URL('/files/' + path.split('/').map(encodeURIComponent).join('/'), location.href)
         if (sha256) url.searchParams.set('v', sha256)
         if (revision) url.searchParams.set('r', String(revision))
         return url.href
@@ -130,7 +130,7 @@ export class DevServerSource {
     }
 
     async json<T>(path: string, init: RequestInit = {}): Promise<T> {
-        const res = await fetch(new URL(path, this.base), {
+        const res = await fetch(path, {
             ...init,
             headers: this.headers(init.headers as Record<string, string>),
         })

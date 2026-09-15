@@ -139,17 +139,14 @@ export function validateSceneSource(path: string, text: string): void {
     }
 }
 
-export async function parsePackageJsonSettingsConfig(json: ProjectPackageJSON, _project?: unknown): Promise<ProjectConfigSettings> {
+export async function parsePackageJsonSettingsConfig(json: ProjectPackageJSON): Promise<ProjectConfigSettings> {
     const config = (json[settingsKey] ?? {}) as ProjectConfigSettingsJSON
     const dependencies: ProjectDependency[] = []
     const packageDependencies = json.dependencies && typeof json.dependencies === 'object' && !Array.isArray(json.dependencies)
         ? json.dependencies as Record<string, string>
         : {}
-    const deps: Record<string, string> = {
-        ...packageDependencies,
-    }
 
-    dependencies.push(...Object.entries(deps).map(([key, version]) => ({key, version})))
+    dependencies.push(...Object.entries(packageDependencies).map(([key, version]) => ({key, version})))
 
     if (config.imports) {
         dependencies.push(...Object.entries(config.imports).map(([key, url]) => ({

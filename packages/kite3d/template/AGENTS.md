@@ -45,7 +45,7 @@ The MuJoCo integration package is named `@kite3d/plugin-mujoco`; use that name i
 
 # Engine quick reference
 
-- `createGame`: boot Play mode; `@kite3d/engine/src/runtime/createGame.ts`.
+- `createGame`: boot a game on its own viewer from the project files; `@kite3d/engine/src/runtime/createGame.ts`.
 - `serializeSceneGltf`: write deterministic text glTF and external resources; `@kite3d/engine/src/sceneSerialization.ts`.
 - `HtmlUiComponent`: attach world, screen, or viewport-positioned HTML to an object; `@kite3d/engine/src/plugins/HtmlUiComponent.ts`.
 - `CannonPhysicsPlugin`, `Cannon3DBodyComponent`, and `Cannon3DShapeComponent`: physics plugin and body components; `@kite3d/engine/src/plugins/cannon/`.

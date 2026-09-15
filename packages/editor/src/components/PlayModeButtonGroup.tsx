@@ -3,7 +3,7 @@ import {Button, ButtonGroup, IconName, Intent, Position, Tooltip} from "@bluepri
 import {InteractionIconButton} from "./InteractionIconButton.tsx";
 import {useListenProperty} from "./UseListenProperty.tsx";
 import {useManager} from "../utils/UseManager.ts";
-import {showSuccessErrorToast} from "../utils/Toaster.tsx";
+import {showErrorToast} from "../utils/Toaster.tsx";
 
 let changingPlayState = false
 export const PlayModeButtonGroup: FC<{}> = ({}) => {
@@ -21,14 +21,12 @@ export const PlayModeButtonGroup: FC<{}> = ({}) => {
         else {
             if (val) {
                 await playMode.startRunMode().catch(e => {
-                    console.error('Could not start run mode:', e)
-                    showSuccessErrorToast('', '', {error: `Could not start Play: ${e?.message ?? e}`})
+                    showErrorToast(`Could not start Play: ${e?.message ?? e}`, e)
                     return false
                 })
             } else {
                 await playMode.stopRunMode().catch(e => {
-                    console.error('Could not stop run mode:', e)
-                    showSuccessErrorToast('', '', {error: `Could not stop Play: ${e?.message ?? e}`})
+                    showErrorToast(`Could not stop Play: ${e?.message ?? e}`, e)
                     return false
                 })
             }

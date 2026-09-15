@@ -36,9 +36,9 @@ import {
 } from './serverState.ts'
 import {KITE3D_VERSION, EDITOR_VERSION, ENGINE_VERSION} from './versions.ts'
 import {DEVELOPMENT_PLUGIN_URL, installedPluginPackages} from './plugins.ts'
-import {pngDimensions, saveScreenshotPng} from './screenshot.ts'
+import {MAX_SCREENSHOT_BYTES, pngDimensions, saveScreenshotPng} from './screenshotFile.ts'
 
-export interface ManifestEntry {
+interface ManifestEntry {
     path: string
     size: number
     sha256: string
@@ -49,11 +49,9 @@ export interface DevServerOptions {
     projectRoot?: string    // the project to serve; without it the server is the launcher
     port?: number
     strictPort?: boolean
-    open?: boolean
 }
 
 export interface DevServer {
-    readonly server: Server
     readonly projectRoot: string | undefined
     readonly port: number
     readonly token: string
@@ -82,13 +80,11 @@ interface PendingScreenshot {
 }
 
 const excludedDirectories = new Set(['.git', 'node_modules', 'dist'])
-const watchedFileSettleMs = 50
-const maxScreenshotBytes = 50 * 1024 * 1024
 const serverRequire = createRequire(import.meta.url)
 
 export type LocalAppEnv = {Bindings: HttpBindings, Variables: {clientId: string | undefined}}
 
-export function installLocalServerMiddleware(app: Hono<LocalAppEnv>, token: string): void {
+function installLocalServerMiddleware(app: Hono<LocalAppEnv>, token: string): void {
     app.use('*', async (c, next) => {
         if (!isLocalHost(c.req.header('Host'))) return textResponse('Invalid Host', 403)
         c.set('clientId', c.req.header('X-Kite3D-Client'))
@@ -108,11 +104,11 @@ export function installLocalServerMiddleware(app: Hono<LocalAppEnv>, token: stri
     app.use('/kite3d/plugins/*', checkToken)
 }
 
-export async function resolveEditorDirectory(): Promise<string> {
+async function resolveEditorDirectory(): Promise<string> {
     return await resolvePackageDirectory('@kite3d/editor') + '/dist'
 }
 
-export async function serveEditorIndex(
+async function serveEditorIndex(
     request: Request,
     token: string,
     editorDirectory: string,
@@ -137,7 +133,7 @@ function localTokenCookieName(request: Request): string {
     return `kite3d-token-${port}`
 }
 
-export function serveEditorPath(pathname: string, editorDirectory: string): Promise<Response> {
+function serveEditorPath(pathname: string, editorDirectory: string): Promise<Response> {
     const relative = decodeURIComponent(pathname.slice(1))
     if (relative && !relative.includes('..') && !relative.includes('\\')) {
         const staticPath = resolve(editorDirectory, relative)
@@ -156,7 +152,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const clients = new Map<SSEStreamingApi, string | undefined>()
     const pendingScreenshots = new Map<string, PendingScreenshot>()
     const pendingEvents = new Map<string, PendingEvent>()
-    const pendingWatchedFiles = new Map<string, ReturnType<typeof setTimeout>>()
     const knownHashes = new Map<string, string>()
     const moduleRewriter = new ProjectModuleRewriter()
     let watcher: FSWatcher | undefined
@@ -179,13 +174,11 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     else app.get('/api/state', () => jsonResponse({hub: true}))
     app.get('*', (c) => serveEditorPath(new URL(c.req.url).pathname, editorDirectory))
     app.onError((error) => {
-        const rawMessage = error instanceof Error ? error.message : 'Internal server error'
-        const status = httpErrorStatus(error) ?? (isMissing(error) ? 404 : (/Invalid project path|forbidden|symlink|escape/i.test(rawMessage) ? 403 : 500))
-        const code = status === 404
-            ? 'not_found'
-            : httpErrorCode(error) ?? (status === 403 ? 'invalid_path' : 'internal_error')
-        const message = status === 404 ? 'File not found.' : status === 500 ? 'Internal server error' : rawMessage
-        return jsonResponse({error: {code, message}}, status)
+        if (error instanceof InvalidProjectPathError) {
+            return jsonResponse({error: {code: 'invalid_path', message: error.message}}, 403)
+        }
+        if (isMissing(error)) return missingFileResponse()
+        return jsonResponse({error: {code: 'internal_error', message: 'Internal server error'}}, 500)
     })
     app.notFound(() => textResponse('Not found', 404))
 
@@ -233,7 +226,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     keepAlive.unref()
 
     return {
-        server,
         projectRoot,
         port,
         token,
@@ -244,8 +236,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             await watcher?.close()
             clearInterval(keepAlive)
             for (const pending of pendingEvents.values()) clearTimeout(pending.timer)
-            for (const timer of pendingWatchedFiles.values()) clearTimeout(timer)
-            pendingWatchedFiles.clear()
             const eventClients = [...clients.keys()]
             // Abort first to release a writer blocked behind a disconnected client,
             // then close so clients that are still connected receive the stream end.
@@ -305,6 +295,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 return jsonResponse({error: {code: 'editor_not_connected', message: 'No editor is connected.'}}, 409)
             }
             const id = randomBytes(16).toString('hex')
+            const name = typeof body.name === 'string' ? body.name : 'editor'
             const result = await new Promise<ScreenshotResult>((resolveScreenshot) => {
                 const timer = setTimeout(() => {
                     pendingScreenshots.delete(id)
@@ -314,23 +305,11 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                         error: 'The editor did not answer the screenshot request. Reload the editor tab or run kite3d screenshot --headless.',
                     })
                 }, 10_000)
-                pendingScreenshots.set(id, {
-                    name: typeof body.name === 'string' ? body.name : 'editor',
-                    resolve: resolveScreenshot,
-                    timer,
-                })
-                void broadcast('command', {
-                    id,
-                    command: 'screenshot',
-                    options: {
-                        name: typeof body.name === 'string' ? body.name : 'editor',
-                        ...(typeof body.width === 'number' ? {width: body.width} : {}),
-                        ...(typeof body.height === 'number' ? {height: body.height} : {}),
-                    },
-                })
+                pendingScreenshots.set(id, {name, resolve: resolveScreenshot, timer})
+                void broadcast('command', {id, command: 'screenshot', options: {name}})
             })
             if (result.ok) return jsonResponse(result)
-            const code = result.code === 'screenshot_timeout' ? 'screenshot_timeout' : 'screenshot_failed'
+            const code = result.code ?? 'screenshot_failed'
             const status = code === 'screenshot_timeout' ? 504 : 409
             return jsonResponse({error: {code, message: result.error || 'Screenshot failed.'}}, status)
         })
@@ -340,13 +319,10 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
                 return jsonResponse({error: {code: 'screenshot_not_found', message: 'Screenshot is no longer pending.'}}, 404)
             }
             const contentLength = Number(c.req.header('Content-Length'))
-            if (Number.isFinite(contentLength) && contentLength > maxScreenshotBytes) {
+            if (Number.isFinite(contentLength) && contentLength > MAX_SCREENSHOT_BYTES) {
                 return jsonResponse({error: {code: 'screenshot_too_large', message: 'The screenshot is larger than 50 MB.'}}, 413)
             }
             const bytes = new Uint8Array(await c.req.arrayBuffer())
-            if (bytes.byteLength > maxScreenshotBytes) {
-                return jsonResponse({error: {code: 'screenshot_too_large', message: 'The screenshot is larger than 50 MB.'}}, 413)
-            }
             try {
                 pngDimensions(bytes)
             } catch (error) {
@@ -441,7 +417,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             const handleWatchedFile = (watchedPath: string) => {
                 const path = normalizeRelativePath(relative(root, watchedPath))
                 if (!path || !isWatchedPath(path)) return
-                scheduleWatchedFile(root, path)
+                if (!closing) void processWatchedFile(root, path)
             }
             watcher = watch(root, {
                 ignoreInitial: true,
@@ -487,16 +463,6 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         pendingEvents.set(path, {path, client: effectiveClient, forcedType: effectiveType, timer})
     }
 
-    function scheduleWatchedFile(root: string, path: string): void {
-        const previous = pendingWatchedFiles.get(path)
-        if (previous) clearTimeout(previous)
-        const timer = setTimeout(() => {
-            pendingWatchedFiles.delete(path)
-            if (!closing) void processWatchedFile(root, path)
-        }, watchedFileSettleMs)
-        pendingWatchedFiles.set(path, timer)
-    }
-
     async function processWatchedFile(root: string, path: string): Promise<void> {
         try {
             const target = await safeProjectPath(root, path)
@@ -528,7 +494,7 @@ function isAddressInUse(error: unknown): boolean {
     return error instanceof Error && 'code' in error && error.code === 'EADDRINUSE'
 }
 
-export async function buildManifest(root: string): Promise<ManifestEntry[]> {
+async function buildManifest(root: string): Promise<ManifestEntry[]> {
     const entries: ManifestEntry[] = []
     await walk(root, '')
     return entries.sort((left, right) => left.path.localeCompare(right.path))
@@ -586,7 +552,6 @@ async function projectState(root: string) {
     return {
         name: typeof packageJson.name === 'string' ? packageJson.name : basename(root),
         versions: {kite3d: KITE3D_VERSION, editor: EDITOR_VERSION, engine: ENGINE_VERSION},
-        server_version: KITE3D_VERSION,
     }
 }
 
@@ -615,22 +580,26 @@ async function injectProjectImportMap(html: string, root: string): Promise<strin
     return html.replace('</head>', `${script}\n</head>`)
 }
 
+// A path the server refuses: outside the project, through a symlink, or not a relative project path.
+// It is the one error app.onError answers with 403.
+class InvalidProjectPathError extends Error {}
+
 async function safeProjectPath(root: string, relativePath: string, allowMissing = false): Promise<string> {
-    if (!relativePath || !isIncludedPath(relativePath)) throw new Error(`Invalid project path: ${relativePath}`)
+    if (!relativePath || !isIncludedPath(relativePath)) throw new InvalidProjectPathError(`Invalid project path: ${relativePath}`)
     const normalized = normalizeRelativePath(relativePath)
     if (normalized !== relativePath || normalized.split('/').some((part) => !part || part === '.' || part === '..')) {
-        throw new Error(`Invalid project path: ${relativePath}`)
+        throw new InvalidProjectPathError(`Invalid project path: ${relativePath}`)
     }
     const target = resolve(root, ...normalized.split('/'))
-    if (!target.startsWith(`${root}${sep}`)) throw new Error('Project path escapes the project root')
+    if (!target.startsWith(`${root}${sep}`)) throw new InvalidProjectPathError('Project path escapes the project root')
     const parts = normalized.split('/')
     let current = root
     for (let index = 0; index < parts.length; index += 1) {
         current = resolve(current, parts[index])
         try {
             const info = await lstat(current)
-            if (info.isSymbolicLink()) throw new Error('Project symlinks are forbidden')
-            if (index < parts.length - 1 && !info.isDirectory()) throw new Error('Invalid project path')
+            if (info.isSymbolicLink()) throw new InvalidProjectPathError('Project symlinks are forbidden')
+            if (index < parts.length - 1 && !info.isDirectory()) throw new InvalidProjectPathError('Invalid project path')
         } catch (error) {
             if (allowMissing && isMissing(error)) break
             throw error
@@ -706,7 +675,7 @@ async function serveStaticFile(path: string, root: string): Promise<Response> {
 
 function decodeFilePath(pathname: string): string {
     let decoded: string
-    try { decoded = decodeURIComponent(pathname.slice('/files/'.length)) } catch { throw new Error('Invalid project path encoding') }
+    try { decoded = decodeURIComponent(pathname.slice('/files/'.length)) } catch { throw new InvalidProjectPathError('Invalid project path encoding') }
     return normalizeRelativePath(decoded)
 }
 
@@ -763,20 +732,6 @@ function jsonResponse(body: unknown, status = 200, headers: HeadersInit = {}): R
 
 function missingFileResponse(): Response {
     return jsonResponse({error: {code: 'not_found', message: 'File not found.'}}, 404)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
-function httpErrorStatus(error: unknown): number | undefined {
-    if (!isRecord(error)) return undefined
-    return typeof error.status === 'number' && error.status >= 400 && error.status <= 599 ? error.status : undefined
-}
-
-function httpErrorCode(error: unknown): string | undefined {
-    if (!isRecord(error)) return undefined
-    return typeof error.code === 'string' ? error.code : undefined
 }
 
 async function readJsonBody(request: Request): Promise<Record<string, unknown>> {

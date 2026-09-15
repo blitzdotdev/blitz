@@ -20,10 +20,6 @@
       "types": "./dist/sceneSerialization.d.ts",
       "import": "./dist/sceneSerialization.js"
     },
-    "./version": {
-      "types": "./dist/runtime/version.d.ts",
-      "import": "./dist/version.js"
-    },
     "./projectFormat": {
       "types": "./dist/runtime/projectFormat.d.ts",
       "import": "./dist/projectFormat.js"

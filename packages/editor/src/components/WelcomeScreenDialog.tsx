@@ -17,7 +17,7 @@ export function WelcomeScreenDialog() {
         <Card id="welcome-dialog" elevation={4}>
             <div id="welcome-sidebar">
                 <div id="welcome-sidebar-logo">
-                    <img src="/logo.svg" width={60} height={60} alt="Kite3D" style={{margin: "-10px"}} className={"welcome-screen-logo"}/>
+                    <img src="/logo.svg" width={60} height={60} alt="Kite3D" style={{margin: "-10px"}}/>
                     <div style={{display: 'flex', flexDirection: 'column'}}>
                         <h4 style={{margin: "0"}}>Kite 3D</h4>
                         <div>Alpha</div>

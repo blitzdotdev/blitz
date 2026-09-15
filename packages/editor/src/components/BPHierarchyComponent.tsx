@@ -147,12 +147,7 @@ export class BPHierarchyComponent<T extends IObject3D = IObject3D> extends BPTre
         const selected = this.context.viewer.getPlugin(PickingPlugin)?.getSelectedObjects<IObject3D>() ?? []
         // Isolating a node that is not in the selection isolates that node alone.
         const isolateObjects = selected.includes(obj) ? [...selected] : [obj]
-        if (editMode?.isIsolated || isolateObjects.some(object => {
-            for (let current = object.parent; current; current = current.parent) {
-                if (current === this.context.viewer.scene.modelRoot) return true
-            }
-            return false
-        })) {
+        if (editMode?.isIsolated || editMode?.canIsolate(isolateObjects)) {
             items.push({
                 props: {text: editMode?.isIsolated ? 'Exit Isolate' : 'Isolate'},
                 key: 'isolate',

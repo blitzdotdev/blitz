@@ -72,18 +72,23 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
     }
 
 
+    // A @threepipe/ dependency is also a script, and both go in one write, because a dependency
+    // change reloads the page and a second write would be lost.
     async addProjectDependency(dependency: ProjectDependency) {
         const project = this.manager.loadedProject
         const settings = project?.settings?.config
         if (!settings) throw new Error('No project loaded, cannot add dependency')
         const existing = settings.dependencies?.find(d => d.key === dependency.key)
         if (existing) throw new Error('Dependency already exists in project settings')
+        const script = dependency.key.startsWith('@threepipe/')
+            && !settings.scripts?.some(s => s.import === dependency.key)
+            ? {import: dependency.key}
+            : null
         await this.setSettings({
             ...settings,
-            dependencies: [...settings.dependencies || [], dependency]
+            dependencies: [...settings.dependencies || [], dependency],
+            ...(script ? {scripts: [...settings.scripts || [], script]} : {})
         })
-        if (dependency.key.startsWith('@threepipe/'))
-            await this.addProjectScript({import: dependency.key}, true)
     }
 
     async removeProjectDependency(dependency: ProjectDependency) {
@@ -92,13 +97,14 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
         if (!settings) throw new Error('No project loaded, cannot remove dependency')
         const existing = settings.dependencies?.find(d => d.key === dependency.key)
         if (!existing) return
+        const scripts = dependency.key.startsWith('@threepipe/')
+            ? settings.scripts?.filter(s => s.import !== dependency.key)
+            : settings.scripts
         await this.setSettings({
             ...settings,
-            dependencies: settings.dependencies?.filter(d => d !== existing)
+            dependencies: settings.dependencies?.filter(d => d !== existing),
+            scripts
         })
-        if (dependency.key.startsWith('@threepipe/'))
-            await this.removeProjectScript({import: dependency.key})
-
     }
 
 
@@ -158,23 +164,25 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
         // The dev server injects the import map into the page, so a new dependency reaches the
         // project's scripts on the next load and only on the next load.
         if (lastSettings && (addedDeps.length || removedDeps.length || changedDeps.length)) {
-            await this.reloadForDependencies()
-            return
+            // Only a reload stops here; a user who keeps editing still gets the scripts and plugins.
+            if (await this.reloadForDependencies()) return
         }
 
         await this.manager.scriptUtil.onProjectSettingsChange(settings, lastSettings)
     }
 
 
+    /** True when the page is reloading, so the caller stops. */
     private async reloadForDependencies() {
         if (this.manager.loadedNeedsSave) {
             const reload = await ask('Dependencies changed', 'The editor reloads to pick up new dependencies. Unsaved changes are lost.', [
                 {label: 'Keep editing', value: false},
                 {label: 'Reload', value: true, intent: 'danger'},
             ])
-            if (!reload) return
+            if (!reload) return false
         }
         location.reload()
+        return true
     }
 
     /**
@@ -184,7 +192,6 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
     async setMainScene(path: string) {
         const project = this.manager.loadedProject
         if (!project?.settings || !project.handle) throw new Error('No project loaded, cannot set the main scene')
-        if (!isPackageProject(project)) throw new Error('Not a package project, cannot set the main scene')
         if (project.settings.mainScene === path) return
 
         const json = await this.readPackageJson(project)
