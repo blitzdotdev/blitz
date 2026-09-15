@@ -715,7 +715,6 @@ export interface ProjectIndex { version: 1; projects: IndexedProject[] }
 export interface IndexedProject {
     path: string            // absolute, symlinks resolved; the key
     name: string            // package.json name, or the folder name
-    repoRoot: string | null // the repository root; worktrees of one repository share it; null for a loose project
     lastOpened: string      // ISO time of the last init, dev, or open through the picker; the sort key
 }
 
@@ -724,8 +723,9 @@ export interface IndexedProject {
 // a project server writes it to <project>/.kite3d/dev.json. Same shape, two places.
 export interface ServerState { pid: number; port: number; url: string; token: string }
 
-// GET /api/hub/projects → ProjectRow[]      the index rows, each with the five things only the server knows right now
+// GET /api/hub/projects → ProjectRow[]      the index rows, each with the six things only the server knows right now
 export type ProjectRow = IndexedProject & {
+    repoRoot: string | null // from git at request time: the root every worktree of the repository shares; null outside git
     branch: string | null   // from git at request time; null when HEAD is detached
     head: string | null     // the short commit when branch is null
     running: boolean        // <path>/.kite3d/dev.json parses and its pid is alive
