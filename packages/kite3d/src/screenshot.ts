@@ -2,6 +2,7 @@ import {createRequire} from 'node:module'
 import {mkdir, writeFile} from 'node:fs/promises'
 import {resolve} from 'node:path'
 import type {DevServer} from './server.ts'
+import {readRunningServer, serverStatePath} from './serverState.ts'
 
 export interface ScreenshotOptions {
     name?: string
@@ -60,6 +61,16 @@ export async function screenshotProject(
     const width = screenshotDimension(options.width, '--width', 1280)
     const height = screenshotDimension(options.height, '--height', 720)
     const name = screenshotName(options.name)
+
+    // An open editor tab knows what the user is looking at, Play included; a headless page does not.
+    // --headless, --full and a chosen size all ask for something only a page of our own can give.
+    const sized = options.width !== undefined || options.height !== undefined
+    if (!options.headless && !options.full && !sized) {
+        const connection = await readRunningServer(serverStatePath(root))
+        const result = connection && await requestEditorScreenshot(connection, name)
+        if (result) return result
+    }
+
     return runWithHeadlessChromium(root, async (browser, activeConnection) => {
         const page = await browser.newPage({viewport: {width, height}})
         const url = new URL(activeConnection.url)
@@ -71,16 +82,66 @@ export async function screenshotProject(
             {timeout: 30_000},
         )
         await page.waitForFunction(
-            "Boolean(document.querySelector('.editor-canvas-mount canvas:not(.game-canvas-overlay)')?.clientWidth)",
+            "Boolean(document.querySelector('.editorCanvasContainer canvas')?.clientWidth)",
             undefined,
             {timeout: 10_000},
         )
         const bytes = options.full
             ? await page.screenshot({type: 'png'})
-            : await page.locator('.editor-canvas-mount canvas:not(.game-canvas-overlay)').first().screenshot({type: 'png'})
+            : await page.locator('.editorCanvasContainer canvas').first().screenshot({type: 'png'})
         const saved = await saveScreenshotPng(root, bytes, name)
         return {...saved, source: 'headless'}
     })
+}
+
+/**
+ * Asks the connected editor for its viewport. The server saves the PNG the editor posts back and
+ * answers with the file it wrote. Undefined means no editor answered, so the headless path runs.
+ */
+async function requestEditorScreenshot(
+    connection: DevConnection,
+    name: string,
+): Promise<ScreenshotResult | undefined> {
+    let response: Response
+    try {
+        response = await fetch(new URL('/api/screenshot', connection.url), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Kite3D-Token': connection.token,
+                'X-Kite3D-Client': 'kite3d-screenshot',
+            },
+            body: JSON.stringify({name}),
+            signal: AbortSignal.timeout(12_000),
+        })
+    } catch {
+        return undefined
+    }
+    const body = await response.json().catch(() => ({})) as {
+        error?: {code?: string, message?: string}
+        path?: unknown
+        width?: unknown
+        height?: unknown
+        source?: unknown
+        capturedAt?: unknown
+    }
+    if (response.status === 404 || response.status === 409 && body.error?.code === 'editor_not_connected') {
+        return undefined
+    }
+    // An editor that is there but cannot answer is reported, not quietly replaced by a headless page
+    // showing a different view of the project.
+    if (!response.ok) throw new Error(body.error?.message || `Screenshot failed with status ${response.status}.`)
+    if (typeof body.path !== 'string' || typeof body.width !== 'number' || typeof body.height !== 'number'
+        || body.source !== 'editor' || typeof body.capturedAt !== 'string') {
+        throw new Error('The editor returned an invalid screenshot result.')
+    }
+    return {
+        path: body.path,
+        width: body.width,
+        height: body.height,
+        source: body.source,
+        capturedAt: body.capturedAt,
+    }
 }
 
 export async function runWithHeadlessChromium<T>(

@@ -48,11 +48,14 @@ export function materialCommand(material: IMaterial, target: IObject3D, index?: 
             const lastMaterial = material
             cmd.lastMaterial = target.material
             target.material = lastMaterial
+            // Assigning material fires no object event, so without this a dropped material is never saved.
+            target.setDirty?.({change: 'material'})
         },
         undo: () => {
             const lastMaterial = cmd.lastMaterial
             cmd.lastMaterial = target.material
             if(lastMaterial) target.material = lastMaterial
+            target.setDirty?.({change: 'material'})
         }
     } satisfies JSUndoManagerCommand1 & {lastMaterial: IMaterial|IMaterial[] | null | undefined}
     return cmd;

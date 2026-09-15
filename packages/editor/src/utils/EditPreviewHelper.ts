@@ -30,4 +30,13 @@ export class EditPreviewHelper extends EventDispatcher<{
         this.dispatchEvent({type: 'editPreviewChange'})
     }
 
+    /** A paused frame is inspectable: the gizmo comes back so a picked object can be moved. */
+    pause() {
+        this.features.enable('transform-controls', 'EditPreview')
+    }
+
+    resume() {
+        this.features.disable('transform-controls', 'EditPreview')
+    }
+
 }

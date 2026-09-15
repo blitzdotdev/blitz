@@ -20,7 +20,7 @@ export type ProjectFileEvent = {type: 'change' | 'add' | 'unlink', path: string,
 
 export type ProjectEvent =
     | ProjectFileEvent
-    | {type: 'command', id: string, command: 'screenshot', options: {name?: string, width?: number, height?: number}}
+    | {type: 'command', id: string, command: 'screenshot', options: {name?: string}}
 
 /** A write the server refused: the file on disk is not the one the write was based on. */
 export class ProjectConflictError extends Error {
@@ -94,6 +94,16 @@ export class DevServerSource {
             source.addEventListener(type, (e) => listener({type, ...JSON.parse((e as MessageEvent).data)}))
         }
         return () => source.close()
+    }
+
+    /** The answer to one `command: 'screenshot'` event. The server names the file and saves it. */
+    async screenshotResult(id: string, png: Blob) {
+        const res = await fetch(new URL(`/api/screenshot/${id}`, this.base), {
+            method: 'POST',
+            body: png,
+            headers: this.headers({'Content-Type': 'image/png'}),
+        })
+        if (!res.ok) throw new Error(`Cannot post the screenshot: ${res.status}`)
     }
 
     private async put(path: string, bytes: Blob | Uint8Array<ArrayBuffer> | string, precondition: Record<string, string>): Promise<{sha256: string}> {

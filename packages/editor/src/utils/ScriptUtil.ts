@@ -59,7 +59,7 @@ export class ScriptUtil extends EventDispatcher<{
 
     // One counter for the page. Any module change re-imports every project module, so a project's
     // handful of scripts needs no dependency graph to know what to reload.
-    private revision = 0
+    revision = 0
 
     private loadModules(paths: string[]){
         return loadModules(paths, this.project.settings!.json, this.fileUrl, this.revision)

@@ -177,20 +177,51 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
         location.reload()
     }
 
-    private async setSettingsConfig(settings: ProjectConfigSettings, project: LoadedProject) {
+    /**
+     * The scene the project opens with. It is a top level key of package.json, not part of the
+     * kite3d settings, so it is written on its own.
+     */
+    async setMainScene(path: string) {
+        const project = this.manager.loadedProject
+        if (!project?.settings || !project.handle) throw new Error('No project loaded, cannot set the main scene')
+        if (!isPackageProject(project)) throw new Error('Not a package project, cannot set the main scene')
+        if (project.settings.mainScene === path) return
+
+        const json = await this.readPackageJson(project)
+        json.mainScene = path
+        const saved = await this.manager.fsHelper.writeFile(project.handle, project.file.name, this.packageJsonFile(json, project))
+        if (!saved) throw new Error('Failed to save project settings file')
+
+        project.settings.mainScene = path
+        project.settings.json.mainScene = path
+    }
+
+    // Always the copy on disk, so a write patches whatever an agent or another editor last left there.
+    private async readPackageJson(project: LoadedProject): Promise<Record<string, any>> {
         if (!project.handle) throw new Error('No handle to update project config')
-        const handle = project.handle
-        let packageFileHandle = await handle.getFileHandle(project.file.name).catch((e) => {
+        const packageFileHandle = await project.handle.getFileHandle(project.file.name).catch(() => {
             // todo handle if there is dir with same name
-            // if(e.name === "NotFoundError") return null
-            // if(e.name === "TypeMismatchError") return true
-            // console.error(e)
             return undefined
         })
         if (!packageFileHandle) throw new Error('No packageFileHandle to update project config')
-        let packageJsonFile = await packageFileHandle.getFile()
-        const text = await packageJsonFile.text()
+        const text = await (await packageFileHandle.getFile()).text()
+        try {
+            return parse(text) as Record<string, any>
+        } catch (e) {
+            console.error(`ThreeEditor - cannot read ${project.file.name} file`, e)
+            throw new Error(`Cannot read ${project.file.name} file`)
+        }
+    }
 
+    private packageJsonFile(json: Record<string, any>, project: LoadedProject) {
+        return new File(
+            [JSON.stringify(json, null, 2)],
+            project.file.name,
+            {type: 'application/json', lastModified: Date.now()}
+        )
+    }
+
+    private async setSettingsConfig(settings: ProjectConfigSettings, project: LoadedProject) {
         // let errors = []
         // const json = parse(text, errors, { allowTrailingComma: true })
         //
@@ -207,27 +238,12 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
         //     { formattingOptions: { insertSpaces: true, tabSize: 2 } }
         // )
 
-        let json: Record<string, any> = {}
-        try {
-            json = parse(text) as any
-        } catch (e) {
-            console.error(`ThreeEditor - cannot read ${project.file.name} file`, e)
-            throw new Error(`Cannot read ${project.file.name} file`)
-        }
+        const json = await this.readPackageJson(project)
         const settings2 = {...settings} as ProjectConfigSettingsJSON
         // @ts-ignore todo make this proper config->json
         if (settings2.dependencies) delete settings2.dependencies
         settings2.imports = json[settingsKey]?.imports || {}
-        json = {
-            ...json,
-            [settingsKey]: settings2
-        }
-        const newFile = new File(
-            [JSON.stringify(json, null, 2)],
-            project.file.name,
-            {type: 'application/json', lastModified: Date.now()}
-        )
-        return newFile
+        return this.packageJsonFile({...json, [settingsKey]: settings2}, project)
     }
 
 }

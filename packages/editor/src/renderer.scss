@@ -117,6 +117,33 @@ body{
   }
 }
 
+.kite3d-viewport-status-chips {
+  display: flex;
+  gap: 6px;
+  left: var(--pt-grid-size);
+  position: absolute;
+  top: 46px;
+  z-index: 10;
+}
+
+.kite3d-status-chip {
+  background: rgb(127 127 127 / 12%);
+  border: 1px solid var(--pt-divider-black);
+  border-radius: 3px;
+  color: var(--pt-text-color-muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+button.kite3d-status-chip {
+  cursor: pointer;
+  font-family: inherit;
+  line-height: inherit;
+}
+
 .hierarchy-stack .folderContent{
   flex: 1 1 auto;
   max-width: 100%;

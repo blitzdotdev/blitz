@@ -28,7 +28,7 @@ export interface SelectFileRef{
     // editor?: boolean
 }
 
-export const assetableFileTypes = ['.glb', '.mat', '.json'] // we can write asset ids into these files.
+export const assetableFileTypes = ['.glb', '.gltf', '.mat', '.json'] // we can write asset ids into these files.
 export const notAssetableFileTypes = ['.scene.gltf']
 
 export function isLoadableFile(file: string) {

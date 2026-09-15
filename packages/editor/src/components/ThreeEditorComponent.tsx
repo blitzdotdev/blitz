@@ -35,6 +35,7 @@ import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
 import {ExternalFilesPanel} from "./ExternalFilesPanel.tsx";
 import {DependenciesSectionComp, PluginsSectionComp, ScriptsSectionComp } from './ProjectSettingsComponents.tsx';
+import {EditModePlugin} from '../utils/EditModePlugin.ts';
 
 
 export function RefUiConfigComponent(props: BPComponentProps<any>){
@@ -255,7 +256,9 @@ export function ThreeEditorComponent() {
                             display: "flex",
                             flexDirection: "column",
                         }, content: <>
+                                {/* A sibling, not a child: the effect above clears the mount before it appends the viewer. */}
                                 <div className={"editorCanvasContainer"} key={"editorCanvasContainer"} ref={canvasContainer}></div>
+                                <EditModeStatusChips viewer={viewer}/>
                             </>}],
                         bottom: isPackageProject(manager.loadedProject) ? [{title: 'Files', content: <FilesPanel />},
                             {title: 'Library', content: <ExternalFilesPanel />}]: null,
@@ -376,6 +379,36 @@ export function ModesInspector({config, className}:{
     // }, [config])
     // return <ConfigObject config={config2} className={className} openPanel={()=>{}} closePanel={()=>{}}/>
 }
+/** SPEED for a second after [ or ], ISOLATED for as long as / holds the selection alone. */
+function EditModeStatusChips({viewer}: {viewer: ThreeViewer}) {
+    const editMode = viewer.getPlugin(EditModePlugin)
+    const [speed, setSpeed] = useState<number | null>(null)
+    const [isolated, setIsolated] = useState(editMode?.isIsolated ?? false)
+
+    useEffect(() => {
+        if (!editMode) return
+        let speedTimer: number | undefined
+        const speedChanged = () => {
+            setSpeed(editMode.wasdMovementSpeed)
+            window.clearTimeout(speedTimer)
+            speedTimer = window.setTimeout(() => setSpeed(null), 1_000)
+        }
+        const isolateChanged = () => setIsolated(editMode.isIsolated)
+        editMode.addEventListener('speedChanged', speedChanged)
+        editMode.addEventListener('isolateChanged', isolateChanged)
+        return () => {
+            editMode.removeEventListener('speedChanged', speedChanged)
+            editMode.removeEventListener('isolateChanged', isolateChanged)
+            window.clearTimeout(speedTimer)
+        }
+    }, [editMode])
+
+    return <div className="kite3d-viewport-status-chips" data-testid="edit-mode-status">
+        {speed === null ? null : <span className="kite3d-status-chip" data-testid="camera-speed-chip">SPEED {speed}</span>}
+        {isolated ? <button className="kite3d-status-chip" data-testid="isolated-chip" onClick={() => editMode?.exitIsolate()}>ISOLATED</button> : null}
+    </div>
+}
+
 export function NavProjectFileName(){
     const { project} = useProject()
     const manager = useManager()

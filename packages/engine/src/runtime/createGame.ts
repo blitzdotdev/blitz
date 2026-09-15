@@ -34,11 +34,11 @@ import {
 
 export interface StartGameOptions {
     base: string
-    onError?: (error: unknown) => void
 }
 
 export interface CreateGameOptions extends StartGameOptions {
     canvas: HTMLCanvasElement
+    onError?: (error: unknown) => void
 }
 
 export interface RuntimeProject {
@@ -81,22 +81,30 @@ export async function startGame(
     const physics = viewer.getPlugin(CannonPhysicsPlugin)
     if (physics) physics.running = true
 
-    const mainPath = typeof project.packageJson.main === 'string' ? project.packageJson.main : './main.js'
-    const {main} = await importModule(projectUrl(mainPath, base).href)
-    if (main !== undefined && typeof main !== 'function') {
-        throw new Error(`${mainPath} export "main" must be a function`)
+    let cleanup: unknown
+    const stop = async () => {
+        if (typeof cleanup === 'function') await cleanup()
+        if (physics) physics.running = false
+        viewer.getPlugin(EntityComponentPlugin)!.stop()
+        viewer.timeline.stop()
+        viewer.timeline.reset()
     }
-    const cleanup: unknown = await main?.({viewer})
 
-    return {
-        async stop() {
-            if (typeof cleanup === 'function') await cleanup()
-            if (physics) physics.running = false
-            viewer.getPlugin(EntityComponentPlugin)!.stop()
-            viewer.timeline.stop()
-            viewer.timeline.reset()
-        },
+    try {
+        const mainPath = typeof project.packageJson.main === 'string' ? project.packageJson.main : './main.js'
+        const {main} = await importModule(projectUrl(mainPath, base).href)
+        if (main !== undefined && typeof main !== 'function') {
+            throw new Error(`${mainPath} export "main" must be a function`)
+        }
+        cleanup = await main?.({viewer})
+    } catch (error) {
+        // The clock, the components and physics are already going, and a throw here hands the
+        // caller no RunningGame to stop them with.
+        await stop()
+        throw error
     }
+
+    return {stop}
 }
 
 export async function createGame(options: CreateGameOptions): Promise<CreatedGame> {

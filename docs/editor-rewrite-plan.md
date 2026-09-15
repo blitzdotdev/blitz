@@ -606,7 +606,7 @@ export async function loadModules1(paths: string[], project: LoadedProject) {
                              revision++
                              import('/files/<path>?v=<sha>&r=<revision>')
                              refLoadModule ─► addPlugin, addComponent
-                             Play running? ─► stop, start again (PlayModeHelper.loadRunningScene)
+                             Play running? ─► stop, start again
 ```
 
 Adding a dependency is the one thing that needs a page reload, because the server injects the import map into the page at load. Upstream appended a second import map at runtime, which only works with es-module-shims.

@@ -34,6 +34,7 @@ import {CanvasFileDropHandler} from "../utils/CanvasFileDropHandler.tsx";
 import {PopupMenuButton} from "./PopupMenuButton.tsx";
 import {useProject} from "../utils/UseProject.ts";
 import {useManager} from "../utils/UseManager.ts";
+import {ask} from "../utils/AskDialog.tsx";
 
 export function FilesPanelBreadCrumbs({}: {}){
     const {project} = useProject()
@@ -116,10 +117,15 @@ const menuItemsEmpty: MenuItem2[] = [{
     props: {text: 'Refresh', icon: 'refresh'},
 }]
 const menuItemsFiles: MenuItem2[] = [{
-    action: 'importFileGlb',
-    key: 'importFileGlb',
-    tags: ['ext-.glb', '!ext-.scene.gltf'/*, 'ext-.mat'*/], // todo incase of mat import and apply to a box
+    action: 'importFileModel',
+    key: 'importFileModel',
+    tags: ['ext-.glb', 'ext-.gltf', '!ext-.scene.gltf'/*, 'ext-.mat'*/], // todo incase of mat import and apply to a box
     props: {text: 'Import in Scene', icon: 'document-open'},
+},{
+    action: 'setMainScene',
+    key: 'setMainScene',
+    tags: ['ext-.scene.gltf'],
+    props: {text: 'Set as main scene', icon: 'home'},
 },/*,{
     action: 'revealInSystem',
     key: 'revealInSystem',
@@ -453,7 +459,20 @@ export class MyComponent extends Object3DComponent {
         refreshFiles: ()=>{
             refreshManifest()
         },
-        importFileGlb: async (data: { file: FileManifestEntry })=>{
+        setMainScene: async (data: { file: FileManifestEntry })=>{
+            const mainScene = project?.settings?.mainScene
+            if(!project || !mainScene) return {error: 'No project loaded'}
+            if(data.file.path === mainScene) return {warn: `${mainScene} is already the main scene`}
+            const change = await ask('Set as main scene',
+                `Change the main scene from ${mainScene} to ${data.file.path} and open it?`, [
+                    {label: 'Cancel', value: false},
+                    {label: 'Set and open', value: true, intent: 'primary'},
+                ])
+            if(!change) return
+            await manager.settingsManager.setMainScene(data.file.path)
+            await loadFile(data.file)
+        },
+        importFileModel: async (data: { file: FileManifestEntry })=>{
             if(!project) return {error: 'No project loaded'}
             if(!manager.loadedScene && !(manager.loadedAssetObj as IObject3D)?.isObject3D){
                 return { error: 'No scene/asset loaded to import the model into'}
@@ -505,7 +524,7 @@ export class MyComponent extends Object3DComponent {
             setCurrentPath(f.path)
             setSelectedFiles([])
         } else {
-            const allowedTypes = ['.scene.gltf', '.glb', '.mat', /*'.glb', '.mat.json', '.js', '.ts'*/]
+            const allowedTypes = ['.scene.gltf', '.glb', '.gltf', '.mat', /*'.glb', '.mat.json', '.js', '.ts'*/]
             if (allowedTypes.some(ext => f.path.endsWith(ext))) {
                 // todo check type of file and open it if possible
                 // check for needssave

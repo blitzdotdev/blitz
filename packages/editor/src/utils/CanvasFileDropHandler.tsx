@@ -21,6 +21,7 @@ import {FileManifestEntry} from "./AssetsProvider.ts";
 import {environmentCommand, materialCommand, objectCommand, textureCommand} from "./objectApplyCommands.tsx";
 import {TExternalFile} from "../components/ExternalFilesPanel.tsx";
 import {assetableFileTypes, isExternalObject, notAssetableFileTypes} from "./projectUtils.ts";
+import {AppToaster} from 'uiconfig-blueprint/lib/esm/lib';
 
 type DraggedItem = IMaterial | IObject3D | ITexture
 
@@ -183,23 +184,46 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
     }
 
     private draggingEntry: {path: string, isFSEntry: boolean} | TExternalFile | null = null
+    // The import this drag started. A drop that lands first waits for it, and dragend leaves it alone.
+    private libraryImport: Promise<DraggedItem> | null = null
+    private dropLanded = false
 
     handleDragStart = async (e: React.DragEvent, f: FileManifestEntry | TExternalFile | {path: string, isFSEntry: false}) => {
-        if(this.draggingEntry) return // already dragging something
+        if(this.libraryImport) return // already dragging something
         this.draggingEntry = f
         draggingSpinner.style.display = 'block'
         e.dataTransfer.setData('text/uri-list', ' ');
         e.dataTransfer!.setDragImage(transparentPixelCanvas, 16, 16);
         // e.preventDefault();
-        const r = await this.manager.getAssetFromEntry(f)
-        if(!this.draggingEntry) return // drag was cancelled in the meantime
-        draggingSpinner.style.display = 'none'
-        if(!r) return
+        const libraryImport = this.manager.getAssetFromEntry(f).then((item)=>{
+            if (!item) throw new Error('No supported asset was loaded.')
+            return item as DraggedItem
+        })
+        this.libraryImport = libraryImport
+        this.dropLanded = false
+        let loaded = false
+        try {
+            const item = await libraryImport
+            if (this.libraryImport !== libraryImport) return // this drag was cancelled in the meantime
+            this.setDraggedItem(item)
+            if (!this.draggedItem) throw new Error('The asset type is not supported by the editor.')
+            loaded = true
+        } catch (error) {
+            console.error(`Unable to import library asset ${entryName(f)}`, error)
+            showLibraryImportError(f, error)
+            return
+        } finally {
+            if (this.libraryImport === libraryImport) {
+                draggingSpinner.style.display = 'none'
+                if (!loaded && !this.dropLanded) {
+                    this.libraryImport = null
+                    this.draggingEntry = null
+                }
+            }
+        }
         // e.stopPropagation();
         // e.dataTransfer.setDragImage(img, xOffset, yOffset); // optional: set a custom drag image
 
-        // Set the dragged item in the handler
-        this.setDraggedItem(r);
         e.dataTransfer.clearData();
         e.dataTransfer.effectAllowed = 'copy';
         // const path = f.isFSEntry ? assetUrlPrefix+f.path : f.path
@@ -208,7 +232,13 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
     };
 
     handleDragEnd = (e?: React.DragEvent) => {
+        // dragend fires before a landed drop has its import; that drop clears up after itself.
+        if (this.dropLanded) {
+            e?.dataTransfer.clearData();
+            return
+        }
         draggingSpinner.style.display = 'none'
+        this.libraryImport = null
         this.draggingEntry = null
         this.clearDraggedItem();
         e?.dataTransfer.clearData();
@@ -232,7 +262,9 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
             res = this.setDropTarget(null, false, {});
         }
         if (e.dataTransfer) {
-            e.dataTransfer.dropEffect = res ? effect : 'none';
+            // A drag whose import is still in flight has no item to drop on a target yet. Refusing the
+            // drop here means the browser never fires one, and the asset lands nowhere.
+            e.dataTransfer.dropEffect = res || this.libraryImport ? effect : 'none';
         }
         const draggedItem = this.draggedItem as IObject3D
         if(res && draggedItem?.isObject3D) {
@@ -241,26 +273,40 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
 
     }
 
-    private handleDrop(e: DragEvent): void {
+    private async handleDrop(e: DragEvent): Promise<void> {
         if(!this._viewer) return
-        draggingSpinner.style.display = 'none'
-        if(!this.draggedItem) return;
-
         if(e.dataTransfer?.files?.length) return // for dropzone
+        const libraryImport = this.libraryImport
+        if(!this.draggedItem && !libraryImport) return;
 
         e.preventDefault();
-        const intersects = this.getIntersects(e).filter(i=>i.object !== this.draggedItem);
+        this.dropLanded = true
+        const intersects = this.getIntersects(e)
 
-        const mesh = intersects?.[0]?.object as IObject3D;
-        const draggedItem = this.draggedItem as IObject3D
+        let used = false
+        try {
+            // handleDragStart already showed the failure, so a rejected import drops nothing quietly.
+            const imported = this.draggedItem || await libraryImport!.catch(()=>null)
+            if (!imported) return
+            if (!this.draggedItem) this.setDraggedItem(imported)
+            const draggedItem = this.draggedItem as IObject3D
+            if (!draggedItem) return
 
-        const res = this.setDropTarget(mesh||null, true, {intersects: intersects as any});
+            const hits = intersects.filter(i=>i.object !== draggedItem)
+            const res = this.setDropTarget((hits[0]?.object as IObject3D) || null, true, {intersects: hits as any});
 
-        if(res && draggedItem?.isObject3D) {
-            this.updatePosition(draggedItem)
+            if(res && draggedItem?.isObject3D) {
+                this.updatePosition(draggedItem)
+            }
+            used = true
+        } finally {
+            draggingSpinner.style.display = 'none'
+            this.libraryImport = null
+            this.dropLanded = false
+            this.draggingEntry = null
+            // dragend already took its early return, so this drop is what clears the drag.
+            this.clearDraggedItem(used);
         }
-
-        this.clearDraggedItem(true);
     }
 
     private handleDragLeave(): void {
@@ -528,6 +574,21 @@ export class CanvasFileDropHandler extends AViewerPluginSync{
         return new Vector2(x, y);
     }
 
+}
+
+function entryName(entry: {path: string, name?: string}) {
+    return entry.name || entry.path.split(/[?#]/)[0].split('/').pop() || 'Library asset'
+}
+
+/** A library import that failed used to fail in silence, so the user saw a drag that did nothing. */
+export function showLibraryImportError(entry: {path: string, name?: string}, error: unknown) {
+    AppToaster().show({
+        message: `Unable to import ${entryName(entry)}: ${error instanceof Error ? error.message : String(error)}`,
+        intent: 'danger',
+        icon: 'error',
+        timeout: 5000,
+        isCloseButtonShown: true,
+    })
 }
 
 export function isDraggableDroppableNode(obj: IObject3D){

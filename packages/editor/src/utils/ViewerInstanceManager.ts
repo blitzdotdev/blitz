@@ -66,8 +66,7 @@ import {
     parsePackageJsonSettings,
     resolveFile,
     SavedSceneFile,
-    SavedSceneFileMeta,
-    settingsKey
+    SavedSceneFileMeta
 } from "./project.ts";
 import {ProjectDirectoryHandle, ProjectManifest} from "../devserver/handles.ts";
 import {DevServerSource, ProjectConflictError, ProjectEvent} from "../devserver/DevServerSource.ts";
@@ -193,10 +192,15 @@ export class ViewerInstanceManager extends EventDispatcher<{
             const rootPath = res.__rootPath
             // const rootPathOptions = res.__rootPathOptions
             const rootBlob = res.__rootBlob
+            const assetFileName = ()=>this.resolveAssetIdPath(rootBlob?.filePath || rootBlob?.name || rootPath || '')
+                .replace(/^\/|\/$/, '')
+                .split('/').pop()!
             if (res?.name === '') {
-                res.name = this.resolveAssetIdPath(rootBlob?.filePath || rootBlob?.name || rootPath || '')
-                    .replace(/^\/|\/$/, '')
-                    .split('/').pop()!
+                res.name = assetFileName()
+            } else if (res?.name === 'AuxScene' && (res as IObject3D).children?.length > 1) {
+                // A glTF with one root is unwrapped by the loader; one with several keeps this group,
+                // and "AuxScene" tells the hierarchy nothing about which asset it came from.
+                res.name = assetFileName() || res.name
             }
         })
 
@@ -409,7 +413,15 @@ export class ViewerInstanceManager extends EventDispatcher<{
      * what else happens depends on what the path is to this tab.
      */
     private onProjectEvent = async (event: ProjectEvent) => {
-        if (event.type === 'command') return                    // the screenshot answer is its own pass
+        if (event.type === 'command' && event.command === 'screenshot') {
+            try {
+                await this.source.screenshotResult(event.id, await this.captureScreenshot())
+            } catch (e) {
+                console.error('Unable to answer the screenshot request', e)
+            }
+            return
+        }
+        if (event.type === 'command') return
         if (event.client === this.source.clientId) return        // this tab wrote it, its base is already the new sha
         this.manifest.apply(event)
         if (event.path === this.loadedProjectFile?.path) await this.openFileChangedOnDisk()
@@ -667,6 +679,42 @@ export class ViewerInstanceManager extends EventDispatcher<{
         }
     }
 
+    /**
+     * The viewport as a PNG, for `kite3d screenshot`. Play runs on this viewer, so a running game is
+     * what the picture shows.
+     */
+    private async captureScreenshot(): Promise<Blob> {
+        const viewer = this.get()
+        if (viewer.canvas.width < 1 || viewer.canvas.height < 1) throw new Error('The editor canvas has zero size.')
+
+        let finished = false
+        const frameWaitTime = viewer.renderManager.frameWaitTime
+        const snapshot = viewer.getScreenshotBlob({mimeType: 'image/png'}).finally(()=>{finished = true})
+        // The snapshot waits for a complete frame, which a tab nobody is looking at never draws.
+        const render = this.renderScreenshotOnDemand(viewer, ()=>finished)
+        try {
+            const blob = await Promise.race([snapshot, render.then(()=>undefined)])
+            if (!blob) throw new Error('The editor did not produce a screenshot.')
+            // The canvas is transparent in edit mode, so the viewport background goes in behind it.
+            return await compositeScreenshot(viewer.canvas)
+        } finally {
+            finished = true
+            viewer.renderManager.frameWaitTime = frameWaitTime
+        }
+    }
+
+    private async renderScreenshotOnDemand(viewer: ThreeViewer, finished: ()=>boolean): Promise<void> {
+        const deadline = performance.now() + 5_000
+        await Promise.resolve()
+        while (!finished()) {
+            viewer.setDirty()
+            viewer.renderManager.frameWaitTime = 0
+            viewer.renderManager.animationLoop(performance.now())
+            await new Promise<void>((resolveFrame)=>window.setTimeout(resolveFrame, 0))
+            if (performance.now() >= deadline) throw new Error('The editor screenshot render timed out.')
+        }
+    }
+
     /** Holds the frame still while an exporter walks the scene. */
     private async whileNotRendering<T>(viewer: ThreeViewer, run: () => Promise<T>): Promise<T> {
         const renderEnabled = viewer.renderEnabled
@@ -692,7 +740,9 @@ export class ViewerInstanceManager extends EventDispatcher<{
         if (!handle) return {error: 'no project to export the scene into'}
 
         const exported = await this.withEditorHidden(async (viewer)=>{
-            const serialized = await this.whileNotRendering(viewer, ()=>serializeSceneGltf(viewer, {scenePath}))
+            // An isolated view hides objects that are visible in the scene. The file keeps the scene's own.
+            const serialized = await viewer.getPlugin(EditModePlugin)!.withIsolateVisibilityRestored(()=>
+                this.whileNotRendering(viewer, ()=>serializeSceneGltf(viewer, {scenePath})))
             // The thumbnail is taken while the grid and the gizmos are still hidden.
             const snapshot = takePreview && viewer.renderEnabled
                 ? await viewer.getPlugin(CanvasSnapshotPlugin)!.getFile('snapshot.jpeg', {
@@ -891,8 +941,15 @@ export class ViewerInstanceManager extends EventDispatcher<{
     runtimeProject(): RuntimeProject {
         const project = this.loadedProject
         if (!project?.settings || !project.assetsManifest) throw new Error('No project settings loaded')
+        const json = project.settings.json
+        // main travels as an absolute versioned URL, so an edited main.js runs at the next Play with
+        // no page reload. The engine's new URL(main, base) leaves an absolute URL alone.
+        const main = (typeof json.main === 'string' ? json.main : './main.js').replace(/^\.\//, '')
         return {
-            packageJson: project.settings.json,
+            packageJson: {
+                ...json,
+                main: this.source.fileUrl(main, this.manifest.files.get(main)?.sha256, this.scriptUtil.revision),
+            },
             config: project.settings.config,
             assetsManifest: project.assetsManifest,
             mainScene: project.settings.mainScene,
@@ -1153,10 +1210,14 @@ export class ViewerInstanceManager extends EventDispatcher<{
             const fileRootPath = await this.toAssetIdPath(file);
 
             if (isMain) {
+                // The objects an isolated view remembers are about to go, so the view goes with them.
+                this.get()?.getPlugin(EditModePlugin)?.exitIsolate()
                 this.get()?.getPlugin(EditModePlugin)?.disable('loadImport') // todo do for single files also?
                 // console.log(this.get()?.getPlugin(EditModePlugin))
                 if(this.defaultViewerSettings) {
-                    v.fromJSON(this.defaultViewerSettings)
+                    // importConfig, not fromJSON: exportConfig writes serialized resources, and fromJSON
+                    // refuses them until loadConfigResources has turned them into a loaded meta.
+                    await v.importConfig(this.defaultViewerSettings)
                 }
                 if(file !== project && !file.path.endsWith('.scene.gltf')) {
                     res = await v.assetManager.tracker.refreshFromRegistry(fileRootPath, {
@@ -1318,39 +1379,6 @@ export class ViewerInstanceManager extends EventDispatcher<{
     // for unique run mode
     editorId = generateUUID()
     _runningSceneFile: File|null = null
-
-    // todo expose for scripts
-    async loadRunningScene(path: string){
-        if(!this.playMode.isRunningMode || !this.loadedProject || !isPackageProject(this.loadedProject)) return
-
-        const viewer = this.get()
-        viewer.timeline.stop()
-        viewer.timeline.reset()
-        viewer.getPlugin(EntityComponentPlugin)!.stop()
-        this.unloadScene()
-
-        const project = this.loadedProject
-
-        if(path === this.loadedPath && this._runningSceneFile) {
-            // todo if _runningSceneFile doesnt exists, read running file from disk like in stop
-            const filePath = `.${settingsKey}/running/${this.editorId}.scene.gltf`
-            await this.loadImport({
-                file: this._runningSceneFile, path: filePath,
-            }, project, true).catch(e => {
-                return {error: e.message}
-            })
-        }else {
-            const r = await this.getLoadedFile(project, path)
-            if (!r || !r.file) {
-                console.error('No scene file found, cannot reload scene.')
-                return
-            }
-            await this.loadImport(r, project, true)
-        }
-
-        viewer.timeline.start()
-        viewer.getPlugin(EntityComponentPlugin)!.start()
-    }
 
     /**
      *
@@ -2004,6 +2032,28 @@ function readableAssetId(path: string, manifest?: AssetsJSONManifest): string {
     let id = base
     for (let suffix = 1; manifest?.files[id]; suffix++) id = `${base}-${suffix}`
     return id
+}
+
+/** The rendered canvas on the viewport's own background, because the canvas itself is transparent. */
+async function compositeScreenshot(source: HTMLCanvasElement): Promise<Blob> {
+    const canvas = document.createElement('canvas')
+    canvas.width = source.width
+    canvas.height = source.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('The editor could not create a screenshot canvas.')
+    const viewport = source.closest<HTMLElement>('.editorCanvasContainer') || source.parentElement
+    const app = source.closest<HTMLElement>('.editorSplitContainer')
+    const viewportBackground = viewport ? getComputedStyle(viewport).backgroundColor : ''
+    const transparent = !viewportBackground || viewportBackground === 'transparent' || viewportBackground === 'rgba(0, 0, 0, 0)'
+    context.fillStyle = transparent && app ? getComputedStyle(app).backgroundColor : viewportBackground
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(source, 0, 0, canvas.width, canvas.height)
+    return await new Promise<Blob>((resolveBlob, reject)=>{
+        canvas.toBlob((blob)=>{
+            if (blob) resolveBlob(blob)
+            else reject(new Error('The editor did not produce a screenshot.'))
+        }, 'image/png')
+    })
 }
 
 async function sha256Hex(bytes: ArrayBuffer | Uint8Array): Promise<string> {

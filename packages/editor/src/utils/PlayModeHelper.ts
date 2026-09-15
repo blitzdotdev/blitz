@@ -1,8 +1,9 @@
-import {EntityComponentPlugin, EventDispatcher, PickingPlugin} from "threepipe";
+import {EventDispatcher, PickingPlugin} from "threepipe";
 import {RunningGame, startGame} from "@kite3d/engine";
 import {settingsKey} from "./project.ts";
 import {SceneDirtyState, ViewerInstanceManager} from "./ViewerInstanceManager.ts";
 import {isPackageProject} from "./projectUtils.ts";
+import {EditModePlugin} from "./EditModePlugin.ts";
 
 export class PlayModeHelper extends EventDispatcher<{
     runModePauseChange: {},
@@ -48,6 +49,8 @@ export class PlayModeHelper extends EventDispatcher<{
 
         this.dirtyBeforeRun = manager.sceneDirtyState
 
+        // Play runs the scene as it is, not as an isolated view shows it.
+        manager.get().getPlugin(EditModePlugin)?.exitIsolate()
         await manager.editPreview.start()
 
         let load
@@ -116,9 +119,6 @@ export class PlayModeHelper extends EventDispatcher<{
         try {
             this.running = await startGame(manager.get(), manager.runtimeProject(), {base: '/files/'})
         } catch (e) {
-            // startGame starts the clock and the components before it imports main.js, so a throw in
-            // main() leaves them running with no handle to stop them. Stop the components by hand.
-            manager.get().getPlugin(EntityComponentPlugin)!.stop()
             await this.stopRunMode()
             throw e
         }
@@ -130,6 +130,7 @@ export class PlayModeHelper extends EventDispatcher<{
         if (this.isPausedRunning) return
         this.isPausedRunning = true
         manager.get().timeline.stop()
+        manager.editPreview.pause()
         this.dispatchEvent({type: 'runModePauseChange'})
     }
 
@@ -137,6 +138,7 @@ export class PlayModeHelper extends EventDispatcher<{
         const manager = this.manager
         if (!this.isPausedRunning) return
         this.isPausedRunning = false
+        manager.editPreview.resume()
         if (startTime) manager.get().timeline.start()
         this.dispatchEvent({type: 'runModePauseChange'})
     }
