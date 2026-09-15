@@ -1,6 +1,6 @@
 {
   "name": "kite3d",
-  "version": "0.19.0-alpha.2",
+  "version": "0.20.0-alpha.1",
   "description": "The Kite3D command and secure localhost development server.",
   "type": "module",
   "license": "Apache-2.0",
@@ -23,8 +23,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kite3d/editor": "0.19.0-alpha.2",
-    "@kite3d/engine": "0.19.0-alpha.2",
+    "@kite3d/editor": "0.20.0-alpha.1",
+    "@kite3d/engine": "0.20.0-alpha.1",
     "@hono/node-server": "^1.19.17",
     "chokidar": "^4.0.3",
     "es-module-lexer": "^3.0.2",

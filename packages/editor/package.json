@@ -1,6 +1,6 @@
 {
   "name": "@kite3d/editor",
-  "version": "0.19.0-alpha.2",
+  "version": "0.20.0-alpha.1",
   "description": "The editor application served by `kite3d dev`. It uses Threepipe for the 3D viewport.",
   "type": "module",
   "license": "Apache-2.0",
@@ -16,7 +16,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@kite3d/engine": "0.19.0-alpha.2",
+    "@kite3d/engine": "0.20.0-alpha.1",
     "@threepipe/plugin-3d-tiles-renderer": "^0.3.2",
     "@threepipe/plugin-assimpjs": "^0.2.3",
     "@threepipe/plugin-blend-importer": "^0.1.0",
