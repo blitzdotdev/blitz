@@ -4,15 +4,16 @@ import {access, mkdir, readdir, realpath, stat} from 'node:fs/promises'
 import {homedir} from 'node:os'
 import {dirname, isAbsolute, resolve, sep} from 'node:path'
 import type {Context, Hono} from 'hono'
-import {gitHead} from './gitInfo.ts'
+import {gitHead, repoRoot} from './gitInfo.ts'
 import {initProject} from './initProject.ts'
 import {isKite3dProjectRoot} from './project-root.ts'
 import {readProjectIndex, registerProject, type IndexedProject} from './projectIndex.ts'
 import {readRunningServer, serverStatePath, stopServer, type ServerState} from './serverState.ts'
 import type {LocalAppEnv} from './server.ts'
 
-// One row of the picker: what the index remembers, plus the five things only a server knows now.
+// One row of the picker: what the index remembers, plus the six things only a server knows now.
 export type ProjectRow = IndexedProject & {
+    repoRoot: string | null // shared by every worktree of one repository; null for a loose project
     branch: string | null   // from git at request time; null when HEAD is detached
     head: string | null     // the short commit when branch is null
     running: boolean        // <path>/.kite3d/dev.json parses and its pid is alive
@@ -61,6 +62,7 @@ async function listProjects(): Promise<ProjectRow[]> {
         const {branch, head} = await gitHead(project.path)
         return {
             ...project,
+            repoRoot: await repoRoot(project.path),
             branch,
             head,
             running: server !== null,

@@ -1,14 +1,14 @@
 import {DevServerSource} from './DevServerSource.ts'
 
 /**
- * One row of the picker: what `~/.kite3d/projects.json` remembers, plus the five things only a
+ * One row of the picker: what `~/.kite3d/projects.json` remembers, plus the six things only a
  * server knows at request time. The server side is `ProjectRow` in packages/kite3d/src/hubRoutes.ts.
  */
 export interface ProjectRow {
     path: string
     name: string
-    repoRoot: string | null // shared by every worktree of one repository; null for a loose project
     lastOpened: string
+    repoRoot: string | null // shared by every worktree of one repository; null for a loose project
     branch: string | null
     head: string | null     // the short commit when the branch is null
     running: boolean

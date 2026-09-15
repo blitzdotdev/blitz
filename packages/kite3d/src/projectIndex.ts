@@ -2,7 +2,6 @@ import {randomBytes} from 'node:crypto'
 import {access, mkdir, readFile, realpath, rename, unlink, writeFile} from 'node:fs/promises'
 import {basename, resolve} from 'node:path'
 import {kite3dHome} from './home.ts'
-import {repoRoot} from './gitInfo.ts'
 
 // ~/.kite3d/projects.json: the projects this machine knows about, across reboots.
 export interface ProjectIndex {
@@ -11,10 +10,9 @@ export interface ProjectIndex {
 }
 
 export interface IndexedProject {
-    path: string            // absolute, symlinks resolved; the key
-    name: string            // the package.json name, or the folder name
-    repoRoot: string | null // shared by every worktree of one repository; null for a loose project
-    lastOpened: string      // ISO time of the last init, dev, or open through the picker; the sort key
+    path: string        // absolute, symlinks resolved; the key
+    name: string        // the package.json name, or the folder name
+    lastOpened: string  // ISO time of the last init, dev, or open through the picker; the sort key
 }
 
 function indexPath(): string {
@@ -49,7 +47,6 @@ export async function registerProject(path: string): Promise<IndexedProject> {
     const entry: IndexedProject = {
         path: absolutePath,
         name: await projectName(absolutePath),
-        repoRoot: await repoRoot(absolutePath),
         lastOpened: new Date().toISOString(),
     }
     const {projects} = await readProjectIndex()
@@ -89,9 +86,8 @@ async function isProjectFolder(path: string): Promise<boolean> {
 
 function asIndexedProject(value: unknown): IndexedProject | null {
     if (!value || typeof value !== 'object') return null
-    const {path, name, repoRoot: root, lastOpened} = value as Record<string, unknown>
+    const {path, name, lastOpened} = value as Record<string, unknown>
     if (typeof path !== 'string' || !path || typeof name !== 'string') return null
-    if (root !== null && typeof root !== 'string') return null
     if (typeof lastOpened !== 'string' || !Number.isFinite(Date.parse(lastOpened))) return null
-    return {path, name, repoRoot: root, lastOpened}
+    return {path, name, lastOpened}
 }
