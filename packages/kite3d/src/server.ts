@@ -153,6 +153,7 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
     const pendingScreenshots = new Map<string, PendingScreenshot>()
     const pendingEvents = new Map<string, PendingEvent>()
     const knownHashes = new Map<string, string>()
+    const writingPaths = new Set<string>()   // paths a PUT is writing right now
     const moduleRewriter = new ProjectModuleRewriter()
     let watcher: FSWatcher | undefined
     let closing = false
@@ -374,42 +375,53 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
         })
         app.put('/files/*', async (c) => {
             const relativePath = decodeFilePath(new URL(c.req.url).pathname)
-            const filePath = await safeProjectPath(root, relativePath, true)
-            const existed = await fileExists(filePath)
-            const currentHash = existed ? await hashFile(filePath) : undefined
-            // A create sends If-None-Match: *, so it never truncates a file the editor has not listed yet.
-            const ifNoneMatch = c.req.header('If-None-Match')
-            const ifMatch = c.req.header('If-Match')
-            if (ifNoneMatch === '*') {
-                if (existed) {
-                    return jsonResponse({error: {code: 'precondition_failed', message: 'The file already exists.'}, sha256: currentHash}, 412)
-                }
-            } else if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
-                return jsonResponse({error: {code: 'precondition_failed', message: 'The file changed on disk.'}, sha256: currentHash}, 412)
+            // A precondition read while another PUT to this path is mid flight names the version that
+            // PUT is about to replace, so both would pass and the first write would be lost. The claim
+            // and the check are one synchronous step, so only one writer per path gets through.
+            if (writingPaths.has(relativePath)) {
+                return jsonResponse({error: {code: 'precondition_failed', message: 'Another write to this file is in flight.'}}, 412)
             }
-            await mkdir(dirname(filePath), {recursive: true})
-            const temporary = resolve(dirname(filePath), `.${basename(filePath)}.kite3d-${randomBytes(8).toString('hex')}`)
-            let sha256 = ''
+            writingPaths.add(relativePath)
             try {
-                const body = c.req.raw.body
-                if (!body) throw new Error('File request body is required')
-                // Hono's Request adapter owns the incoming stream. Reading the raw socket here
-                // stalls once the adapter has begun consuming a streamed request body.
-                await pipeline(
-                    Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]),
-                    createWriteStream(temporary, {flags: 'wx'}),
-                )
-                sha256 = await hashFile(temporary)
-                knownHashes.set(relativePath, sha256)
-                await rename(temporary, filePath)
-            } catch (error) {
-                if (currentHash) knownHashes.set(relativePath, currentHash)
-                else knownHashes.delete(relativePath)
-                await unlink(temporary).catch(() => undefined)
-                throw error
+                const filePath = await safeProjectPath(root, relativePath, true)
+                const existed = await fileExists(filePath)
+                const currentHash = existed ? await hashFile(filePath) : undefined
+                // A create sends If-None-Match: *, so it never truncates a file the editor has not listed yet.
+                const ifNoneMatch = c.req.header('If-None-Match')
+                const ifMatch = c.req.header('If-Match')
+                if (ifNoneMatch === '*') {
+                    if (existed) {
+                        return jsonResponse({error: {code: 'precondition_failed', message: 'The file already exists.'}, sha256: currentHash}, 412)
+                    }
+                } else if (!ifMatch || (ifMatch !== '*' && ifMatch !== quoteHash(currentHash))) {
+                    return jsonResponse({error: {code: 'precondition_failed', message: 'The file changed on disk.'}, sha256: currentHash}, 412)
+                }
+                await mkdir(dirname(filePath), {recursive: true})
+                const temporary = resolve(dirname(filePath), `.${basename(filePath)}.kite3d-${randomBytes(8).toString('hex')}`)
+                let sha256 = ''
+                try {
+                    const body = c.req.raw.body
+                    if (!body) throw new Error('File request body is required')
+                    // Hono's Request adapter owns the incoming stream. Reading the raw socket here
+                    // stalls once the adapter has begun consuming a streamed request body.
+                    await pipeline(
+                        Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]),
+                        createWriteStream(temporary, {flags: 'wx'}),
+                    )
+                    sha256 = await hashFile(temporary)
+                    knownHashes.set(relativePath, sha256)
+                    await rename(temporary, filePath)
+                } catch (error) {
+                    if (currentHash) knownHashes.set(relativePath, currentHash)
+                    else knownHashes.delete(relativePath)
+                    await unlink(temporary).catch(() => undefined)
+                    throw error
+                }
+                scheduleEvent(root, relativePath, c.get('clientId'), existed ? 'change' : 'add')
+                return jsonResponse({path: relativePath, sha256}, existed ? 200 : 201)
+            } finally {
+                writingPaths.delete(relativePath)
             }
-            scheduleEvent(root, relativePath, c.get('clientId'), existed ? 'change' : 'add')
-            return jsonResponse({path: relativePath, sha256}, existed ? 200 : 201)
         })
         app.delete('/files/*', async (c) => {
             const relativePath = decodeFilePath(new URL(c.req.url).pathname)
