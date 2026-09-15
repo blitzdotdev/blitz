@@ -8,7 +8,8 @@ import {
     settingsKey
 } from "./project.ts";
 import {comparePlugins} from "./ScriptUtil.ts";
-import {ImportMapsManager, PackageDependency} from "./importMaps.ts";
+import {ProjectDependency} from "@kite3d/engine/projectFormat";
+import {ask} from "./AskDialog.tsx";
 import {parse} from "jsonc-parser";
 import {ViewerInstanceManager} from "./ViewerInstanceManager.ts";
 import {isPackageProject} from "./projectUtils.ts";
@@ -71,7 +72,7 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
     }
 
 
-    async addProjectDependency(dependency: PackageDependency) {
+    async addProjectDependency(dependency: ProjectDependency) {
         const project = this.manager.loadedProject
         const settings = project?.settings?.config
         if (!settings) throw new Error('No project loaded, cannot add dependency')
@@ -85,7 +86,7 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
             await this.addProjectScript({import: dependency.key}, true)
     }
 
-    async removeProjectDependency(dependency: PackageDependency) {
+    async removeProjectDependency(dependency: ProjectDependency) {
         const project = this.manager.loadedProject
         const settings = project?.settings?.config
         if (!settings) throw new Error('No project loaded, cannot remove dependency')
@@ -154,27 +155,27 @@ export class ProjectSettingsManager extends EventDispatcher<{}> {
                 removedDeps.push(d)
             }
         }
-        if (addedDeps.length > 0 || removedDeps.length > 0 || changedDeps.length > 0) {
-            if (removedDeps.length > 0) {
-                // ImportMapsManager.removeDependency(...removedDeps.map(d=>d.key))
-                // cant remove, add it back
-                deps2.push(...removedDeps)
-            }
-            if (addedDeps.length > 0 || changedDeps.length > 0) {
-                const imports = [...addedDeps, ...changedDeps]
-                console.log('Registering Imports:', imports)
-                ImportMapsManager.addDependency(...imports)
-            }
-            if (removedDeps.length || changedDeps.length) {
-                // todo show toast to reload page/project
-            }
-            // todo notify import maps change
-            // this.dispatchEvent({type: 'importMapsChange'})
+        // The dev server injects the import map into the page, so a new dependency reaches the
+        // project's scripts on the next load and only on the next load.
+        if (lastSettings && (addedDeps.length || removedDeps.length || changedDeps.length)) {
+            await this.reloadForDependencies()
+            return
         }
 
         await this.manager.scriptUtil.onProjectSettingsChange(settings, lastSettings)
     }
 
+
+    private async reloadForDependencies() {
+        if (this.manager.loadedNeedsSave) {
+            const reload = await ask('Dependencies changed', 'The editor reloads to pick up new dependencies. Unsaved changes are lost.', [
+                {label: 'Keep editing', value: false},
+                {label: 'Reload', value: true, intent: 'danger'},
+            ])
+            if (!reload) return
+        }
+        location.reload()
+    }
 
     private async setSettingsConfig(settings: ProjectConfigSettings, project: LoadedProject) {
         if (!project.handle) throw new Error('No handle to update project config')

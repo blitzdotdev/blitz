@@ -1,6 +1,7 @@
-import {ExternalPlugin, ExternalScript, LoadedProject, ProjectConfigSettings, resolveFile} from "./project.ts";
+import {ExternalPlugin, ExternalScript, LoadedProject, ProjectConfigSettings} from "./project.ts";
 import {Class, EntityComponentPlugin, EventDispatcher, IViewerPlugin, ThreeViewer, TObject3DComponent} from "threepipe";
-import {getFileChanged, loadModule, loadModules, SupPluginModule} from "./modules.ts";
+import {isDependencyModuleSpecifier} from "@kite3d/engine/projectFormat";
+import {isBuiltinModule, loadModules, ProjectFileUrl, SupPluginModule} from "./modules.ts";
 
 export interface PluginRef{
     exp: (Class<IViewerPlugin> & IViewerPlugin['constructor'])
@@ -53,11 +54,20 @@ export class ScriptUtil extends EventDispatcher<{
     extPlugins: ExternalPlugin[] = [] // todo make public readonly
     extScripts: ExternalScript[] = [] // todo make public readonly
 
-    _readScript = async (path: string)=>{
-        const file = await resolveFile(path, this.project.handle)
-        if(!file || typeof file === 'string') throw new Error('Failed to load script: ' + path)
-        const text = await (file as File).text()
-        return text
+    /** Where a project file is served. The manager binds it to the dev server. */
+    fileUrl!: ProjectFileUrl
+
+    // One counter for the page. Any module change re-imports every project module, so a project's
+    // handful of scripts needs no dependency graph to know what to reload.
+    private revision = 0
+
+    private loadModules(paths: string[]){
+        return loadModules(paths, this.project.settings!.json, this.fileUrl, this.revision)
+    }
+
+    /** True when the dev server serves this module, so an edit to any file can change it. */
+    private isProjectFile(path: string){
+        return !isBuiltinModule(path) && !isDependencyModuleSpecifier(path, this.project.settings!.json)
     }
 
     async addPlugin(p: PluginRef){
@@ -134,8 +144,12 @@ export class ScriptUtil extends EventDispatcher<{
 
     async scriptFilesChanged(paths: string[]|Set<string>){
         console.log('[Files Changed]', paths)
-        const ps: string[] = getFileChanged(paths)
+        if(![...paths].some(p=>/\.m?js$/i.test(p))) return
+        // A project has a handful of scripts and any of them can import any other, so every project
+        // module re-imports at the next revision instead of a dependency graph deciding which.
+        const ps = [...this.scriptModules.keys()].filter(p=>this.isProjectFile(p))
         if(ps.length === 0) return
+        this.revision++
         // this.pluginsLoading = true
         // unload modules
         const ps2 = []
@@ -161,21 +175,22 @@ export class ScriptUtil extends EventDispatcher<{
         }
         try {
             // load modules again
-            const pms = loadModules(ps2, this._readScript)
+            const pms = this.loadModules(ps2)
             // modules1 = await loadModules(ps2)
             const pp = []
             for (let i = 0; i < ps2.length; i++){
                 const path = ps2[i];
                 const mod = mods[i]
-                const pms2 = pms.then(p=>p.modules[i])
+                const pms2 = pms.then(p=>p[i])
+                // The last module that worked, so a module that fails to import keeps it. Reading it
+                // here and not inside the callback is what keeps the new promise from awaiting itself,
+                // which used to wedge every later file change behind a script with a syntax error.
+                const lastModule = mod.module
                 // const plugins = modulePlugins.get(path) || []
-                mod.module = pms2.then(async (module)=>{
-                    if(!module.__tpModuleError) {
-                        mod.module = module
-                    }else {
-                        // error in module, keep the last loaded module and show error to user
-                    }
-                    return mod.module
+                mod.module = pms2.then((module)=>{
+                    if(module.__tpModuleError) return lastModule   // the error is shown to the user
+                    mod.module = module
+                    return module
                 })
 
                 // mod.plugins.push(...plugins)
@@ -254,7 +269,7 @@ export class ScriptUtil extends EventDispatcher<{
                     path,
                 }
                 this.scriptModules.set(path, mod)
-                mod.module = loadModule(path, this._readScript).then(async ({module}) => {
+                mod.module = this.loadModules([path]).then(async ([module]) => {
                     if (!module) {
                         throw new Error('Failed to import module: ' + path)
                     }
@@ -265,10 +280,6 @@ export class ScriptUtil extends EventDispatcher<{
                 })
 
                 const module = await mod.module
-
-                // const path1 = path.match(/^[a-z]+:\/\//) ? path : await this.fetchProjectAsset('asset://'+path)
-                // const module: SupPluginModule = await import(/* @vite-ignore */ path1)
-                // const module = await ImportMapsManager.dynamicImport(path)
             }
         }catch (e) {
             console.error('Error loading module: ', path, e)
@@ -706,7 +717,6 @@ export class ScriptUtil extends EventDispatcher<{
     //             // todo test
     //             // const path1 = path.match(/^[a-z]+:\/\//) ? path : await this.fetchProjectAsset('asset://'+path)
     //             // const module: SupPluginModule = await import(/* @vite-ignore */ path1)
-    //             // const module = await ImportMapsManager.dynamicImport(path)
     //             const module = await pms
     //             if (!module) {
     //                 throw new Error('Failed to import plugin: ' + path)

@@ -83,6 +83,11 @@ export class DevServerSource {
         return this.put(path, bytes, {'If-None-Match': '*'})
     }
 
+    async delete(path: string) {
+        const res = await fetch(this.fileUrl(path), {method: 'DELETE', headers: this.headers()})
+        if (!res.ok && res.status !== 404) throw new Error(`Cannot delete ${path}: ${res.status}`)
+    }
+
     events(listener: (event: ProjectEvent) => void): () => void {
         const source = new EventSource(`/api/events?client=${encodeURIComponent(this.clientId)}`)
         for (const type of ['change', 'add', 'unlink', 'command'] as const) {
@@ -102,9 +107,11 @@ export class DevServerSource {
         return res.json()
     }
 
-    private fileUrl(path: string, sha256?: string): string {
+    /** `?v=` is the file's own version, `?r=` the page revision that forces a module to import fresh. */
+    fileUrl(path: string, sha256?: string, revision?: number): string {
         const url = new URL('/files/' + path.split('/').map(encodeURIComponent).join('/'), this.base)
         if (sha256) url.searchParams.set('v', sha256)
+        if (revision) url.searchParams.set('r', String(revision))
         return url.href
     }
 

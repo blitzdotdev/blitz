@@ -9,9 +9,9 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kite Editor</title>
-    <!-- Import maps polyfill -->
-    <!-- Remove this when import maps will be widely supported -->
-    <script async src="https://ga.jspm.io/npm:es-module-shims@2.6.2/dist/es-module-shims.js"></script>
+    <!-- kite3d dev replaces this with the project's import map. It has to sit above the module
+         scripts below, because a map added after a module load has started is ignored. -->
+    <script type="importmap">{"imports":{}}</script>
     <!--Scrollbar styling-->
     <style>
       * {

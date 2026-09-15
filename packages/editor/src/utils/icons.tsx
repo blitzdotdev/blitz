@@ -30,7 +30,7 @@ export function iconForSelectionObjectType(type: SelObjectType|'image'|'script'|
 
 export const fileExtToIcons = {
     'directory': 'folder-close',
-    '.scene.glb': 'cubes',
+    '.scene.gltf': 'cubes',
     '.asset.glb': 'package',
     '.asset.mat': 'style',
     '.mat.json': 'style',

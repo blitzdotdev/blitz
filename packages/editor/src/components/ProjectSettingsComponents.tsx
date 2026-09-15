@@ -12,7 +12,7 @@ import {generateUUID} from "threepipe";
 import {RefSelectionObjectComponent} from "./RefSelectionObjectComponent.tsx";
 import {Button, Icon, InputGroup} from "@blueprintjs/core";
 import {addProjectScript} from "./AddProjectScript.tsx";
-import {PackageDependency} from "../utils/importMaps.ts";
+import {ProjectDependency} from "../utils/project.ts";
 
 export function PluginsSectionComp(){
     const manager = useManager()
@@ -195,7 +195,7 @@ export function DependenciesSectionComp(){
     const {loadingState, updateLoading} = useLoadingState()
 
     const {project} = useProject()
-    const removeProjectDependency = async (p: PackageDependency)=>{
+    const removeProjectDependency = async (p: ProjectDependency)=>{
         if(!project) return false
         // todo confirm dialog
         const res = await manager.settingsManager.removeProjectDependency(p).then(()=>({error: null})).catch(e=>{
@@ -208,7 +208,7 @@ export function DependenciesSectionComp(){
     const dependencies = manager.loadedProject?.settings?.config?.dependencies || []
 
     return <FolderHeadCard open={true} label={"Dependencies"} minimal={true} level={0} onClick={()=>{}} icon={"cube"}>
-        {dependencies?.map((c: PackageDependency, i: number)=>{
+        {dependencies?.map((c: ProjectDependency, i: number)=>{
             return <InsSectionItem
                 key={i}
                 icon={"package"}
@@ -237,7 +237,7 @@ export function AddDependencyComp(){
     const {loadingState, updateLoading} = useLoadingState()
 
     const {project} = useProject()
-    const addProjectDependency = async (dep: PackageDependency)=>{
+    const addProjectDependency = async (dep: ProjectDependency)=>{
         if(!project) return false
         const res = await manager.settingsManager.addProjectDependency(dep).then(()=>({error: null})).catch(e=>{
             return {error: e?.message ?? 'Unknown error'}
@@ -277,7 +277,7 @@ export function AddDependencyComp(){
             disabled={!packageKey.trim()}
             loading={loadingState['addDependency']}
             onClick={()=>{
-                const dep: PackageDependency = {
+                const dep: ProjectDependency = {
                     key: packageKey.trim(),
                     version: packageVersion ? packageVersion.trim() : 'latest',
                     url: packageUrl.trim() || undefined

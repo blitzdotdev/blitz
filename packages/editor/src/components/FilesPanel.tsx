@@ -118,7 +118,7 @@ const menuItemsEmpty: MenuItem2[] = [{
 const menuItemsFiles: MenuItem2[] = [{
     action: 'importFileGlb',
     key: 'importFileGlb',
-    tags: ['ext-.glb', '!ext-.scene.glb'/*, 'ext-.mat'*/], // todo incase of mat import and apply to a box
+    tags: ['ext-.glb', '!ext-.scene.gltf'/*, 'ext-.mat'*/], // todo incase of mat import and apply to a box
     props: {text: 'Import in Scene', icon: 'document-open'},
 },/*,{
     action: 'revealInSystem',
@@ -279,11 +279,11 @@ export function FilesPanelGrid({}: {
                 message: 'Enter the name of the new scene',
                 placeholder: 'MyScene',
                 value: 'NewScene',
-                helperText: 'The .scene.glb extension will be added automatically',
+                helperText: 'The .scene.gltf extension will be added automatically',
                 submitButtonText: 'Create',
                 closeButtonText: 'Cancel',
                 isDir: false,
-                suffix: '.scene.glb',
+                suffix: '.scene.gltf',
                 callback: createFile,
             })
         },
@@ -505,7 +505,7 @@ export class MyComponent extends Object3DComponent {
             setCurrentPath(f.path)
             setSelectedFiles([])
         } else {
-            const allowedTypes = ['.scene.glb', '.glb', '.mat', /*'.glb', '.mat.json', '.js', '.ts'*/]
+            const allowedTypes = ['.scene.gltf', '.glb', '.mat', /*'.glb', '.mat.json', '.js', '.ts'*/]
             if (allowedTypes.some(ext => f.path.endsWith(ext))) {
                 // todo check type of file and open it if possible
                 // check for needssave

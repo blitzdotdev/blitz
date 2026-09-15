@@ -44,7 +44,7 @@ export class PlayModeHelper extends EventDispatcher<{
         let load
 
         if (isPackage) {
-            const filePath = `.${settingsKey}/running/${manager.editorId}.scene.glb` // todo delete file after run mode closed?
+            const filePath = `.${settingsKey}/running/${manager.editorId}.scene.gltf` // todo delete file after run mode closed?
 
             try {
                 const v = manager.get()
@@ -54,7 +54,7 @@ export class PlayModeHelper extends EventDispatcher<{
                 const picking = v.getPlugin(PickingPlugin)
                 const selected = picking?.getSelectedObject()?.uuid
 
-                const res = await manager.exportScene('running', false, 'gltf')
+                const res = await manager.exportRunningScene()
                 if (!res.file) {
                     // todo
                     throw new Error('Failed to export scene for run mode: ' + (res.error || 'Unknown error'))
@@ -156,7 +156,7 @@ export class PlayModeHelper extends EventDispatcher<{
         v.timeline.reset()
 
         if (isPackage) {
-            const filePath = `.${settingsKey}/running/${manager.editorId}.scene.glb` // todo delete file after run mode closed?
+            const filePath = `.${settingsKey}/running/${manager.editorId}.scene.gltf` // todo delete file after run mode closed?
 
             let tempFile = manager._runningSceneFile
             if (!tempFile) {

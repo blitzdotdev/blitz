@@ -29,7 +29,7 @@ export interface SelectFileRef{
 }
 
 export const assetableFileTypes = ['.glb', '.mat', '.json'] // we can write asset ids into these files.
-export const notAssetableFileTypes = ['.scene.glb']
+export const notAssetableFileTypes = ['.scene.gltf']
 
 export function isLoadableFile(file: string) {
     let loadable = true
@@ -38,7 +38,7 @@ export function isLoadableFile(file: string) {
     loadableFiles.push(...typesExts.image!)
     if (!loadableFiles.some(ext => file.endsWith(ext))) loadable = false
 
-    // const notLoadableFiles = ['.scene.glb']
+    // const notLoadableFiles = ['.scene.gltf']
     if (notAssetableFileTypes.some(ext => file.endsWith(ext))) loadable = false
     return loadable;
 }

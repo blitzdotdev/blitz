@@ -54,7 +54,6 @@
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
-    "importmap-vite-plugin": "^0.1.0",
     "jsonc-parser": "^3.3.1",
     "react-resizable-panels": "^3.0.6",
     "react-split": "^2.0.14",
