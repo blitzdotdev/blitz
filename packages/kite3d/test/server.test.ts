@@ -63,25 +63,28 @@ it('rejects bad tokens, non-local Host headers, traversal, and symlinks', async 
         expect((await fetch(`${base(server)}/files/linked`, {headers})).status).toBe(403)
     })
 
+// Guards the reported upload stall: paced and large PUT bodies hung until the handler read them once.
+// The saved file is compared by hash, because a byte by byte deep equal of megabytes costs seconds.
 it('accepts slow large creates and conditional overwrites without truncating the body', async () => {
         const {server, root} = await startServer()
         const path = '/files/uploads/slow.bin'
+        const savedFile = resolve(root, 'uploads/slow.bin')
         const created = patternedBytes(2 * 1024 * 1024 + 123)
         const create = await slowPut(server, path, created, {'If-None-Match': '*'})
         expect(create.status).toBe(201)
         expect(create.body.sha256).toBe(sha256(created))
-        expect(await readFile(resolve(root, 'uploads/slow.bin'))).toEqual(created)
+        expect(sha256(await readFile(savedFile))).toBe(sha256(created))
 
         const overwritten = Buffer.alloc(3 * 1024 * 1024 + 77, 0xa5)
         const overwrite = await slowPut(server, path, overwritten, {'If-Match': `"${create.body.sha256}"`})
         expect(overwrite.status).toBe(200)
         expect(overwrite.body.sha256).toBe(sha256(overwritten))
-        expect(await readFile(resolve(root, 'uploads/slow.bin'))).toEqual(overwritten)
+        expect(sha256(await readFile(savedFile))).toBe(sha256(overwritten))
 
         const stale = await slowPut(server, path, Buffer.from('stale'), {'If-Match': '"stale"'}, 0)
         expect(stale.status).toBe(412)
-        expect(await readFile(resolve(root, 'uploads/slow.bin'))).toEqual(overwritten)
-    }, 60_000)   // Linux CI on 2026-09-15: create 2 MB in 367 ms, overwrite 3 MB in 7,354 ms, a five-byte stale PUT in 9,418 ms; macOS about a second in all. The cause is open.
+        expect(sha256(await readFile(savedFile))).toBe(sha256(overwritten))
+    }, 15_000)
 
 // Guards the owner's manual Linux flake: repeated atomic scene saves stopped watcher events.
 // This passes on macOS with either watcher; Linux CI proves the watcher survives atomic file replacements.
