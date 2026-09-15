@@ -1,4 +1,5 @@
-import {mkdtemp, mkdir, readdir, rm, writeFile} from 'node:fs/promises'
+import {createHash} from 'node:crypto'
+import {mkdtemp, mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises'
 import {request} from 'node:http'
 import {createConnection} from 'node:net'
 import {tmpdir} from 'node:os'
@@ -61,6 +62,26 @@ it('rejects bad tokens, non-local Host headers, traversal, and symlinks', async 
         await symlink(resolve(root, 'outside'), resolve(root, 'linked'))
         expect((await fetch(`${base(server)}/files/linked`, {headers})).status).toBe(403)
     })
+
+it('accepts slow large creates and conditional overwrites without truncating the body', async () => {
+        const {server, root} = await startServer()
+        const path = '/files/uploads/slow.bin'
+        const created = patternedBytes(2 * 1024 * 1024 + 123)
+        const create = await slowPut(server, path, created, {'If-None-Match': '*'})
+        expect(create.status).toBe(201)
+        expect(create.body.sha256).toBe(sha256(created))
+        expect(await readFile(resolve(root, 'uploads/slow.bin'))).toEqual(created)
+
+        const overwritten = Buffer.alloc(3 * 1024 * 1024 + 77, 0xa5)
+        const overwrite = await slowPut(server, path, overwritten, {'If-Match': `"${create.body.sha256}"`})
+        expect(overwrite.status).toBe(200)
+        expect(overwrite.body.sha256).toBe(sha256(overwritten))
+        expect(await readFile(resolve(root, 'uploads/slow.bin'))).toEqual(overwritten)
+
+        const stale = await slowPut(server, path, Buffer.from('stale'), {'If-Match': '"stale"'}, 0)
+        expect(stale.status).toBe(412)
+        expect(await readFile(resolve(root, 'uploads/slow.bin'))).toEqual(overwritten)
+    }, 15_000)
 
 // Guards the owner's manual Linux flake: repeated atomic scene saves stopped watcher events.
 // This passes on macOS with either watcher; Linux CI proves the watcher survives atomic file replacements.
@@ -126,6 +147,43 @@ async function startServer() {
 
 function base(server: DevServer): string {
     return `http://127.0.0.1:${server.port}`
+}
+
+function patternedBytes(length: number): Buffer {
+    const bytes = Buffer.allocUnsafe(length)
+    for (let index = 0; index < bytes.length; index += 1) bytes[index] = (index * 31 + 17) & 0xff
+    return bytes
+}
+
+function sha256(bytes: Buffer): string {
+    return createHash('sha256').update(bytes).digest('hex')
+}
+
+async function slowPut(
+    server: DevServer,
+    path: string,
+    bytes: Buffer,
+    precondition: Record<string, string>,
+    delay = 1,
+): Promise<{status: number, body: Record<string, string>}> {
+    async function* chunks(): AsyncGenerator<Buffer> {
+        for (let offset = 0; offset < bytes.length; offset += 8 * 1024) {
+            yield bytes.subarray(offset, offset + 8 * 1024)
+            if (delay) await new Promise((resolveDelay) => setTimeout(resolveDelay, delay))
+        }
+    }
+    const response = await fetch(`${base(server)}${path}`, {
+        method: 'PUT',
+        headers: {
+            'X-Kite3D-Token': server.token,
+            'Content-Type': 'application/octet-stream',
+            ...precondition,
+        },
+        body: chunks() as unknown as BodyInit,
+        duplex: 'half',
+        signal: AbortSignal.timeout(10_000),
+    } as RequestInit & {duplex: 'half'})
+    return {status: response.status, body: await response.json() as Record<string, string>}
 }
 
 async function resolveWithin(promise: Promise<void>, milliseconds: number): Promise<void> {

@@ -391,8 +391,14 @@ export async function createDevServer(options: DevServerOptions = {}): Promise<D
             const temporary = resolve(dirname(filePath), `.${basename(filePath)}.kite3d-${randomBytes(8).toString('hex')}`)
             let sha256 = ''
             try {
-                if (!c.req.raw.body) throw new Error('File request body is required')
-                await pipeline(c.env.incoming, createWriteStream(temporary, {flags: 'wx'}))
+                const body = c.req.raw.body
+                if (!body) throw new Error('File request body is required')
+                // Hono's Request adapter owns the incoming stream. Reading the raw socket here
+                // stalls once the adapter has begun consuming a streamed request body.
+                await pipeline(
+                    Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]),
+                    createWriteStream(temporary, {flags: 'wx'}),
+                )
                 sha256 = await hashFile(temporary)
                 knownHashes.set(relativePath, sha256)
                 await rename(temporary, filePath)
