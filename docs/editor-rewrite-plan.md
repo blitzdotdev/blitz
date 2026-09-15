@@ -470,9 +470,9 @@ return { file: new File([serialized.gltf], project.mainScene.split('/').pop()!, 
 ```ts
 // loadImport (upstream 1383 to 1450), the main-scene branch
 const url = this.source.fileUrl(project.mainScene, manifest.files.get(project.mainScene)?.sha256)
-const root = await v.load(url, { importAsModelRoot: true })
-await this.nestedAssets.loadObjectDependencies(root)     // placed asset instances by rootPath, from the engine
-await this.nestedAssets.waitForPending()
+const root = await v.load(url, { importAsModelRoot: true, importedFile })   // the bytes the handle already read
+// placed asset instances resolve through upstream's AssetTracker on processRaw; the editor does not use the
+// engine's RuntimeNestedAssetLoader, which has no refresh subscriptions and would be a second owner of the job
 this.restoreEditCamera(root)                              // the scene's defaultCamera into the edit camera, port of the old editor
 this.savedSceneHash = await sha256(await serializeSceneGltf(v, { scenePath: project.mainScene }).then((s) => s.gltf))
 ```
